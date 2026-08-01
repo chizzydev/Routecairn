@@ -8,7 +8,7 @@ export const scanProfileDefinitions = {
     displayName: "Quick Recon",
     description: "Fast first-pass reconnaissance with core discovery and low scan volume.",
     enabledModules: ["baseline", "tech-fingerprint", "js-intelligence", "path-discovery", "api-mapper", "api-probe", "auth-surface", "parameter-analysis", "vulnerability-workflows"],
-    disabledModules: ["browser-crawler", "authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "proof-mode"],
+    disabledModules: ["browser-crawler", "authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "field-exposure-testing", "proof-mode"],
     moduleSettings: {
       "path-discovery": { pathSources: ["wordlist:common", "wordlist:api"] },
       "api-probe": { maxEndpoints: 12, safeMethods },
@@ -67,7 +67,7 @@ export const scanProfileDefinitions = {
       "method-review",
       "exposure-review"
     ],
-    disabledModules: ["authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "proof-mode"],
+    disabledModules: ["authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "field-exposure-testing", "proof-mode"],
     moduleSettings: {
       "browser-crawler": {
         browserMaxPages: 3,
@@ -137,7 +137,7 @@ export const scanProfileDefinitions = {
       "exposure-review",
       "proof-mode"
     ],
-    disabledModules: ["object-pair-testing"],
+    disabledModules: ["object-pair-testing", "field-exposure-testing"],
     moduleSettings: {
       "browser-crawler": {
         browserMaxPages: 4,
@@ -188,7 +188,7 @@ export const scanProfileDefinitions = {
     displayName: "Monitor",
     description: "Repeatable low-noise monitoring profile for comparing changes over time.",
     enabledModules: ["baseline", "tech-fingerprint", "path-discovery", "api-mapper", "api-probe", "auth-surface", "parameter-analysis", "vulnerability-workflows"],
-    disabledModules: ["browser-crawler", "authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "proof-mode", "exposure-review"],
+    disabledModules: ["browser-crawler", "authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "field-exposure-testing", "proof-mode", "exposure-review"],
     moduleSettings: {
       "path-discovery": { pathSources: ["wordlist:common", "wordlist:api"] },
       "api-probe": { maxEndpoints: 20, safeMethods }
@@ -246,7 +246,7 @@ export const scanProfileDefinitions = {
       "exposure-review",
       "proof-mode"
     ],
-    disabledModules: ["browser-crawler", "object-pair-testing"],
+    disabledModules: ["browser-crawler", "object-pair-testing", "field-exposure-testing"],
     moduleSettings: {
       "path-discovery": { pathSources: ["wordlist:common", "wordlist:admin", "wordlist:api"] },
       "api-probe": { maxEndpoints: 45, safeMethods },

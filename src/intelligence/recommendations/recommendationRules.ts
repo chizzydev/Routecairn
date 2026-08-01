@@ -9,6 +9,7 @@ export const recommendationRules: Record<FindingType, string> = {
   "CORS Issue": "Restrict allowed origins to trusted origins and avoid credentials with wildcard or reflected origins.",
   "HTTP Method Issue": "Verify unsafe methods are required and protected by authentication and authorization controls.",
   "Object Authorization Issue": "Enforce server-side object authorization by checking owner, tenant, sharing, or role permission before returning private object fields.",
+  "Field Exposure Issue": "Apply field-level authorization and response shaping before serializing sensitive fields for non-owner, public, tenant, or lower-privileged actors.",
   "Sensitive File Exposure": "Remove the file from the public web root, rotate exposed secrets, and verify deployment rules prevent recurrence.",
   "Backup File Exposure": "Remove public backup/archive files and store backups outside the web root with access controls.",
   "Config Exposure": "Remove public configuration files and verify they do not contain sensitive environment or service details.",

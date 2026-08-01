@@ -343,6 +343,87 @@ Safe example input:
 
 Version 1 intentionally does not support browser-based Account A/B testing, browser login automation, GraphQL request bodies, JSON body templates, tenant placeholder substitution, unauthenticated controls, or multi-object mutation in one template. UUIDs can reduce guessability but do not replace server-side authorization; remediation should verify owner, tenant, sharing, or role permission before returning private object data.
 
+### Field Exposure Testing
+
+Field-exposure testing verifies whether an otherwise accessible supplied object returns fields that a configured actor should not receive. It is not schema discovery, sensitive-data scanning, API exploration, GraphQL introspection, field guessing, object discovery, ID guessing, wildcard traversal, mass assignment testing, or request mutation testing.
+
+Run it with Account A/B auth profiles and an explicit field-exposure JSON file:
+
+```bash
+node dist/cli/index.js scan https://app.example.com \
+  --scope ./examples/scope.example.json \
+  --auth-a ./examples/account-a.auth.json \
+  --auth-b ./examples/account-b.auth.json \
+  --field-exposure ./examples/field-exposure.example.json \
+  --output ./reports/field-exposure-example
+```
+
+The planner resolves `field-exposure-testing` into a fixed request matrix before execution. Each case targets one exact object ID, one exact `GET` template with exactly one `{{OBJECT_ID}}` placeholder, explicit actors, explicit visibility, explicit object-confirmation fields, and explicit field expectations. Runtime responses cannot add actors, endpoints, objects, field paths, or test cases. Authenticated actors reference `account_a` or `account_b`; public baselines use no auth headers and cache under the anonymous partition. `HEAD` is rejected for field-exposure testing because body field projection is required.
+
+Field paths support only narrow property access and bounded array indexes such as `owner.email`, `billing.last4`, and `members[0].role`. RouteCairn rejects wildcards, recursive traversal, JSONPath filters, slices, dynamic keys, functions, prototype traversal, excessive depth, excessive array indexes, and empty segments. A configured parent path does not authorize walking child fields.
+
+Supported field policies are `MUST_BE_ABSENT`, `MUST_BE_NULL`, `MUST_BE_REDACTED`, `MUST_DIFFER_FROM_OWNER`, `MUST_MATCH_PUBLIC_BASELINE`, `MUST_MATCH_SHARED_BASELINE`, `MAY_BE_PRESENT`, `MUST_BE_PRESENT`, `MASKED_VALUE`, and `OWNER_ONLY_VALUE`. Findings are produced only for configured prohibited fields with confirmed object identity and observed policy violations such as unauthorized presence, missing redaction, masking failure, or owner-only private value exposure. Missing expected fields are reported as consistency findings, not automatic security vulnerabilities.
+
+Safe example input:
+
+```json
+{
+  "schemaVersion": 1,
+  "maxCases": 1,
+  "cases": [
+    {
+      "id": "document-field-policy",
+      "objectType": "document",
+      "objectId": "fictional-doc-owned-by-a",
+      "declaredOwnerActor": "owner",
+      "expectedVisibility": "PUBLIC_SUMMARY",
+      "requireVerifiedIdentity": true,
+      "template": {
+        "id": "document-read",
+        "method": "GET",
+        "url": "https://app.example.com/api/documents/{{OBJECT_ID}}",
+        "headers": { "Accept": "application/json" }
+      },
+      "objectConfirmation": {
+        "expectedObjectIdField": "id"
+      },
+      "actors": [
+        { "id": "owner", "type": "OWNER", "authProfile": "account_a", "safeAlias": "Owner" },
+        { "id": "non_owner", "type": "NON_OWNER", "authProfile": "account_b", "safeAlias": "Non Owner" },
+        { "id": "public", "type": "PUBLIC", "safeAlias": "Public" }
+      ],
+      "fieldExpectations": [
+        {
+          "path": "ownerProfile.email",
+          "label": "Owner email",
+          "sensitivity": "OWNER_ONLY",
+          "expectation": "OWNER_ONLY_VALUE",
+          "allowedActors": ["owner"],
+          "prohibitedActors": ["non_owner", "public"]
+        },
+        {
+          "path": "billing.last4",
+          "label": "Billing last four",
+          "sensitivity": "PRIVATE",
+          "expectation": "MUST_BE_REDACTED",
+          "allowedActors": ["owner"],
+          "prohibitedActors": ["non_owner"],
+          "redactionPattern": "^\\*{2,}\\d{2,4}$"
+        }
+      ]
+    }
+  ]
+}
+```
+
+When `requireVerifiedIdentity` is true, RouteCairn consumes the scan-level identity verification result and does not repeat verification inside the module. Required identity failures block the field-exposure case before field requests are sent and preserve planned request counts with `executedRequests: 0`. Different auth-context fingerprints are not treated as proof of different users; Account A/B auth profiles must carry distinct declared principal metadata, and verified identity must match where required.
+
+Field-exposure evidence retains projections only: field label, safe path reference, actor label, presence state, safe type, length, redaction result, scoped value fingerprint where comparison requires it, policy outcome, and confidence. Minimal evidence stores no previews. Normal and strong evidence may include short redacted previews only for explicitly approved public fields. Reports and findings do not store raw object IDs, private field values, principal IDs, tenant IDs, roles, cookies, authorization headers, or full response bodies.
+
+Object identity is confirmed independently for every owner, non-owner, public, shared, tenant, or role response by comparing the configured `expectedObjectIdField` to the exact supplied object ID. A successful status code, login-like body, HTML shell, fallback object, missing identity field, body marker, or different object ID is not enough and cannot produce a field-exposure finding.
+
+Version 1 supports controlled HTTP JSON response projection only. It does not support browser-based Account A/B field testing, browser login automation, GraphQL bodies, HTML extraction, schema discovery, object lists, pagination, wildcard objects, body templates, `HEAD` field evaluation, mutating methods, or runtime expansion of identifiers or fields.
+
 ### Budgets And Evidence
 
 The request broker enforces the resolved plan globally across shared module clients. Direct requests, retry attempts, redirect hops, and Playwright requests that reach the network consume the same request budget. Duplicate direct HTTP requests reuse cached responses without additional network traffic.

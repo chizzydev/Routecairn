@@ -25,6 +25,7 @@ export type ModuleId =
   | "role-comparison"
   | "state-aware-api"
   | "object-pair-testing"
+  | "field-exposure-testing"
   | "header-review"
   | "cookie-review"
   | "cors-review"
@@ -44,6 +45,7 @@ export type ModuleCapability =
   | "role-comparison"
   | "state-aware-api"
   | "object-pair"
+  | "field-exposure"
   | "headers"
   | "cookies"
   | "cors"
@@ -192,6 +194,118 @@ export interface ObjectPairTestingPlan {
   notes: readonly string[];
 }
 
+export type FieldExposureActorType =
+  | "OWNER"
+  | "NON_OWNER"
+  | "SECONDARY_NON_OWNER"
+  | "SHARED_PRINCIPAL"
+  | "LOWER_PRIVILEGED_ROLE"
+  | "HIGHER_PRIVILEGED_ROLE"
+  | "SAME_TENANT_MEMBER"
+  | "CROSS_TENANT_MEMBER"
+  | "PUBLIC";
+export type FieldExposureAuthSlot = "account_a" | "account_b";
+export type FieldExposureExpectationType =
+  | "MUST_BE_ABSENT"
+  | "MUST_BE_NULL"
+  | "MUST_BE_REDACTED"
+  | "MUST_DIFFER_FROM_OWNER"
+  | "MUST_MATCH_PUBLIC_BASELINE"
+  | "MUST_MATCH_SHARED_BASELINE"
+  | "MAY_BE_PRESENT"
+  | "MUST_BE_PRESENT"
+  | "MASKED_VALUE"
+  | "OWNER_ONLY_VALUE";
+export type FieldExposureSensitivity = "PUBLIC" | "PRIVATE" | "OWNER_ONLY" | "TENANT" | "ROLE" | "INTERNAL";
+export type FieldExposureVisibilityExpectation =
+  | "OWNER_ONLY"
+  | "PUBLIC_SUMMARY"
+  | "PUBLIC_FULL"
+  | "SHARED_WITH_SPECIFIC_PRINCIPALS"
+  | "TENANT_VISIBLE"
+  | "ROLE_VISIBLE"
+  | "AUTHENTICATED_USERS"
+  | "UNKNOWN_REQUIRES_REVIEW";
+
+export interface FieldExposureActorPlan {
+  id: string;
+  type: FieldExposureActorType;
+  redactedLabel: string;
+  authSlot?: FieldExposureAuthSlot;
+  principalIdHash?: string;
+  tenantIdHash?: string;
+  roleHash?: string;
+}
+
+export interface FieldExposureTemplatePlan {
+  id: string;
+  method: "GET" | "HEAD";
+  urlTemplate: string;
+  headers: Readonly<Record<string, string>>;
+}
+
+export interface FieldExposureObjectConfirmationPlan {
+  expectedObjectIdField: string;
+  expectedObjectIdHash: string;
+  expectedOwnerField?: string;
+  expectedOwnerHash?: string;
+  expectedTenantField?: string;
+  expectedTenantHash?: string;
+}
+
+export interface FieldExposureExpectationPlan {
+  id: string;
+  path: string;
+  label: string;
+  sensitivity: FieldExposureSensitivity;
+  expectation: FieldExposureExpectationType;
+  allowedActors: readonly string[];
+  prohibitedActors: readonly string[];
+  redactionPattern?: string;
+  allowPreview: boolean;
+  maxLength?: number;
+}
+
+export interface FieldExposureRequestPlan {
+  id: string;
+  caseId: string;
+  actorId: string;
+  actorType: FieldExposureActorType;
+  authSlot?: FieldExposureAuthSlot;
+  purpose: "owner-baseline" | "public-baseline" | "shared-baseline" | "actor-baseline";
+  method: "GET" | "HEAD";
+  url: string;
+  objectIdHash: string;
+}
+
+export interface FieldExposureCasePlan {
+  id: string;
+  objectType: string;
+  objectId: string;
+  objectIdHash: string;
+  ownerActorId: string;
+  expectedVisibility: FieldExposureVisibilityExpectation;
+  template: FieldExposureTemplatePlan;
+  actors: readonly FieldExposureActorPlan[];
+  objectConfirmation: FieldExposureObjectConfirmationPlan;
+  fieldExpectations: readonly FieldExposureExpectationPlan[];
+  requestMatrix: readonly FieldExposureRequestPlan[];
+  requireVerifiedIdentity: boolean;
+}
+
+export interface FieldExposureTestingPlan {
+  schemaVersion: 1;
+  enabled: true;
+  cases: readonly FieldExposureCasePlan[];
+  requestMatrix: readonly FieldExposureRequestPlan[];
+  maxCases: number;
+  maxFieldsPerCase: number;
+  maxRequests: number;
+  maxResponseBytes: number;
+  maxPreviewLength: number;
+  notes: readonly string[];
+}
+
 export interface ModuleSettings {
   pathSources?: readonly PathSource[];
   maxEndpoints?: number;
@@ -217,6 +331,8 @@ export interface ModuleSettings {
   browserAllowedPrivateOrigins?: readonly string[];
   browserAllowedThirdPartyOrigins?: readonly string[];
   maxObjectPairs?: number;
+  maxFieldExposureCases?: number;
+  maxFieldExposureFields?: number;
 }
 
 export interface ModulePlan {
@@ -256,6 +372,7 @@ export interface ResolvedScanPlan {
   optionalModulesMayBeSkipped: boolean;
   reportFocus: readonly string[];
   objectPairTesting?: Readonly<ObjectPairTestingPlan>;
+  fieldExposureTesting?: Readonly<FieldExposureTestingPlan>;
 }
 
 export interface ModuleMetadata {
@@ -306,6 +423,7 @@ export interface ScanPlannerInput {
     moduleSettings?: Partial<Record<ModuleId, ModuleSettings>>;
   };
   objectPairTesting?: ObjectPairTestingPlan;
+  fieldExposureTesting?: FieldExposureTestingPlan;
   legacyMode?: ScanMode;
   legacyModeTranslation?: string;
 }

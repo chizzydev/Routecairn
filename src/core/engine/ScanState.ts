@@ -10,6 +10,7 @@ import type {
   BaselineReport,
   BrowserCrawlReport,
   DetectedTechnology,
+  FieldExposureTestingReport,
   IdentityVerificationReport,
   JsIntelligenceReport,
   NextJsReviewReport,
@@ -45,6 +46,7 @@ export class ScanState {
   private roleComparison: RoleComparisonReport | undefined;
   private stateAwareApi: StateAwareApiReport | undefined;
   private objectPairTesting: ObjectPairTestingReport | undefined;
+  private fieldExposureTesting: FieldExposureTestingReport | undefined;
   private parameterAnalysis: ParameterAnalysisReport | undefined;
   private nextJsReview: NextJsReviewReport | undefined;
   private vulnerabilityWorkflows: VulnerabilityWorkflowReport | undefined;
@@ -142,6 +144,10 @@ export class ScanState {
     this.objectPairTesting = report;
   }
 
+  public recordFieldExposureTesting(report: FieldExposureTestingReport): void {
+    this.fieldExposureTesting = report;
+  }
+
   public recordParameterAnalysis(report: ParameterAnalysisReport): void {
     this.parameterAnalysis = report;
   }
@@ -219,6 +225,10 @@ export class ScanState {
 
     if (result.objectPairTesting) {
       this.recordObjectPairTesting(result.objectPairTesting);
+    }
+
+    if (result.fieldExposureTesting) {
+      this.recordFieldExposureTesting(result.fieldExposureTesting);
     }
 
     if (result.parameterAnalysis) {
@@ -310,6 +320,10 @@ export class ScanState {
     return this.objectPairTesting;
   }
 
+  public getFieldExposureTesting(): FieldExposureTestingReport | undefined {
+    return this.fieldExposureTesting;
+  }
+
   public getParameterAnalysis(): ParameterAnalysisReport | undefined {
     return this.parameterAnalysis;
   }
@@ -363,6 +377,7 @@ export class ScanState {
       ...(this.roleComparison ? { roleComparison: this.roleComparison } : {}),
       ...(this.stateAwareApi ? { stateAwareApi: this.stateAwareApi } : {}),
       ...(this.objectPairTesting ? { objectPairTesting: this.objectPairTesting } : {}),
+      ...(this.fieldExposureTesting ? { fieldExposureTesting: this.fieldExposureTesting } : {}),
       ...(this.parameterAnalysis ? { parameterAnalysis: this.parameterAnalysis } : {}),
       ...(this.nextJsReview ? { nextJsReview: this.nextJsReview } : {}),
       ...(this.vulnerabilityWorkflows ? { vulnerabilityWorkflows: this.vulnerabilityWorkflows } : {}),

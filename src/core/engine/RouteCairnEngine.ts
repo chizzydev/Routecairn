@@ -53,7 +53,7 @@ export class RouteCairnEngine {
 }
 
 function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toReport"]>>(stateReport: T, plan: ScanContextOptions["plan"]): T {
-  if (!plan.objectPairTesting) {
+  if (!plan.objectPairTesting && !plan.fieldExposureTesting) {
     return stateReport;
   }
 
@@ -70,7 +70,7 @@ function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toR
 }
 
 function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions["plan"] {
-  if (!plan.objectPairTesting) {
+  if (!plan.objectPairTesting && !plan.fieldExposureTesting) {
     return plan;
   }
 
@@ -78,25 +78,45 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
 
   return {
     ...plan,
-    objectPairTesting: {
-      ...plan.objectPairTesting,
-      cases: plan.objectPairTesting.cases.map((testCase) => ({
-        ...testCase,
-        template: { ...testCase.template, urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds) },
-        accountAObject: redactObjectPairAssertion(testCase.accountAObject),
-        accountBObject: redactObjectPairAssertion(testCase.accountBObject),
-        requestMatrix: testCase.requestMatrix.map((request) => ({
-          ...request,
-          targetObjectId: "<redacted>",
-          url: redactObjectIds(request.url, objectIds)
-        }))
-      })),
-      requestMatrix: plan.objectPairTesting.requestMatrix.map((request) => ({
-        ...request,
-        targetObjectId: "<redacted>",
-        url: redactObjectIds(request.url, objectIds)
-      }))
-    }
+    ...(plan.objectPairTesting
+      ? {
+          objectPairTesting: {
+            ...plan.objectPairTesting,
+            cases: plan.objectPairTesting.cases.map((testCase) => ({
+              ...testCase,
+              template: { ...testCase.template, urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds) },
+              accountAObject: redactObjectPairAssertion(testCase.accountAObject),
+              accountBObject: redactObjectPairAssertion(testCase.accountBObject),
+              requestMatrix: testCase.requestMatrix.map((request) => ({
+                ...request,
+                targetObjectId: "<redacted>",
+                url: redactObjectIds(request.url, objectIds)
+              }))
+            })),
+            requestMatrix: plan.objectPairTesting.requestMatrix.map((request) => ({
+              ...request,
+              targetObjectId: "<redacted>",
+              url: redactObjectIds(request.url, objectIds)
+            }))
+          }
+        }
+      : {}),
+    ...(plan.fieldExposureTesting
+      ? {
+          fieldExposureTesting: {
+            ...plan.fieldExposureTesting,
+            cases: plan.fieldExposureTesting.cases.map((testCase) => ({
+              ...testCase,
+              objectId: "<redacted>",
+              template: { ...testCase.template, urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds) },
+              objectConfirmation: redactFieldExposureObjectConfirmation(testCase.objectConfirmation),
+              fieldExpectations: testCase.fieldExpectations.map(redactFieldExpectation),
+              requestMatrix: testCase.requestMatrix.map((request) => ({ ...request, url: redactObjectIds(request.url, objectIds) }))
+            })),
+            requestMatrix: plan.fieldExposureTesting.requestMatrix.map((request) => ({ ...request, url: redactObjectIds(request.url, objectIds) }))
+          }
+        }
+      : {})
   };
 }
 
@@ -111,11 +131,33 @@ function redactObjectPairAssertion<T extends { objectId: string; expectedOwnerVa
 
 function objectIdRedactionPairs(plan: ScanContextOptions["plan"]): Array<{ id: string; hash: string }> {
   return (
-    plan.objectPairTesting?.cases.flatMap((testCase) => [
+    [
+      ...(plan.objectPairTesting?.cases.flatMap((testCase) => [
       { id: testCase.accountAObject.objectId, hash: testCase.accountAObject.objectIdHash },
       { id: testCase.accountBObject.objectId, hash: testCase.accountBObject.objectIdHash }
-    ]) ?? []
+      ]) ?? []),
+      ...(plan.fieldExposureTesting?.cases.map((testCase) => ({ id: testCase.objectId, hash: testCase.objectIdHash })) ?? [])
+    ]
   );
+}
+
+function redactFieldExposureObjectConfirmation<T extends { expectedOwnerHash?: string; expectedTenantHash?: string }>(confirmation: T): T {
+  return {
+    ...confirmation,
+    ...(confirmation.expectedOwnerHash ? { expectedOwnerHash: `<principal:${confirmation.expectedOwnerHash}>` } : {}),
+    ...(confirmation.expectedTenantHash ? { expectedTenantHash: `<tenant:${confirmation.expectedTenantHash}>` } : {})
+  };
+}
+
+function redactFieldExpectation<T extends { path: string; label: string }>(expectation: T): T {
+  if (!/(?:token|secret|password|api[_-]?key|session|cookie)/i.test(expectation.path)) {
+    return expectation;
+  }
+  return {
+    ...expectation,
+    path: `<field:${hashValue(expectation.path)}>`,
+    label: expectation.label.replace(/(?:token|secret|password|api[_-]?key|session|cookie)[^.\s]*/gi, "<sensitive-label>")
+  };
 }
 
 function redactObjectIds(url: string, objectIds: Array<{ id: string; hash: string }>): string {

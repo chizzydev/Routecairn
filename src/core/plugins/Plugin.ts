@@ -8,6 +8,7 @@ import type {
   BaselineReport,
   BrowserCrawlReport,
   DetectedTechnology,
+  FieldExposureTestingReport,
   JsIntelligenceReport,
   NextJsReviewReport,
   ObjectPairTestingReport,
@@ -35,6 +36,7 @@ export interface ModuleResult {
   roleComparison?: RoleComparisonReport;
   stateAwareApi?: StateAwareApiReport;
   objectPairTesting?: ObjectPairTestingReport;
+  fieldExposureTesting?: FieldExposureTestingReport;
   parameterAnalysis?: ParameterAnalysisReport;
   nextJsReview?: NextJsReviewReport;
   vulnerabilityWorkflows?: VulnerabilityWorkflowReport;

@@ -265,6 +265,21 @@ export const moduleCatalog = {
     supportedSettings: ["maxObjectPairs"],
     cost: "medium"
   },
+  "field-exposure-testing": {
+    ...defaults,
+    id: "field-exposure-testing",
+    displayName: "Field Exposure Testing",
+    description: "Verifies explicitly supplied field-visibility expectations for one supplied object across declared principals.",
+    phase: "analysis",
+    capabilities: ["field-exposure", "auth-comparison"],
+    requiresAuthentication: "account-pair",
+    monitoringCompatible: false,
+    supportsEvidence: true,
+    dependencies: [],
+    defaultSettings: { maxFieldExposureCases: 5, maxFieldExposureFields: 20 },
+    supportedSettings: ["maxFieldExposureCases", "maxFieldExposureFields"],
+    cost: "medium"
+  },
   "header-review": {
     ...defaults,
     id: "header-review",

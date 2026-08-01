@@ -11,6 +11,7 @@ export type FindingType =
   | "CORS Issue"
   | "HTTP Method Issue"
   | "Object Authorization Issue"
+  | "Field Exposure Issue"
   | "Sensitive File Exposure"
   | "Backup File Exposure"
   | "Config Exposure"

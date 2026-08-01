@@ -12,6 +12,7 @@ import { AppError } from "../../core/errors/AppError.js";
 import { createLogger } from "../../core/logging/Logger.js";
 import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import type { ModuleId, ModuleSettings } from "../../core/planning/ScanPlan.js";
+import { loadFieldExposureInput, planFieldExposureTesting } from "../../modules/fieldExposureTesting/FieldExposurePlanner.js";
 import { loadObjectPairInput, planObjectPairTesting } from "../../modules/objectPairTesting/ObjectPairPlanner.js";
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
@@ -30,6 +31,7 @@ interface ScanCommandOptions {
   authA?: string;
   authB?: string;
   objectPairs?: string;
+  fieldExposure?: string;
 }
 
 export function registerScanCommand(program: Command): void {
@@ -48,6 +50,7 @@ export function registerScanCommand(program: Command): void {
     .option("--auth-a <file>", "Path to Account A auth profile JSON for role comparison.")
     .option("--auth-b <file>", "Path to Account B auth profile JSON for role comparison.")
     .option("--object-pairs <file>", "Path to an explicit object-pair testing JSON file.")
+    .option("--field-exposure <file>", "Path to an explicit controlled field-exposure testing JSON file.")
     .action(async (target: string, options: ScanCommandOptions) => {
       const result = await runScanCommand(target, options);
       logger.success(`Scan complete. Report written to ${result.reportPath}`);
@@ -81,10 +84,20 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const objectPairTesting = options.objectPairs
     ? planObjectPairTesting(await loadObjectPairInput(resolve(options.objectPairs)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
+  const fieldExposureTesting = options.fieldExposure
+    ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
-  const includeModules = objectPairTesting
-    ? [...new Set([...(translated.includeModules ?? []), "object-pair-testing" as ModuleId])]
-    : translated.includeModules;
+  const includeModules =
+    objectPairTesting || fieldExposureTesting
+      ? [
+          ...new Set([
+            ...(translated.includeModules ?? []),
+            ...(objectPairTesting ? (["object-pair-testing"] as ModuleId[]) : []),
+            ...(fieldExposureTesting ? (["field-exposure-testing"] as ModuleId[]) : [])
+          ])
+        ]
+      : translated.includeModules;
   const plan = planner.resolve({
     requestedProfile: translated.profileName,
     scope: finalScope,
@@ -99,6 +112,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
       ...(translated.moduleSettings ? { moduleSettings: translated.moduleSettings } : {})
     },
     ...(objectPairTesting ? { objectPairTesting } : {}),
+    ...(fieldExposureTesting ? { fieldExposureTesting } : {}),
     ...(translated.legacyMode ? { legacyMode: translated.legacyMode } : {}),
     ...(translated.legacyModeTranslation ? { legacyModeTranslation: translated.legacyModeTranslation } : {})
   });

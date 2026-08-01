@@ -14,6 +14,7 @@ import { BrowserCrawlerModule } from "../../modules/browserCrawler/BrowserCrawle
 import { CookieReviewModule } from "../../modules/cookieReview/CookieReviewModule.js";
 import { CorsReviewModule } from "../../modules/corsReview/CorsReviewModule.js";
 import { ExposureReviewModule } from "../../modules/exposureReview/ExposureReviewModule.js";
+import { FieldExposureTestingModule } from "../../modules/fieldExposureTesting/FieldExposureTestingModule.js";
 import { HeaderReviewModule } from "../../modules/headerReview/HeaderReviewModule.js";
 import { JsDiscoveryModule } from "../../modules/jsIntelligence/JsDiscoveryModule.js";
 import { MethodReviewModule } from "../../modules/methodReview/MethodReviewModule.js";
@@ -76,6 +77,7 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new RoleComparisonModule(), moduleMetadata("role-comparison"));
   registry.register(new StateAwareApiModule(), moduleMetadata("state-aware-api"));
   registry.register(new ObjectPairTestingModule(), moduleMetadata("object-pair-testing"));
+  registry.register(new FieldExposureTestingModule(), moduleMetadata("field-exposure-testing"));
   registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
   registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
   registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));

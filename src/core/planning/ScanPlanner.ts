@@ -82,7 +82,8 @@ export class ScanPlanner {
       failurePolicy: definition.failurePolicy,
       optionalModulesMayBeSkipped: definition.optionalModulesMayBeSkipped,
       reportFocus: [...definition.reportFocus],
-      ...(input.objectPairTesting ? { objectPairTesting: input.objectPairTesting } : {})
+      ...(input.objectPairTesting ? { objectPairTesting: input.objectPairTesting } : {}),
+      ...(input.fieldExposureTesting ? { fieldExposureTesting: input.fieldExposureTesting } : {})
     });
 
     this.validate(plan);
@@ -272,6 +273,15 @@ export class ScanPlanner {
 
     if (plan.objectPairTesting && !hasObjectPairModule) {
       throw new AppError(`Object pair testing input was supplied but the object-pair-testing module was not selected.`, "OBJECT_PAIR_MODULE_REQUIRED");
+    }
+
+    const hasFieldExposureModule = plan.modules.some((modulePlan) => modulePlan.id === "field-exposure-testing");
+    if (hasFieldExposureModule && !plan.fieldExposureTesting) {
+      throw new AppError(`Field exposure testing module requires a resolved field-exposure request matrix.`, "FIELD_EXPOSURE_PLAN_REQUIRED");
+    }
+
+    if (plan.fieldExposureTesting && !hasFieldExposureModule) {
+      throw new AppError(`Field exposure testing input was supplied but the field-exposure-testing module was not selected.`, "FIELD_EXPOSURE_MODULE_REQUIRED");
     }
   }
 }
