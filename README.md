@@ -244,6 +244,33 @@ Object-pair testing is an explicit authorization verification workflow for IDOR/
 
 Run it by supplying two separate authentication profiles and a JSON object-pair file. Each Account A/B auth profile must declare non-secret identity metadata: `principalId`, optional `tenantId`, optional `role`, and optional `safeAlias`. RouteCairn rejects identical auth material and also rejects different sessions that declare the same `principalId`.
 
+Auth profiles may also configure optional server-side identity verification. This verifies the application principal represented by the authenticated session, not a human's real-world identity. Verification uses only the configured endpoint and explicit field mappings; RouteCairn does not discover identity endpoints or infer fields.
+
+```json
+{
+  "label": "account-a",
+  "safeAlias": "Account A",
+  "principalId": "fictional-principal-a",
+  "tenantId": "fictional-tenant-a",
+  "role": "member",
+  "headers": {
+    "Cookie": "session=<redacted>"
+  },
+  "identityVerification": {
+    "mode": "required",
+    "endpoint": "/api/me",
+    "method": "GET",
+    "principalIdField": "user.id",
+    "tenantIdField": "organization.id",
+    "roleField": "user.role",
+    "safeAliasField": "user.username",
+    "anonymousMarkers": [{ "field": "authenticated", "value": false }]
+  }
+}
+```
+
+Verification modes are `disabled`, `optional`, and `required`. Optional failures are reported but do not appear as verified success. Required failures block dependent modules such as object-pair tests that require verified Account A/B principals. Identity requests use the same `RequestSafetyBroker` as scanner modules, so scope, redirects, retries, rate limits, cache partitioning, and global request budgets apply. Reports store categories, match booleans, status metadata, response hashes, and stable hashes of identity values; they do not store raw principal IDs, tenant IDs, cookies, authorization headers, or full identity responses.
+
 ```bash
 node dist/cli/index.js scan https://app.example.com \
   --scope ./examples/scope.example.json \

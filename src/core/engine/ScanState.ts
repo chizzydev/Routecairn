@@ -10,6 +10,7 @@ import type {
   BaselineReport,
   BrowserCrawlReport,
   DetectedTechnology,
+  IdentityVerificationReport,
   JsIntelligenceReport,
   NextJsReviewReport,
   ObjectPairTestingReport,
@@ -40,6 +41,7 @@ export class ScanState {
   private apiProbe: ApiProbeReport | undefined;
   private authSurface: AuthSurfaceReport | undefined;
   private authenticatedScan: AuthenticatedScanReport | undefined;
+  private identityVerification: IdentityVerificationReport | undefined;
   private roleComparison: RoleComparisonReport | undefined;
   private stateAwareApi: StateAwareApiReport | undefined;
   private objectPairTesting: ObjectPairTestingReport | undefined;
@@ -122,6 +124,10 @@ export class ScanState {
 
   public recordAuthenticatedScan(report: AuthenticatedScanReport): void {
     this.authenticatedScan = report;
+  }
+
+  public recordIdentityVerification(report: IdentityVerificationReport): void {
+    this.identityVerification = report;
   }
 
   public recordRoleComparison(report: RoleComparisonReport): void {
@@ -288,6 +294,10 @@ export class ScanState {
     return this.authenticatedScan;
   }
 
+  public getIdentityVerification(): IdentityVerificationReport | undefined {
+    return this.identityVerification;
+  }
+
   public getRoleComparison(): RoleComparisonReport | undefined {
     return this.roleComparison;
   }
@@ -349,6 +359,7 @@ export class ScanState {
       ...(this.apiProbe ? { apiProbe: this.apiProbe } : {}),
       ...(this.authSurface ? { authSurface: this.authSurface } : {}),
       ...(this.authenticatedScan ? { authenticatedScan: this.authenticatedScan } : {}),
+      ...(this.identityVerification ? { identityVerification: this.identityVerification } : {}),
       ...(this.roleComparison ? { roleComparison: this.roleComparison } : {}),
       ...(this.stateAwareApi ? { stateAwareApi: this.stateAwareApi } : {}),
       ...(this.objectPairTesting ? { objectPairTesting: this.objectPairTesting } : {}),

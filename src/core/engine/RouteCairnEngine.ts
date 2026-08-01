@@ -6,6 +6,7 @@ import { MarkdownReportWriter } from "../../reports/MarkdownReportWriter.js";
 import { HtmlReportWriter } from "../../reports/HtmlReportWriter.js";
 import type { RouteCairnReport } from "../../reports/ReportTypes.js";
 import { legacyModeForProfile, profileSummary } from "../../config/ScanProfiles.js";
+import { verifyScanIdentities } from "../auth/IdentityVerification.js";
 
 export class RouteCairnEngine {
   private readonly orchestrator = new ScanOrchestrator();
@@ -15,6 +16,11 @@ export class RouteCairnEngine {
 
   public async scan(options: ScanContextOptions): Promise<{ reportPath: string; markdownReportPath: string; htmlReportPath: string }> {
     const context = new ScanContext(options);
+
+    const identityVerification = await verifyScanIdentities(context);
+    if (identityVerification) {
+      context.state.recordIdentityVerification(identityVerification);
+    }
 
     await this.orchestrator.run(context);
     const stateReport = safeStateReportForReport(context.state.toReport(options.plan), options.plan);

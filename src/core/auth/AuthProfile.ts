@@ -20,6 +20,58 @@ const authCookieSchema = z.object({
   path: z.string().optional()
 });
 
+export const identityVerificationModeSchema = z.enum(["disabled", "optional", "required"]);
+export const identityVerificationMethodSchema = z.enum(["GET", "HEAD"]);
+const identityFieldPathPattern = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\[(?:0|[1-9][0-9]{0,2})\]|\.[A-Za-z_$][A-Za-z0-9_$]*){0,8}$/;
+const forbiddenIdentityPathSegments = new Set(["__proto__", "prototype", "constructor"]);
+
+const identityVerificationSchema = z
+  .object({
+    mode: identityVerificationModeSchema.default("disabled"),
+    endpoint: z.string().min(1).max(2048).optional(),
+    method: identityVerificationMethodSchema.default("GET"),
+    principalIdField: z.string().min(1).max(160).optional(),
+    tenantIdField: z.string().min(1).max(160).optional(),
+    roleField: z.string().min(1).max(160).optional(),
+    safeAliasField: z.string().min(1).max(160).optional(),
+    expectedContentType: z.string().min(1).max(120).default("application/json"),
+    successStatusCodes: z.array(z.number().int().min(100).max(599)).max(10).default([200]),
+    maxResponseBytes: z.number().int().positive().max(65536).default(8192),
+    anonymousMarkers: z.array(z.object({ field: z.string().min(1).max(160), value: z.union([z.string(), z.number(), z.boolean(), z.null()]) }).strict()).max(10).default([])
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.mode !== "disabled") {
+      if (!value.endpoint) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endpoint"], message: "identityVerification.endpoint is required when verification is enabled." });
+      }
+      if (!value.principalIdField) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["principalIdField"], message: "identityVerification.principalIdField is required when verification is enabled." });
+      }
+    }
+    for (const [fieldName, path] of Object.entries({
+      principalIdField: value.principalIdField,
+      tenantIdField: value.tenantIdField,
+      roleField: value.roleField,
+      safeAliasField: value.safeAliasField
+    })) {
+      if (path && !identityFieldPathPattern.test(path)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [fieldName], message: "identityVerification field mapping uses an unsupported path." });
+      }
+      if (path && hasForbiddenIdentityPathSegment(path)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [fieldName], message: "identityVerification field mapping uses a forbidden path segment." });
+      }
+    }
+    for (const [index, marker] of value.anonymousMarkers.entries()) {
+      if (!identityFieldPathPattern.test(marker.field)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["anonymousMarkers", index, "field"], message: "anonymous marker field uses an unsupported path." });
+      }
+      if (hasForbiddenIdentityPathSegment(marker.field)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["anonymousMarkers", index, "field"], message: "anonymous marker field uses a forbidden path segment." });
+      }
+    }
+  });
+
 export const authProfileSchema = z.object({
   label: z.string().min(1).default("authenticated"),
   principalId: z.string().min(1).optional(),
@@ -28,6 +80,7 @@ export const authProfileSchema = z.object({
   safeAlias: z.string().min(1).optional(),
   headers: z.record(z.string()).default({}),
   cookies: z.array(authCookieSchema).default([]),
+  identityVerification: identityVerificationSchema.default({ mode: "disabled" }),
   notes: z.array(z.string()).default([])
 });
 
@@ -162,4 +215,8 @@ function validateHeaderValue(value: string, label: string): void {
 
 function escapeShell(value: string): string {
   return value.replace(/"/g, "\\\"");
+}
+
+function hasForbiddenIdentityPathSegment(path: string): boolean {
+  return path.split(".").some((part) => forbiddenIdentityPathSegments.has(part.replace(/\[\d+\]$/, "")));
 }

@@ -1,5 +1,8 @@
-﻿import { describe, expect, it } from "vitest";
-import { authHeadersForProfile, redactedCurlCommand, redactAuthMaterial, summarizeAuthProfile } from "../../src/core/auth/AuthProfile.js";
+import { describe, expect, it } from "vitest";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { authHeadersForProfile, loadAuthProfile, redactedCurlCommand, redactAuthMaterial, summarizeAuthProfile } from "../../src/core/auth/AuthProfile.js";
 
 describe("auth profiles", () => {
   it("builds headers from cookies and redacts secrets", () => {
@@ -25,4 +28,89 @@ describe("auth profiles", () => {
     expect(redactedCurlCommand("https://example.test/private", profile)).not.toContain("secret-token");
     expect(redactAuthMaterial("Bearer secret-token session=abc123session", profile)).toBe("<redacted> session=<redacted>");
   });
+
+  it("validates explicit identity verification configuration", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-auth-profile-"));
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "valid.json", {
+          label: "account-a",
+          principalId: "principal-a",
+          headers: { Cookie: "session=a" },
+          identityVerification: {
+            mode: "required",
+            endpoint: "/api/me",
+            method: "GET",
+            principalIdField: "user.id",
+            tenantIdField: "organization.id",
+            roleField: "roles[0]",
+            anonymousMarkers: [{ field: "authenticated", value: false }]
+          }
+        })
+      )
+    ).resolves.toMatchObject({
+      principalId: "principal-a",
+      identityVerification: { mode: "required", endpoint: "/api/me", principalIdField: "user.id" }
+    });
+
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "unsafe-method.json", {
+          label: "bad",
+          headers: {},
+          identityVerification: { mode: "required", endpoint: "/api/me", method: "POST", principalIdField: "user.id" }
+        })
+      )
+    ).rejects.toThrow();
+
+    await expect(
+      loadAuthProfile(await writeJson(tempDir, "missing-endpoint.json", { label: "bad", headers: {}, identityVerification: { mode: "required", principalIdField: "user.id" } }))
+    ).rejects.toThrow(/endpoint/);
+
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "invalid-path.json", {
+          label: "bad",
+          headers: {},
+          identityVerification: { mode: "required", endpoint: "/api/me", principalIdField: "user.*" }
+        })
+      )
+    ).rejects.toThrow(/unsupported path/);
+
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "prototype-path.json", {
+          label: "bad",
+          headers: {},
+          identityVerification: { mode: "required", endpoint: "/api/me", principalIdField: "__proto__.id" }
+        })
+      )
+    ).rejects.toThrow(/forbidden path/);
+
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "deep-path.json", {
+          label: "bad",
+          headers: {},
+          identityVerification: { mode: "required", endpoint: "/api/me", principalIdField: "a.b.c.d.e.f.g.h.i.j" }
+        })
+      )
+    ).rejects.toThrow(/unsupported path/);
+
+    await expect(
+      loadAuthProfile(
+        await writeJson(tempDir, "unknown-field.json", {
+          label: "bad",
+          headers: {},
+          identityVerification: { mode: "required", endpoint: "/api/me", principalIdField: "user.id", discover: true }
+        })
+      )
+    ).rejects.toThrow();
+  });
 });
+
+async function writeJson(tempDir: string, name: string, value: unknown): Promise<string> {
+  const path = join(tempDir, name);
+  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return path;
+}

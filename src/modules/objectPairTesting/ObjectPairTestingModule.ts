@@ -1,4 +1,5 @@
 import { authHeadersForProfile, redactedCurlCommand } from "../../core/auth/AuthProfile.js";
+import { objectPairIdentityBlockReason } from "../../core/auth/IdentityVerification.js";
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { Finding } from "../../core/findings/Finding.js";
 import { RiskScorer } from "../../core/findings/RiskScorer.js";
@@ -43,6 +44,22 @@ async function executeObjectPairTesting(context: ScanContext): Promise<ObjectPai
       confirmedIssues: 0,
       cases: [],
       notes: ["Object pair testing skipped because no resolved object-pair plan and Account A/B auth context were supplied."]
+    };
+  }
+
+  const identityBlockReason = objectPairIdentityBlockReason(context.state.getIdentityVerification());
+  if (identityBlockReason) {
+    return {
+      enabled: false,
+      plannedCases: plan.cases.length,
+      plannedRequests: plan.requestMatrix.length,
+      executedRequests: 0,
+      confirmedIssues: 0,
+      cases: [],
+      notes: [
+        `Object pair testing blocked before execution: ${identityBlockReason}`,
+        "The verified-principal requirement was not downgraded to declared-only identity."
+      ]
     };
   }
 
