@@ -1,0 +1,26 @@
+{
+  "program": "Authorized Security Test",
+  "allowedDomains": [
+    "example.com",
+    "*.example.com"
+  ],
+  "disallowedPaths": [
+    "/logout",
+    "/delete",
+    "/checkout",
+    "/payment",
+    "/cart/remove"
+  ],
+  "allowedMethods": [
+    "GET",
+    "HEAD",
+    "OPTIONS"
+  ],
+  "rateLimitPerSecond": 3,
+  "concurrency": 5,
+  "maxDepth": 2,
+  "sameOriginOnly": true,
+  "includeSubdomains": true,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn/0.1"
+}

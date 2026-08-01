@@ -1,0 +1,7 @@
+{
+  "defaultMode": "quick",
+  "reportsDir": "./reports",
+  "defaultScopeFile": "./examples/scope.example.json",
+  "bodyPreviewBytes": 8192,
+  "requestTimeoutMs": 15000
+}

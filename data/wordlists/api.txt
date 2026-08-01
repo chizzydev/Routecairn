@@ -1,0 +1,7 @@
+/api
+/api/v1
+/api/v2
+/graphql
+/api/auth
+/api/users
+/api/health

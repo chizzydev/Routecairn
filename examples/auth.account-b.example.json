@@ -1,0 +1,12 @@
+﻿{
+  "label": "account-b",
+  "role": "standard-user-b",
+  "headers": {
+    "Cookie": "session=<paste-account-b-session-cookie-here>"
+  },
+  "cookies": [],
+  "notes": [
+    "Use a separate account you own or are explicitly authorized to test.",
+    "Do not commit real auth profiles to git."
+  ]
+}

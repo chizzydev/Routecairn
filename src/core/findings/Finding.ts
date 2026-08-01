@@ -1,0 +1,57 @@
+import type { Confidence } from "./Confidence.js";
+import type { Severity } from "./Severity.js";
+import type { FalsePositiveStatus } from "../../reports/ReportTypes.js";
+
+export type FindingType =
+  | "Admin/Login Panel"
+  | "API Endpoint"
+  | "GraphQL Endpoint"
+  | "Security Header Issue"
+  | "Cookie Issue"
+  | "CORS Issue"
+  | "HTTP Method Issue"
+  | "Object Authorization Issue"
+  | "Sensitive File Exposure"
+  | "Backup File Exposure"
+  | "Config Exposure"
+  | "Debug/Dev Path"
+  | "Directory Listing"
+  | "Source Map Exposure"
+  | "Public Cloud Reference"
+  | "Interesting But Needs Manual Testing";
+
+export interface FindingEvidence {
+  url: string;
+  method: string;
+  statusCode?: number;
+  title?: string;
+  source?: string;
+  bodyHash?: string;
+  contentType?: string;
+  contentLength?: number;
+  responseHeaders?: Record<string, string | string[]>;
+  bodyPreview?: string;
+  curlCommand?: string;
+  severityReason?: string;
+  reproductionNotes?: string[];
+}
+
+export interface Finding {
+  id: string;
+  title: string;
+  type: FindingType;
+  severity: Severity;
+  confidence: Confidence;
+  url: string;
+  method: string;
+  statusCode?: number;
+  evidence: FindingEvidence;
+  impact: string;
+  recommendation: string;
+  manualTestingSuggestions: string[];
+  tags: string[];
+  riskScore: number;
+  sourceModule: string;
+  falsePositiveStatus: FalsePositiveStatus;
+  timestamp: string;
+}

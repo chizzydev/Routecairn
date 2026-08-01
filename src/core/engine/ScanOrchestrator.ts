@@ -1,0 +1,86 @@
+import type { HttpMethod } from "../http/HttpTypes.js";
+import { AppError } from "../errors/AppError.js";
+import { normalizeUrl } from "../urls/UrlNormalizer.js";
+import { ScanContext } from "./ScanContext.js";
+import { ModuleRunner } from "../plugins/ModuleRunner.js";
+import { PluginRegistry } from "../plugins/PluginRegistry.js";
+import { moduleMetadata } from "../planning/ModuleCatalog.js";
+import { ApiMapperModule } from "../../modules/apiMapper/ApiMapperModule.js";
+import { ApiProbeModule } from "../../modules/apiProbe/ApiProbeModule.js";
+import { AuthSurfaceModule } from "../../modules/authSurface/AuthSurfaceModule.js";
+import { AuthenticatedTestingModule } from "../../modules/authenticatedTesting/AuthenticatedTestingModule.js";
+import { BaselineDetector } from "../../modules/baseline/BaselineDetector.js";
+import { BrowserCrawlerModule } from "../../modules/browserCrawler/BrowserCrawlerModule.js";
+import { CookieReviewModule } from "../../modules/cookieReview/CookieReviewModule.js";
+import { CorsReviewModule } from "../../modules/corsReview/CorsReviewModule.js";
+import { ExposureReviewModule } from "../../modules/exposureReview/ExposureReviewModule.js";
+import { HeaderReviewModule } from "../../modules/headerReview/HeaderReviewModule.js";
+import { JsDiscoveryModule } from "../../modules/jsIntelligence/JsDiscoveryModule.js";
+import { MethodReviewModule } from "../../modules/methodReview/MethodReviewModule.js";
+import { NextJsReviewModule } from "../../modules/nextjsReview/NextJsReviewModule.js";
+import { ObjectPairTestingModule } from "../../modules/objectPairTesting/ObjectPairTestingModule.js";
+import { ParameterAnalysisModule } from "../../modules/parameterAnalysis/ParameterAnalysisModule.js";
+import { PathDiscoveryModule } from "../../modules/pathDiscovery/PathDiscoveryModule.js";
+import { ProofModeModule } from "../../modules/proofMode/ProofModeModule.js";
+import { RoleComparisonModule } from "../../modules/roleComparison/RoleComparisonModule.js";
+import { StateAwareApiModule } from "../../modules/stateAwareApi/StateAwareApiModule.js";
+import { TechFingerprintModule } from "../../modules/techFingerprint/TechFingerprintModule.js";
+import { VulnerabilityWorkflowModule } from "../../modules/vulnerabilityWorkflows/VulnerabilityWorkflowModule.js";
+import { WorkflowValidationModule } from "../../modules/workflowValidation/WorkflowValidationModule.js";
+
+export class ScanOrchestrator {
+  private readonly moduleRunner: ModuleRunner;
+
+  public constructor() {
+    this.moduleRunner = new ModuleRunner(createDefaultPluginRegistry());
+  }
+
+  public async run(context: ScanContext): Promise<void> {
+    const targetUrl = normalizeUrl(context.options.target);
+    const method: HttpMethod = "GET";
+    const decision = context.scopeMatcher.decide(targetUrl, method);
+
+    context.state.recordScopeDecision(decision);
+
+    if (!decision.allowed || !decision.normalizedUrl) {
+      throw new AppError(`Target is out of scope: ${decision.reason}`, "TARGET_OUT_OF_SCOPE");
+    }
+
+    const response = await context.httpClient.send({
+      url: decision.normalizedUrl,
+      method
+    });
+
+    context.state.recordResponse(response);
+    await this.moduleRunner.runPlan(context, context.options.plan);
+
+    context.state.complete();
+  }
+}
+
+export function createDefaultPluginRegistry(): PluginRegistry {
+  const registry = new PluginRegistry();
+  registry.register(new BaselineDetector(), moduleMetadata("baseline"));
+  registry.register(new TechFingerprintModule(), moduleMetadata("tech-fingerprint"));
+  registry.register(new JsDiscoveryModule(), moduleMetadata("js-intelligence"));
+  registry.register(new BrowserCrawlerModule(), moduleMetadata("browser-crawler"));
+  registry.register(new PathDiscoveryModule(), moduleMetadata("path-discovery"));
+  registry.register(new ApiMapperModule(), moduleMetadata("api-mapper"));
+  registry.register(new ApiProbeModule(), moduleMetadata("api-probe"));
+  registry.register(new AuthSurfaceModule(), moduleMetadata("auth-surface"));
+  registry.register(new ParameterAnalysisModule(), moduleMetadata("parameter-analysis"));
+  registry.register(new NextJsReviewModule(), moduleMetadata("nextjs-review"));
+  registry.register(new VulnerabilityWorkflowModule(), moduleMetadata("vulnerability-workflows"));
+  registry.register(new WorkflowValidationModule(), moduleMetadata("workflow-validation"));
+  registry.register(new AuthenticatedTestingModule(), moduleMetadata("authenticated-testing"));
+  registry.register(new RoleComparisonModule(), moduleMetadata("role-comparison"));
+  registry.register(new StateAwareApiModule(), moduleMetadata("state-aware-api"));
+  registry.register(new ObjectPairTestingModule(), moduleMetadata("object-pair-testing"));
+  registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
+  registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
+  registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));
+  registry.register(new MethodReviewModule(), moduleMetadata("method-review"));
+  registry.register(new ExposureReviewModule(), moduleMetadata("exposure-review"));
+  registry.register(new ProofModeModule(), moduleMetadata("proof-mode"));
+  return registry;
+}

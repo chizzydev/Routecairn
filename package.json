@@ -1,0 +1,41 @@
+{
+  "name": "routecairn",
+  "version": "0.1.0",
+  "description": "Web attack surface intelligence for serious security testing.",
+  "type": "module",
+  "bin": {
+    "routecairn": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsx src/cli/index.ts"
+  },
+  "keywords": [
+    "security",
+    "recon",
+    "bug-bounty",
+    "attack-surface",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "cheerio": "^1.2.0",
+    "commander": "^12.1.0",
+    "playwright": "^1.61.1",
+    "undici": "^8.5.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

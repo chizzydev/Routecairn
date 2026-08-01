@@ -1,0 +1,23 @@
+{
+  "program": "Decide Authorized Security Test",
+  "allowedDomains": [
+    "decide.com.ng",
+    "www.decide.com.ng",
+    "*.decide.com.ng"
+  ],
+  "disallowedPaths": [
+    "/logout",
+    "/delete",
+    "/checkout",
+    "/payment",
+    "/cart/remove"
+  ],
+  "allowedMethods": ["GET", "HEAD", "OPTIONS"],
+  "rateLimitPerSecond": 2,
+  "concurrency": 3,
+  "maxDepth": 2,
+  "sameOriginOnly": true,
+  "includeSubdomains": true,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn/0.1 Authorized-Decide-Test"
+}

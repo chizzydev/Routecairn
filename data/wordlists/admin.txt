@@ -1,0 +1,7 @@
+/admin
+/admin/login
+/administrator
+/dashboard
+/login
+/manage
+/panel

@@ -1,0 +1,22 @@
+{
+  "program": "Coredevix Authorized Security Test",
+  "allowedDomains": [
+    "coredevix.com",
+    "*.coredevix.com"
+  ],
+  "disallowedPaths": [
+    "/logout",
+    "/delete",
+    "/checkout",
+    "/payment",
+    "/cart/remove"
+  ],
+  "allowedMethods": ["GET", "HEAD", "OPTIONS"],
+  "rateLimitPerSecond": 2,
+  "concurrency": 3,
+  "maxDepth": 2,
+  "sameOriginOnly": true,
+  "includeSubdomains": true,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn/0.1 Authorized-Coredevix-Test"
+}
