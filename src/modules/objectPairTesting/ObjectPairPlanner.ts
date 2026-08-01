@@ -21,38 +21,48 @@ const encodedObjectPlaceholder = "%7B%7BOBJECT_ID%7D%7D";
 const tenantPlaceholder = "{{TENANT_ID}}";
 const encodedTenantPlaceholder = "%7B%7BTENANT_ID%7D%7D";
 const maxDefaultPairs = 5;
+const maxObjectPairFileBytes = 256 * 1024;
+const maxCaseCount = 20;
+const maxIdentifierLength = 256;
+const maxTemplateLength = 2048;
 const forbiddenEndpointWords = /(?:delete|remove|cancel|purchase|pay|transfer|withdraw|approve|reject|publish|submit|invite|reset|activate|deactivate|suspend|logout|consume-on-read)/i;
-const generatorPattern = /(?:\.\.|\*|\[|\]|\{|\}|\||regex|range|increment|decrement|random|uuid-v|prefix|suffix)/i;
+const generatorPattern = /(?:\.\.|\*|\[|\]|\{|\}|\||=>|function\s*\(|regex|regexp|range|increment|decrement|random|uuid-v|prefix|suffix|eval|for\s*\(|while\s*\()/i;
 const numericRangePattern = /^\s*\d+\s*-\s*\d+\s*$/;
+const secretLikePattern = /(?:authorization|cookie|session|csrf|xsrf|token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer\s+[a-z0-9._~+/=-]+)/i;
+const fieldPathPattern = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*){0,5}$/;
+const headerNamePattern = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
 
 const visibilitySchema = z.enum(["PRIVATE_TO_OWNER", "SHARED_WITH_SPECIFIC_PRINCIPALS", "TENANT_VISIBLE", "ROLE_VISIBLE", "PUBLIC", "UNKNOWN_REQUIRES_REVIEW"]);
 
 const objectAssertionSchema = z.object({
-  id: z.string().min(1),
-  source: z.string().min(1),
+  id: z.string().min(1).max(maxIdentifierLength),
+  source: z.string().min(1).max(512),
   confirmedSafeToTest: z.literal(true),
   readOnly: z.literal(true),
-  tenantId: z.string().min(1).optional(),
-  expectedObjectIdField: z.string().min(1).optional(),
-  expectedOwnerField: z.string().min(1).optional(),
-  expectedTenantField: z.string().min(1).optional(),
-  expectedSafeMarkers: z.array(z.string().min(1)).default([]),
-  expectedPrivateFields: z.array(z.string().min(1)).default([])
-});
+  tenantId: z.string().min(1).max(maxIdentifierLength).optional(),
+  expectedObjectIdField: z.string().min(1).max(160).optional(),
+  expectedOwnerField: z.string().min(1).max(160).optional(),
+  expectedTenantField: z.string().min(1).max(160).optional(),
+  expectedObjectIdHeader: z.string().min(1).max(80).optional(),
+  expectedOwnerHeader: z.string().min(1).max(80).optional(),
+  expectedPrivateHeaders: z.array(z.string().min(1).max(80)).max(10).default([]),
+  expectedSafeMarkers: z.array(z.string().min(1).max(256)).max(20).default([]),
+  expectedPrivateFields: z.array(z.string().min(1).max(160)).max(20).default([])
+}).strict();
 
 const caseSchema = z.object({
-  id: z.string().min(1),
-  objectType: z.string().min(1),
+  id: z.string().min(1).max(120),
+  objectType: z.string().min(1).max(80),
   expectedVisibility: visibilitySchema.default("PRIVATE_TO_OWNER"),
   template: z.object({
-    id: z.string().min(1),
+    id: z.string().min(1).max(120),
     method: z.enum(["GET", "HEAD"]),
-    url: z.string().min(1),
-    headers: z.record(z.string()).default({})
-  }),
+    url: z.string().min(1).max(maxTemplateLength),
+    headers: z.record(z.string().max(512)).default({})
+  }).strict(),
   accountAObject: objectAssertionSchema,
   accountBObject: objectAssertionSchema
-});
+}).strict();
 
 const objectPairInputSchema = z.object({
   schemaVersion: z.literal(1).default(1),
@@ -61,28 +71,43 @@ const objectPairInputSchema = z.object({
     .object({
       accountA: z
         .object({
-          expectedAccountId: z.string().min(1).optional(),
-          tenantId: z.string().min(1).optional(),
-          role: z.string().min(1).optional()
+          expectedAccountId: z.string().min(1).max(maxIdentifierLength).optional(),
+          tenantId: z.string().min(1).max(maxIdentifierLength).optional(),
+          role: z.string().min(1).max(80).optional()
         })
+        .strict()
         .default({}),
       accountB: z
         .object({
-          expectedAccountId: z.string().min(1).optional(),
-          tenantId: z.string().min(1).optional(),
-          role: z.string().min(1).optional()
+          expectedAccountId: z.string().min(1).max(maxIdentifierLength).optional(),
+          tenantId: z.string().min(1).max(maxIdentifierLength).optional(),
+          role: z.string().min(1).max(80).optional()
         })
+        .strict()
         .default({})
     })
+    .strict()
     .default({ accountA: {}, accountB: {} }),
-  cases: z.array(caseSchema).min(1).max(20)
-});
+  cases: z.array(caseSchema).min(1).max(maxCaseCount)
+}).strict();
 
 export type ObjectPairInput = z.infer<typeof objectPairInputSchema>;
 
 export async function loadObjectPairInput(filePath: string): Promise<ObjectPairInput> {
-  const raw = (await readFile(filePath, "utf8")).replace(/^\uFEFF/, "");
-  const parsed = objectPairInputSchema.safeParse(JSON.parse(raw));
+  const rawBuffer = await readFile(filePath);
+  if (rawBuffer.byteLength > maxObjectPairFileBytes) {
+    throw new AppError(`Object pair input exceeds maximum size ${maxObjectPairFileBytes} bytes.`, "OBJECT_PAIR_FILE_TOO_LARGE");
+  }
+
+  const raw = rawBuffer.toString("utf8").replace(/^\uFEFF/, "");
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new AppError("Object pair input is not valid JSON.", "OBJECT_PAIR_JSON_INVALID");
+  }
+
+  const parsed = objectPairInputSchema.safeParse(json);
   if (!parsed.success) {
     throw new AppError(parsed.error.message, "OBJECT_PAIR_INPUT_INVALID");
   }
@@ -94,7 +119,12 @@ export function planObjectPairTesting(input: ObjectPairInput, options: { target:
     throw new AppError("Object pair testing requires --auth-a and --auth-b.", "OBJECT_PAIR_AUTH_PAIR_REQUIRED");
   }
 
-  validateDistinctPrincipals(options.authProfileSet);
+  const profileSet = options.authProfileSet;
+  validateDeclaredPrincipalIdentity(profileSet, input.principals);
+  validateDistinctPrincipals(profileSet);
+  const principalA = requirePrincipalId(profileSet.accountA.principalId, "Account A");
+  const principalB = requirePrincipalId(profileSet.accountB.principalId, "Account B");
+  validateInputUniqueness(input);
   if (input.cases.length > input.maxPairs) {
     throw new AppError(`Object pair input contains ${input.cases.length} cases, exceeding maxPairs ${input.maxPairs}.`, "OBJECT_PAIR_TOO_MANY_CASES");
   }
@@ -103,21 +133,21 @@ export function planObjectPairTesting(input: ObjectPairInput, options: { target:
   const principals: ObjectPairPrincipalPlan[] = [
     {
       label: "account_a",
-      redactedLabel: options.authProfileSet.accountA.label,
-      ...(input.principals.accountA.expectedAccountId ? { expectedAccountId: input.principals.accountA.expectedAccountId } : {}),
-      ...(input.principals.accountA.tenantId ? { tenantId: input.principals.accountA.tenantId } : {}),
-      ...(input.principals.accountA.role ? { role: input.principals.accountA.role } : {})
+      redactedLabel: profileSet.accountA.safeAlias ?? profileSet.accountA.label,
+      principalIdHash: objectIdHash(principalA),
+      ...(profileSet.accountA.tenantId ? { tenantIdHash: objectIdHash(profileSet.accountA.tenantId) } : {}),
+      ...optionalRole(profileSet.accountA.role ?? input.principals.accountA.role)
     },
     {
       label: "account_b",
-      redactedLabel: options.authProfileSet.accountB.label,
-      ...(input.principals.accountB.expectedAccountId ? { expectedAccountId: input.principals.accountB.expectedAccountId } : {}),
-      ...(input.principals.accountB.tenantId ? { tenantId: input.principals.accountB.tenantId } : {}),
-      ...(input.principals.accountB.role ? { role: input.principals.accountB.role } : {})
+      redactedLabel: profileSet.accountB.safeAlias ?? profileSet.accountB.label,
+      principalIdHash: objectIdHash(principalB),
+      ...(profileSet.accountB.tenantId ? { tenantIdHash: objectIdHash(profileSet.accountB.tenantId) } : {}),
+      ...optionalRole(profileSet.accountB.role ?? input.principals.accountB.role)
     }
   ];
 
-  const cases = input.cases.map((testCase) => planCase(testCase, scopeMatcher));
+  const cases = input.cases.map((testCase) => planCase(testCase, scopeMatcher, principalPlanningInput(input.principals, profileSet)));
   const requestMatrix = cases.flatMap((testCase) => [...testCase.requestMatrix]);
 
   return deepFreeze({
@@ -136,9 +166,15 @@ export function planObjectPairTesting(input: ObjectPairInput, options: { target:
   });
 }
 
-function planCase(testCase: ObjectPairInput["cases"][number], scopeMatcher: ScopeMatcher): ObjectPairCasePlan {
+function optionalRole(role: string | undefined): { role?: string } {
+  return role ? { role } : {};
+}
+
+function planCase(testCase: ObjectPairInput["cases"][number], scopeMatcher: ScopeMatcher, principals: ObjectPairInput["principals"]): ObjectPairCasePlan {
   validateIdentifier(testCase.accountAObject.id, `${testCase.id}.accountAObject.id`);
   validateIdentifier(testCase.accountBObject.id, `${testCase.id}.accountBObject.id`);
+  validateAssertionEvidence(testCase.accountAObject, `${testCase.id}.accountAObject`);
+  validateAssertionEvidence(testCase.accountBObject, `${testCase.id}.accountBObject`);
   if (testCase.accountAObject.id === testCase.accountBObject.id) {
     throw new AppError(`Object pair case "${testCase.id}" uses the same object ID for Account A and Account B.`, "OBJECT_PAIR_IDENTICAL_OBJECTS");
   }
@@ -151,8 +187,8 @@ function planCase(testCase: ObjectPairInput["cases"][number], scopeMatcher: Scop
     headers: testCase.template.headers
   };
 
-  const accountAObject = ownershipAssertion(testCase.accountAObject, testCase.objectType, "account_a", testCase.expectedVisibility);
-  const accountBObject = ownershipAssertion(testCase.accountBObject, testCase.objectType, "account_b", testCase.expectedVisibility);
+  const accountAObject = ownershipAssertion(testCase.accountAObject, testCase.objectType, "account_a", testCase.expectedVisibility, principals.accountA);
+  const accountBObject = ownershipAssertion(testCase.accountBObject, testCase.objectType, "account_b", testCase.expectedVisibility, principals.accountB);
 
   const requestMatrix: ObjectPairRequestPlan[] = [
     requestPlan(testCase.id, "A_TO_A", "owner-baseline", "account_a", accountAObject, template, scopeMatcher),
@@ -175,8 +211,10 @@ function ownershipAssertion(
   assertion: ObjectPairInput["cases"][number]["accountAObject"],
   objectType: string,
   owner: "account_a" | "account_b",
-  expectedVisibility: ObjectVisibilityExpectation
+  expectedVisibility: ObjectVisibilityExpectation,
+  principal: ObjectPairInput["principals"]["accountA"]
 ): ObjectOwnershipAssertionPlan {
+  const expectedTenantValue = assertion.tenantId ?? principal.tenantId;
   return {
     objectId: assertion.id,
     objectIdHash: objectIdHash(assertion.id),
@@ -188,7 +226,12 @@ function ownershipAssertion(
     source: assertion.source,
     ...(assertion.expectedObjectIdField ? { expectedObjectIdField: assertion.expectedObjectIdField } : {}),
     ...(assertion.expectedOwnerField ? { expectedOwnerField: assertion.expectedOwnerField } : {}),
+    ...(principal.expectedAccountId ? { expectedOwnerValue: principal.expectedAccountId } : {}),
     ...(assertion.expectedTenantField ? { expectedTenantField: assertion.expectedTenantField } : {}),
+    ...(expectedTenantValue ? { expectedTenantValue } : {}),
+    ...(assertion.expectedObjectIdHeader ? { expectedObjectIdHeader: assertion.expectedObjectIdHeader } : {}),
+    ...(assertion.expectedOwnerHeader ? { expectedOwnerHeader: assertion.expectedOwnerHeader } : {}),
+    expectedPrivateHeaders: assertion.expectedPrivateHeaders ?? [],
     expectedSafeMarkers: assertion.expectedSafeMarkers,
     expectedPrivateFields: assertion.expectedPrivateFields
   };
@@ -226,6 +269,10 @@ function requestPlan(
 }
 
 function validateTemplate(template: ObjectPairInput["cases"][number]["template"]): void {
+  if (template.url.length > maxTemplateLength) {
+    throw new AppError(`Object pair template "${template.id}" exceeds maximum URL template length.`, "OBJECT_PAIR_TEMPLATE_TOO_LONG");
+  }
+
   const decodedUrl = decodeTemplatePlaceholders(template.url);
   if ((decodedUrl.match(/\{\{[A-Z_]+\}\}/g) ?? []).some((placeholder) => placeholder !== objectPlaceholder && placeholder !== tenantPlaceholder)) {
     throw new AppError(`Object pair template "${template.id}" contains an undeclared placeholder.`, "OBJECT_PAIR_TEMPLATE_INVALID");
@@ -248,9 +295,16 @@ function validateTemplate(template: ObjectPairInput["cases"][number]["template"]
     throw new AppError(`Object pair template "${template.id}" appears to target a state-changing endpoint.`, "OBJECT_PAIR_TEMPLATE_UNSAFE_ENDPOINT");
   }
 
-  for (const name of Object.keys(template.headers)) {
+  if (urlHasEmbeddedSecret(template.url)) {
+    throw new AppError(`Object pair template "${template.id}" appears to contain secret-like material.`, "OBJECT_PAIR_TEMPLATE_SECRET_FORBIDDEN");
+  }
+
+  for (const [name, value] of Object.entries(template.headers)) {
     if (name.toLowerCase() === "authorization" || name.toLowerCase() === "cookie" || name.toLowerCase().startsWith("x-csrf")) {
       throw new AppError(`Object pair template "${template.id}" must not embed authentication headers.`, "OBJECT_PAIR_TEMPLATE_AUTH_FORBIDDEN");
+    }
+    if (secretLikePattern.test(name) || secretLikePattern.test(value)) {
+      throw new AppError(`Object pair template "${template.id}" appears to contain secret-like header material.`, "OBJECT_PAIR_TEMPLATE_SECRET_FORBIDDEN");
     }
   }
 
@@ -270,8 +324,57 @@ function decodeTemplatePlaceholders(templateUrl: string): string {
 }
 
 function validateIdentifier(value: string, label: string): void {
-  if (generatorPattern.test(value) || numericRangePattern.test(value) || value.includes(",") || value.includes("\n") || value.includes("\r")) {
+  if (value.length > maxIdentifierLength || generatorPattern.test(value) || numericRangePattern.test(value) || value.includes(",") || value.includes("\n") || value.includes("\r")) {
     throw new AppError(`Object pair identifier "${label}" must be one exact operator-supplied value, not a range, wildcard, list, or generator.`, "OBJECT_PAIR_IDENTIFIER_UNSAFE");
+  }
+}
+
+function validateAssertionEvidence(assertion: ObjectPairInput["cases"][number]["accountAObject"], label: string): void {
+  for (const field of [assertion.expectedObjectIdField, assertion.expectedOwnerField, assertion.expectedTenantField].filter(Boolean)) {
+    if (!fieldPathPattern.test(field as string)) {
+      throw new AppError(`Object pair evidence field "${label}" uses an unsupported selector.`, "OBJECT_PAIR_EVIDENCE_SELECTOR_INVALID");
+    }
+  }
+
+  for (const header of [assertion.expectedObjectIdHeader, assertion.expectedOwnerHeader, ...(assertion.expectedPrivateHeaders ?? [])].filter(Boolean)) {
+    if (!headerNamePattern.test(header as string)) {
+      throw new AppError(`Object pair evidence header "${label}" uses an unsupported selector.`, "OBJECT_PAIR_EVIDENCE_SELECTOR_INVALID");
+    }
+  }
+}
+
+function urlHasEmbeddedSecret(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.username || parsed.password) {
+      return true;
+    }
+    for (const [name, value] of parsed.searchParams) {
+      if (secretLikePattern.test(name) || secretLikePattern.test(value)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return secretLikePattern.test(url);
+  }
+}
+
+function validateInputUniqueness(input: ObjectPairInput): void {
+  const caseIds = new Set<string>();
+  const logicalPairs = new Set<string>();
+
+  for (const testCase of input.cases) {
+    if (caseIds.has(testCase.id)) {
+      throw new AppError(`Object pair case "${testCase.id}" is duplicated.`, "OBJECT_PAIR_DUPLICATE_CASE");
+    }
+    caseIds.add(testCase.id);
+
+    const pairKey = [testCase.template.method, testCase.template.url, testCase.accountAObject.id, testCase.accountBObject.id].join("\0");
+    if (logicalPairs.has(pairKey)) {
+      throw new AppError(`Object pair case "${testCase.id}" duplicates an existing logical object pair.`, "OBJECT_PAIR_DUPLICATE_LOGICAL_PAIR");
+    }
+    logicalPairs.add(pairKey);
   }
 }
 
@@ -281,6 +384,47 @@ function validateDistinctPrincipals(profileSet: AuthProfileSet): void {
   if (accountA === accountB) {
     throw new AppError("Object pair testing requires distinct Account A and Account B authentication contexts.", "OBJECT_PAIR_IDENTICAL_PRINCIPALS");
   }
+}
+
+function validateDeclaredPrincipalIdentity(profileSet: AuthProfileSet, principals: ObjectPairInput["principals"]): void {
+  const principalA = profileSet.accountA.principalId;
+  const principalB = profileSet.accountB.principalId;
+  if (!principalA || !principalB) {
+    throw new AppError("Object pair testing requires declared principalId metadata in both Account A and Account B auth profiles.", "OBJECT_PAIR_PRINCIPAL_ID_REQUIRED");
+  }
+
+  if (principalA === principalB) {
+    throw new AppError("Object pair testing requires Account A and Account B to declare different principalId values.", "OBJECT_PAIR_IDENTICAL_PRINCIPAL_ID");
+  }
+
+  if (principals.accountA.expectedAccountId && principals.accountA.expectedAccountId !== principalA) {
+    throw new AppError("Account A declared principalId does not match object-pair expectedAccountId metadata.", "OBJECT_PAIR_PRINCIPAL_ID_MISMATCH");
+  }
+  if (principals.accountB.expectedAccountId && principals.accountB.expectedAccountId !== principalB) {
+    throw new AppError("Account B declared principalId does not match object-pair expectedAccountId metadata.", "OBJECT_PAIR_PRINCIPAL_ID_MISMATCH");
+  }
+}
+
+function requirePrincipalId(value: string | undefined, label: string): string {
+  if (!value) {
+    throw new AppError(`Object pair testing requires declared principalId metadata for ${label}.`, "OBJECT_PAIR_PRINCIPAL_ID_REQUIRED");
+  }
+  return value;
+}
+
+function principalPlanningInput(principals: ObjectPairInput["principals"], profileSet: AuthProfileSet): ObjectPairInput["principals"] {
+  return {
+    accountA: {
+      expectedAccountId: profileSet.accountA.principalId,
+      ...(profileSet.accountA.tenantId ?? principals.accountA.tenantId ? { tenantId: profileSet.accountA.tenantId ?? principals.accountA.tenantId } : {}),
+      ...(profileSet.accountA.role ?? principals.accountA.role ? { role: profileSet.accountA.role ?? principals.accountA.role } : {})
+    },
+    accountB: {
+      expectedAccountId: profileSet.accountB.principalId,
+      ...(profileSet.accountB.tenantId ?? principals.accountB.tenantId ? { tenantId: profileSet.accountB.tenantId ?? principals.accountB.tenantId } : {}),
+      ...(profileSet.accountB.role ?? principals.accountB.role ? { role: profileSet.accountB.role ?? principals.accountB.role } : {})
+    }
+  };
 }
 
 function stableAuthFingerprint(headers: Record<string, string>, cookies: string): string {

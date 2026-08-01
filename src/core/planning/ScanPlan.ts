@@ -122,6 +122,8 @@ export type ObjectVisibilityExpectation = "PRIVATE_TO_OWNER" | "SHARED_WITH_SPEC
 export interface ObjectPairPrincipalPlan {
   label: ObjectPairPrincipalLabel;
   redactedLabel: string;
+  principalIdHash: string;
+  tenantIdHash?: string;
   expectedAccountId?: string;
   tenantId?: string;
   role?: string;
@@ -138,7 +140,12 @@ export interface ObjectOwnershipAssertionPlan {
   source: string;
   expectedObjectIdField?: string;
   expectedOwnerField?: string;
+  expectedOwnerValue?: string;
   expectedTenantField?: string;
+  expectedTenantValue?: string;
+  expectedObjectIdHeader?: string;
+  expectedOwnerHeader?: string;
+  expectedPrivateHeaders: readonly string[];
   expectedSafeMarkers: readonly string[];
   expectedPrivateFields: readonly string[];
 }

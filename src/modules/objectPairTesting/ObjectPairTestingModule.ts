@@ -5,7 +5,15 @@ import { RiskScorer } from "../../core/findings/RiskScorer.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
 import type { ObjectPairCasePlan, ObjectPairRequestPlan } from "../../core/planning/ScanPlan.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
-import type { ObjectPairCaseResult, ObjectPairRequestEvidence, ObjectPairResultCategory, ObjectPairTestingReport } from "../../reports/ReportTypes.js";
+import type {
+  ObjectPairBusinessPolicyReviewStatus,
+  ObjectPairCaseResult,
+  ObjectPairFinalClassification,
+  ObjectPairRequestEvidence,
+  ObjectPairResultCategory,
+  ObjectPairTechnicalAccessResult,
+  ObjectPairTestingReport
+} from "../../reports/ReportTypes.js";
 
 export class ObjectPairTestingModule implements RouteCairnPlugin {
   public readonly name = "object-pair-testing";
@@ -109,11 +117,13 @@ async function sendPlannedRequest(
 function evidenceForResponse(requestPlan: ObjectPairRequestPlan, casePlan: ObjectPairCasePlan, response: HttpResponse): ObjectPairRequestEvidence {
   const assertion = requestPlan.targetOwner === "account_a" ? casePlan.accountAObject : casePlan.accountBObject;
   const body = response.bodyPreview ?? "";
-  const containsExpectedObjectId = body.includes(assertion.objectId);
-  const containsExpectedOwnerEvidence = assertion.expectedSafeMarkers.some((marker) => body.includes(marker));
-  const containsPrivateFieldEvidence = assertion.expectedPrivateFields.some((field) => body.includes(field));
+  const parsedBody = parseJsonObject(body);
+  const containsExpectedObjectId = hasObjectIdentityEvidence(assertion, response, body, parsedBody);
+  const containsExpectedOwnerEvidence = hasOwnershipEvidence(assertion, response, body, parsedBody);
+  const containsPrivateFieldEvidence = hasPrivateContentEvidence(assertion, response, body, parsedBody);
   const denialMarker = denialMarkerFor(response, body);
   const category = classify(requestPlan, response, containsExpectedObjectId, containsExpectedOwnerEvidence, containsPrivateFieldEvidence, denialMarker);
+  const semantics = semanticsFor(category, requestPlan);
   const safeUrl = redactObjectId(response.finalUrl || requestPlan.url, assertion.objectId, assertion.objectIdHash);
 
   return {
@@ -130,6 +140,9 @@ function evidenceForResponse(requestPlan: ObjectPairRequestPlan, casePlan: Objec
     authMaterialRedacted: true,
     category,
     confidence: confidenceFor(category),
+    technicalAccessResult: semantics.technicalAccessResult,
+    businessPolicyReviewStatus: semantics.businessPolicyReviewStatus,
+    finalClassification: semantics.finalClassification,
     response: {
       ...(typeof response.statusCode === "number" ? { statusCode: response.statusCode } : {}),
       ...(response.finalUrl ? { finalUrl: safeUrl } : {}),
@@ -163,6 +176,9 @@ function skippedCrossAccountEvidence(requestPlan: ObjectPairRequestPlan, casePla
     authMaterialRedacted: true,
     category: "OWNERSHIP_NOT_CONFIRMED",
     confidence: "INCONCLUSIVE",
+    technicalAccessResult: "NOT_CONFIRMED",
+    businessPolicyReviewStatus: "NOT_APPLICABLE",
+    finalClassification: "INCONCLUSIVE",
     response: {
       objectIdHash: requestPlan.targetObjectIdHash,
       containsExpectedObjectId: false,
@@ -186,7 +202,7 @@ function caseResult(casePlan: ObjectPairCasePlan, results: Map<string, ObjectPai
   const baselineB = requiredResult(results, `${casePlan.id}:B_TO_B`);
   const aToB = requiredResult(results, `${casePlan.id}:A_TO_B`);
   const bToA = requiredResult(results, `${casePlan.id}:B_TO_A`);
-  const confirmedIssues = [aToB, bToA].filter((result) => result.category === "CROSS_ACCOUNT_ACCESS_CONFIRMED");
+  const confirmedIssues = [aToB, bToA].filter((result) => result.finalClassification === "CONFIRMED_VULNERABILITY");
 
   return {
     caseId: casePlan.id,
@@ -222,6 +238,10 @@ function classify(
   if (response.statusCode === 403 || response.statusCode === 404 || denialMarker) return response.statusCode === 404 ? "OBJECT_NOT_FOUND" : "CROSS_ACCOUNT_ACCESS_DENIED";
   if (!isSuccessful(response)) return "INCONCLUSIVE";
 
+  if (requestPlan.method === "HEAD" && requestPlan.purpose === "cross-account" && !containsExpectedObjectId) {
+    return "RESPONSE_MISMATCH";
+  }
+
   if (requestPlan.purpose === "owner-baseline") {
     return containsExpectedObjectId && containsExpectedOwnerEvidence ? "AUTHORIZED_BASELINE_CONFIRMED" : "OWNERSHIP_NOT_CONFIRMED";
   }
@@ -230,7 +250,7 @@ function classify(
     return "PUBLIC_OBJECT_ACCESS";
   }
 
-  if (containsExpectedObjectId && containsExpectedOwnerEvidence && containsPrivateFieldEvidence && requestPlan.expectedVisibility === "PRIVATE_TO_OWNER") {
+  if (containsExpectedObjectId && containsExpectedOwnerEvidence && containsPrivateFieldEvidence) {
     return "CROSS_ACCOUNT_ACCESS_CONFIRMED";
   }
 
@@ -239,6 +259,128 @@ function classify(
   }
 
   return "RESPONSE_MISMATCH";
+}
+
+function hasObjectIdentityEvidence(
+  assertion: ObjectPairCasePlan["accountAObject"],
+  response: HttpResponse,
+  body: string,
+  parsedBody: Record<string, unknown> | undefined
+): boolean {
+  if (assertion.expectedObjectIdHeader && headerValue(response, assertion.expectedObjectIdHeader) === assertion.objectId) {
+    return true;
+  }
+  if (assertion.expectedObjectIdField) {
+    return jsonPathValue(parsedBody, assertion.expectedObjectIdField) === assertion.objectId;
+  }
+  return response.method !== "HEAD" && body.includes(assertion.objectId);
+}
+
+function hasOwnershipEvidence(
+  assertion: ObjectPairCasePlan["accountAObject"],
+  response: HttpResponse,
+  body: string,
+  parsedBody: Record<string, unknown> | undefined
+): boolean {
+  if (assertion.expectedOwnerHeader && assertion.expectedOwnerValue && headerValue(response, assertion.expectedOwnerHeader) === assertion.expectedOwnerValue) {
+    return true;
+  }
+  if (assertion.expectedOwnerField && assertion.expectedOwnerValue && jsonPathValue(parsedBody, assertion.expectedOwnerField) === assertion.expectedOwnerValue) {
+    return true;
+  }
+  if (assertion.expectedTenantField && assertion.expectedTenantValue && jsonPathValue(parsedBody, assertion.expectedTenantField) === assertion.expectedTenantValue) {
+    return true;
+  }
+  if (assertion.expectedSafeMarkers.some((marker) => body.includes(marker))) {
+    return true;
+  }
+  return false;
+}
+
+function hasPrivateContentEvidence(
+  assertion: ObjectPairCasePlan["accountAObject"],
+  response: HttpResponse,
+  body: string,
+  parsedBody: Record<string, unknown> | undefined
+): boolean {
+  if (assertion.expectedPrivateHeaders.some((headerName) => typeof headerValue(response, headerName) === "string")) {
+    return true;
+  }
+  return assertion.expectedPrivateFields.some((field) => jsonPathValue(parsedBody, field) !== undefined || body.includes(field));
+}
+
+function parseJsonObject(body: string): Record<string, unknown> | undefined {
+  if (!body.trim().startsWith("{")) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function jsonPathValue(source: Record<string, unknown> | undefined, path: string): string | undefined {
+  let value: unknown = source;
+  for (const part of path.split(".")) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return undefined;
+    }
+    value = (value as Record<string, unknown>)[part];
+  }
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : undefined;
+}
+
+function headerValue(response: HttpResponse, name: string): string | undefined {
+  const found = Object.entries(response.headers).find(([headerName]) => headerName.toLowerCase() === name.toLowerCase());
+  if (!found) {
+    return undefined;
+  }
+  return Array.isArray(found[1]) ? found[1].join(", ") : found[1];
+}
+
+function semanticsFor(
+  category: ObjectPairResultCategory,
+  requestPlan: ObjectPairRequestPlan
+): {
+  technicalAccessResult: ObjectPairTechnicalAccessResult;
+  businessPolicyReviewStatus: ObjectPairBusinessPolicyReviewStatus;
+  finalClassification: ObjectPairFinalClassification;
+} {
+  if (category === "AUTHORIZED_BASELINE_CONFIRMED") {
+    return { technicalAccessResult: "OWNER_BASELINE_CONFIRMED", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "INCONCLUSIVE" };
+  }
+  if (category === "CROSS_ACCOUNT_ACCESS_CONFIRMED" && requestPlan.expectedVisibility === "PRIVATE_TO_OWNER") {
+    return {
+      technicalAccessResult: "FOREIGN_PRIVATE_ACCESS_CONFIRMED",
+      businessPolicyReviewStatus: "DECLARED_PRIVATE_CONFIRMED",
+      finalClassification: "CONFIRMED_VULNERABILITY"
+    };
+  }
+  if (category === "CROSS_ACCOUNT_ACCESS_CONFIRMED") {
+    return {
+      technicalAccessResult: "FOREIGN_PRIVATE_ACCESS_CONFIRMED",
+      businessPolicyReviewStatus: "POLICY_REVIEW_REQUIRED",
+      finalClassification: "TECHNICAL_ACCESS_REQUIRES_POLICY_REVIEW"
+    };
+  }
+  if (category === "PUBLIC_OBJECT_ACCESS") {
+    return { technicalAccessResult: "PUBLIC_OR_SHARED_ACCESS", businessPolicyReviewStatus: "INTENDED_PUBLIC_OR_SHARED", finalClassification: "EXPECTED_ACCESS" };
+  }
+  if (category === "CROSS_ACCOUNT_ACCESS_DENIED" || category === "OBJECT_NOT_FOUND") {
+    return { technicalAccessResult: category === "OBJECT_NOT_FOUND" ? "OBJECT_NOT_FOUND" : "ACCESS_DENIED", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "PROTECTED" };
+  }
+  if (category === "AUTHENTICATION_FAILED") {
+    return { technicalAccessResult: "AUTHENTICATION_FAILED", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "ERROR" };
+  }
+  if (category === "TEST_BLOCKED_BY_SAFETY_POLICY") {
+    return { technicalAccessResult: "BLOCKED_BY_SAFETY_POLICY", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "BLOCKED" };
+  }
+  if (category === "EXECUTION_ERROR") {
+    return { technicalAccessResult: "EXECUTION_ERROR", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "ERROR" };
+  }
+  return { technicalAccessResult: "NOT_CONFIRMED", businessPolicyReviewStatus: "NOT_APPLICABLE", finalClassification: "INCONCLUSIVE" };
 }
 
 function denialMarkerFor(response: HttpResponse, body: string): string | undefined {

@@ -66,8 +66,8 @@ describe("object pair testing integration", () => {
     tempDirs.push(tempDir);
     const target = `http://127.0.0.1:${port}/`;
     const scopePath = await writeScope(tempDir);
-    const authAPath = await writeJson(tempDir, "auth-a.json", { label: "account-a", headers: { Cookie: "session=account-a" } });
-    const authBPath = await writeJson(tempDir, "auth-b.json", { label: "account-b", headers: { Cookie: "session=account-b" } });
+    const authAPath = await writeJson(tempDir, "auth-a.json", authProfile("account-a", "tenant-one", "member"));
+    const authBPath = await writeJson(tempDir, "auth-b.json", authProfile("account-b", "tenant-two", "member"));
     const objectPairsPath = await writeJson(tempDir, "object-pairs.json", objectPairInput(target));
     const outputDir = join(tempDir, "reports");
 
@@ -89,7 +89,7 @@ describe("object pair testing integration", () => {
           caseId: string;
           baselineA: { category: string };
           baselineB: { category: string };
-          aToB: { category: string; objectIdHash: string; response: { containsPrivateFieldEvidence: boolean } };
+          aToB: { category: string; objectIdHash: string; finalClassification: string; technicalAccessResult: string; businessPolicyReviewStatus: string; response: { containsPrivateFieldEvidence: boolean } };
           bToA: { category: string };
         }>;
       };
@@ -112,6 +112,9 @@ describe("object pair testing integration", () => {
     expect(vuln?.baselineA.category).toBe("AUTHORIZED_BASELINE_CONFIRMED");
     expect(vuln?.baselineB.category).toBe("AUTHORIZED_BASELINE_CONFIRMED");
     expect(vuln?.aToB.category).toBe("CROSS_ACCOUNT_ACCESS_CONFIRMED");
+    expect(vuln?.aToB.technicalAccessResult).toBe("FOREIGN_PRIVATE_ACCESS_CONFIRMED");
+    expect(vuln?.aToB.businessPolicyReviewStatus).toBe("DECLARED_PRIVATE_CONFIRMED");
+    expect(vuln?.aToB.finalClassification).toBe("CONFIRMED_VULNERABILITY");
     expect(vuln?.aToB.response.containsPrivateFieldEvidence).toBe(true);
     expect(secure?.aToB.category).toBe("CROSS_ACCOUNT_ACCESS_DENIED");
     expect(secure?.bToA.category).toBe("CROSS_ACCOUNT_ACCESS_DENIED");
@@ -148,8 +151,8 @@ describe("object pair testing integration", () => {
     const result = await runScanCommand(target, {
       scope: await writeScope(tempDir),
       output: join(tempDir, "reports"),
-      authA: await writeJson(tempDir, "auth-a.json", { label: "account-a", headers: { Cookie: "session=account-a" } }),
-      authB: await writeJson(tempDir, "auth-b.json", { label: "account-b", headers: { Cookie: "session=account-b" } }),
+      authA: await writeJson(tempDir, "auth-a.json", authProfile("account-a", "tenant-one", "member")),
+      authB: await writeJson(tempDir, "auth-b.json", authProfile("account-b", "tenant-two", "member")),
       objectPairs: await writeJson(tempDir, "object-pairs.json", {
         schemaVersion: 1,
         maxPairs: 1,
@@ -170,11 +173,181 @@ describe("object pair testing integration", () => {
     expect(report.objectPairTesting?.cases[0]?.inconclusive).toBe(true);
     expect(report.findings.some((finding) => finding.type === "Object Authorization Issue")).toBe(false);
   });
+
+  it("keeps confirmed technical access with unknown visibility in policy review instead of confirmed vulnerability", async () => {
+    server = createServer((request, response) => {
+      if (request.url === "/") {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end("ok");
+        return;
+      }
+      const match = request.url?.match(/^\/unknown\/([^/?]+)/);
+      if (!match) {
+        response.writeHead(404).end();
+        return;
+      }
+      const objectId = match[1];
+      const owner = objectId === "doc-a-001" ? "account-a" : "account-b";
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ id: objectId, owner, privateNote: "private-field-fixture" }));
+    });
+
+    await listen(server);
+    const port = (server.address() as AddressInfo).port;
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-object-pair-"));
+    tempDirs.push(tempDir);
+    const target = `http://127.0.0.1:${port}/`;
+    const result = await runScanCommand(target, {
+      scope: await writeScope(tempDir),
+      output: join(tempDir, "reports"),
+      authA: await writeJson(tempDir, "auth-a.json", authProfile("account-a", "tenant-one", "member")),
+      authB: await writeJson(tempDir, "auth-b.json", authProfile("account-b", "tenant-two", "member")),
+      objectPairs: await writeJson(tempDir, "object-pairs.json", {
+        schemaVersion: 1,
+        maxPairs: 1,
+        principals: { accountA: { expectedAccountId: "account-a" }, accountB: { expectedAccountId: "account-b" } },
+        cases: [caseInput("unknown-documents", "unknown", "UNKNOWN_REQUIRES_REVIEW", target)]
+      })
+    });
+    const report = JSON.parse(await readFile(result.reportPath, "utf8")) as {
+      objectPairTesting?: { confirmedIssues: number; cases: Array<{ aToB: { category: string; technicalAccessResult: string; finalClassification: string; businessPolicyReviewStatus: string } }> };
+      findings: Array<{ type: string }>;
+    };
+
+    expect(report.objectPairTesting?.cases[0]?.aToB.category).toBe("CROSS_ACCOUNT_ACCESS_CONFIRMED");
+    expect(report.objectPairTesting?.cases[0]?.aToB.technicalAccessResult).toBe("FOREIGN_PRIVATE_ACCESS_CONFIRMED");
+    expect(report.objectPairTesting?.cases[0]?.aToB.businessPolicyReviewStatus).toBe("POLICY_REVIEW_REQUIRED");
+    expect(report.objectPairTesting?.cases[0]?.aToB.finalClassification).toBe("TECHNICAL_ACCESS_REQUIRES_POLICY_REVIEW");
+    expect(report.objectPairTesting?.confirmedIssues).toBe(0);
+    expect(report.findings.some((finding) => finding.type === "Object Authorization Issue")).toBe(false);
+  });
+
+  it("does not confirm HEAD exposure without explicit header evidence and supports explicit safe header evidence", async () => {
+    const requested: string[] = [];
+    server = createServer((request, response) => {
+      if (request.url === "/") {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end("ok");
+        return;
+      }
+      const match = request.url?.match(/^\/(head-plain|head-explicit)\/([^/?]+)/);
+      if (!match) {
+        response.writeHead(404).end();
+        return;
+      }
+      requested.push(`${request.method} ${request.url}`);
+      const [, kind, objectId] = match;
+      const owner = objectId === "doc-a-001" ? "account-a" : "account-b";
+      const headers = kind === "head-explicit" ? { "x-object-id": objectId, "x-owner": owner, "x-private-signal": "present" } : { etag: `"${objectId}"`, "content-length": "100" };
+      response.writeHead(200, headers);
+      response.end(request.method === "HEAD" ? undefined : JSON.stringify({ id: objectId, owner, privateNote: "private-field-fixture" }));
+    });
+
+    await listen(server);
+    const port = (server.address() as AddressInfo).port;
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-object-pair-"));
+    tempDirs.push(tempDir);
+    const target = `http://127.0.0.1:${port}/`;
+    const result = await runScanCommand(target, {
+      scope: await writeScope(tempDir),
+      output: join(tempDir, "reports"),
+      authA: await writeJson(tempDir, "auth-a.json", authProfile("account-a", "tenant-one", "member")),
+      authB: await writeJson(tempDir, "auth-b.json", authProfile("account-b", "tenant-two", "member")),
+      objectPairs: await writeJson(tempDir, "object-pairs.json", {
+        schemaVersion: 1,
+        maxPairs: 2,
+        principals: { accountA: { expectedAccountId: "account-a" }, accountB: { expectedAccountId: "account-b" } },
+        cases: [
+          { ...caseInput("head-plain-documents", "head-plain", "PRIVATE_TO_OWNER", target), template: { id: "head-plain-read", method: "HEAD", url: new URL("/head-plain/{{OBJECT_ID}}", target).toString() } },
+          {
+            ...caseInput("head-explicit-documents", "head-explicit", "PRIVATE_TO_OWNER", target),
+            template: { id: "head-explicit-read", method: "HEAD", url: new URL("/head-explicit/{{OBJECT_ID}}", target).toString() },
+            accountAObject: { ...caseInput("x", "x", "PRIVATE_TO_OWNER", target).accountAObject, expectedObjectIdHeader: "x-object-id", expectedOwnerHeader: "x-owner", expectedPrivateHeaders: ["x-private-signal"] },
+            accountBObject: { ...caseInput("x", "x", "PRIVATE_TO_OWNER", target).accountBObject, expectedObjectIdHeader: "x-object-id", expectedOwnerHeader: "x-owner", expectedPrivateHeaders: ["x-private-signal"] }
+          }
+        ]
+      })
+    });
+    const report = JSON.parse(await readFile(result.reportPath, "utf8")) as {
+      objectPairTesting?: { cases: Array<{ caseId: string; executedRequests?: number; baselineA: { category: string }; aToB: { category: string; finalClassification: string } }> };
+      findings: Array<{ type: string }>;
+    };
+    const plain = report.objectPairTesting?.cases.find((testCase) => testCase.caseId === "head-plain-documents");
+    const explicit = report.objectPairTesting?.cases.find((testCase) => testCase.caseId === "head-explicit-documents");
+
+    expect(plain?.baselineA.category).toBe("OWNERSHIP_NOT_CONFIRMED");
+    expect(plain?.aToB.finalClassification).toBe("INCONCLUSIVE");
+    expect(explicit?.baselineA.category).toBe("AUTHORIZED_BASELINE_CONFIRMED");
+    expect(explicit?.aToB.category).toBe("CROSS_ACCOUNT_ACCESS_CONFIRMED");
+    expect(explicit?.aToB.finalClassification).toBe("CONFIRMED_VULNERABILITY");
+    expect(requested.filter((entry) => entry.includes("/head-plain/"))).toHaveLength(2);
+    expect(requested.filter((entry) => entry.includes("/head-explicit/"))).toHaveLength(4);
+  });
+
+  it("redacts token-like object identifiers and sensitive response evidence from JSON, Markdown, and audit output", async () => {
+    const objectA = "reset_token_OBJECT_A_SECRET_123456";
+    const objectB = "reset_token_OBJECT_B_SECRET_654321";
+    server = createServer((request, response) => {
+      if (request.url === "/") {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end("ok");
+        return;
+      }
+      const match = request.url?.match(/^\/tokens\/([^/?]+)/);
+      if (!match) {
+        response.writeHead(404).end();
+        return;
+      }
+      const objectId = decodeURIComponent(match[1]);
+      const owner = objectId === objectA ? "principal-secret-A" : "principal-secret-B";
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ id: objectId, owner, privateNote: "password=SuperSecretFixture api_key=AKIA1234567890123456" }));
+    });
+
+    await listen(server);
+    const port = (server.address() as AddressInfo).port;
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-object-pair-"));
+    tempDirs.push(tempDir);
+    const target = `http://127.0.0.1:${port}/`;
+    const result = await runScanCommand(target, {
+      scope: await writeScope(tempDir),
+      output: join(tempDir, "reports"),
+      authA: await writeJson(tempDir, "auth-a.json", { ...authProfile("account-a", "tenant-one", "member"), principalId: "principal-secret-A" }),
+      authB: await writeJson(tempDir, "auth-b.json", { ...authProfile("account-b", "tenant-two", "member"), principalId: "principal-secret-B" }),
+      objectPairs: await writeJson(tempDir, "object-pairs.json", {
+        ...objectPairInput(target),
+        schemaVersion: 1,
+        maxPairs: 1,
+        principals: { accountA: { expectedAccountId: "principal-secret-A" }, accountB: { expectedAccountId: "principal-secret-B" } },
+        cases: [
+          {
+            ...caseInput("token-documents", "tokens", "PRIVATE_TO_OWNER", target),
+            accountAObject: { ...caseInput("x", "x", "PRIVATE_TO_OWNER", target).accountAObject, id: objectA },
+            accountBObject: { ...caseInput("x", "x", "PRIVATE_TO_OWNER", target).accountBObject, id: objectB }
+          }
+        ]
+      })
+    });
+
+    const jsonReport = await readFile(result.reportPath, "utf8");
+    const markdownReport = await readFile(result.markdownReportPath, "utf8");
+    for (const serialized of [jsonReport, markdownReport]) {
+      expect(serialized).not.toContain(objectA);
+      expect(serialized).not.toContain(objectB);
+      expect(serialized).not.toContain("principal-secret-A");
+      expect(serialized).not.toContain("principal-secret-B");
+      expect(serialized).not.toContain("SuperSecretFixture");
+      expect(serialized).not.toContain("AKIA1234567890123456");
+      expect(serialized).not.toContain("session=account-a");
+      expect(serialized).not.toContain("session=account-b");
+    }
+  });
 });
 
 function objectPairInput(target: string) {
   return {
     schemaVersion: 1,
+    principals: { accountA: { expectedAccountId: "account-a" }, accountB: { expectedAccountId: "account-b" } },
     maxPairs: 5,
     cases: [
       caseInput("vulnerable-documents", "vuln", "PRIVATE_TO_OWNER", target),
@@ -197,6 +370,8 @@ function caseInput(id: string, path: string, expectedVisibility: string, target:
       confirmedSafeToTest: true,
       readOnly: true,
       expectedSafeMarkers: ["owner-a-marker"],
+      expectedObjectIdField: "id",
+      expectedOwnerField: "owner",
       expectedPrivateFields: ["privateNote"]
     },
     accountBObject: {
@@ -205,8 +380,21 @@ function caseInput(id: string, path: string, expectedVisibility: string, target:
       confirmedSafeToTest: true,
       readOnly: true,
       expectedSafeMarkers: ["owner-b-marker"],
+      expectedObjectIdField: "id",
+      expectedOwnerField: "owner",
       expectedPrivateFields: ["privateNote"]
     }
+  };
+}
+
+function authProfile(principalId: string, tenantId: string, role: string) {
+  return {
+    label: principalId,
+    safeAlias: principalId === "account-a" ? "Account A" : "Account B",
+    principalId,
+    tenantId,
+    role,
+    headers: { Cookie: `session=${principalId}` }
   };
 }
 

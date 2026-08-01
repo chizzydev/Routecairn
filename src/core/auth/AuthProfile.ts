@@ -22,7 +22,10 @@ const authCookieSchema = z.object({
 
 export const authProfileSchema = z.object({
   label: z.string().min(1).default("authenticated"),
+  principalId: z.string().min(1).optional(),
+  tenantId: z.string().min(1).optional(),
   role: z.string().min(1).optional(),
+  safeAlias: z.string().min(1).optional(),
   headers: z.record(z.string()).default({}),
   cookies: z.array(authCookieSchema).default([]),
   notes: z.array(z.string()).default([])
@@ -33,7 +36,10 @@ export type AuthProfile = z.infer<typeof authProfileSchema>;
 export interface AuthProfileSummary {
   enabled: boolean;
   label?: string;
+  principalIdDeclared?: boolean;
+  tenantIdDeclared?: boolean;
   role?: string;
+  safeAlias?: string;
   headerNames: string[];
   cookieNames: string[];
   redactionApplied: boolean;
@@ -82,8 +88,11 @@ export function summarizeAuthProfile(profile: AuthProfile | undefined): AuthProf
 
   return {
     enabled: true,
-    label: profile.label,
+    label: profile.safeAlias ?? profile.label,
+    ...(profile.principalId ? { principalIdDeclared: true } : {}),
+    ...(profile.tenantId ? { tenantIdDeclared: true } : {}),
     ...(profile.role ? { role: profile.role } : {}),
+    ...(profile.safeAlias ? { safeAlias: profile.safeAlias } : {}),
     headerNames: Object.keys(profile.headers).sort(),
     cookieNames: profile.cookies.map((cookie) => cookie.name).sort(),
     redactionApplied: true,

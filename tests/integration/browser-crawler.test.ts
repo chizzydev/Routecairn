@@ -237,6 +237,8 @@ describe("PlaywrightCrawler", () => {
 
     expect(receivedMutations).toEqual([]);
     expect(report.policyEvents?.filter((event) => event.reason === "mutating-method-blocked").length).toBeGreaterThanOrEqual(8);
+    expect(report.policyEvents?.some((event) => event.reason === "popup-blocked" && event.transmitted === false)).toBe(true);
+    expect(report.networkRequests.some((request) => request.url.endsWith("/popup-post") && request.transmitted === true)).toBe(false);
     expect(report.networkRequests.some((request) => request.url.endsWith("/worker.js") && request.transmitted === true)).toBe(true);
     expect(report.networkRequests.some((request) => request.url.endsWith("/frame") && request.transmitted === true)).toBe(true);
   });

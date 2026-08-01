@@ -102,6 +102,24 @@ export class PlaywrightCrawler {
           })();
         `);
       }
+      if (!options.policy.allowPopups) {
+        await context.addInitScript(`
+          (() => {
+            const originalOpen = window.open;
+            window.open = function routeCairnBlockedWindowOpen(url) {
+              void globalThis.__routeCairnPolicyEvent?.({
+                url: typeof url === "string" ? url : globalThis.location.href,
+                reason: "popup-blocked"
+              });
+              return null;
+            };
+            Object.defineProperty(window.open, "toString", {
+              configurable: true,
+              value: () => originalOpen.toString()
+            });
+          })();
+        `);
+      }
       await context.route("**/*", async (route) => {
         if (attemptBudgetExceeded) {
           await route.abort("blockedbyclient").catch(() => undefined);
