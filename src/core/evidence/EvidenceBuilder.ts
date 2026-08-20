@@ -6,7 +6,8 @@ import type { ResponseObservation } from "../../reports/ReportTypes.js";
 
 const sensitiveHeaderPattern = /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-auth-token|x-csrf-token|x-tenant-id|x-org-id|x-organization-id|x-workspace-id)$/i;
 const sensitiveBodyPatterns: Array<[RegExp, string]> = [
-  [/(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd|database_url|db_password)\b\s*[:=]\s*)["']?[^"'\s,;<>]+/gi, "$1<redacted>"],
+  [/(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|signing[_-]?secret|session[_-]?secret|password|passwd|pwd|database_url|db_password|private[_-]?key)\b["']?\s*[:=]\s*)["']?[^"'\s,;<>]+/gi, "$1<redacted>"],
+  [/("(?:ssn|socialSecurityNumber|taxId|privateEmail|privatePhone|privateAddress|passwordHash)"\s*:\s*")[^"]+("?)/gi, "$1<redacted>$2"],
   [/AKIA[0-9A-Z]{16}/g, "AKIA<redacted>"],
   [/(?:postgres|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi, "<redacted-connection-url>"],
   [/-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g, "<redacted-private-key>"]

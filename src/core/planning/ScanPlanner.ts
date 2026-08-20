@@ -193,8 +193,13 @@ export class ScanPlanner {
       }
 
       const value = settings[key];
-      if (typeof value === "number" && (!Number.isFinite(value) || value <= 0)) {
+      const zeroAllowed = key === "maxNextJsCacheDifferentialRequests";
+      if (typeof value === "number" && (!Number.isFinite(value) || (zeroAllowed ? value < 0 : value <= 0))) {
         throw new AppError(`Module "${id}" setting "${key}" must be a positive number.`, "SCAN_PLAN_INVALID_MODULE_SETTING");
+      }
+
+      if (key === "nextJsCacheReviewMode" && value !== "PASSIVE_CACHE_REVIEW" && value !== "CONTROLLED_CACHE_DIFFERENTIAL") {
+        throw new AppError(`Module "${id}" setting "${key}" is invalid.`, "SCAN_PLAN_INVALID_MODULE_SETTING");
       }
 
       if (key === "browserAllowedResourceTypes" && Array.isArray(value)) {

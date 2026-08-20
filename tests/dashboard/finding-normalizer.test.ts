@@ -9,6 +9,20 @@ import { FindingNormalizer } from "../../src/dashboard/findings/FindingNormalize
 import type { RouteCairnReport } from "../../src/reports/ReportTypes.js";
 
 describe("dashboard finding normalization", () => {
+  it("keeps Next.js finding identity stable across build IDs and chunk hashes", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "routecairn-nextjs-fingerprint-"));
+    try {
+      const fingerprints = new FindingFingerprintService(resolve(dir, "key"));
+      const base = { sourceModule: "nextjs-review", type: "Next.js Source Map Sensitive Data Exposure", method: "GET", tags: ["nextjs", "source-map", "exposure"] } as any;
+      const first = fingerprints.fingerprint("https://app.test", { ...base, url: "https://app.test/_next/static/build-a/chunks/app-abc123def456.js.map" });
+      const second = fingerprints.fingerprint("https://app.test", { ...base, url: "https://app.test/_next/static/build-b/chunks/app-def456abc123.js.map" });
+      expect(second).toBe(first);
+      const dataA = fingerprints.routeIdentity("https://app.test/_next/data/build-a/account.json");
+      const dataB = fingerprints.routeIdentity("https://app.test/_next/data/build-b/account.json");
+      expect(dataB).toBe(dataA);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it("creates a stable logical finding with multiple occurrences and preserves review state", () => {
     const dir = mkdtempSync(resolve(tmpdir(), "routecairn-dashboard-findings-"));
     try {

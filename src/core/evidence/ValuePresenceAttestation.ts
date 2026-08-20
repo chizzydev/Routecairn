@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 
-export type ValuePresenceLocation = "query" | "header" | "cookie";
+export type ValuePresenceLocation = "query" | "header" | "cookie" | "body" | "source-map";
 export type ValuePresenceClassification =
   | "bearer-token"
   | "api-key"
@@ -9,6 +9,8 @@ export type ValuePresenceClassification =
   | "signed-request"
   | "tenant-context"
   | "cookie-value"
+  | "secret-material"
+  | "private-data"
   | "opaque-auth-value";
 
 export interface ValuePresenceAttestation {
@@ -89,6 +91,40 @@ export class ValuePresenceAttestor {
         })
       )
     );
+  }
+
+  public attestTransientValue(input: {
+    readonly rawValue: string;
+    readonly location: "body" | "source-map";
+    readonly name: string;
+    readonly classification: "secret-material" | "private-data";
+    readonly safeUrl: string;
+    readonly requestId: string;
+    readonly observedAt?: string;
+    readonly statusCode?: number;
+    readonly responseHash?: string;
+  }): ValuePresenceAttestation {
+    const observedAt = input.observedAt ?? new Date().toISOString();
+    return Object.freeze({
+      schemaVersion: 1 as const,
+      location: input.location,
+      name: safeName(input.name),
+      classification: input.classification,
+      valueLength: Buffer.byteLength(input.rawValue, "utf8"),
+      fingerprintAlgorithm: "HMAC-SHA-256" as const,
+      fingerprintScope: "scan" as const,
+      correlationFingerprint: `hmac-sha256:${createHmac("sha256", this.#key).update(input.rawValue).digest("hex")}`,
+      observedAt,
+      requestId: input.requestId,
+      ...(typeof input.statusCode === "number" ? { statusCode: input.statusCode } : {}),
+      ...(input.responseHash ? { responseHash: input.responseHash } : {}),
+      transportOutcome: "transmitted" as const,
+      reproductionSteps: Object.freeze([
+        `Repeat the authorized read-only request identified by request ID ${input.requestId} using the separately retained redacted endpoint.`,
+        `Confirm a ${input.classification} value is present at the safe field or pattern label ${safeName(input.name)}.`,
+        "Compare the scan-scoped correlation fingerprint; do not copy the raw value into evidence."
+      ])
+    });
   }
 }
 

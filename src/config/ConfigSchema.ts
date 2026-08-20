@@ -33,7 +33,18 @@ export const routeCairnConfigSchema = z.object({
   reportsDir: z.string().min(1).default("./reports"),
   defaultScopeFile: z.string().min(1).default("./examples/scope.example.json"),
   bodyPreviewBytes: z.number().int().positive().max(1024 * 1024).default(8192),
-  requestTimeoutMs: z.number().int().positive().default(15000)
+  requestTimeoutMs: z.number().int().positive().default(15000),
+  nextJsReview: z.object({
+    inspectNextJsSourceMaps: z.boolean().optional(),
+    inspectKnownNextJsDataSurfaces: z.boolean().optional(),
+    nextJsCacheReviewMode: z.enum(["PASSIVE_CACHE_REVIEW", "CONTROLLED_CACHE_DIFFERENTIAL"]).optional(),
+    maxNextJsManifestRequests: z.number().int().positive().max(32).optional(),
+    maxNextJsDataSurfaceRequests: z.number().int().positive().max(64).optional(),
+    maxNextJsSourceMapRequests: z.number().int().positive().max(32).optional(),
+    maxNextJsCacheDifferentialRequests: z.number().int().min(0).max(12).optional(),
+    maxNextJsAssetsInspected: z.number().int().positive().max(500).optional(),
+    maxNextJsRoutesProcessed: z.number().int().positive().max(2000).optional()
+  }).strict().optional()
 });
 
 export type ScanMode = z.infer<typeof scanModeSchema>;

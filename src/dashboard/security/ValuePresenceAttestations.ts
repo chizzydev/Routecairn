@@ -1,6 +1,6 @@
 export interface SafeValuePresenceAttestation {
   readonly schemaVersion: 1;
-  readonly location: "query" | "header" | "cookie";
+  readonly location: "query" | "header" | "cookie" | "body" | "source-map";
   readonly name: string;
   readonly classification:
     | "bearer-token"
@@ -10,6 +10,8 @@ export interface SafeValuePresenceAttestation {
     | "signed-request"
     | "tenant-context"
     | "cookie-value"
+    | "secret-material"
+    | "private-data"
     | "opaque-auth-value";
   readonly valueLength: number;
   readonly fingerprintAlgorithm: "HMAC-SHA-256";
@@ -23,7 +25,7 @@ export interface SafeValuePresenceAttestation {
   readonly reproductionSteps: readonly string[];
 }
 
-const locations = new Set(["query", "header", "cookie"]);
+const locations = new Set(["query", "header", "cookie", "body", "source-map"]);
 const classifications = new Set([
   "bearer-token",
   "api-key",
@@ -32,6 +34,8 @@ const classifications = new Set([
   "signed-request",
   "tenant-context",
   "cookie-value",
+  "secret-material",
+  "private-data",
   "opaque-auth-value"
 ]);
 const outcomes = new Set(["transmitted", "cache-reused", "policy-blocked", "network-approved"]);

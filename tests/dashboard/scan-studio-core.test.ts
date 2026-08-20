@@ -21,6 +21,15 @@ describe("Scan Studio core", () => {
     expect(resolved.plan.profile).toBe("quick");
   });
 
+  it("validates and resolves ordinary Next.js Deep Review settings through Scan Studio", async () => {
+    const input: any = publicStudioRequest("https://app.example.test");
+    input.profile = "full";
+    input.studio.moduleSettings = { nextJsReview: { inspectNextJsSourceMaps: true, inspectKnownNextJsDataSurfaces: true, nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW", maxNextJsManifestRequests: 5, maxNextJsDataSurfaceRequests: 9, maxNextJsSourceMapRequests: 3, maxNextJsCacheDifferentialRequests: 0, maxNextJsAssetsInspected: 40, maxNextJsRoutesProcessed: 250 } };
+    const request = dashboardScanCreateSchema.parse(input);
+    const resolved = await resolveDashboardScanPlan(request);
+    expect(resolved.plan.modules.find((module) => module.id === "nextjs-review")?.settings).toMatchObject({ maxNextJsManifestRequests: 5, maxNextJsDataSurfaceRequests: 9, maxNextJsSourceMapRequests: 3, nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW" });
+  });
+
   it.each([
     ["Host", "secret", "forbidden"],
     ["X-Test", "line\r\nbreak", "newline"]

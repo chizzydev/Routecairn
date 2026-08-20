@@ -24,6 +24,11 @@ export type FindingType =
   | "Debug/Dev Path"
   | "Directory Listing"
   | "Source Map Exposure"
+  | "Next.js Public Serialized Sensitive Data Exposure"
+  | "Next.js Source Map Sensitive Data Exposure"
+  | "Next.js Public Runtime Secret Exposure"
+  | "Next.js Cross-Actor Data Exposure"
+  | "Next.js Shared Cache Private Data Exposure"
   | "Public Cloud Reference"
   | "Interesting But Needs Manual Testing";
 

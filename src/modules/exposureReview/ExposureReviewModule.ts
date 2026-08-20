@@ -101,9 +101,9 @@ export class ExposureReviewModule implements RouteCairnPlugin {
       );
     }
 
-    if (pathname.endsWith(".map")) {
-      findings.push(this.exposureFinding(response, "Source Map Exposure", "Source map is publicly reachable", "Low", ["exposure", "source-map"], "Source map URL returned a successful response."));
-    }
+    // Source-map availability alone is expected deployment intelligence. The
+    // Next.js deep review (or the generic secret exposure rule above) only
+    // creates a finding when sensitive security material is demonstrated.
 
     if (hasBackupResponseEvidence({ pathname, contentType: response.contentType, bodyPreview: analysisBody })) {
       findings.push(this.exposureFinding(response, "Backup File Exposure", "Backup or archive file is publicly reachable", "High", ["exposure", "backup"], "Backup-like path and response content indicate a reachable backup/archive."));

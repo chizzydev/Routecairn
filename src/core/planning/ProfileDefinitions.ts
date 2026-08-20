@@ -79,7 +79,7 @@ export const scanProfileDefinitions = {
       },
       "path-discovery": { pathSources: ["wordlist:common", "wordlist:admin", "wordlist:api"] },
       "api-probe": { maxEndpoints: 40, safeMethods },
-      "nextjs-review": { maxDataRoutes: 25 }
+      "nextjs-review": { maxNextJsManifestRequests: 4, maxNextJsDataSurfaceRequests: 8, maxNextJsSourceMapRequests: 4, maxNextJsCacheDifferentialRequests: 0, maxNextJsRoutesProcessed: 200, nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW" }
     },
     authentication: {
       required: false,
@@ -152,6 +152,7 @@ export const scanProfileDefinitions = {
       "authenticated-testing": { maxComparisons: 20 },
       "role-comparison": { maxComparisons: 20 },
       "state-aware-api": { maxEndpointReviews: 30 },
+      "nextjs-review": { maxNextJsManifestRequests: 4, maxNextJsDataSurfaceRequests: 8, maxNextJsSourceMapRequests: 4, maxNextJsCacheDifferentialRequests: 0, maxNextJsRoutesProcessed: 200, nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW" },
       "proof-mode": { enabled: true, maxProofTargets: 6 }
     },
     authentication: {
@@ -251,7 +252,7 @@ export const scanProfileDefinitions = {
       "path-discovery": { pathSources: ["wordlist:common", "wordlist:admin", "wordlist:api"] },
       "api-probe": { maxEndpoints: 45, safeMethods },
       "state-aware-api": { maxEndpointReviews: 25 },
-      "nextjs-review": { maxDataRoutes: 30 },
+      "nextjs-review": { maxNextJsManifestRequests: 8, maxNextJsDataSurfaceRequests: 16, maxNextJsSourceMapRequests: 8, maxNextJsCacheDifferentialRequests: 6, maxNextJsRoutesProcessed: 500, nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW" },
       "proof-mode": { enabled: true, maxProofTargets: 16 }
     },
     authentication: {

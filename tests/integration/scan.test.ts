@@ -502,7 +502,7 @@ describe("scan command", () => {
     expect(report.findings.some((item) => item.type === "Sensitive File Exposure" && item.riskScore > 0)).toBe(true);
     expect(report.findings.some((item) => item.type === "Backup File Exposure")).toBe(true);
     expect(report.findings.some((item) => item.type === "Debug/Dev Path")).toBe(true);
-    expect(report.findings.some((item) => item.type === "Source Map Exposure")).toBe(true);
+    expect(report.findings.some((item) => item.type === "Source Map Exposure")).toBe(false);
     expect(report.authenticatedScan?.profile.enabled).toBe(true);
     expect(report.authenticatedScan?.profile.headerNames).toEqual(["Cookie"]);
     expect(report.authenticatedScan?.authOnlySurfaces.some((item) => item.url.endsWith("/private") && item.classification === "auth-only")).toBe(true);
@@ -534,7 +534,7 @@ describe("scan command", () => {
     expect(htmlReport).toContain("Manual Test Pack");
     expect(report.nextJsReview?.detected).toBe(true);
     expect(report.nextJsReview?.buildIds).toContain("build123");
-    expect(report.nextJsReview?.dataRoutes.some((route) => route.url.endsWith("/_next/data/build123/index.json") && route.cacheRisk === "possible-private-data-cache" && route.dataIndicators.includes("sensitive-keywords"))).toBe(true);
+    expect(report.nextJsReview?.dataRoutes.some((route) => route.url.endsWith("/_next/data/build123/index.json") && route.cacheRisk === "data-needs-review" && route.dataIndicators.includes("sensitive-keywords"))).toBe(true);
     expect(report.nextJsReview?.sourceMaps.some((sourceMap) => sourceMap.url.endsWith("/_next/static/chunks/app.js.map") && sourceMap.classification === "nextjs-public-source-map-review" && sourceMap.severityHint === "low")).toBe(true);
     expect(htmlReport).toContain("Next.js Review");
     expect(htmlReport).toContain("API Probe");

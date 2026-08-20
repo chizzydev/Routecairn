@@ -144,7 +144,10 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
       ...(options.concurrency ? { concurrency: parsePositiveInteger(options.concurrency, "--concurrency") } : {}),
       ...(includeModules ? { includeModules } : {}),
       ...(translated.excludeModules ? { excludeModules: translated.excludeModules } : {}),
-      ...(translated.moduleSettings ? { moduleSettings: translated.moduleSettings } : {})
+      ...((translated.moduleSettings || finalConfig.nextJsReview) ? { moduleSettings: {
+        ...(translated.moduleSettings ?? {}),
+        ...(finalConfig.nextJsReview ? { "nextjs-review": { ...(translated.moduleSettings?.["nextjs-review"] ?? {}), ...Object.fromEntries(Object.entries(finalConfig.nextJsReview).filter(([, value]) => value !== undefined)) } as ModuleSettings } : {})
+      } } : {})
     },
     ...(objectPairTesting ? { objectPairTesting } : {}),
     ...(fieldExposureTesting ? { fieldExposureTesting } : {}),

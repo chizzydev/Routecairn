@@ -264,6 +264,22 @@ Effective plans use this precedence:
 
 Unknown module settings, unsupported module settings, invalid limits, missing dependencies, and values above hard safety ceilings fail during planning.
 
+### Next.js Deep Review
+
+The existing `nextjs-review` module performs a bounded, evidence-driven review of modern Next.js applications. It combines multiple detection signals, classifies Pages Router, App Router, mixed, or unknown architecture, and builds a normalized surface model for HTML, `__NEXT_DATA__`, public build/SSG metadata, exact Pages data URLs, browser-observed RSC/Flight requests, JavaScript chunks, explicitly referenced source maps, runtime configuration, and cache metadata.
+
+The review parses JSON and common browser manifest assignment wrappers without executing remote JavaScript. It records property paths, types, bounded counts, redacted source paths, scan-scoped HMAC presence attestations, and safe fingerprints instead of persisting complete props trees, source code, credentials, or private values. `NEXT_PUBLIC_*` values, build IDs, public route names, RSC metadata, Server Action identifiers, source-map availability, `Cache-Control: public`, missing `Vary`, and `x-nextjs-cache` are observations rather than vulnerabilities unless concrete sensitive exposure is demonstrated.
+
+Pages data URLs are derived only when both an evidenced build ID and an already observed concrete route are available. Dynamic templates such as `[id]`, `[...slug]`, and `[[...slug]]` remain templates. App Router analysis reuses exact browser/network observations and does not generate `_rsc` values or router-state trees. Source maps are processed only from `sourceMappingURL`, direct links, or supplied exact artifact evidence; inline maps have encoded and decoded limits, and `sourcesContent` is analyzed in memory without being copied into reports.
+
+Default full-profile secondary request ceiling is 16: 4 manifest, 8 data-surface, 4 source-map, and 0 cache-differential requests. The proof/deep profile ceiling is 38: 8 manifest, 16 data-surface, 8 source-map, and 6 reserved cache-differential requests; controlled cache review remains disabled unless explicitly selected. These module ceilings are subordinate to the global broker budget. Scan Studio exposes the ordinary settings through the Next.js module card, and the same settings are available in `routecairn.config.json` under `nextJsReview`.
+
+Controlled cache differential mode uses exact known URLs, configured actors with distinct declared identities, `GET` only, and `skipCache` so RouteCairn's own response cache cannot create a false leak. It does not inject cache-poisoning headers, alter host/proxy headers, add random cache busters, invoke Server Actions, or perform mutation requests.
+
+Known limitations include future unknown Next.js artifact shapes, server-only manifests that are never public, unobserved dynamic route values, intentionally unfuzzed RSC internals, intentionally uninvoked Server Actions, and source maps that are neither referenced nor explicitly supplied. Browser-managed traffic retains the documented Playwright DNS pinning residual.
+
+> RouteCairn does not brute-force Next.js routes, fuzz RSC internals, invoke Server Actions, or perform cache-poisoning attacks.
+
 ### Browser Hardening
 
 Browser crawling uses `browser-crawler` settings declared in `src/core/planning/ModuleCatalog.ts` and overridden by profiles in `src/core/planning/ProfileDefinitions.ts`. Supported settings include `browserMaxPages`, `browserMaxLinksPerPage`, `browserMaxPolicyEvents`, `browserMaxRequestsPerPage`, `browserBlockThirdParty`, `browserAllowedResourceTypes`, `browserAllowedThirdPartyOrigins`, screenshot capture, popup/download/upload, private-network, service-worker, and WebSocket controls. Unsupported browser settings fail during planning.

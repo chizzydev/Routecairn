@@ -167,16 +167,26 @@ export const moduleCatalog = {
   "nextjs-review": {
     ...defaults,
     id: "nextjs-review",
-    displayName: "Next.js Review",
-    description: "Reviews Next.js data routes and source-map signals.",
+    displayName: "Next.js Deep Review",
+    description: "Safely correlates Next.js router metadata, manifests, known data/RSC surfaces, referenced source maps, serialized data, and cache evidence.",
     phase: "analysis",
     capabilities: ["nextjs"],
     requiresAuthentication: "none",
     monitoringCompatible: false,
     supportsEvidence: true,
     dependencies: ["tech-fingerprint"],
-    defaultSettings: { maxDataRoutes: 25 },
-    supportedSettings: ["maxDataRoutes"],
+    defaultSettings: {
+      maxNextJsManifestRequests: 4,
+      maxNextJsDataSurfaceRequests: 8,
+      maxNextJsSourceMapRequests: 4,
+      maxNextJsCacheDifferentialRequests: 0,
+      maxNextJsAssetsInspected: 50,
+      maxNextJsRoutesProcessed: 200,
+      inspectNextJsSourceMaps: true,
+      inspectKnownNextJsDataSurfaces: true,
+      nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW"
+    },
+    supportedSettings: ["maxDataRoutes", "maxNextJsManifestRequests", "maxNextJsDataSurfaceRequests", "maxNextJsSourceMapRequests", "maxNextJsCacheDifferentialRequests", "maxNextJsAssetsInspected", "maxNextJsRoutesProcessed", "inspectNextJsSourceMaps", "inspectKnownNextJsDataSurfaces", "nextJsCacheReviewMode"],
     cost: "medium"
   },
   "vulnerability-workflows": {

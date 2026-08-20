@@ -231,6 +231,25 @@ export class RequestSafetyBroker {
     };
   }
 
+  public attestTransientResponseValue(input: {
+    rawValue: string;
+    location: "body" | "source-map";
+    name: string;
+    classification: "secret-material" | "private-data";
+    response: HttpResponse;
+  }): ValuePresenceAttestation {
+    return this.valueAttestor.attestTransientValue({
+      rawValue: input.rawValue,
+      location: input.location,
+      name: input.name,
+      classification: input.classification,
+      safeUrl: redactSensitiveUrl(input.response.finalUrl),
+      requestId: input.response.requestId ?? `response-${input.response.bodyHash?.slice(0, 24) ?? "unidentified"}`,
+      ...(typeof input.response.statusCode === "number" ? { statusCode: input.response.statusCode } : {}),
+      ...(input.response.bodyHash ? { responseHash: input.response.bodyHash } : {})
+    });
+  }
+
   private async sendWithRedirects(requestInput: HttpRequest, currentUrl: string, redirectChain: RedirectHop[]): Promise<HttpResponse> {
     this.throwIfAborted();
     if (!this.consumeBudget()) {

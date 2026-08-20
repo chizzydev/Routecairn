@@ -959,6 +959,15 @@ export interface ModuleSettings {
   maxComparisons?: number;
   maxEndpointReviews?: number;
   maxDataRoutes?: number;
+  maxNextJsManifestRequests?: number;
+  maxNextJsDataSurfaceRequests?: number;
+  maxNextJsSourceMapRequests?: number;
+  maxNextJsCacheDifferentialRequests?: number;
+  maxNextJsAssetsInspected?: number;
+  maxNextJsRoutesProcessed?: number;
+  inspectNextJsSourceMaps?: boolean;
+  inspectKnownNextJsDataSurfaces?: boolean;
+  nextJsCacheReviewMode?: "PASSIVE_CACHE_REVIEW" | "CONTROLLED_CACHE_DIFFERENTIAL";
   maxProofTargets?: number;
   safeMethods?: readonly HttpMethod[];
   enabled?: boolean;

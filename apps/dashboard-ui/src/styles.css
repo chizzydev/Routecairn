@@ -405,6 +405,7 @@ button:disabled {
 
 .studio-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
   min-height: 360px;
@@ -412,6 +413,15 @@ button:disabled {
   background: white;
   border: 1px solid #d9e1ea;
   border-radius: 8px;
+}
+
+.studio-panel > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.studio-panel p {
+  overflow-wrap: anywhere;
 }
 
 .studio-panel input:not([type="checkbox"]):not([type="radio"]),
@@ -758,6 +768,12 @@ main button.primary {
 .comparison-metric.medium { border-top: 3px solid #ad8514; }
 .comparison-metric.success { border-top: 3px solid #26704a; }
 .comparison-metric.warning { border-top: 3px solid #806312; }
+
+.studio-subpanel { grid-column: 1 / -1; min-width: 0; margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; }
+.studio-subpanel .compact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; }
+.studio-subpanel label { min-width: 0; }
+.studio-subpanel input, .studio-subpanel select { max-width: 100%; }
+.studio-subpanel .warning { overflow-wrap: anywhere; color: #806312; }
 .comparison-metric.neutral { border-top: 3px solid #536579; }
 .comparison-coverage, .comparison-workspace > section { border-top: 1px solid #d9e1ea; padding-top: 10px; }
 .comparison-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid #d9e1ea; }
@@ -775,6 +791,8 @@ main button.primary {
 .side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.side-by-side pre { overflow-wrap: anywhere; white-space: pre-wrap; }
 .comparison-finding { display: grid; grid-template-columns: minmax(220px, 1.4fr) minmax(180px, .8fr) minmax(240px, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid #e5eaf0; }
 @media (max-width: 900px) {
+  .studio-layout { grid-template-columns: 1fr; }
+  .studio-summary { position: static; order: -1; }
   .comparison-summary { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
   .comparison-metric { border-bottom: 1px solid #d9e1ea; }
   .comparison-finding { grid-template-columns: 1fr; }

@@ -63,6 +63,17 @@ type ScopeState = {
   respectRobotsTxt: boolean;
   userAgent: string;
 };
+type NextJsReviewSettings = {
+  inspectNextJsSourceMaps: boolean;
+  inspectKnownNextJsDataSurfaces: boolean;
+  nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW" | "CONTROLLED_CACHE_DIFFERENTIAL";
+  maxNextJsManifestRequests: number;
+  maxNextJsDataSurfaceRequests: number;
+  maxNextJsSourceMapRequests: number;
+  maxNextJsCacheDifferentialRequests: number;
+  maxNextJsAssetsInspected: number;
+  maxNextJsRoutesProcessed: number;
+};
 type StudioState = {
   currentStep: number;
   scanName: string;
@@ -81,6 +92,7 @@ type StudioState = {
   scope: ScopeState;
   profile: string;
   selectedModules: string[];
+  nextJsReview: NextJsReviewSettings;
   authMode: AuthMode;
   primary: ActorState;
   accountA: ActorState;
@@ -226,6 +238,17 @@ export function ScanStudio({
     },
     profile: initialDraft?.profile ?? savedConfiguration?.profile ?? "quick",
     selectedModules: initialDraft?.selectedModules ?? savedConfiguration?.modules ?? [],
+    nextJsReview: {
+      inspectNextJsSourceMaps: true,
+      inspectKnownNextJsDataSurfaces: true,
+      nextJsCacheReviewMode: "PASSIVE_CACHE_REVIEW",
+      maxNextJsManifestRequests: 4,
+      maxNextJsDataSurfaceRequests: 8,
+      maxNextJsSourceMapRequests: 4,
+      maxNextJsCacheDifferentialRequests: 0,
+      maxNextJsAssetsInspected: 50,
+      maxNextJsRoutesProcessed: 200,
+    },
     authMode: initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public",
     primary: initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
     accountA: initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
@@ -1226,8 +1249,30 @@ function ProfileStep({
           </label>
         ))}
       </div>
+      {state.selectedModules.includes("nextjs-review") && (
+        <fieldset className="studio-subpanel nextjs-review-settings">
+          <legend>Next.js Deep Review settings</legend>
+          <p className="muted">Only observed routes, directly referenced artifacts, and exact known Pages data relationships are reviewed. Server Actions and arbitrary RSC values are never invoked.</p>
+          <label><input type="checkbox" checked={state.nextJsReview.inspectKnownNextJsDataSurfaces} onChange={(event) => update({ nextJsReview: { ...state.nextJsReview, inspectKnownNextJsDataSurfaces: event.target.checked } })} /> Review exact known Pages data surfaces</label>
+          <label><input type="checkbox" checked={state.nextJsReview.inspectNextJsSourceMaps} onChange={(event) => update({ nextJsReview: { ...state.nextJsReview, inspectNextJsSourceMaps: event.target.checked } })} /> Review explicitly referenced source maps</label>
+          <label>Cache review mode<select aria-label="Next.js cache review mode" value={state.nextJsReview.nextJsCacheReviewMode} onChange={(event) => update({ nextJsReview: { ...state.nextJsReview, nextJsCacheReviewMode: event.target.value as NextJsReviewSettings["nextJsCacheReviewMode"] } })}><option value="PASSIVE_CACHE_REVIEW">Passive signals only</option><option value="CONTROLLED_CACHE_DIFFERENTIAL">Controlled actor differential</option></select></label>
+          <div className="compact-grid">
+            <NumberSetting label="Manifest requests" value={state.nextJsReview.maxNextJsManifestRequests} min={1} max={32} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsManifestRequests: value } })} />
+            <NumberSetting label="Data requests" value={state.nextJsReview.maxNextJsDataSurfaceRequests} min={1} max={64} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsDataSurfaceRequests: value } })} />
+            <NumberSetting label="Source-map requests" value={state.nextJsReview.maxNextJsSourceMapRequests} min={1} max={32} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsSourceMapRequests: value } })} />
+            <NumberSetting label="Cache differential requests" value={state.nextJsReview.maxNextJsCacheDifferentialRequests} min={0} max={12} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsCacheDifferentialRequests: value } })} />
+            <NumberSetting label="Assets inspected" value={state.nextJsReview.maxNextJsAssetsInspected} min={1} max={500} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsAssetsInspected: value } })} />
+            <NumberSetting label="Routes processed" value={state.nextJsReview.maxNextJsRoutesProcessed} min={1} max={2000} onChange={(value) => update({ nextJsReview: { ...state.nextJsReview, maxNextJsRoutesProcessed: value } })} />
+          </div>
+          {state.nextJsReview.nextJsCacheReviewMode === "CONTROLLED_CACHE_DIFFERENTIAL" && <p className="warning">Controlled cache differential requires configured actors with distinct declared/verified identities. It uses exact GET requests with tool-side cache reuse disabled and never sends cache-poisoning headers.</p>}
+        </fieldset>
+      )}
     </div>
   );
+}
+
+function NumberSetting({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  return <label>{label}<input type="number" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
 }
 
 function AuthenticationStep({
@@ -1914,6 +1959,17 @@ function validate(state: StudioState): ValidationError[] {
     errors.push({ step: 1, message: "At least one safe method is required." });
   if (!state.profile)
     errors.push({ step: 2, message: "Select a scan profile." });
+  if (state.selectedModules.includes("nextjs-review")) {
+    const limits: Array<[number, number, number]> = [
+      [state.nextJsReview.maxNextJsManifestRequests, 1, 32],
+      [state.nextJsReview.maxNextJsDataSurfaceRequests, 1, 64],
+      [state.nextJsReview.maxNextJsSourceMapRequests, 1, 32],
+      [state.nextJsReview.maxNextJsCacheDifferentialRequests, 0, 12],
+      [state.nextJsReview.maxNextJsRoutesProcessed, 1, 2000],
+    ];
+    if (limits.some(([value, min, max]) => !Number.isInteger(value) || value < min || value > max)) errors.push({ step: 2, message: "Next.js Deep Review limits are outside their safe bounds." });
+    if (state.nextJsReview.nextJsCacheReviewMode === "CONTROLLED_CACHE_DIFFERENTIAL" && state.nextJsReview.maxNextJsCacheDifferentialRequests < 2) errors.push({ step: 2, message: "Controlled Next.js cache review requires a cache differential budget of at least 2 requests." });
+  }
   if (state.authMode === "primary")
     validateActor(state.primary, "Primary", 3, errors);
   if (state.authMode === "account-pair") {
@@ -2102,6 +2158,7 @@ function buildRequest(state: StudioState): Record<string, unknown> {
       authentication,
       evidenceLevel: state.evidenceLevel,
       outputs: state.outputs,
+      moduleSettings: state.selectedModules.includes("nextjs-review") ? { nextJsReview: state.nextJsReview } : {},
       workflows,
       workflowSummary: workflows.map((workflow) => ({
         type: workflow.workflowId,

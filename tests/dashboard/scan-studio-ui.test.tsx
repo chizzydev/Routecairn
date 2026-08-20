@@ -15,6 +15,31 @@ describe("Scan Studio UI", () => {
     for (const label of ["Scope", "Profile & Modules", "Authentication", "Verified Identity", "Browser & Limits", "Evidence & Outputs", "Controlled Workflows", "Plan Review", "Launch"]) expect(screen.getByRole("button", { name: new RegExp(label) })).toBeTruthy();
   });
 
+  it("exposes bounded Next.js Deep Review settings without raw JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("capabilities")) return response({ profiles: [{ name: "full", displayName: "Full", description: "Full review", modules: ["baseline", "tech-fingerprint", "nextjs-review"], limits: {}, browserUse: "bounded", authComparisonDepth: "none", proofMode: false, reportFocus: [] }], modules: [
+        { id: "baseline", displayName: "Baseline", description: "Baseline", phase: "baseline", capabilities: ["baseline"], requiresAuthentication: "none", dependencies: [], cost: "low", supportedSettings: [] },
+        { id: "tech-fingerprint", displayName: "Technology", description: "Technology", phase: "fingerprint", capabilities: ["fingerprint"], requiresAuthentication: "none", dependencies: ["baseline"], cost: "low", supportedSettings: [] },
+        { id: "nextjs-review", displayName: "Next.js Deep Review", description: "Next.js deep review", phase: "analysis", capabilities: ["nextjs"], requiresAuthentication: "none", dependencies: ["tech-fingerprint"], cost: "medium", supportedSettings: ["maxNextJsManifestRequests"] }
+      ], controlledWorkflows: [], evidenceLevels: [{ id: "normal", retention: "Bounded" }] });
+      if (path.includes("projects")) return response({ projects: [] });
+      if (path.includes("targets")) return response({ targets: [] });
+      return response({ profiles: [] });
+    }));
+    render(<ScanStudio onLaunched={() => undefined} />);
+    fireEvent.change(await screen.findByLabelText("Target base URL"), { target: { value: "https://app.example.test" } });
+    fireEvent.click(screen.getByLabelText(/I confirm I am authorized/));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const domain = screen.getByLabelText("New allowed domains rule"); fireEvent.change(domain, { target: { value: "app.example.test" } }); fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Next\.js Deep Review/i }));
+    expect(screen.getByRole("group", { name: "Next.js Deep Review settings" })).toBeTruthy();
+    expect(screen.getByLabelText("Next.js cache review mode")).toBeTruthy();
+    expect(screen.getByLabelText("Manifest requests")).toBeTruthy();
+    expect(document.body.textContent).toContain("Server Actions");
+  });
+
   it("blocks forward navigation and exposes accessible validation", async () => {
     stubApi();
     render(<ScanStudio onLaunched={() => undefined} />);

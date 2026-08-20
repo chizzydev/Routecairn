@@ -3,17 +3,22 @@ export interface SecretPatternMatch {
   count: number;
 }
 
-const secretPatterns: Array<{ name: string; pattern: RegExp }> = [
-  { name: "DATABASE_URL", pattern: /\bDATABASE_URL\s*=\s*[^\s]+/i },
-  { name: "DB_PASSWORD", pattern: /\bDB_PASSWORD\s*=\s*[^\s]+/i },
-  { name: "SECRET_KEY", pattern: /\bSECRET_KEY\s*=\s*[^\s]+/i },
-  { name: "API_KEY", pattern: /\bAPI_KEY\s*=\s*[^\s]+/i },
-  { name: "AWS_ACCESS_KEY_ID", pattern: /\bAWS_ACCESS_KEY_ID\s*=\s*AKIA[0-9A-Z]{12,}/i },
-  { name: "AWS_SECRET_ACCESS_KEY", pattern: /\bAWS_SECRET_ACCESS_KEY\s*=\s*[A-Za-z0-9/+]{20,}/i },
-  { name: "PRIVATE_KEY", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/ },
-  { name: "JWT_SECRET", pattern: /\bJWT_SECRET\s*=\s*[^\s]+/i },
-  { name: "SUPABASE_SERVICE_ROLE_KEY", pattern: /\bSUPABASE_SERVICE_ROLE_KEY\s*=\s*[^\s]+/i },
-  { name: "STRIPE_SECRET_KEY", pattern: /\bSTRIPE_SECRET_KEY\s*=\s*sk_(?:live|test)_[A-Za-z0-9]+/i }
+/** Module-private callers must discard `value` immediately after producing redacted evidence. */
+export interface TransientSecretPatternMatch extends SecretPatternMatch {
+  value: string;
+}
+
+const secretPatterns: Array<{ name: string; pattern: RegExp; valueGroup: number }> = [
+  { name: "DATABASE_URL", pattern: /\bDATABASE_URL["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "DB_PASSWORD", pattern: /\bDB_PASSWORD["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "SECRET_KEY", pattern: /\bSECRET_KEY["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "API_KEY", pattern: /\bAPI_KEY["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "AWS_ACCESS_KEY_ID", pattern: /\bAWS_ACCESS_KEY_ID["']?\s*[:=]\s*["']?(AKIA[0-9A-Z]{12,})/i, valueGroup: 1 },
+  { name: "AWS_SECRET_ACCESS_KEY", pattern: /\bAWS_SECRET_ACCESS_KEY["']?\s*[:=]\s*["']?([A-Za-z0-9/+]{20,})/i, valueGroup: 1 },
+  { name: "PRIVATE_KEY", pattern: /(-----BEGIN [A-Z ]*PRIVATE KEY-----)/, valueGroup: 1 },
+  { name: "JWT_SECRET", pattern: /\bJWT_SECRET["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "SUPABASE_SERVICE_ROLE_KEY", pattern: /\bSUPABASE_SERVICE_ROLE_KEY["']?\s*[:=]\s*["']?([^\s"'`,;]+)/i, valueGroup: 1 },
+  { name: "STRIPE_SECRET_KEY", pattern: /\bSTRIPE_SECRET_KEY["']?\s*[:=]\s*["']?(sk_(?:live|test)_[A-Za-z0-9]+)/i, valueGroup: 1 }
 ];
 
 export class SecretPatternDetector {
@@ -36,6 +41,25 @@ export class SecretPatternDetector {
       ];
     });
   }
+
+  public detectForTransientAnalysis(bodyPreview: string | undefined, maximumMatches = 32): TransientSecretPatternMatch[] {
+    if (!bodyPreview || maximumMatches <= 0) return [];
+    const matches: TransientSecretPatternMatch[] = [];
+    for (const rule of secretPatterns) {
+      const flags = rule.pattern.flags.includes("g") ? rule.pattern.flags : `${rule.pattern.flags}g`;
+      for (const match of bodyPreview.matchAll(new RegExp(rule.pattern.source, flags))) {
+        const value = match[rule.valueGroup];
+        if (!value || isPlaceholder(value)) continue;
+        matches.push({ name: rule.name, count: 1, value });
+        if (matches.length >= maximumMatches) return matches;
+      }
+    }
+    return matches;
+  }
+}
+
+function isPlaceholder(value: string): boolean {
+  return /^(?:example|sample|placeholder|changeme|replace[_-]?me|your[_-].*|xxx+|test)$/i.test(value) || value.length < 8;
 }
 
 function countMatches(value: string, pattern: RegExp): number {

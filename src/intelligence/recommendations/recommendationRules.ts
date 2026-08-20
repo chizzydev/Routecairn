@@ -21,6 +21,11 @@ export const recommendationRules: Record<FindingType, string> = {
   "Debug/Dev Path": "Disable debug tooling in production or restrict it to authenticated administrative networks.",
   "Directory Listing": "Disable directory listing and ensure only intended files are publicly served.",
   "Source Map Exposure": "Review whether source maps should be public; remove or restrict them if they expose source code or sensitive comments.",
+  "Next.js Public Serialized Sensitive Data Exposure": "Remove server-only fields before serialization, return only data required by the client, and enforce authorization before producing the payload.",
+  "Next.js Source Map Sensitive Data Exposure": "Remove the secret from source and history, rotate exposed credentials, prevent sensitive values from entering browser bundles/maps, and apply an appropriate production source-map policy.",
+  "Next.js Public Runtime Secret Exposure": "Remove non-public secrets from browser runtime configuration, rotate exposed credentials, and keep server-only configuration on the server.",
+  "Next.js Cross-Actor Data Exposure": "Enforce authorization before serializing the representation and ensure each actor receives only its permitted fields and values.",
+  "Next.js Shared Cache Private Data Exposure": "Prevent shared caching of user-specific representations and ensure cache keys and directives account for relevant authentication state.",
   "Public Cloud Reference": "Review referenced cloud resources for intended public exposure and least-privilege access controls.",
   "Interesting But Needs Manual Testing": "Review manually for intended public exposure and access-control behavior."
 };

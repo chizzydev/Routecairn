@@ -50,7 +50,11 @@ function routeIdentity(rawUrl: string): string {
     parsed.username = "";
     parsed.password = "";
     parsed.hostname = parsed.hostname.toLowerCase();
-    const safePath = parsed.pathname
+    const normalizedNextPath = parsed.pathname
+      .replace(/^(\/_next\/data\/)[^/]+\//, "$1:build/")
+      .replace(/^(\/_next\/static\/)[^/]+\//, "$1:build/")
+      .replace(/([._-])[a-f0-9]{6,}(?=\.(?:js|css|map)|[._-])/gi, "$1:asset-hash");
+    const safePath = normalizedNextPath
       .split("/")
       .map((segment) => {
         if (/^[0-9a-f]{16,}$/i.test(segment)) return ":hex";

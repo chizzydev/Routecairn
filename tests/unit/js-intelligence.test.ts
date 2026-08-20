@@ -56,4 +56,8 @@ describe("JavaScript intelligence helpers", () => {
       "https://example.com/assets/app.js.map"
     ]);
   });
+
+  it("does not guess a .map companion when JavaScript has no explicit reference", () => {
+    expect(new SourceMapDetector().detect('console.log("no map");', "https://example.com/assets/app.js")).toEqual([]);
+  });
 });

@@ -53,7 +53,8 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
       ...(request.rateLimitPerSecond ? { rateLimitPerSecond: request.rateLimitPerSecond } : {}),
       ...(request.concurrency ? { concurrency: request.concurrency } : {}),
       ...(request.studio?.evidenceLevel ? { evidenceLevel: request.studio.evidenceLevel } : {}),
-      ...(request.includeModules && request.includeModules.length > 0 ? { includeModules: request.includeModules as ModuleId[] } : {})
+      ...(request.includeModules && request.includeModules.length > 0 ? { includeModules: request.includeModules as ModuleId[] } : {}),
+      ...(request.studio?.moduleSettings.nextJsReview ? { moduleSettings: { "nextjs-review": request.studio.moduleSettings.nextJsReview } } : {})
     }
   };
   const planner = new ScanPlanner(createDefaultPluginRegistry());

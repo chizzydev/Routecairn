@@ -35,6 +35,18 @@ export const scanStudioOutputSchema = z.object({
   html: z.literal(true).default(true)
 }).strict();
 
+export const nextJsReviewStudioSettingsSchema = z.object({
+  inspectNextJsSourceMaps: z.boolean().default(true),
+  inspectKnownNextJsDataSurfaces: z.boolean().default(true),
+  nextJsCacheReviewMode: z.enum(["PASSIVE_CACHE_REVIEW", "CONTROLLED_CACHE_DIFFERENTIAL"]).default("PASSIVE_CACHE_REVIEW"),
+  maxNextJsManifestRequests: z.number().int().positive().max(32).default(4),
+  maxNextJsDataSurfaceRequests: z.number().int().positive().max(64).default(8),
+  maxNextJsSourceMapRequests: z.number().int().positive().max(32).default(4),
+  maxNextJsCacheDifferentialRequests: z.number().int().min(0).max(12).default(0),
+  maxNextJsAssetsInspected: z.number().int().positive().max(500).default(50),
+  maxNextJsRoutesProcessed: z.number().int().positive().max(2000).default(200)
+}).strict();
+
 const workflowEnvelopeShape = {
   enabled: z.boolean().default(true),
   editorMode: z.enum(["guided", "advanced"]).default("guided"),
@@ -68,6 +80,7 @@ export const scanStudioSchema = z.object({
   authentication: scanStudioAuthenticationSchema.default({ mode: "public" }),
   evidenceLevel: z.enum(["minimal", "normal", "strong"]).optional(),
   outputs: scanStudioOutputSchema.default({ json: true, markdown: true, html: true }),
+  moduleSettings: z.object({ nextJsReview: nextJsReviewStudioSettingsSchema.optional() }).strict().default({}),
   workflows: authorizationWorkflowConfigurationsSchema.default([]),
   workflowSummary: z.array(z.object({ type: z.string().min(1).max(80), caseCount: z.number().int().min(0).max(1000), valid: z.boolean() }).strict()).max(7).default([]),
   retestContext: z.object({
