@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "maxMatrices": 1,
+  "maxCasesPerMatrix": 5,
+  "maxResponseBytes": 65536,
+  "maxPreviewLength": 80,
+  "matrices": [
+    {
+      "id": "document-access",
+      "name": "Document access",
+      "objectType": "document",
+      "template": {
+        "id": "document-read",
+        "method": "GET",
+        "url": "https://app.example.com/api/documents/{{OBJECT_ID}}",
+        "headers": {
+          "Accept": "application/json"
+        }
+      },
+      "objectIdentityField": "id",
+      "objectStateField": "state",
+      "actors": [
+        {
+          "id": "owner",
+          "relationship": "OWNER",
+          "authProfile": "account_a",
+          "safeAlias": "Owner",
+          "principalId": "fictional-principal-a",
+          "tenantId": "tenant-a",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "viewer",
+          "relationship": "CROSS_TENANT_MEMBER",
+          "authProfile": "account_b",
+          "safeAlias": "Cross Tenant Viewer",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-b",
+          "role": "viewer",
+          "accountState": "active"
+        },
+        {
+          "id": "public",
+          "relationship": "PUBLIC",
+          "safeAlias": "Public"
+        }
+      ],
+      "cases": [
+        {
+          "id": "owner-allow",
+          "actorId": "owner",
+          "objectId": "fictional-doc-owned-by-a",
+          "expectedObjectState": "published",
+          "expectedDecision": "MUST_ALLOW",
+          "requireVerifiedIdentity": true
+        },
+        {
+          "id": "viewer-deny",
+          "actorId": "viewer",
+          "objectId": "fictional-doc-owned-by-a",
+          "expectedObjectState": "published",
+          "expectedDecision": "MUST_DENY",
+          "referenceCaseId": "owner-allow",
+          "expectedTenantId": "tenant-b",
+          "expectedRole": "viewer",
+          "expectedAccountState": "active",
+          "requireVerifiedIdentity": true
+        },
+        {
+          "id": "public-auth",
+          "actorId": "public",
+          "objectId": "fictional-doc-owned-by-a",
+          "expectedDecision": "MUST_REQUIRE_AUTHENTICATION",
+          "requireVerifiedIdentity": false
+        }
+      ]
+    }
+  ]
+}

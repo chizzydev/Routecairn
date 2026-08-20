@@ -2,7 +2,7 @@ import { AppError } from "../errors/AppError.js";
 import { compareMetadata, PluginRegistry } from "../plugins/PluginRegistry.js";
 import { scanProfileDefinitions } from "./ProfileDefinitions.js";
 import type { ScanProfileName } from "../../config/ScanProfiles.js";
-import type { ModuleId, ModulePlan, ModuleSettings, ResolvedScanPlan, ScanLimits, ScanPlannerInput, ScanProfileDefinition } from "./ScanPlan.js";
+import type { EvidenceLevel, EvidencePolicy, ModuleId, ModulePlan, ModuleSettings, ResolvedScanPlan, ScanLimits, ScanPlannerInput, ScanProfileDefinition } from "./ScanPlan.js";
 import { scanPlanSchemaVersion } from "./ScanPlan.js";
 
 const defaultRetry = { maxAttempts: 2, baseDelayMs: 250, maxDelayMs: 2000, retryStatusCodes: [408, 429, 500, 502, 503, 504] };
@@ -77,13 +77,18 @@ export class ScanPlanner {
       skippedModules: [...definition.disabledModules.map((id) => ({ id, reason: "disabled-by-profile" })), ...skippedModules],
       limits,
       authentication,
-      evidence: { ...definition.evidence },
+      evidence: resolveEvidencePolicy(definition.evidence, input.overrides?.evidenceLevel),
       output: { ...definition.output },
       failurePolicy: definition.failurePolicy,
       optionalModulesMayBeSkipped: definition.optionalModulesMayBeSkipped,
       reportFocus: [...definition.reportFocus],
       ...(input.objectPairTesting ? { objectPairTesting: input.objectPairTesting } : {}),
-      ...(input.fieldExposureTesting ? { fieldExposureTesting: input.fieldExposureTesting } : {})
+      ...(input.fieldExposureTesting ? { fieldExposureTesting: input.fieldExposureTesting } : {}),
+      ...(input.authorizationMatrixTesting ? { authorizationMatrixTesting: input.authorizationMatrixTesting } : {}),
+      ...(input.collectionAuthorizationTesting ? { collectionAuthorizationTesting: input.collectionAuthorizationTesting } : {}),
+      ...(input.bulkAuthorizationTesting ? { bulkAuthorizationTesting: input.bulkAuthorizationTesting } : {}),
+      ...(input.fileAuthorizationTesting ? { fileAuthorizationTesting: input.fileAuthorizationTesting } : {}),
+      ...(input.equivalentRouteTesting ? { equivalentRouteTesting: input.equivalentRouteTesting } : {})
     });
 
     this.validate(plan);
@@ -283,6 +288,51 @@ export class ScanPlanner {
     if (plan.fieldExposureTesting && !hasFieldExposureModule) {
       throw new AppError(`Field exposure testing input was supplied but the field-exposure-testing module was not selected.`, "FIELD_EXPOSURE_MODULE_REQUIRED");
     }
+
+    const hasAuthorizationMatrixModule = plan.modules.some((modulePlan) => modulePlan.id === "authorization-matrix-testing");
+    if (hasAuthorizationMatrixModule && !plan.authorizationMatrixTesting) {
+      throw new AppError(`Authorization matrix testing module requires a resolved authorization matrix.`, "AUTHORIZATION_MATRIX_PLAN_REQUIRED");
+    }
+
+    if (plan.authorizationMatrixTesting && !hasAuthorizationMatrixModule) {
+      throw new AppError(`Authorization matrix input was supplied but the authorization-matrix-testing module was not selected.`, "AUTHORIZATION_MATRIX_MODULE_REQUIRED");
+    }
+
+    const hasCollectionAuthorizationModule = plan.modules.some((modulePlan) => modulePlan.id === "collection-authorization-testing");
+    if (hasCollectionAuthorizationModule && !plan.collectionAuthorizationTesting) {
+      throw new AppError(`Collection authorization testing module requires a resolved collection authorization plan.`, "COLLECTION_AUTHORIZATION_PLAN_REQUIRED");
+    }
+
+    if (plan.collectionAuthorizationTesting && !hasCollectionAuthorizationModule) {
+      throw new AppError(`Collection authorization input was supplied but the collection-authorization-testing module was not selected.`, "COLLECTION_AUTHORIZATION_MODULE_REQUIRED");
+    }
+
+    const hasBulkAuthorizationModule = plan.modules.some((modulePlan) => modulePlan.id === "bulk-authorization-testing");
+    if (hasBulkAuthorizationModule && !plan.bulkAuthorizationTesting) {
+      throw new AppError(`Bulk authorization testing module requires a resolved bulk authorization plan.`, "BULK_AUTHORIZATION_PLAN_REQUIRED");
+    }
+
+    if (plan.bulkAuthorizationTesting && !hasBulkAuthorizationModule) {
+      throw new AppError(`Bulk authorization input was supplied but the bulk-authorization-testing module was not selected.`, "BULK_AUTHORIZATION_MODULE_REQUIRED");
+    }
+
+    const hasFileAuthorizationModule = plan.modules.some((modulePlan) => modulePlan.id === "file-authorization-testing");
+    if (hasFileAuthorizationModule && !plan.fileAuthorizationTesting) {
+      throw new AppError(`File authorization testing module requires a resolved file authorization plan.`, "FILE_AUTHORIZATION_PLAN_REQUIRED");
+    }
+
+    if (plan.fileAuthorizationTesting && !hasFileAuthorizationModule) {
+      throw new AppError(`File authorization input was supplied but the file-authorization-testing module was not selected.`, "FILE_AUTHORIZATION_MODULE_REQUIRED");
+    }
+
+    const hasEquivalentRouteModule = plan.modules.some((modulePlan) => modulePlan.id === "equivalent-route-testing");
+    if (hasEquivalentRouteModule && !plan.equivalentRouteTesting) {
+      throw new AppError(`Equivalent route testing module requires a resolved equivalent-route request matrix.`, "EQUIVALENT_ROUTE_PLAN_REQUIRED");
+    }
+
+    if (plan.equivalentRouteTesting && !hasEquivalentRouteModule) {
+      throw new AppError(`Equivalent route input was supplied but the equivalent-route-testing module was not selected.`, "EQUIVALENT_ROUTE_MODULE_REQUIRED");
+    }
   }
 }
 
@@ -383,4 +433,11 @@ function isBrowserOrigin(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function resolveEvidencePolicy(profilePolicy: Readonly<EvidencePolicy>, requested: EvidenceLevel | undefined): EvidencePolicy {
+  const rank: Record<EvidenceLevel, number> = { minimal: 0, normal: 1, strong: 2 };
+  if (!requested || rank[requested] <= rank[profilePolicy.level]) return { ...profilePolicy };
+  if (requested === "normal") return { level: "normal", collectRequestAudit: true, collectBodyPreview: true, requireReproducibleEvidence: false, retainProofBlocks: false };
+  return { level: "strong", collectRequestAudit: true, collectBodyPreview: true, requireReproducibleEvidence: true, retainProofBlocks: true };
 }

@@ -118,7 +118,7 @@ const caseSchema = z
   })
   .strict();
 
-const fieldExposureInputSchema = z
+export const fieldExposureInputSchema = z
   .object({
     schemaVersion: z.literal(1).default(1),
     maxCases: z.number().int().positive().max(maxCaseCount).default(5),

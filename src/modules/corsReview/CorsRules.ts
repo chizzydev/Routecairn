@@ -1,12 +1,14 @@
 import type { Finding } from "../../core/findings/Finding.js";
 import type { Severity } from "../../core/findings/Severity.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { createReviewFinding, headerValue } from "../reviewUtils.js";
 
 export function corsFinding(response: HttpResponse, testedOrigin: string): Finding | undefined {
-  const acao = headerValue(response.headers, "access-control-allow-origin");
-  const credentials = headerValue(response.headers, "access-control-allow-credentials")?.toLowerCase() === "true";
-  const methods = headerValue(response.headers, "access-control-allow-methods");
+  const headers = headersForAnalysis(response);
+  const acao = headerValue(headers, "access-control-allow-origin");
+  const credentials = headerValue(headers, "access-control-allow-credentials")?.toLowerCase() === "true";
+  const methods = headerValue(headers, "access-control-allow-methods");
 
   if (!acao && !methods) {
     return undefined;

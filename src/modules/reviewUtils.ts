@@ -60,22 +60,14 @@ export function createReviewFinding(input: ReviewFindingInput): Finding {
   };
 }
 
-export function headerValue(headers: Record<string, string | string[]>, name: string): string | undefined {
+export function headerValue(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string | undefined {
   const value = headers[name.toLowerCase()];
 
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-
-  return value;
+  return typeof value === "string" ? value : value?.join(", ");
 }
 
-export function headerValues(headers: Record<string, string | string[]>, name: string): string[] {
+export function headerValues(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string[] {
   const value = headers[name.toLowerCase()];
 
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  return value ? [value] : [];
+  return typeof value === "string" ? [value] : value ? [...value] : [];
 }

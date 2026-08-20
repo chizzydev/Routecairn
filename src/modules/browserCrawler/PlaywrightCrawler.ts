@@ -19,6 +19,7 @@ export interface PlaywrightCrawlerOptions {
   sameOriginOnly: boolean;
   policy: BrowserPolicy;
   requestBroker: RequestSafetyBroker;
+  abortSignal?: AbortSignal;
 }
 
 interface CrawlEntry {
@@ -44,6 +45,8 @@ export class PlaywrightCrawler {
     options.requestBroker.setBrowserPolicyEventLimit(options.policy.maxPolicyEvents);
 
     try {
+      const abortBrowser = () => void browser.close().catch(() => undefined);
+      options.abortSignal?.addEventListener("abort", abortBrowser, { once: true });
       const context = await browser.newContext({
         userAgent: options.userAgent,
         ignoreHTTPSErrors: true,
@@ -158,6 +161,9 @@ export class PlaywrightCrawler {
       let formsDetected = 0;
 
       while (frontier.length > 0 && visited.size < options.policy.maxPages && !attemptBudgetExceeded) {
+        if (options.abortSignal?.aborted) {
+          break;
+        }
         const next = frontier.shift();
         if (!next) break;
 
@@ -173,6 +179,9 @@ export class PlaywrightCrawler {
         attachDiagnostics(page, consoleErrors, policyEvents, next.depth, options);
 
         try {
+          if (options.abortSignal?.aborted) {
+            break;
+          }
           await page.goto(canonical, {
             waitUntil: "networkidle",
             timeout: options.timeoutMs
@@ -229,6 +238,7 @@ export class PlaywrightCrawler {
 
       await Promise.all(openWebSockets.map((webSocket) => webSocket.close({ code: 1000, reason: "routecairn-scan-complete" }).catch(() => undefined)));
       await context.close();
+      options.abortSignal?.removeEventListener("abort", abortBrowser);
 
       const brokerSnapshot = options.requestBroker.budgetSnapshot();
       return {

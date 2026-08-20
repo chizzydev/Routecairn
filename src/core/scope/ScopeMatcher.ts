@@ -22,7 +22,7 @@ export class ScopeMatcher {
       return { allowed: false, reason: "invalid-url" };
     }
 
-    if (!this.scope.allowedMethods.includes(method.toUpperCase() as "GET" | "HEAD" | "OPTIONS")) {
+    if (!this.scope.allowedMethods.includes(method.toUpperCase() as "GET" | "HEAD" | "OPTIONS" | "POST")) {
       return { allowed: false, reason: "method-not-allowed", normalizedUrl };
     }
 
@@ -43,6 +43,10 @@ export class ScopeMatcher {
 
   public isAllowed(url: string, method = "GET"): boolean {
     return this.decide(url, method).allowed;
+  }
+
+  public targetOrigin(): string {
+    return this.target.origin;
   }
 
   private isAllowedHostname(hostname: string): boolean {

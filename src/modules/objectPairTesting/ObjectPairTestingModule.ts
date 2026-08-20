@@ -4,6 +4,7 @@ import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { Finding } from "../../core/findings/Finding.js";
 import { RiskScorer } from "../../core/findings/RiskScorer.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis, headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { ObjectPairCasePlan, ObjectPairRequestPlan } from "../../core/planning/ScanPlan.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import type {
@@ -133,7 +134,7 @@ async function sendPlannedRequest(
 
 function evidenceForResponse(requestPlan: ObjectPairRequestPlan, casePlan: ObjectPairCasePlan, response: HttpResponse): ObjectPairRequestEvidence {
   const assertion = requestPlan.targetOwner === "account_a" ? casePlan.accountAObject : casePlan.accountBObject;
-  const body = response.bodyPreview ?? "";
+  const body = bodyPreviewForAnalysis(response) ?? "";
   const parsedBody = parseJsonObject(body);
   const containsExpectedObjectId = hasObjectIdentityEvidence(assertion, response, body, parsedBody);
   const containsExpectedOwnerEvidence = hasOwnershipEvidence(assertion, response, body, parsedBody);
@@ -350,11 +351,11 @@ function jsonPathValue(source: Record<string, unknown> | undefined, path: string
 }
 
 function headerValue(response: HttpResponse, name: string): string | undefined {
-  const found = Object.entries(response.headers).find(([headerName]) => headerName.toLowerCase() === name.toLowerCase());
+  const found = Object.entries(headersForAnalysis(response)).find(([headerName]) => headerName.toLowerCase() === name.toLowerCase());
   if (!found) {
     return undefined;
   }
-  return Array.isArray(found[1]) ? found[1].join(", ") : found[1];
+  return typeof found[1] === "string" ? found[1] : found[1].join(", ");
 }
 
 function semanticsFor(

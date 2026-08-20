@@ -33,7 +33,10 @@ export function evidenceFromResponse(response: HttpResponse, input: EvidenceInpu
     ...(response.bodyPreview ? { bodyPreview: redactBodyPreview(response.bodyPreview) } : {}),
     curlCommand: curlCommand(response.method, response.finalUrl),
     severityReason: severityReason(input),
-    reproductionNotes: reproductionNotes(response)
+    reproductionNotes: reproductionNotes(response),
+    ...(response.valueAttestations?.length
+      ? { valueAttestations: response.valueAttestations.map((attestation) => ({ ...attestation, reproductionSteps: [...attestation.reproductionSteps] })) }
+      : {})
   };
 }
 

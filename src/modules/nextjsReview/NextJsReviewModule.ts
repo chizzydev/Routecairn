@@ -1,5 +1,6 @@
 ﻿import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis, headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import type { NextJsDataRouteReview, NextJsReviewReport, NextJsSourceMapReview } from "../../reports/ReportTypes.js";
 
@@ -65,14 +66,14 @@ async function reviewNextJs(context: ScanContext): Promise<NextJsReviewReport> {
 }
 
 function hasNextSignals(responses: HttpResponse[]): boolean {
-  return responses.some((response) => /_next\/static|__NEXT_DATA__|x-powered-by.+next/i.test(`${response.bodyPreview ?? ""} ${JSON.stringify(response.headers)}`));
+  return responses.some((response) => /_next\/static|__NEXT_DATA__|x-powered-by.+next/i.test(`${bodyPreviewForAnalysis(response) ?? ""} ${JSON.stringify(headersForAnalysis(response))}`));
 }
 
 function discoverBuildIds(responses: HttpResponse[]): string[] {
   const ids = new Set<string>();
 
   for (const response of responses) {
-    const body = response.bodyPreview ?? "";
+    const body = bodyPreviewForAnalysis(response) ?? "";
     const nextDataMatch = /"buildId"\s*:\s*"(?<buildId>[^"]+)"/i.exec(body);
     if (nextDataMatch?.groups?.buildId) ids.add(nextDataMatch.groups.buildId);
 
@@ -115,9 +116,10 @@ function dataRouteCandidates(context: ScanContext, buildIds: string[]): string[]
 }
 
 function toDataRouteReview(response: HttpResponse): NextJsDataRouteReview {
-  const contentType = response.contentType ?? headerValue(response.headers, "content-type") ?? "";
-  const cacheControl = headerValue(response.headers, "cache-control");
-  const body = response.bodyPreview ?? "";
+  const analysisHeaders = headersForAnalysis(response);
+  const contentType = response.contentType ?? headerValue(analysisHeaders, "content-type") ?? "";
+  const cacheControl = headerValue(analysisHeaders, "cache-control");
+  const body = bodyPreviewForAnalysis(response) ?? "";
   const dataIndicators = dataLeakageIndicators(body);
   const cacheRisk = classifyCacheRisk(response.statusCode, cacheControl, dataIndicators);
 
@@ -187,7 +189,7 @@ function safeUrl(value: string, base: string): URL | undefined {
   try { return new URL(value, base); } catch { return undefined; }
 }
 
-function headerValue(headers: Record<string, string | string[]>, name: string): string | undefined {
+function headerValue(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string | undefined {
   const value = headers[name.toLowerCase()];
-  return Array.isArray(value) ? value.join(", ") : value;
+  return typeof value === "string" ? value : value?.join(", ");
 }

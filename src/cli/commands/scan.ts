@@ -14,6 +14,11 @@ import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import type { ModuleId, ModuleSettings } from "../../core/planning/ScanPlan.js";
 import { loadFieldExposureInput, planFieldExposureTesting } from "../../modules/fieldExposureTesting/FieldExposurePlanner.js";
 import { loadObjectPairInput, planObjectPairTesting } from "../../modules/objectPairTesting/ObjectPairPlanner.js";
+import { loadAuthorizationMatrixInput, planAuthorizationMatrixTesting } from "../../modules/authorizationMatrix/AuthorizationMatrixPlanner.js";
+import { loadCollectionAuthorizationInput, planCollectionAuthorizationTesting } from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
+import { loadBulkAuthorizationInput, planBulkAuthorizationTesting } from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
+import { loadFileAuthorizationInput, planFileAuthorizationTesting } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
+import { loadEquivalentRouteInput, planEquivalentRouteTesting } from "../../modules/equivalentRouteTesting/EquivalentRoutePlanner.js";
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
 
@@ -32,6 +37,11 @@ interface ScanCommandOptions {
   authB?: string;
   objectPairs?: string;
   fieldExposure?: string;
+  authorizationMatrix?: string;
+  collectionAuthorization?: string;
+  bulkAuthorization?: string;
+  fileAuthorization?: string;
+  equivalentRoutes?: string;
 }
 
 export function registerScanCommand(program: Command): void {
@@ -51,6 +61,11 @@ export function registerScanCommand(program: Command): void {
     .option("--auth-b <file>", "Path to Account B auth profile JSON for role comparison.")
     .option("--object-pairs <file>", "Path to an explicit object-pair testing JSON file.")
     .option("--field-exposure <file>", "Path to an explicit controlled field-exposure testing JSON file.")
+    .option("--authorization-matrix <file>", "Path to an explicit controlled authorization matrix testing JSON file.")
+    .option("--collection-authorization <file>", "Path to an explicit controlled collection authorization testing JSON file.")
+    .option("--bulk-authorization <file>", "Path to an explicit controlled bulk authorization testing JSON file.")
+    .option("--file-authorization <file>", "Path to an explicit controlled file authorization testing JSON file.")
+    .option("--equivalent-routes <file>", "Path to an explicit controlled equivalent-route testing JSON file.")
     .action(async (target: string, options: ScanCommandOptions) => {
       const result = await runScanCommand(target, options);
       logger.success(`Scan complete. Report written to ${result.reportPath}`);
@@ -87,14 +102,34 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const fieldExposureTesting = options.fieldExposure
     ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
+  const authorizationMatrixTesting = options.authorizationMatrix
+    ? planAuthorizationMatrixTesting(await loadAuthorizationMatrixInput(resolve(options.authorizationMatrix)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const collectionAuthorizationTesting = options.collectionAuthorization
+    ? planCollectionAuthorizationTesting(await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const bulkAuthorizationTesting = options.bulkAuthorization
+    ? planBulkAuthorizationTesting(await loadBulkAuthorizationInput(resolve(options.bulkAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const fileAuthorizationTesting = options.fileAuthorization
+    ? planFileAuthorizationTesting(await loadFileAuthorizationInput(resolve(options.fileAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const equivalentRouteTesting = options.equivalentRoutes
+    ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
   const includeModules =
-    objectPairTesting || fieldExposureTesting
+    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting
       ? [
           ...new Set([
             ...(translated.includeModules ?? []),
             ...(objectPairTesting ? (["object-pair-testing"] as ModuleId[]) : []),
-            ...(fieldExposureTesting ? (["field-exposure-testing"] as ModuleId[]) : [])
+            ...(fieldExposureTesting ? (["field-exposure-testing"] as ModuleId[]) : []),
+            ...(authorizationMatrixTesting ? (["authorization-matrix-testing"] as ModuleId[]) : []),
+            ...(collectionAuthorizationTesting ? (["collection-authorization-testing"] as ModuleId[]) : []),
+            ...(bulkAuthorizationTesting ? (["bulk-authorization-testing"] as ModuleId[]) : []),
+            ...(fileAuthorizationTesting ? (["file-authorization-testing"] as ModuleId[]) : []),
+            ...(equivalentRouteTesting ? (["equivalent-route-testing"] as ModuleId[]) : [])
           ])
         ]
       : translated.includeModules;
@@ -113,6 +148,11 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     },
     ...(objectPairTesting ? { objectPairTesting } : {}),
     ...(fieldExposureTesting ? { fieldExposureTesting } : {}),
+    ...(authorizationMatrixTesting ? { authorizationMatrixTesting } : {}),
+    ...(collectionAuthorizationTesting ? { collectionAuthorizationTesting } : {}),
+    ...(bulkAuthorizationTesting ? { bulkAuthorizationTesting } : {}),
+    ...(fileAuthorizationTesting ? { fileAuthorizationTesting } : {}),
+    ...(equivalentRouteTesting ? { equivalentRouteTesting } : {}),
     ...(translated.legacyMode ? { legacyMode: translated.legacyMode } : {}),
     ...(translated.legacyModeTranslation ? { legacyModeTranslation: translated.legacyModeTranslation } : {})
   });

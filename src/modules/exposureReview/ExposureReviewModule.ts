@@ -4,6 +4,7 @@ import type { Finding, FindingType } from "../../core/findings/Finding.js";
 import { RiskScorer } from "../../core/findings/RiskScorer.js";
 import type { Severity } from "../../core/findings/Severity.js";
 import type { HttpMethod, HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import { normalizeUrl } from "../../core/urls/UrlNormalizer.js";
@@ -87,7 +88,8 @@ export class ExposureReviewModule implements RouteCairnPlugin {
     const url = new URL(response.finalUrl);
     const pathname = url.pathname;
     const findings: Finding[] = [];
-    const secretMatches = this.secretDetector.detect(response.bodyPreview);
+    const analysisBody = bodyPreviewForAnalysis(response);
+    const secretMatches = this.secretDetector.detect(analysisBody);
 
     if (secretMatches.length > 0) {
       findings.push(
@@ -95,7 +97,7 @@ export class ExposureReviewModule implements RouteCairnPlugin {
           "exposure",
           "secret-like",
           ...secretMatches.map((match) => match.name.toLowerCase())
-        ], secretMatches.map((match) => match.evidence).join("; "))
+        ], secretPatternSummary(secretMatches))
       );
     }
 
@@ -103,7 +105,7 @@ export class ExposureReviewModule implements RouteCairnPlugin {
       findings.push(this.exposureFinding(response, "Source Map Exposure", "Source map is publicly reachable", "Low", ["exposure", "source-map"], "Source map URL returned a successful response."));
     }
 
-    if (hasBackupResponseEvidence({ pathname, contentType: response.contentType, bodyPreview: response.bodyPreview })) {
+    if (hasBackupResponseEvidence({ pathname, contentType: response.contentType, bodyPreview: analysisBody })) {
       findings.push(this.exposureFinding(response, "Backup File Exposure", "Backup or archive file is publicly reachable", "High", ["exposure", "backup"], "Backup-like path and response content indicate a reachable backup/archive."));
     }
 
@@ -115,7 +117,7 @@ export class ExposureReviewModule implements RouteCairnPlugin {
       findings.push(this.exposureFinding(response, "Debug/Dev Path", "Debug or log path is publicly reachable", "Medium", ["exposure", "debug"], "Debug/log path returned a successful response."));
     }
 
-    if (isDirectoryListing(response.bodyPreview)) {
+    if (isDirectoryListing(analysisBody)) {
       findings.push(this.exposureFinding(response, "Directory Listing", "Directory listing is enabled", "Medium", ["exposure", "directory-listing"], "Response resembles an auto-generated directory index."));
     }
 
@@ -157,6 +159,12 @@ export class ExposureReviewModule implements RouteCairnPlugin {
       timestamp: new Date().toISOString()
     };
   }
+}
+
+function secretPatternSummary(matches: readonly { name: string; count: number }[]): string {
+  const total = matches.reduce((sum, match) => sum + match.count, 0);
+  const names = matches.map((match) => match.name.replaceAll("_", " ").toLowerCase()).join(", ");
+  return `Detected ${total} secret-like pattern${total === 1 ? "" : "s"}: ${names}. Raw values were excluded.`;
 }
 
 function toObservation(response: HttpResponse): ResponseObservation {

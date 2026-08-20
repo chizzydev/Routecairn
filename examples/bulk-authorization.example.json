@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "maxDefinitions": 1,
+  "maxCasesPerDefinition": 4,
+  "maxObjectsPerCase": 3,
+  "maxRequests": 4,
+  "maxRetainedObservations": 8,
+  "definitions": [
+    {
+      "id": "project-bulk-preview",
+      "label": "Project bulk preview checks",
+      "actors": [
+        {
+          "id": "tenant-a-member",
+          "relationship": "OWNER",
+          "authProfile": "account_a",
+          "safeAlias": "Tenant A member",
+          "principalId": "fictional-principal-a",
+          "tenantId": "tenant-a",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "tenant-b-member",
+          "relationship": "CROSS_TENANT_MEMBER",
+          "authProfile": "account_b",
+          "safeAlias": "Tenant B member",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-b",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "public",
+          "relationship": "PUBLIC",
+          "safeAlias": "Public"
+        }
+      ],
+      "cases": [
+        {
+          "id": "cross-tenant-dry-run-must-filter",
+          "actorId": "tenant-b-member",
+          "caseType": "MIXED_TENANT",
+          "requestStyle": "JSON_POST",
+          "method": "POST",
+          "url": "https://app.example.com/api/projects/bulk/preview",
+          "headers": {
+            "Accept": "application/json"
+          },
+          "bodyTemplate": {
+            "dryRun": true,
+            "operation": "preview",
+            "objectIds": "{{OBJECT_IDS_ARRAY}}"
+          },
+          "objects": [
+            {
+              "id": "allowed-project",
+              "objectId": "fictional-tenant-b-project",
+              "safeAlias": "Tenant B project",
+              "objectType": "project",
+              "expectedDecision": "ALLOW",
+              "ownerActorId": "tenant-b-member",
+              "tenantId": "tenant-b",
+              "state": "active"
+            },
+            {
+              "id": "foreign-private-project",
+              "objectId": "fictional-tenant-a-private-project",
+              "safeAlias": "Tenant A private project",
+              "objectType": "project",
+              "expectedDecision": "FILTER_OUT",
+              "ownerActorId": "tenant-a-member",
+              "tenantId": "tenant-a",
+              "state": "active",
+              "verificationSource": "SAFE_DETAIL_BASELINE",
+              "baseline": {
+                "id": "foreign-private-project-single-object-denial",
+                "source": "SAFE_GET",
+                "actorId": "tenant-b-member",
+                "method": "GET",
+                "url": "https://app.example.com/api/projects/{{OBJECT_ID}}",
+                "headers": {
+                  "Accept": "application/json"
+                },
+                "expectedDecision": "MUST_DENY",
+                "requireVerifiedIdentity": true,
+                "objectIdentityField": "id",
+                "objectStateField": "state",
+                "expectedObjectState": "active",
+                "expectedTenantId": "tenant-b",
+                "expectedRole": "member"
+              }
+            }
+          ],
+          "expectedBatchPolicy": "MUST_FILTER_UNAUTHORIZED_OBJECTS",
+          "requireVerifiedIdentity": true,
+          "expectedTenantId": "tenant-b",
+          "expectedRole": "member",
+          "expectedAccountState": "active",
+          "safetyContract": {
+            "operationType": "DRY_RUN",
+            "operatorConfirmedNonMutating": true,
+            "environment": "AUTHORIZED_STAGING",
+            "requiredRequestMarkerPath": "dryRun",
+            "requiredRequestMarkerValue": true,
+            "requiredResponseMarkerPath": "preview",
+            "requiredResponseMarkerValue": true,
+            "disallowedResponsePaths": ["jobId", "taskId", "location"],
+            "disallowedStatusCodes": [201, 202],
+            "prohibitAsync": true,
+            "prohibitDownloads": true
+          },
+          "postSafetyMode": "OPERATOR_ATTESTED_DRY_RUN",
+          "responseContract": {
+            "type": "PREVIEW_OBJECT_LIST",
+            "resultArrayPath": "items",
+            "resultObjectIdPath": "id",
+            "rejectedArrayPath": "rejected",
+            "rejectedObjectIdPath": "id",
+            "metadataPaths": ["privateName", "internalNotes"],
+            "maxItems": 50
+          }
+        },
+        {
+          "id": "public-summary-exact-selection",
+          "actorId": "public",
+          "caseType": "PUBLIC_MIXED_VISIBILITY",
+          "requestStyle": "GET_COMMA_QUERY",
+          "method": "GET",
+          "url": "https://app.example.com/api/projects/bulk/summary?ids={{OBJECT_ID_LIST_COMMA}}",
+          "headers": {
+            "Accept": "application/json"
+          },
+          "objects": [
+            {
+              "id": "public-project",
+              "objectId": "fictional-public-project",
+              "safeAlias": "Known public project",
+              "objectType": "project",
+              "expectedDecision": "ALLOW",
+              "tenantId": "tenant-a"
+            }
+          ],
+          "expectedBatchPolicy": "MUST_ALLOW_ENTIRE_BATCH",
+          "requireVerifiedIdentity": false,
+          "safetyContract": {
+            "operationType": "SELECTION_SUMMARY",
+            "operatorConfirmedNonMutating": true,
+            "environment": "AUTHORIZED_STAGING",
+            "requiredResponseMarkerPath": "preview",
+            "requiredResponseMarkerValue": true
+          },
+          "responseContract": {
+            "type": "SUMMARY_ONLY",
+            "resultArrayPath": "items",
+            "resultObjectIdPath": "id"
+          }
+        }
+      ]
+    }
+  ]
+}

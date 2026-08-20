@@ -1,0 +1,53 @@
+import { createHash, randomUUID } from "node:crypto";
+import type { Database } from "better-sqlite3";
+import type { RouteCairnReport } from "../../reports/ReportTypes.js";
+import { nowIso } from "../db/DashboardDatabase.js";
+import { redactDashboardValue, safeJson } from "../security/Redaction.js";
+
+interface CaseFact { workflowId: string; moduleId: string; alias: string; semantics: Record<string, unknown>; result: Record<string, unknown>; executed: boolean; blocked: boolean; failed: boolean; budgetExhausted: boolean; matchedExpectation?: boolean; evidenceStrength: string; }
+
+/** Persists only scanner-semantic, redacted case facts. Raw credentials and object references never enter this table. */
+export function recordWorkflowCaseExecutions(db: Database, scanId: string, report: Partial<RouteCairnReport>): void {
+  const insert = db.prepare(`INSERT OR REPLACE INTO scan_workflow_case_executions
+    (id, scan_id, workflow_id, module_id, safe_case_alias, safe_case_fingerprint, execution_state,
+     request_transmitted, matched_expectation, evidence_strength, safe_semantics_json, safe_result_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const item of workflowFacts(report)) {
+    const semantics = redactDashboardValue(item.semantics) as Record<string, unknown>;
+    const state = item.budgetExhausted ? "BUDGET_EXHAUSTED" : item.blocked ? "BLOCKED" : item.failed ? "FAILED" : item.executed ? "COMPLETED" : "INCOMPARABLE";
+    insert.run(randomUUID(), scanId, item.workflowId, item.moduleId, safeAlias(item.alias), fingerprint(item.workflowId, semantics), state,
+      item.executed ? 1 : 0, item.matchedExpectation === undefined ? null : item.matchedExpectation ? 1 : 0,
+      item.evidenceStrength, safeJson(semantics), safeJson(item.result), nowIso());
+  }
+}
+
+function workflowFacts(report: Partial<RouteCairnReport>): CaseFact[] {
+  const facts: CaseFact[] = [];
+  for (const item of report.objectPairTesting?.cases ?? []) {
+    const requests = [item.baselineA, item.baselineB, item.aToB, item.bToA];
+    facts.push(make("object-pair", "object-pair-testing", item.caseId, { objectType: item.objectType, expectedVisibility: item.expectedVisibility, requests: requests.map((v) => ({ direction: v.direction, purpose: v.purpose, method: v.method, endpoint: safeEndpoint(v.url) })) }, { decisions: requests.map((v) => ({ direction: v.direction, category: v.category, finalClassification: v.finalClassification, statusCode: v.response.statusCode })) }, requests.some((v) => typeof v.response.statusCode === "number" && !v.response.error), item.inconclusive, requests.some((v) => Boolean(v.response.error)), requests.some((v) => budget(v.response.error)), item.confirmedIssues.length === 0, "OBJECT_PAIR_BASELINES"));
+  }
+  for (const item of report.fieldExposureTesting?.cases ?? []) {
+    facts.push(make("field-exposure", "field-exposure-testing", item.caseId, { objectType: item.objectType, expectedVisibility: item.expectedVisibility, actors: item.actors.map((a) => ({ actorId: a.actorId, actorType: a.actorType, method: a.method, endpoint: safeEndpoint(a.url), fields: a.observations.map((f) => ({ fieldId: f.fieldId, fieldPathRef: f.fieldPathRef, expectedPolicy: f.expectedPolicy })) })) }, { actors: item.actors.map((a) => ({ actorId: a.actorId, objectIdentity: a.objectIdentity, category: a.category, fields: a.observations.map((f) => ({ fieldId: f.fieldId, presence: f.presence, classification: f.classification })) })) }, item.executedRequests > 0, item.inconclusive, item.actors.some((a) => Boolean(a.error)), item.actors.some((a) => budget(a.category) || budget(a.error)), item.confirmedIssues.length === 0, "FIELD_PATH_ATTESTATION"));
+  }
+  for (const item of report.authorizationMatrix?.cases ?? []) facts.push(observation("authorization-matrix", "authorization-matrix-testing", `${item.matrixId}/${item.caseId}`, item, { matrixId: item.matrixId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, referenceCaseId: item.referenceCaseId, objectType: item.objectType, method: item.method, endpoint: safeEndpoint(item.url), expectedDecision: item.expectedDecision }, { observedDecision: item.observedDecision, objectIdentityConfirmed: item.objectIdentityConfirmed, objectStateConfirmed: item.objectStateConfirmed, statusCode: item.statusCode }, "MATRIX_ROW"));
+  for (const item of report.equivalentRouteTesting?.observations ?? []) facts.push(observation("equivalent-route", "equivalent-route-testing", `${item.routeSetId}/${item.cellId}`, item, { routeSetId: item.routeSetId, cellId: item.cellId, actorId: item.actorId, actorRelationship: item.actorRelationship, routeId: item.routeId, canonicalRouteId: item.canonicalRouteId, referenceRouteId: item.referenceRouteId, method: item.method, endpoint: safeEndpoint(item.url), equivalencePolicy: item.equivalencePolicy, expectedDecision: item.expectedDecision }, { observedDecision: item.observedDecision, comparisonRouteId: item.comparisonRouteId, objectIdentityConfirmed: item.objectIdentityConfirmed, objectStateConfirmed: item.objectStateConfirmed, statusCode: item.statusCode }, "ROUTE_PAIR"));
+  for (const item of report.collectionAuthorization?.observations ?? []) facts.push(observation("collection-authorization", "collection-authorization-testing", `${item.collectionId}/${item.caseId}`, item, { collectionId: item.collectionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, referenceCaseId: item.referenceCaseId, category: item.category, completeness: item.completeness, method: item.method, endpoint: safeEndpoint(item.url), expectedMembership: item.expectedMembership }, { observedDecision: item.observedDecision, observedMembership: item.observedMembership, objectMetadataConfirmed: item.objectMetadataConfirmed, statusCode: item.statusCode }, `COLLECTION_${item.completeness}`));
+  for (const item of report.bulkAuthorization?.observations ?? []) facts.push(observation("bulk-authorization", "bulk-authorization-testing", `${item.definitionId}/${item.caseId}`, item, { definitionId: item.definitionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, operationType: item.operationType, requestStyle: item.requestStyle, method: item.method, endpoint: safeEndpoint(item.url), expectedBatchPolicy: item.expectedBatchPolicy, postSafetyMode: item.postSafetyMode }, { observedDecision: item.observedDecision, postconditionStatus: item.postconditionStatus, singleObjectComparison: item.singleObjectComparison, safetyContractSatisfied: item.safetyContractSatisfied, statusCode: item.statusCode }, `BULK_${item.postSafetyMode}_${item.postconditionStatus}`));
+  for (const item of report.fileAuthorization?.observations ?? []) facts.push(observation("file-authorization", "file-authorization-testing", `${item.definitionId}/${item.caseId}`, item, { definitionId: item.definitionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, category: item.category, method: item.method, endpoint: safeEndpoint(item.url), expectedDecision: item.expectedDecision, identityStrategy: item.identityStrategy, contentProofMode: item.contentProofMode }, { observedDecision: item.observedDecision, identityConfirmed: item.identityConfirmed, bytesObserved: item.bytesObserved, streamTruncated: item.streamTruncated, signedUrlObserved: item.signedUrlObserved, signedUrlFollowed: item.signedUrlFollowed, statusCode: item.statusCode }, `FILE_${item.contentProofMode}`));
+  return facts;
+}
+
+function observation(workflowId: string, moduleId: string, alias: string, input: unknown, semantics: Record<string, unknown>, result: Record<string, unknown>, strength: string): CaseFact {
+  const item = input as Record<string, unknown>;
+  const decision = String(item.observedDecision ?? ""); const error = typeof item.error === "string" ? item.error : undefined;
+  const blocked = /BLOCKED|IDENTITY_REQUIREMENT_UNSATISFIED/.test(decision); const exhausted = budget(decision) || budget(error); const failed = /INCONCLUSIVE|EXECUTION_ERROR|RESPONSE_NOT_PARSEABLE/.test(decision) || Boolean(error);
+  return make(workflowId, moduleId, alias, semantics, result, !blocked && !exhausted && !failed, blocked, failed, exhausted, typeof item.matchedExpectation === "boolean" ? item.matchedExpectation : undefined, strength);
+}
+function make(workflowId: string, moduleId: string, alias: string, semantics: Record<string, unknown>, result: Record<string, unknown>, executed: boolean, blocked: boolean, failed: boolean, budgetExhausted: boolean, matchedExpectation: boolean | undefined, evidenceStrength: string): CaseFact { return { workflowId, moduleId, alias, semantics, result, executed, blocked, failed, budgetExhausted, ...(matchedExpectation === undefined ? {} : { matchedExpectation }), evidenceStrength }; }
+function budget(value: unknown): boolean { return typeof value === "string" && /BUDGET_EXHAUSTED|RequestBudgetExceeded/i.test(value); }
+function safeAlias(value: string): string { return value.replace(/[^a-zA-Z0-9_.:/-]/g, "-").slice(0, 200); }
+function fingerprint(workflowId: string, semantics: Record<string, unknown>): string { return createHash("sha256").update(`${workflowId}\0${stable(semantics)}`).digest("hex"); }
+function stable(value: unknown): string { return JSON.stringify(sort(value)); }
+function sort(value: unknown): unknown { if (Array.isArray(value)) return value.map(sort); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, sort(v)])); }
+function safeEndpoint(value: string): string { try { const url = new URL(value); url.username = ""; url.password = ""; for (const key of [...url.searchParams.keys()]) if (/token|secret|session|cookie|auth|password|key|jwt|sig|signature|credential/i.test(key)) url.searchParams.set(key, "<redacted>"); return `${url.origin}${url.pathname}${url.search}`; } catch { return String(redactDashboardValue(value)); } }

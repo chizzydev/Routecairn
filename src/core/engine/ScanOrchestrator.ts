@@ -5,15 +5,21 @@ import { ScanContext } from "./ScanContext.js";
 import { ModuleRunner } from "../plugins/ModuleRunner.js";
 import { PluginRegistry } from "../plugins/PluginRegistry.js";
 import { moduleMetadata } from "../planning/ModuleCatalog.js";
+import { throwIfScanAborted } from "./ScanEvents.js";
 import { ApiMapperModule } from "../../modules/apiMapper/ApiMapperModule.js";
 import { ApiProbeModule } from "../../modules/apiProbe/ApiProbeModule.js";
 import { AuthSurfaceModule } from "../../modules/authSurface/AuthSurfaceModule.js";
 import { AuthenticatedTestingModule } from "../../modules/authenticatedTesting/AuthenticatedTestingModule.js";
+import { AuthorizationMatrixModule } from "../../modules/authorizationMatrix/AuthorizationMatrixModule.js";
 import { BaselineDetector } from "../../modules/baseline/BaselineDetector.js";
 import { BrowserCrawlerModule } from "../../modules/browserCrawler/BrowserCrawlerModule.js";
+import { BulkAuthorizationModule } from "../../modules/bulkAuthorization/BulkAuthorizationModule.js";
+import { FileAuthorizationModule } from "../../modules/fileAuthorization/FileAuthorizationModule.js";
+import { CollectionAuthorizationModule } from "../../modules/collectionAuthorization/CollectionAuthorizationModule.js";
 import { CookieReviewModule } from "../../modules/cookieReview/CookieReviewModule.js";
 import { CorsReviewModule } from "../../modules/corsReview/CorsReviewModule.js";
 import { ExposureReviewModule } from "../../modules/exposureReview/ExposureReviewModule.js";
+import { EquivalentRouteModule } from "../../modules/equivalentRouteTesting/EquivalentRouteModule.js";
 import { FieldExposureTestingModule } from "../../modules/fieldExposureTesting/FieldExposureTestingModule.js";
 import { HeaderReviewModule } from "../../modules/headerReview/HeaderReviewModule.js";
 import { JsDiscoveryModule } from "../../modules/jsIntelligence/JsDiscoveryModule.js";
@@ -37,6 +43,8 @@ export class ScanOrchestrator {
   }
 
   public async run(context: ScanContext): Promise<void> {
+    throwIfScanAborted(context.options.abortSignal);
+    await context.eventSink.emit({ type: "SCAN_STARTED", message: "Scan execution started." });
     const targetUrl = normalizeUrl(context.options.target);
     const method: HttpMethod = "GET";
     const decision = context.scopeMatcher.decide(targetUrl, method);
@@ -47,15 +55,23 @@ export class ScanOrchestrator {
       throw new AppError(`Target is out of scope: ${decision.reason}`, "TARGET_OUT_OF_SCOPE");
     }
 
+    await context.eventSink.emit({ type: "BASELINE_STARTED", message: "Baseline request started." });
     const response = await context.httpClient.send({
       url: decision.normalizedUrl,
       method
     });
 
     context.state.recordResponse(response);
+    await context.eventSink.emit({
+      type: "BASELINE_COMPLETED",
+      message: "Baseline request completed.",
+      metadata: { statusCode: response.statusCode, error: response.error?.name }
+    });
     await this.moduleRunner.runPlan(context, context.options.plan);
 
+    throwIfScanAborted(context.options.abortSignal);
     context.state.complete();
+    await context.eventSink.emit({ type: "SCAN_COMPLETED", message: "Scan execution completed." });
   }
 }
 
@@ -78,6 +94,11 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new StateAwareApiModule(), moduleMetadata("state-aware-api"));
   registry.register(new ObjectPairTestingModule(), moduleMetadata("object-pair-testing"));
   registry.register(new FieldExposureTestingModule(), moduleMetadata("field-exposure-testing"));
+  registry.register(new AuthorizationMatrixModule(), moduleMetadata("authorization-matrix-testing"));
+  registry.register(new CollectionAuthorizationModule(), moduleMetadata("collection-authorization-testing"));
+  registry.register(new BulkAuthorizationModule(), moduleMetadata("bulk-authorization-testing"));
+  registry.register(new FileAuthorizationModule(), moduleMetadata("file-authorization-testing"));
+  registry.register(new EquivalentRouteModule(), moduleMetadata("equivalent-route-testing"));
   registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
   registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
   registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));

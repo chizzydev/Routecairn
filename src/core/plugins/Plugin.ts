@@ -5,6 +5,11 @@ import type {
   ApiProbeReport,
   AuthSurfaceReport,
   AuthenticatedScanReport,
+  AuthorizationMatrixReport,
+  CollectionAuthorizationReport,
+  BulkAuthorizationReport,
+  FileAuthorizationReport,
+  EquivalentRouteReport,
   BaselineReport,
   BrowserCrawlReport,
   DetectedTechnology,
@@ -37,6 +42,11 @@ export interface ModuleResult {
   stateAwareApi?: StateAwareApiReport;
   objectPairTesting?: ObjectPairTestingReport;
   fieldExposureTesting?: FieldExposureTestingReport;
+  authorizationMatrix?: AuthorizationMatrixReport;
+  collectionAuthorization?: CollectionAuthorizationReport;
+  bulkAuthorization?: BulkAuthorizationReport;
+  fileAuthorization?: FileAuthorizationReport;
+  equivalentRouteTesting?: EquivalentRouteReport;
   parameterAnalysis?: ParameterAnalysisReport;
   nextJsReview?: NextJsReviewReport;
   vulnerabilityWorkflows?: VulnerabilityWorkflowReport;

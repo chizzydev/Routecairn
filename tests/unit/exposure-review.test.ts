@@ -6,16 +6,18 @@ import { isDirectoryListing } from "../../src/modules/exposureReview/DirectoryLi
 import { SecretPatternDetector } from "../../src/modules/exposureReview/SecretPatternDetector.js";
 
 describe("exposure review", () => {
-  it("detects secret-like patterns with redacted evidence", () => {
+  it("detects secret-like patterns using names and counts only", () => {
     const detector = new SecretPatternDetector();
     const matches = detector.detect("DATABASE_URL=postgres://user:pass@example/db\nAWS_ACCESS_KEY_ID=AKIA1234567890ABCDEF");
 
     expect(matches).toEqual(
       expect.arrayContaining([
-        { name: "DATABASE_URL", evidence: "DATABASE_URL=<redacted>" },
-        { name: "AWS_ACCESS_KEY_ID", evidence: "AWS_ACCESS_KEY_ID=<redacted>" }
+        { name: "DATABASE_URL", count: 1 },
+        { name: "AWS_ACCESS_KEY_ID", count: 1 }
       ])
     );
+    expect(JSON.stringify(matches)).not.toContain("postgres://user:pass@example/db");
+    expect(JSON.stringify(matches)).not.toContain("AKIA1234567890ABCDEF");
   });
 
   it("classifies config, backup, and directory listing evidence", () => {

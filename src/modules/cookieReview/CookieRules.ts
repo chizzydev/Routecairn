@@ -1,13 +1,14 @@
 import type { Finding } from "../../core/findings/Finding.js";
 import type { Severity } from "../../core/findings/Severity.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { createReviewFinding, headerValues } from "../reviewUtils.js";
 import { attributeValue, hasAttribute, parseSetCookie, type ParsedCookie } from "./CookieParser.js";
 
 const sensitiveCookiePattern = /(session|sid|token|auth|jwt|next-auth|laravel_session|connect\.sid)/i;
 
 export function cookieFindings(response: HttpResponse): Finding[] {
-  const cookies = headerValues(response.headers, "set-cookie")
+  const cookies = headerValues(headersForAnalysis(response), "set-cookie")
     .map(parseSetCookie)
     .filter((cookie) => typeof cookie !== "undefined");
   const findings: Finding[] = [];

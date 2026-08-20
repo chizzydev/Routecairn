@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "maxDefinitions": 1,
+  "maxCasesPerDefinition": 6,
+  "maxFilesPerDefinition": 2,
+  "maxRequests": 6,
+  "maxRetainedObservations": 6,
+  "definitions": [
+    {
+      "id": "attachment-access",
+      "label": "Attachment access",
+      "actors": [
+        {
+          "id": "tenant-a-owner",
+          "relationship": "OWNER",
+          "authProfile": "account_a",
+          "safeAlias": "Tenant A owner",
+          "principalId": "fictional-principal-a",
+          "tenantId": "tenant-a",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "tenant-b-member",
+          "relationship": "CROSS_TENANT_MEMBER",
+          "authProfile": "account_b",
+          "safeAlias": "Tenant B member",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-b",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "public",
+          "relationship": "PUBLIC",
+          "safeAlias": "Public"
+        }
+      ],
+      "files": [
+        {
+          "id": "private-invoice",
+          "fileRef": "fictional-private-invoice-file",
+          "safeAlias": "Private invoice PDF",
+          "fileType": "pdf",
+          "ownerActorId": "tenant-a-owner",
+          "tenantId": "tenant-a",
+          "state": "active",
+          "expectedPublic": false
+        },
+        {
+          "id": "public-preview",
+          "fileRef": "fictional-public-preview",
+          "safeAlias": "Public preview image",
+          "fileType": "png",
+          "tenantId": "tenant-a",
+          "state": "active",
+          "expectedPublic": true
+        }
+      ],
+      "cases": [
+        {
+          "id": "cross-tenant-metadata-denied",
+          "label": "Cross-tenant metadata must be denied",
+          "category": "FILE_METADATA",
+          "actorId": "tenant-b-member",
+          "fileRefId": "private-invoice",
+          "method": "GET",
+          "url": "https://app.example.com/api/files/{{FILE_ID}}",
+          "headers": {
+            "Accept": "application/json"
+          },
+          "expectedDecision": "MUST_DENY_METADATA",
+          "requireVerifiedIdentity": true,
+          "expectedTenantId": "tenant-b",
+          "expectedRole": "member",
+          "expectedAccountState": "active",
+          "expectedFileState": "active",
+          "identityStrategy": "METADATA_FIELD_MATCH",
+          "identityField": "file.id",
+          "stateField": "file.state",
+          "contentProofMode": "METADATA_ONLY",
+          "maxMetadataBytes": 65536
+        },
+        {
+          "id": "cross-tenant-download-prefix-denied",
+          "label": "Cross-tenant download prefix must be denied",
+          "category": "DIRECT_DOWNLOAD",
+          "actorId": "tenant-b-member",
+          "fileRefId": "private-invoice",
+          "method": "GET",
+          "url": "https://app.example.com/downloads/{{FILE_ID}}",
+          "expectedDecision": "MUST_DENY_CONTENT",
+          "requireVerifiedIdentity": true,
+          "expectedTenantId": "tenant-b",
+          "expectedRole": "member",
+          "expectedAccountState": "active",
+          "identityStrategy": "OPERATOR_SUPPLIED_FINGERPRINT",
+          "expectedFingerprint": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "contentProofMode": "BOUNDED_PREFIX",
+          "rangeStart": 0,
+          "rangeLength": 512,
+          "maxProbeBytes": 512,
+          "maxFullStreamBytes": 4096
+        },
+        {
+          "id": "public-preview-allowed",
+          "label": "Public preview may be visible",
+          "category": "THUMBNAIL",
+          "actorId": "public",
+          "fileRefId": "public-preview",
+          "method": "HEAD",
+          "url": "https://app.example.com/previews/{{FILE_ID}}",
+          "expectedDecision": "MUST_ALLOW_PREVIEW_ONLY",
+          "requireVerifiedIdentity": false,
+          "identityStrategy": "OBSERVE_ONLY",
+          "contentProofMode": "HEADERS_ONLY"
+        },
+        {
+          "id": "signed-url-must-not-be-issued",
+          "label": "Cross-tenant signed URL must not be issued",
+          "category": "SIGNED_URL_ISSUANCE",
+          "actorId": "tenant-b-member",
+          "fileRefId": "private-invoice",
+          "method": "GET",
+          "url": "https://app.example.com/api/files/{{FILE_ID}}/signed-url",
+          "headers": {
+            "Accept": "application/json"
+          },
+          "expectedDecision": "MUST_NOT_RECEIVE_SIGNED_URL",
+          "requireVerifiedIdentity": true,
+          "expectedTenantId": "tenant-b",
+          "expectedRole": "member",
+          "expectedAccountState": "active",
+          "identityStrategy": "SIGNED_URL_FIELD_MATCH",
+          "signedUrlField": "download.url",
+          "contentProofMode": "SIGNED_URL_ONLY",
+          "followSignedUrl": false,
+          "allowedSignedUrlOrigins": ["https://storage.example.com"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import type { HttpMethod } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
 import { normalizeUrl } from "../../core/urls/UrlNormalizer.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
@@ -20,12 +21,12 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
   public async run(context: ScanContext): Promise<ModuleResult> {
     const htmlResponses = context.state
       .getResponses()
-      .filter((response) => isHtmlResponse(response.contentType, response.bodyPreview));
+      .filter((response) => isHtmlResponse(response.contentType, bodyPreviewForAnalysis(response)));
     const targetOrigin = new URL(normalizeUrl(context.options.target)).origin;
     const scriptUrls = new Set<string>();
 
     for (const response of htmlResponses) {
-      for (const scriptUrl of this.scriptExtractor.extract(response.bodyPreview ?? "", response.finalUrl)) {
+      for (const scriptUrl of this.scriptExtractor.extract(bodyPreviewForAnalysis(response) ?? "", response.finalUrl)) {
         scriptUrls.add(scriptUrl);
       }
     }
@@ -77,7 +78,8 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
       });
       context.state.recordResponse(response);
 
-      if (response.error || !response.bodyPreview) {
+      const analysisBody = bodyPreviewForAnalysis(response);
+      if (response.error || !analysisBody) {
         scripts.push({
           scriptUrl,
           sameOrigin,
@@ -93,9 +95,9 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
         continue;
       }
 
-      const extraction = this.endpointExtractor.extract(response.bodyPreview);
-      const configValues = this.configAnalyzer.analyze(response.bodyPreview);
-      const sourceMapUrls = this.sourceMapDetector.detect(response.bodyPreview, response.finalUrl);
+      const extraction = this.endpointExtractor.extract(analysisBody);
+      const configValues = this.configAnalyzer.analyze(analysisBody);
+      const sourceMapUrls = this.sourceMapDetector.detect(analysisBody, response.finalUrl);
 
       for (const sourceMapUrl of sourceMapUrls) {
         sourceMaps.add(sourceMapUrl);

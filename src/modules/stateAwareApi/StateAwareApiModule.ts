@@ -1,6 +1,7 @@
 ﻿import { authHeadersForProfile } from "../../core/auth/AuthProfile.js";
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import { classifyStateAwareApiCandidate } from "../../intelligence/apiSafety/ApiCandidateClassifier.js";
 import { classifyApiMethodSafety, safeApiMethods } from "../../intelligence/apiSafety/ApiMethodSafety.js";
@@ -47,8 +48,9 @@ async function reviewStateAwareApi(context: ScanContext): Promise<StateAwareApiR
     for (const method of safeApiMethods) {
       const methodDecision = classifyApiMethodSafety(method);
       const response = method === "GET" ? anonymousByUrl.get(candidate.endpoint) ?? (await client.send({ url: candidate.endpoint, method })) : await client.send({ url: candidate.endpoint, method });
-      const allowHeader = headerValue(response.headers, "allow");
-      const corsAllowMethods = headerValue(response.headers, "access-control-allow-methods");
+      const analysisHeaders = headersForAnalysis(response);
+      const allowHeader = headerValue(analysisHeaders, "allow");
+      const corsAllowMethods = headerValue(analysisHeaders, "access-control-allow-methods");
       safeMethodResults.push({
         method,
         safety: methodDecision.safety,
@@ -181,9 +183,9 @@ function summarizeResponse(response: HttpResponse): AuthResponseSummary {
   };
 }
 
-function headerValue(headers: Record<string, string | string[]>, name: string): string | undefined {
+function headerValue(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string | undefined {
   const value = headers[name.toLowerCase()];
-  return Array.isArray(value) ? value.join(", ") : value;
+  return typeof value === "string" ? value : value?.join(", ");
 }
 
 function sameMaterialResponse(left: HttpResponse, right: HttpResponse): boolean {

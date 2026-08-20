@@ -64,7 +64,7 @@ const caseSchema = z.object({
   accountBObject: objectAssertionSchema
 }).strict();
 
-const objectPairInputSchema = z.object({
+export const objectPairInputSchema = z.object({
   schemaVersion: z.literal(1).default(1),
   maxPairs: z.number().int().positive().max(20).default(maxDefaultPairs),
   principals: z

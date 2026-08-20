@@ -43,7 +43,8 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
         timeoutMs: context.options.plan.limits.requestTimeoutMs,
         sameOriginOnly: context.options.scope.sameOriginOnly,
         policy,
-        requestBroker: context.httpClient
+        requestBroker: context.httpClient,
+        ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
       });
 
       return {

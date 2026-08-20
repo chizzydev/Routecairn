@@ -67,6 +67,9 @@ export async function loadScanIndex(indexPath: string): Promise<ScanIndex> {
     if (isMissingFileError(error)) {
       return { schemaVersion: 1, updatedAt: new Date().toISOString(), scans: [] };
     }
+    if (error instanceof SyntaxError) {
+      return { schemaVersion: 1, updatedAt: new Date().toISOString(), scans: [] };
+    }
     throw error;
   }
 }

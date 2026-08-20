@@ -1,12 +1,14 @@
 import type { Finding } from "../../core/findings/Finding.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { createReviewFinding, headerValue } from "../reviewUtils.js";
 
 const dangerousMethodPattern = /\b(?:PUT|DELETE|PATCH|TRACE)\b/i;
 
 export function methodFindings(response: HttpResponse): Finding[] {
-  const allow = headerValue(response.headers, "allow");
-  const corsMethods = headerValue(response.headers, "access-control-allow-methods");
+  const headers = headersForAnalysis(response);
+  const allow = headerValue(headers, "allow");
+  const corsMethods = headerValue(headers, "access-control-allow-methods");
   const findings: Finding[] = [];
 
   if (allow && dangerousMethodPattern.test(allow)) {

@@ -1,5 +1,6 @@
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpMethod, HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis, headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import type { ApiProbeEndpointReview, ApiProbeReport } from "../../reports/ReportTypes.js";
 
@@ -82,11 +83,12 @@ function isApiLike(url: string): boolean {
 }
 
 function allowedMethods(response: HttpResponse | undefined): string[] {
-  return splitMethods(headerValue(response?.headers ?? {}, "allow") ?? headerValue(response?.headers ?? {}, "access-control-allow-methods"));
+  const headers = response ? headersForAnalysis(response) : {};
+  return splitMethods(headerValue(headers, "allow") ?? headerValue(headers, "access-control-allow-methods"));
 }
 
 function corsHints(response: HttpResponse | undefined): string[] {
-  const headers = response?.headers ?? {};
+  const headers = response ? headersForAnalysis(response) : {};
   const hints = [
     headerValue(headers, "access-control-allow-origin") ? `allow-origin=${headerValue(headers, "access-control-allow-origin")}` : undefined,
     headerValue(headers, "access-control-allow-credentials") ? `allow-credentials=${headerValue(headers, "access-control-allow-credentials")}` : undefined,
@@ -99,7 +101,7 @@ function corsHints(response: HttpResponse | undefined): string[] {
 function schemaHints(endpoint: string, response: HttpResponse | undefined): string[] {
   const hints = new Set<string>();
   const path = new URL(endpoint).pathname.toLowerCase();
-  const body = response?.bodyPreview ?? "";
+  const body = response ? bodyPreviewForAnalysis(response) ?? "" : "";
   const type = response?.contentType ?? "";
   if (/openapi|swagger|api-docs/.test(path) || /"openapi"\s*:|"swagger"\s*:/i.test(body)) hints.add("openapi");
   if (/graphql/.test(path) || /graphql|__schema|__typename/i.test(body)) hints.add("graphql");
@@ -113,7 +115,7 @@ function hasGraphQlEvidence(endpoint: string, response: HttpResponse | undefined
 }
 
 function detectGraphQlIntrospection(response: HttpResponse | undefined): ApiProbeEndpointReview["graphQl"] {
-  const body = response?.bodyPreview ?? "";
+  const body = response ? bodyPreviewForAnalysis(response) ?? "" : "";
   if (/__schema|__type|IntrospectionQuery|queryType|mutationType/i.test(body)) {
     return { attempted: true, available: true, evidence: "GET response contained GraphQL introspection-like fields." };
   }
@@ -136,9 +138,9 @@ function splitMethods(value: string | undefined): string[] {
   return unique((value ?? "").split(/[,\s]+/).map((item) => item.trim().toUpperCase()).filter(Boolean));
 }
 
-function headerValue(headers: Record<string, string | string[]>, name: string): string | undefined {
+function headerValue(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string | undefined {
   const value = headers[name.toLowerCase()];
-  return Array.isArray(value) ? value.join(", ") : value;
+  return typeof value === "string" ? value : value?.join(", ");
 }
 
 function unique(values: string[]): string[] {

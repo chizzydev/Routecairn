@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "maxCollections": 2,
+  "maxCasesPerCollection": 8,
+  "maxKnownObjects": 4,
+  "maxRequests": 8,
+  "maxRetainedObservations": 8,
+  "maxPreviewLength": 120,
+  "collections": [
+    {
+      "id": "tenant-project-list",
+      "label": "Tenant project list",
+      "category": "LIST",
+      "method": "GET",
+      "url": "https://app.example.com/api/projects?status=active",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "expectedContentType": "application/json",
+      "completeness": "FIXED_RESULT_WINDOW",
+      "resultArrayPath": "items",
+      "objectIdPath": "id",
+      "objectTenantPath": "tenant",
+      "objectOwnerPath": "owner",
+      "objectStatePath": "state",
+      "objectTypePath": "type",
+      "maxInspectedEntries": 25,
+      "maxResponseBytes": 65536,
+      "maxJsonDepth": 8,
+      "actors": [
+        {
+          "id": "tenant-a-member",
+          "relationship": "OWNER",
+          "authProfile": "account_a",
+          "principalId": "fictional-principal-a",
+          "tenantId": "tenant-a",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "tenant-b-member",
+          "relationship": "CROSS_TENANT_MEMBER",
+          "authProfile": "account_b",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-b",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "public",
+          "relationship": "PUBLIC",
+          "safeAlias": "Public"
+        }
+      ],
+      "knownObjects": [
+        {
+          "id": "tenant-a-private-project",
+          "objectId": "fictional-private-project-a",
+          "objectType": "project",
+          "ownerActorId": "tenant-a-member",
+          "tenantId": "tenant-a",
+          "state": "active",
+          "expectedPublic": false,
+          "expectedShared": false,
+          "confirmedSafeToTest": true
+        },
+        {
+          "id": "tenant-a-draft-project",
+          "objectId": "fictional-draft-project-a",
+          "objectType": "project",
+          "ownerActorId": "tenant-a-member",
+          "tenantId": "tenant-a",
+          "state": "draft",
+          "expectedPublic": false,
+          "expectedShared": false,
+          "confirmedSafeToTest": true
+        }
+      ],
+      "cases": [
+        {
+          "id": "owner-sees-own",
+          "actorId": "tenant-a-member",
+          "knownObjectId": "tenant-a-private-project",
+          "expectedMembership": "MUST_CONTAIN",
+          "requireVerifiedIdentity": true
+        },
+        {
+          "id": "cross-tenant-must-not-see-private",
+          "actorId": "tenant-b-member",
+          "knownObjectId": "tenant-a-private-project",
+          "expectedMembership": "MUST_NOT_CONTAIN",
+          "expectedActorRelationship": "CROSS_TENANT_MEMBER",
+          "requireVerifiedIdentity": true
+        },
+        {
+          "id": "public-must-not-see-private",
+          "actorId": "public",
+          "knownObjectId": "tenant-a-private-project",
+          "expectedMembership": "MUST_NOT_CONTAIN",
+          "requireVerifiedIdentity": false
+        },
+        {
+          "id": "member-must-not-see-draft",
+          "actorId": "tenant-b-member",
+          "knownObjectId": "tenant-a-draft-project",
+          "expectedMembership": "MUST_NOT_CONTAIN",
+          "expectedObjectState": "draft",
+          "requireVerifiedIdentity": true
+        },
+        {
+          "id": "volatile-count-observation",
+          "actorId": "tenant-a-member",
+          "knownObjectId": "tenant-a-private-project",
+          "expectedMembership": "OBSERVE_ONLY",
+          "requireVerifiedIdentity": true,
+          "countExpectation": {
+            "path": "count",
+            "expectation": "MUST_EQUAL",
+            "expectedCount": 1,
+            "securitySensitive": true,
+            "volatile": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "one-exact-search",
+      "label": "One exact project search",
+      "category": "SEARCH",
+      "method": "GET",
+      "url": "https://app.example.com/api/projects/search?q=known-safe-term",
+      "headers": {
+        "Accept": "application/json"
+      },
+      "expectedContentType": "application/json",
+      "completeness": "SEARCH_RESULT_SET",
+      "resultArrayPath": "items",
+      "objectIdPath": "id",
+      "objectTenantPath": "tenant",
+      "objectStatePath": "state",
+      "objectTypePath": "type",
+      "actors": [
+        {
+          "id": "tenant-b-member",
+          "relationship": "CROSS_TENANT_MEMBER",
+          "authProfile": "account_b",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-b",
+          "role": "member",
+          "accountState": "active"
+        }
+      ],
+      "knownObjects": [
+        {
+          "id": "tenant-a-private-project",
+          "objectId": "fictional-private-project-a",
+          "objectType": "project",
+          "tenantId": "tenant-a",
+          "state": "active",
+          "expectedPublic": false,
+          "confirmedSafeToTest": true
+        }
+      ],
+      "cases": [
+        {
+          "id": "search-must-not-return-foreign-private-project",
+          "actorId": "tenant-b-member",
+          "knownObjectId": "tenant-a-private-project",
+          "expectedMembership": "MUST_NOT_CONTAIN",
+          "expectedActorRelationship": "CROSS_TENANT_MEMBER",
+          "requireVerifiedIdentity": true
+        }
+      ]
+    }
+  ]
+}

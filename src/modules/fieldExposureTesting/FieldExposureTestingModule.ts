@@ -4,6 +4,7 @@ import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { Finding } from "../../core/findings/Finding.js";
 import { RiskScorer } from "../../core/findings/RiskScorer.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { FieldExposureCasePlan, FieldExposureExpectationPlan, FieldExposureRequestPlan } from "../../core/planning/ScanPlan.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import type {
@@ -123,7 +124,7 @@ function actorResultForResponse(context: ScanContext, casePlan: FieldExposureCas
     return { ...base, objectConfirmed: false, objectIdentity: "RESPONSE_NOT_COMPARABLE", category: "RESPONSE_TOO_LARGE", observations: notEvaluated(casePlan, requestPlan, "RESPONSE_TOO_LARGE"), notes: ["Response exceeded the configured field-exposure size limit."] };
   }
 
-  const parsed = parseJsonObject(response.bodyPreview ?? "");
+  const parsed = parseJsonObject(bodyPreviewForAnalysis(response) ?? "");
   if (!parsed) {
     return { ...base, objectConfirmed: false, objectIdentity: "RESPONSE_NOT_COMPARABLE", category: "RESPONSE_NOT_COMPARABLE", observations: notEvaluated(casePlan, requestPlan, "RESPONSE_NOT_COMPARABLE"), notes: ["Response was not a supported JSON object."] };
   }

@@ -1,6 +1,7 @@
 import type { Confidence } from "./Confidence.js";
 import type { Severity } from "./Severity.js";
 import type { FalsePositiveStatus } from "../../reports/ReportTypes.js";
+import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
 
 export type FindingType =
   | "Admin/Login Panel"
@@ -12,6 +13,11 @@ export type FindingType =
   | "HTTP Method Issue"
   | "Object Authorization Issue"
   | "Field Exposure Issue"
+  | "Authorization Matrix Issue"
+  | "Equivalent Route Authorization Issue"
+  | "Collection Authorization Issue"
+  | "Bulk Authorization Issue"
+  | "File Authorization Issue"
   | "Sensitive File Exposure"
   | "Backup File Exposure"
   | "Config Exposure"
@@ -35,6 +41,7 @@ export interface FindingEvidence {
   curlCommand?: string;
   severityReason?: string;
   reproductionNotes?: string[];
+  valueAttestations?: readonly ValuePresenceAttestation[];
 }
 
 export interface Finding {

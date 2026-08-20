@@ -33,6 +33,7 @@ const identityVerificationSchema = z
     principalIdField: z.string().min(1).max(160).optional(),
     tenantIdField: z.string().min(1).max(160).optional(),
     roleField: z.string().min(1).max(160).optional(),
+    accountStateField: z.string().min(1).max(160).optional(),
     safeAliasField: z.string().min(1).max(160).optional(),
     expectedContentType: z.string().min(1).max(120).default("application/json"),
     successStatusCodes: z.array(z.number().int().min(100).max(599)).max(10).default([200]),
@@ -53,6 +54,7 @@ const identityVerificationSchema = z
       principalIdField: value.principalIdField,
       tenantIdField: value.tenantIdField,
       roleField: value.roleField,
+      accountStateField: value.accountStateField,
       safeAliasField: value.safeAliasField
     })) {
       if (path && !identityFieldPathPattern.test(path)) {
@@ -77,6 +79,7 @@ export const authProfileSchema = z.object({
   principalId: z.string().min(1).optional(),
   tenantId: z.string().min(1).optional(),
   role: z.string().min(1).optional(),
+  accountState: z.string().min(1).optional(),
   safeAlias: z.string().min(1).optional(),
   headers: z.record(z.string()).default({}),
   cookies: z.array(authCookieSchema).default([]),
@@ -92,6 +95,7 @@ export interface AuthProfileSummary {
   principalIdDeclared?: boolean;
   tenantIdDeclared?: boolean;
   role?: string;
+  accountStateDeclared?: boolean;
   safeAlias?: string;
   headerNames: string[];
   cookieNames: string[];
@@ -145,6 +149,7 @@ export function summarizeAuthProfile(profile: AuthProfile | undefined): AuthProf
     ...(profile.principalId ? { principalIdDeclared: true } : {}),
     ...(profile.tenantId ? { tenantIdDeclared: true } : {}),
     ...(profile.role ? { role: profile.role } : {}),
+    ...(profile.accountState ? { accountStateDeclared: true } : {}),
     ...(profile.safeAlias ? { safeAlias: profile.safeAlias } : {}),
     headerNames: Object.keys(profile.headers).sort(),
     cookieNames: profile.cookies.map((cookie) => cookie.name).sort(),

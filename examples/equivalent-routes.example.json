@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "maxRouteSets": 1,
+  "maxRoutesPerSet": 4,
+  "maxActorsPerSet": 3,
+  "maxCells": 20,
+  "maxResponseBytes": 65536,
+  "maxPreviewLength": 80,
+  "routeSets": [
+    {
+      "id": "document-equivalent-routes",
+      "name": "Document equivalent routes",
+      "objectType": "document",
+      "objectId": "fictional-doc-owned-by-a",
+      "canonicalRouteId": "canonical-api",
+      "equivalencePolicy": "SAME_OWNER_BOUNDARY",
+      "objectIdentityField": "id",
+      "objectStateField": "state",
+      "expectedObjectState": "published",
+      "requireVerifiedIdentity": true,
+      "actors": [
+        {
+          "id": "owner",
+          "relationship": "OWNER",
+          "authProfile": "account_a",
+          "safeAlias": "Owner",
+          "principalId": "fictional-principal-a",
+          "tenantId": "tenant-a",
+          "role": "member",
+          "accountState": "active"
+        },
+        {
+          "id": "viewer",
+          "relationship": "NON_OWNER",
+          "authProfile": "account_b",
+          "safeAlias": "Non Owner",
+          "principalId": "fictional-principal-b",
+          "tenantId": "tenant-a",
+          "role": "viewer",
+          "accountState": "active"
+        },
+        {
+          "id": "public",
+          "relationship": "PUBLIC",
+          "safeAlias": "Public"
+        }
+      ],
+      "routes": [
+        {
+          "id": "canonical-api",
+          "label": "Canonical API",
+          "category": "CANONICAL",
+          "isCanonical": true,
+          "template": {
+            "id": "canonical-api-get",
+            "method": "GET",
+            "url": "https://app.example.com/api/documents/{{OBJECT_ID}}",
+            "headers": {
+              "Accept": "application/json"
+            }
+          },
+          "expectations": {
+            "owner": "MUST_ALLOW",
+            "viewer": "MUST_DENY",
+            "public": "MUST_REQUIRE_AUTHENTICATION"
+          }
+        },
+        {
+          "id": "legacy-api",
+          "label": "Legacy API",
+          "category": "LEGACY",
+          "deprecated": true,
+          "referenceRouteId": "canonical-api",
+          "template": {
+            "id": "legacy-api-get",
+            "method": "GET",
+            "url": "https://app.example.com/legacy/documents/{{OBJECT_ID}}",
+            "headers": {
+              "Accept": "application/json"
+            }
+          },
+          "expectations": {
+            "owner": "MUST_ALLOW",
+            "viewer": "MUST_DENY",
+            "public": "MUST_REQUIRE_AUTHENTICATION"
+          }
+        },
+        {
+          "id": "mobile-api",
+          "label": "Mobile API",
+          "category": "MOBILE",
+          "referenceRouteId": "canonical-api",
+          "template": {
+            "id": "mobile-api-get",
+            "method": "GET",
+            "url": "https://app.example.com/mobile/api/documents/{{OBJECT_ID}}",
+            "headers": {
+              "Accept": "application/json"
+            }
+          },
+          "expectations": {
+            "owner": "MUST_ALLOW",
+            "viewer": "MUST_NOT_EXCEED_CANONICAL_ACCESS",
+            "public": "MUST_REQUIRE_AUTHENTICATION"
+          }
+        }
+      ]
+    }
+  ]
+}

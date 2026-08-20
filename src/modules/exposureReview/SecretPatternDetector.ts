@@ -1,6 +1,6 @@
 export interface SecretPatternMatch {
   name: string;
-  evidence: string;
+  count: number;
 }
 
 const secretPatterns: Array<{ name: string; pattern: RegExp }> = [
@@ -23,23 +23,22 @@ export class SecretPatternDetector {
     }
 
     return secretPatterns.flatMap((rule) => {
-      const match = rule.pattern.exec(bodyPreview);
-
-      if (!match?.[0]) {
+      const count = countMatches(bodyPreview, rule.pattern);
+      if (count === 0) {
         return [];
       }
 
       return [
         {
           name: rule.name,
-          evidence: redact(match[0])
+          count
         }
       ];
     });
   }
 }
 
-function redact(value: string): string {
-  const [name] = value.split("=");
-  return value.includes("=") ? `${name}=<redacted>` : value.slice(0, 80);
+function countMatches(value: string, pattern: RegExp): number {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  return [...value.matchAll(new RegExp(pattern.source, flags))].length;
 }

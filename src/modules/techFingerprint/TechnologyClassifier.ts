@@ -1,13 +1,14 @@
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis, headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { DetectedTechnology } from "../../reports/ReportTypes.js";
 import { fingerprintRules } from "./fingerprints.js";
 
 export class TechnologyClassifier {
   public classify(responses: HttpResponse[]): DetectedTechnology[] {
     const input = {
-      headersText: responses.map((response) => headersToText(response.headers)).join("\n"),
-      cookiesText: responses.map((response) => headerValues(response.headers, "set-cookie")).join("\n"),
-      bodyText: responses.map((response) => response.bodyPreview ?? "").join("\n"),
+      headersText: responses.map((response) => headersToText(headersForAnalysis(response))).join("\n"),
+      cookiesText: responses.map((response) => headerValues(headersForAnalysis(response), "set-cookie")).join("\n"),
+      bodyText: responses.map((response) => bodyPreviewForAnalysis(response) ?? "").join("\n"),
       urlText: responses.flatMap((response) => [response.requestedUrl, response.finalUrl]).join("\n")
     };
     const technologies = new Map<string, DetectedTechnology>();
@@ -31,18 +32,14 @@ export class TechnologyClassifier {
   }
 }
 
-function headersToText(headers: Record<string, string | string[]>): string {
+function headersToText(headers: Readonly<Record<string, string | readonly string[]>>): string {
   return Object.entries(headers)
     .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : value}`)
     .join("\n");
 }
 
-function headerValues(headers: Record<string, string | string[]>, name: string): string {
+function headerValues(headers: Readonly<Record<string, string | readonly string[]>>, name: string): string {
   const value = headers[name];
 
-  if (Array.isArray(value)) {
-    return value.join("\n");
-  }
-
-  return value ?? "";
+  return typeof value === "string" ? value : value?.join("\n") ?? "";
 }

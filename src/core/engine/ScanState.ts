@@ -7,9 +7,14 @@ import type {
   ApiProbeReport,
   AuthSurfaceReport,
   AuthenticatedScanReport,
+  AuthorizationMatrixReport,
   BaselineReport,
   BrowserCrawlReport,
+  BulkAuthorizationReport,
+  CollectionAuthorizationReport,
   DetectedTechnology,
+  EquivalentRouteReport,
+  FileAuthorizationReport,
   FieldExposureTestingReport,
   IdentityVerificationReport,
   JsIntelligenceReport,
@@ -26,6 +31,7 @@ import type {
 } from "../../reports/ReportTypes.js";
 import type { Finding } from "../findings/Finding.js";
 import type { ModuleResult } from "../plugins/Plugin.js";
+import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
 
 export class ScanState {
   private readonly responses: HttpResponse[] = [];
@@ -47,6 +53,11 @@ export class ScanState {
   private stateAwareApi: StateAwareApiReport | undefined;
   private objectPairTesting: ObjectPairTestingReport | undefined;
   private fieldExposureTesting: FieldExposureTestingReport | undefined;
+  private authorizationMatrix: AuthorizationMatrixReport | undefined;
+  private collectionAuthorization: CollectionAuthorizationReport | undefined;
+  private bulkAuthorization: BulkAuthorizationReport | undefined;
+  private fileAuthorization: FileAuthorizationReport | undefined;
+  private equivalentRouteTesting: EquivalentRouteReport | undefined;
   private parameterAnalysis: ParameterAnalysisReport | undefined;
   private nextJsReview: NextJsReviewReport | undefined;
   private vulnerabilityWorkflows: VulnerabilityWorkflowReport | undefined;
@@ -148,6 +159,26 @@ export class ScanState {
     this.fieldExposureTesting = report;
   }
 
+  public recordAuthorizationMatrix(report: AuthorizationMatrixReport): void {
+    this.authorizationMatrix = report;
+  }
+
+  public recordCollectionAuthorization(report: CollectionAuthorizationReport): void {
+    this.collectionAuthorization = report;
+  }
+
+  public recordBulkAuthorization(report: BulkAuthorizationReport): void {
+    this.bulkAuthorization = report;
+  }
+
+  public recordFileAuthorization(report: FileAuthorizationReport): void {
+    this.fileAuthorization = report;
+  }
+
+  public recordEquivalentRouteTesting(report: EquivalentRouteReport): void {
+    this.equivalentRouteTesting = report;
+  }
+
   public recordParameterAnalysis(report: ParameterAnalysisReport): void {
     this.parameterAnalysis = report;
   }
@@ -231,6 +262,26 @@ export class ScanState {
       this.recordFieldExposureTesting(result.fieldExposureTesting);
     }
 
+    if (result.authorizationMatrix) {
+      this.recordAuthorizationMatrix(result.authorizationMatrix);
+    }
+
+    if (result.collectionAuthorization) {
+      this.recordCollectionAuthorization(result.collectionAuthorization);
+    }
+
+    if (result.bulkAuthorization) {
+      this.recordBulkAuthorization(result.bulkAuthorization);
+    }
+
+    if (result.fileAuthorization) {
+      this.recordFileAuthorization(result.fileAuthorization);
+    }
+
+    if (result.equivalentRouteTesting) {
+      this.recordEquivalentRouteTesting(result.equivalentRouteTesting);
+    }
+
     if (result.parameterAnalysis) {
       this.recordParameterAnalysis(result.parameterAnalysis);
     }
@@ -261,7 +312,7 @@ export class ScanState {
   }
 
   public getRequestAudit(): RequestAuditEntry[] {
-    return [...this.requestAudit];
+    return this.requestAudit.map(serializeRequestAuditEntry);
   }
 
   public getTechnologies(): DetectedTechnology[] {
@@ -324,6 +375,26 @@ export class ScanState {
     return this.fieldExposureTesting;
   }
 
+  public getAuthorizationMatrix(): AuthorizationMatrixReport | undefined {
+    return this.authorizationMatrix;
+  }
+
+  public getCollectionAuthorization(): CollectionAuthorizationReport | undefined {
+    return this.collectionAuthorization;
+  }
+
+  public getBulkAuthorization(): BulkAuthorizationReport | undefined {
+    return this.bulkAuthorization;
+  }
+
+  public getFileAuthorization(): FileAuthorizationReport | undefined {
+    return this.fileAuthorization;
+  }
+
+  public getEquivalentRouteTesting(): EquivalentRouteReport | undefined {
+    return this.equivalentRouteTesting;
+  }
+
   public getParameterAnalysis(): ParameterAnalysisReport | undefined {
     return this.parameterAnalysis;
   }
@@ -364,7 +435,7 @@ export class ScanState {
       },
       ...(this.baseline ? { baseline: this.baseline } : {}),
       scopeDecisions: this.scopeDecisions,
-      requestAudit: plan.evidence.collectRequestAudit ? this.requestAudit : [],
+      requestAudit: plan.evidence.collectRequestAudit ? this.requestAudit.map(serializeRequestAuditEntry) : [],
       responses,
       technologies: this.technologies,
       ...(this.jsIntelligence ? { jsIntelligence: this.jsIntelligence } : {}),
@@ -378,6 +449,11 @@ export class ScanState {
       ...(this.stateAwareApi ? { stateAwareApi: this.stateAwareApi } : {}),
       ...(this.objectPairTesting ? { objectPairTesting: this.objectPairTesting } : {}),
       ...(this.fieldExposureTesting ? { fieldExposureTesting: this.fieldExposureTesting } : {}),
+      ...(this.authorizationMatrix ? { authorizationMatrix: this.authorizationMatrix } : {}),
+      ...(this.collectionAuthorization ? { collectionAuthorization: this.collectionAuthorization } : {}),
+      ...(this.bulkAuthorization ? { bulkAuthorization: this.bulkAuthorization } : {}),
+      ...(this.fileAuthorization ? { fileAuthorization: this.fileAuthorization } : {}),
+      ...(this.equivalentRouteTesting ? { equivalentRouteTesting: this.equivalentRouteTesting } : {}),
       ...(this.parameterAnalysis ? { parameterAnalysis: this.parameterAnalysis } : {}),
       ...(this.nextJsReview ? { nextJsReview: this.nextJsReview } : {}),
       ...(this.vulnerabilityWorkflows ? { vulnerabilityWorkflows: this.vulnerabilityWorkflows } : {}),
@@ -390,7 +466,11 @@ export class ScanState {
 }
 
 function serializeResponse(response: HttpResponse, includePreview: boolean): HttpResponse {
-  const copy = { ...response, headers: redactHeaders(response.headers) };
+  const copy = {
+    ...response,
+    headers: redactHeaders(response.headers),
+    ...(response.valueAttestations ? { valueAttestations: cloneValueAttestations(response.valueAttestations) } : {})
+  };
   if (copy.bodyPreview && includePreview) {
     copy.bodyPreview = redactBodyPreview(copy.bodyPreview);
   } else {
@@ -413,7 +493,12 @@ function serializeObservation(observation: ResponseObservation, includePreview: 
 }
 
 function serializeFinding(finding: Finding, includePreview: boolean): Finding {
-  const evidence = { ...finding.evidence };
+  const evidence = {
+    ...finding.evidence,
+    ...(finding.evidence.valueAttestations
+      ? { valueAttestations: cloneValueAttestations(finding.evidence.valueAttestations) }
+      : {})
+  };
   if (evidence.responseHeaders) {
     evidence.responseHeaders = redactHeaders(evidence.responseHeaders);
   }
@@ -423,6 +508,22 @@ function serializeFinding(finding: Finding, includePreview: boolean): Finding {
     delete evidence.bodyPreview;
   }
   return { ...finding, evidence };
+}
+
+function serializeRequestAuditEntry(entry: RequestAuditEntry): RequestAuditEntry {
+  return {
+    ...entry,
+    requestHeaders: { ...entry.requestHeaders },
+    redirectChain: entry.redirectChain.map((redirect) => ({ ...redirect })),
+    ...(entry.valueAttestations ? { valueAttestations: cloneValueAttestations(entry.valueAttestations) } : {})
+  };
+}
+
+function cloneValueAttestations(attestations: readonly ValuePresenceAttestation[]): ValuePresenceAttestation[] {
+  return attestations.map((attestation) => ({
+    ...attestation,
+    reproductionSteps: [...attestation.reproductionSteps]
+  }));
 }
 
 function strongerConfidence(left: DetectedTechnology["confidence"], right: DetectedTechnology["confidence"]): DetectedTechnology["confidence"] {

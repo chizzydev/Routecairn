@@ -3,6 +3,10 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { exampleScope } from "../../src/config/defaults.js";
 import { ScanContext } from "../../src/core/engine/ScanContext.js";
+import { RequestSafetyBroker } from "../../src/core/http/RequestSafetyBroker.js";
+import type { DnsResolver } from "../../src/core/http/HttpTypes.js";
+import { bodyPreviewForAnalysis, headersForAnalysis } from "../../src/core/http/TransientResponseAnalysis.js";
+import { ScopeMatcher } from "../../src/core/scope/ScopeMatcher.js";
 import { testPlan } from "../helpers/plan.js";
 
 const servers: Server[] = [];
@@ -118,8 +122,8 @@ describe("RequestSafetyBroker", () => {
     const tenantA = await context.httpClient.send({ url: `http://127.0.0.1:${server.port}/same`, method: "GET", headers: { "X-Tenant-Id": "tenant-a-secret" } });
     const tenantB = await context.httpClient.send({ url: `http://127.0.0.1:${server.port}/same`, method: "GET", headers: { "X-Tenant-Id": "tenant-b-secret" } });
 
-    expect(tenantA.bodyPreview).toBe("tenant-a-secret");
-    expect(tenantB.bodyPreview).toBe("tenant-b-secret");
+    expect(tenantA.bodyPreview).toBe("<redacted>");
+    expect(tenantB.bodyPreview).toBe("<redacted>");
     expect(requestCount).toBe(2);
     expect(JSON.stringify(context.state.getRequestAudit())).not.toContain("tenant-a-secret");
     expect(JSON.stringify(context.state.getRequestAudit())).not.toContain("tenant-b-secret");
@@ -430,6 +434,248 @@ describe("RequestSafetyBroker", () => {
     expect(JSON.stringify(context.state.getRequestAudit())).not.toContain("secret-token");
     expect(JSON.stringify(context.state.getRequestAudit())).not.toContain("secret-cookie");
   });
+
+  it("redacts sensitive query values from direct HTTP audit events without changing the transmitted URL", async () => {
+    const seen: string[] = [];
+    const server = await testServer((request, response) => {
+      seen.push(request.url ?? "");
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+    });
+    const context = contextFor(`http://127.0.0.1:${server.port}/`);
+
+    await context.httpClient.send({ url: `http://127.0.0.1:${server.port}/private?access_token=secret-token&status=active`, method: "GET" });
+
+    expect(seen).toEqual(["/private?access_token=secret-token&status=active"]);
+    expect(JSON.stringify(context.state.getRequestAudit())).not.toContain("secret-token");
+    expect(context.state.getRequestAudit()[0]?.requestedUrl).toContain("access_token=%3Credacted%3E");
+    expect(context.state.getRequestAudit()[0]?.requestedUrl).toContain("status=active");
+  });
+
+  it("attests sensitive query, header, and cookie values without retaining their raw material", async () => {
+    const secrets = {
+      query: "query-value-should-never-persist",
+      bearer: "bearer-value-should-never-persist",
+      cookie: "cookie-value-should-never-persist",
+      tenant: "tenant-value-should-never-persist"
+    };
+    const server = await testServer((request, response) => {
+      response.writeHead(200, { "content-type": "text/plain", "set-cookie": "issued=server-session-secret; HttpOnly" });
+      response.end([
+        request.url,
+        request.headers.authorization,
+        request.headers.cookie,
+        request.headers["x-tenant-id"]
+      ].join("|"));
+    });
+    const context = contextFor(`http://127.0.0.1:${server.port}/`);
+
+    const result = await context.httpClient.send({
+      url: `http://127.0.0.1:${server.port}/private?access_token=${secrets.query}&state=active`,
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${secrets.bearer}`,
+        Cookie: `session=${secrets.cookie}`,
+        "X-Tenant-Id": secrets.tenant
+      }
+    });
+
+    expect(result.statusCode).toBe(200);
+    for (const secret of Object.values(secrets)) expect(result.bodyPreview).not.toContain(secret);
+    for (const secret of Object.values(secrets)) expect(bodyPreviewForAnalysis(result)).toContain(secret);
+    expect(String(result.headers["set-cookie"])).toBe("<redacted>");
+    expect(String(headersForAnalysis(result)["set-cookie"])).toBe("issued=server-session-secret; HttpOnly");
+    const attestations = result.valueAttestations ?? [];
+    expect(attestations).toHaveLength(4);
+    expect(attestations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ location: "query", name: "access_token", valueLength: secrets.query.length }),
+      expect.objectContaining({ location: "header", name: "Authorization", classification: "bearer-token", valueLength: secrets.bearer.length }),
+      expect.objectContaining({ location: "cookie", name: "session", classification: "session-token", valueLength: secrets.cookie.length }),
+      expect.objectContaining({ location: "header", name: "X-Tenant-Id", classification: "tenant-context", valueLength: secrets.tenant.length })
+    ]));
+    for (const attestation of attestations) {
+      expect(attestation.correlationFingerprint).toMatch(/^hmac-sha256:[a-f0-9]{64}$/);
+      expect(attestation.requestId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(attestation.statusCode).toBe(200);
+      expect(attestation.responseHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(attestation.transportOutcome).toBe("transmitted");
+      expect(attestation.reproductionSteps.length).toBeGreaterThan(0);
+    }
+    context.state.recordResponse(result);
+    const exposed = JSON.stringify({ result, audit: context.state.getRequestAudit(), report: context.state.toReport(testPlan("quick")) });
+    for (const secret of Object.values(secrets)) expect(exposed).not.toContain(secret);
+    expect(exposed).not.toContain("server-session-secret");
+  });
+
+  it("keeps cached response analysis transient while every public clone remains scrubbed", async () => {
+    const secret = "cached-analysis-secret";
+    let requestCount = 0;
+    const server = await testServer((request, response) => {
+      requestCount += 1;
+      response.writeHead(200, { "content-type": "text/plain", "x-auth-token": secret });
+      response.end(`${request.headers.authorization}|${secret}`);
+    });
+    const context = contextFor(`http://127.0.0.1:${server.port}/`);
+    const request = {
+      url: `http://127.0.0.1:${server.port}/cached`,
+      method: "GET" as const,
+      headers: { Authorization: `Bearer ${secret}` }
+    };
+
+    const first = await context.httpClient.send(request);
+    const cached = await context.httpClient.send(request);
+
+    expect(requestCount).toBe(1);
+    expect(first.bodyPreview).not.toContain(secret);
+    expect(cached.bodyPreview).not.toContain(secret);
+    expect(first.headers["x-auth-token"]).toBe("<redacted>");
+    expect(cached.headers["x-auth-token"]).toBe("<redacted>");
+    expect(bodyPreviewForAnalysis(first)).toContain(secret);
+    expect(bodyPreviewForAnalysis(cached)).toContain(secret);
+    expect(headersForAnalysis(cached)["x-auth-token"]).toBe(secret);
+    expect(JSON.stringify({ first, cached, audit: context.state.getRequestAudit() })).not.toContain(secret);
+  });
+
+  it("correlates the same value within one scan, including cache reuse, but not across scans", async () => {
+    let requestCount = 0;
+    const secret = "same-scan-correlation-secret";
+    const server = await testServer((_request, response) => {
+      requestCount += 1;
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+    });
+    const firstContext = contextFor(`http://127.0.0.1:${server.port}/`);
+    const secondContext = contextFor(`http://127.0.0.1:${server.port}/`);
+    const request = {
+      url: `http://127.0.0.1:${server.port}/same`,
+      method: "GET" as const,
+      headers: { Authorization: `Bearer ${secret}` }
+    };
+
+    const first = await firstContext.httpClient.send(request);
+    const cached = await firstContext.httpClient.send(request);
+    const separateScan = await secondContext.httpClient.send(request);
+
+    expect(requestCount).toBe(2);
+    const firstAttestation = first.valueAttestations?.[0];
+    const cachedAttestation = cached.valueAttestations?.[0];
+    const separateAttestation = separateScan.valueAttestations?.[0];
+    expect(firstAttestation?.correlationFingerprint).toBe(cachedAttestation?.correlationFingerprint);
+    expect(firstAttestation?.correlationFingerprint).not.toBe(separateAttestation?.correlationFingerprint);
+    expect(firstAttestation?.transportOutcome).toBe("transmitted");
+    expect(cachedAttestation?.transportOutcome).toBe("cache-reused");
+    expect(firstAttestation?.requestId).not.toBe(cachedAttestation?.requestId);
+    expect(JSON.stringify(firstContext.state.getRequestAudit())).not.toContain(secret);
+    expect(JSON.stringify(secondContext.state.getRequestAudit())).not.toContain(secret);
+  });
+
+  it("does not reuse cached POST responses and records salted body fingerprints without raw IDs", async () => {
+    let requestCount = 0;
+    const server = await testServer((request, response) => {
+      requestCount += 1;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ requestCount }));
+    });
+    const body = '{"dryRun":true,"objectIds":["project-a-001","project-b-002"]}';
+    const firstContext = contextFor(`http://127.0.0.1:${server.port}/`);
+    const secondContext = contextFor(`http://127.0.0.1:${server.port}/`);
+
+    const first = await firstContext.httpClient.send({ url: `http://127.0.0.1:${server.port}/bulk`, method: "POST", headers: { "content-type": "application/json" }, body });
+    const second = await firstContext.httpClient.send({ url: `http://127.0.0.1:${server.port}/bulk`, method: "POST", headers: { "content-type": "application/json" }, body });
+    await secondContext.httpClient.send({ url: `http://127.0.0.1:${server.port}/bulk`, method: "POST", headers: { "content-type": "application/json" }, body });
+
+    expect(first.bodyPreview).toContain('"requestCount":1');
+    expect(second.bodyPreview).toContain('"requestCount":2');
+    expect(requestCount).toBe(3);
+    expect(firstContext.state.getRequestAudit().map((entry) => entry.outcome)).toEqual(["sent", "sent"]);
+    const firstHash = firstContext.state.getRequestAudit()[0]?.requestBodyHash;
+    const secondScanHash = secondContext.state.getRequestAudit()[0]?.requestBodyHash;
+    expect(firstHash).toBeTruthy();
+    expect(secondScanHash).toBeTruthy();
+    expect(firstHash).not.toBe(secondScanHash);
+    expect(JSON.stringify(firstContext.state.getRequestAudit())).not.toContain("project-a-001");
+    expect(JSON.stringify(firstContext.state.getRequestAudit())).not.toContain(body);
+  });
+
+  it("pins a hostname request to the RouteCairn-resolved address while preserving Host authority", async () => {
+    let hostHeader = "";
+    let requestCount = 0;
+    const server = await testServer((request, response) => {
+      requestCount += 1;
+      hostHeader = String(request.headers.host ?? "");
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("pinned");
+    });
+    let resolverCalls = 0;
+    const broker = brokerFor(`http://app.test:${server.port}/`, async (hostname) => {
+      resolverCalls += 1;
+      expect(hostname).toBe("app.test");
+      return [{ address: "127.0.0.1", family: 4 }];
+    });
+
+    const response = await broker.send({ url: `http://app.test:${server.port}/safe`, method: "GET" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.bodyPreview).toBe("pinned");
+    expect(hostHeader).toBe(`app.test:${server.port}`);
+    expect(requestCount).toBe(1);
+    expect(resolverCalls).toBe(1);
+  });
+
+  it("fails closed on mixed public and private DNS answers before transmission", async () => {
+    let requestCount = 0;
+    const server = await testServer((_request, response) => {
+      requestCount += 1;
+      response.writeHead(200).end("should-not-send");
+    });
+    const broker = brokerFor(`http://app.test:${server.port}/`, async () => [
+      { address: "127.0.0.1", family: 4 },
+      { address: "93.184.216.34", family: 4 }
+    ]);
+
+    const response = await broker.send({ url: `http://app.test:${server.port}/safe`, method: "GET" });
+
+    expect(response.error?.name).toBe("DNS_MIXED_DESTINATION_CLASSES");
+    expect(requestCount).toBe(0);
+  });
+
+  it("re-resolves redirect destinations and blocks newly prohibited answers", async () => {
+    const server = await testServer((request, response) => {
+      if (request.url === "/start") {
+        response.writeHead(302, { location: "/final" });
+        response.end();
+        return;
+      }
+      response.writeHead(200).end("should-not-final");
+    });
+    let calls = 0;
+    const broker = brokerFor(`http://app.test:${server.port}/`, async () => {
+      calls += 1;
+      return calls === 1 ? [{ address: "127.0.0.1", family: 4 }] : [{ address: "169.254.169.254", family: 4 }];
+    }, 5);
+
+    const response = await broker.send({ url: `http://app.test:${server.port}/start`, method: "GET" });
+
+    expect(response.error?.name).toBe("DNS_PROHIBITED_ADDRESS");
+    expect(calls).toBe(2);
+  });
+
+  it("re-resolves retry attempts and blocks a prohibited retry destination", async () => {
+    const server = await testServer((_request, response) => {
+      response.writeHead(500, { "content-type": "text/plain" });
+      response.end("retry");
+    });
+    let calls = 0;
+    const broker = brokerFor(`http://app.test:${server.port}/`, async () => {
+      calls += 1;
+      return calls === 1 ? [{ address: "127.0.0.1", family: 4 }] : [{ address: "169.254.169.254", family: 4 }];
+    }, 5, 2);
+
+    const response = await broker.send({ url: `http://app.test:${server.port}/retry`, method: "GET" });
+
+    expect(response.error?.name).toBe("DNS_PROHIBITED_ADDRESS");
+    expect(calls).toBe(2);
+  });
 });
 
 interface TestServer {
@@ -449,6 +695,7 @@ function contextFor(target: string, maxRequests?: number, retryMaxAttempts?: num
   const scope = {
     ...exampleScope,
     allowedDomains: ["127.0.0.1"],
+    allowedMethods: ["GET", "HEAD", "OPTIONS", "POST"],
     disallowedPaths: [],
     rateLimitPerSecond: 100,
     concurrency: 5
@@ -471,4 +718,36 @@ function contextFor(target: string, maxRequests?: number, retryMaxAttempts?: num
         : plan,
     outputDir: "."
   });
+}
+
+function brokerFor(target: string, dnsResolver: DnsResolver, maxRequests = 10, retryMaxAttempts = 1): RequestSafetyBroker {
+  const scope = {
+    ...exampleScope,
+    sameOriginOnly: true,
+    allowedDomains: ["app.test"],
+    allowedMethods: ["GET", "HEAD", "OPTIONS", "POST"],
+    disallowedPaths: [],
+    rateLimitPerSecond: 100,
+    concurrency: 5
+  };
+  return new RequestSafetyBroker(
+    {
+      userAgent: "RouteCairn/Test",
+      timeoutMs: 3000,
+      bodyPreviewBytes: 1024,
+      maxResponseBytes: 4096,
+      rateLimitPerSecond: 100,
+      concurrency: 5,
+      maxRequests,
+      dnsResolver,
+      retry: {
+        maxAttempts: retryMaxAttempts,
+        baseDelayMs: 1,
+        maxDelayMs: 1,
+        retryStatusCodes: [500]
+      }
+    },
+    new ScopeMatcher(target, scope),
+    () => undefined
+  );
 }

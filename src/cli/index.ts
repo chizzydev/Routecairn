@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { registerDiffCommand } from "./commands/diff.js";
+import { registerDashboardCommand } from "./commands/dashboard.js";
 import { registerHistoryCommand } from "./commands/history.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerScanCommand } from "./commands/scan.js";
@@ -22,6 +23,7 @@ export function createCli(): Command {
 
   registerInitCommand(program);
   registerScanCommand(program);
+  registerDashboardCommand(program);
   registerShowCommand(program);
   registerDiffCommand(program);
   registerHistoryCommand(program);

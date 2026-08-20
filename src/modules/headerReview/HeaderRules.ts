@@ -1,5 +1,6 @@
 import type { Finding } from "../../core/findings/Finding.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { createReviewFinding, headerValue } from "../reviewUtils.js";
 
 export function headerFindings(response: HttpResponse): Finding[] {
@@ -8,13 +9,14 @@ export function headerFindings(response: HttpResponse): Finding[] {
   }
 
   const findings: Finding[] = [];
-  const csp = headerValue(response.headers, "content-security-policy");
-  const hsts = headerValue(response.headers, "strict-transport-security");
-  const xContentType = headerValue(response.headers, "x-content-type-options");
-  const xFrame = headerValue(response.headers, "x-frame-options");
-  const referrerPolicy = headerValue(response.headers, "referrer-policy");
-  const server = headerValue(response.headers, "server");
-  const poweredBy = headerValue(response.headers, "x-powered-by");
+  const headers = headersForAnalysis(response);
+  const csp = headerValue(headers, "content-security-policy");
+  const hsts = headerValue(headers, "strict-transport-security");
+  const xContentType = headerValue(headers, "x-content-type-options");
+  const xFrame = headerValue(headers, "x-frame-options");
+  const referrerPolicy = headerValue(headers, "referrer-policy");
+  const server = headerValue(headers, "server");
+  const poweredBy = headerValue(headers, "x-powered-by");
   const isHttps = response.finalUrl.startsWith("https://");
 
   if (!csp) {
