@@ -55,6 +55,7 @@ export const controlledMutationContractSchema = z.object({
   }).strict(),
   precondition: verificationSchema.extend({ assertions: z.array(assertionSchema).min(1) }),
   impact: verificationSchema.extend({ assertions: z.array(assertionSchema).min(1) }),
+  protectedAction: verificationSchema.optional(),
   rollback: z.object({ request: requestSchema, verification: verificationSchema }).strict()
 }).strict();
 
@@ -94,6 +95,8 @@ export interface ControlledMutationResult {
   preStateHash?: string;
   attackResponseHash?: string;
   verificationResponseHash?: string;
+  protectedActionResponseHash?: string;
+  protectedActionVerified?: boolean;
   rollbackResponseHash?: string;
   journalPath: string;
   comparisonIdentity: string;

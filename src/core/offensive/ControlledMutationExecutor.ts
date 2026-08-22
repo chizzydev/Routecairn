@@ -39,6 +39,8 @@ export class ControlledMutationExecutor {
     let recoveryRef: string | undefined;
     let preStateHash: string | undefined;
     let attackResponseHash: string | undefined;
+    let protectedActionResponseHash: string | undefined;
+    let protectedActionVerified = false;
     let securityOutcome: ControlledMutationResult["securityOutcome"] = "INCONCLUSIVE";
     try {
       const pendingCleanup = await this.journal.unresolvedCaseIds();
@@ -77,6 +79,13 @@ export class ControlledMutationExecutor {
       notes.push(...impact.notes);
       securityOutcome = impact.matched ? "EXPLOIT_PROVEN" : rejected(attack) ? "SECURE_FOR_CASE" : "INCONCLUSIVE";
       await this.journal.append({ ...base(contract, "IMPACT_VERIFIED"), responseStatus: impact.response.statusCode, responseHash: impact.response.bodyHash, outcome: securityOutcome });
+      if (contract.protectedAction) {
+        const protectedAction = await this.verify(contract.protectedAction);
+        protectedActionResponseHash = protectedAction.response.bodyHash;
+        protectedActionVerified = protectedAction.matched;
+        notes.push(...protectedAction.notes);
+        if (!protectedAction.matched) securityOutcome = "INCONCLUSIVE";
+      }
 
       const cleanup = await this.rollback(contract.rollback.request as HttpRequest, contract.rollback.verification, preStateHash, contract, recoveryRef);
       notes.push(...cleanup.notes);
@@ -88,6 +97,8 @@ export class ControlledMutationExecutor {
         preStateHash,
         ...(attackResponseHash ? { attackResponseHash } : {}),
         ...(impact.response.bodyHash ? { verificationResponseHash: impact.response.bodyHash } : {}),
+        ...(protectedActionResponseHash ? { protectedActionResponseHash } : {}),
+        protectedActionVerified,
         ...(cleanup.responseHash ? { rollbackResponseHash: cleanup.responseHash } : {}),
         journalPath: this.journal.path,
         comparisonIdentity: comparisonIdentity(contract),
