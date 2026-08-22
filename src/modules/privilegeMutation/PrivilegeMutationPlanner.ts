@@ -38,11 +38,11 @@ export interface PrivilegeMutationCasePlan {
   caseId: string;
   category: PrivilegeMutationCaseInput["category"];
   actor: PrivilegeMutationCaseInput["actor"];
-  target: { type: string; alias: string; identityFingerprint: string; identityRequest: PrivilegeMutationCaseInput["target"]["identityRequest"]; identityAssertions: PrivilegeMutationCaseInput["target"]["identityAssertions"] };
-  attack: { url: string; method: HttpMethod; field: string; valueHash: string; allowedValueCount: number };
+  target: { type: string; alias: string; identityFingerprint: string; identityRequest: { url: string; method: "GET" }; identityAssertions: PrivilegeMutationCaseInput["target"]["identityAssertions"] };
+  attack: { url: string; method: HttpMethod; field: string; valueHash: string; allowedValueCount: number; allowedFields: readonly string[]; allowedValuesHash: string; semanticEffect: PrivilegeMutationCaseInput["attack"]["request"]["method"] extends never ? never : "UPDATE_EXISTING" | "CREATE_DISPOSABLE" };
   originalAuthority: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["originalAuthority"]["assertions"]; attempts: number; delayMs: number };
   impact: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["impact"]["assertions"]; attempts: number; delayMs: number };
-  rollback: { request: { url: string; method: HttpMethod }; verification: PrivilegeMutationCaseInput["rollback"]["verification"] };
+  rollback: { request: { url: string; method: HttpMethod; bodyHash: string }; verification: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["rollback"]["verification"]["assertions"]; attempts: number; delayMs: number; matchPreStateHash: boolean } };
 }
 
 export interface PrivilegeMutationTestingPlan { schemaVersion: 1; enabled: true; cases: readonly PrivilegeMutationCasePlan[]; maxCases: number; maxRequests: number; notes: readonly string[]; }
@@ -57,10 +57,10 @@ export function planPrivilegeMutationTesting(input: PrivilegeMutationInput, opti
     return {
       caseId: item.caseId, category: item.category, actor: item.actor,
       target: { type: item.target.type, alias: item.target.alias, identityFingerprint: item.target.identityFingerprint, identityRequest: safeGetRequest(item.target.identityRequest), identityAssertions: item.target.identityAssertions },
-      attack: { url: item.attack.request.url, method: item.attack.request.method, field: item.attack.field, valueHash: hash(item.attack.value), allowedValueCount: item.attack.allowedValues.length },
+      attack: { url: item.attack.request.url, method: item.attack.request.method, field: item.attack.field, valueHash: hash(item.attack.value), allowedValueCount: item.attack.allowedValues.length, allowedFields: [item.attack.field], allowedValuesHash: hash(item.attack.allowedValues), semanticEffect: item.attack.request.method === "POST" ? ("CREATE_DISPOSABLE" as const) : ("UPDATE_EXISTING" as const) },
       originalAuthority: { request: safeGetRequest(item.originalAuthority.request), assertions: item.originalAuthority.assertions, attempts: verificationAttempts(item.originalAuthority), delayMs: verificationDelay(item.originalAuthority) },
       impact: { request: safeGetRequest(item.impact.request), assertions: item.impact.assertions, attempts: verificationAttempts(item.impact), delayMs: verificationDelay(item.impact) },
-      rollback: { request: { url: item.rollback.request.url, method: item.rollback.request.method }, verification: { request: safeGetRequest(item.rollback.verification.request), assertions: item.rollback.verification.assertions, attempts: verificationAttempts(item.rollback.verification), delayMs: verificationDelay(item.rollback.verification), matchPreStateHash: Boolean((item.rollback.verification as { matchPreStateHash?: boolean }).matchPreStateHash) } }
+      rollback: { request: { url: item.rollback.request.url, method: item.rollback.request.method, bodyHash: hash(item.rollback.request.body) }, verification: { request: safeGetRequest(item.rollback.verification.request), assertions: item.rollback.verification.assertions, attempts: verificationAttempts(item.rollback.verification), delayMs: verificationDelay(item.rollback.verification), matchPreStateHash: Boolean((item.rollback.verification as { matchPreStateHash?: boolean }).matchPreStateHash) } }
     };
   });
   const requestBudget = input.cases.reduce((total, item) => total + verificationAttempts(item.originalAuthority) + 1 + verificationAttempts(item.impact) + 1 + verificationAttempts(item.rollback.verification), 0);

@@ -59,11 +59,19 @@ function disabledReport(): PrivilegeMutationReport { return { enabled: false, pl
 function redactEndpoint(value: string): string { const url = new URL(value); return `${url.origin}${url.pathname}`; }
 function categoryOutcome(category: PrivilegeMutationCasePlan["category"]): PrivilegeMutationObservation["securityOutcome"] { return category === "PRIVILEGE_ESCALATION" ? "PRIVILEGE_ESCALATION_PROVEN" : category === "MASS_ASSIGNMENT" ? "MASS_ASSIGNMENT_PROVEN" : category === "CROSS_TENANT_REASSIGNMENT" ? "CROSS_TENANT_REASSIGNMENT_PROVEN" : category === "OWNERSHIP_TAKEOVER" ? "OWNERSHIP_TAKEOVER_PROVEN" : "ADMINISTRATIVE_BOUNDARY_BYPASS_PROVEN"; }
 function contractMatchesPlan(contract: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract, plan: PrivilegeMutationCasePlan): boolean {
-  if (contract.caseId !== plan.caseId || contract.attack.request.url !== plan.attack.url || contract.attack.request.method !== plan.attack.method || contract.rollback.request.url !== plan.rollback.request.url || contract.rollback.request.method !== plan.rollback.request.method) return false;
+  if (contract.caseId !== plan.caseId || contract.targetOrigin !== new URL(plan.attack.url).origin || contract.target.identityFingerprint !== plan.target.identityFingerprint || contract.target.identityAssertion.path !== plan.target.identityAssertions.find((assertion) => assertion.operator === "EQUALS")?.path || contract.attack.request.url !== plan.attack.url || contract.attack.request.method !== plan.attack.method || contract.attack.semanticEffect !== plan.attack.semanticEffect || contract.rollback.request.url !== plan.rollback.request.url || contract.rollback.request.method !== plan.rollback.request.method) return false;
   try {
     if (typeof contract.attack.request.body !== "string") return false;
     const body = JSON.parse(contract.attack.request.body) as Record<string, unknown>;
     const value = body[plan.attack.field];
-    return Object.keys(body).length === 1 && Object.prototype.hasOwnProperty.call(body, plan.attack.field) && createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex") === plan.attack.valueHash;
+    if (Object.keys(body).length !== 1 || !Object.prototype.hasOwnProperty.call(body, plan.attack.field) || createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex") !== plan.attack.valueHash) return false;
+    if (stableHash(contract.attack.allowedFields) !== stableHash(plan.attack.allowedFields) || stableHash(contract.attack.allowedValues) !== plan.attack.allowedValuesHash) return false;
+    if (stableHash(contract.target.identityAssertion) !== stableHash(plan.target.identityAssertions.find((assertion) => assertion.operator === "EQUALS"))) return false;
+    if (!verificationMatches(contract.precondition, plan.originalAuthority) || !verificationMatches(contract.impact, plan.impact) || !verificationMatches(contract.rollback.verification, plan.rollback.verification)) return false;
+    return typeof contract.rollback.request.body === "string" && stableHash(contract.rollback.request.body) === plan.rollback.request.bodyHash;
   } catch { return false; }
 }
+
+function verificationMatches(contract: import("../../core/offensive/ControlledMutationTypes.js").MutationVerification, plan: { request: { url: string; method: "GET" }; assertions: readonly unknown[]; attempts: number; delayMs: number; matchPreStateHash?: boolean }): boolean { return contract.request.url === plan.request.url && contract.request.method === plan.request.method && stableHash(contract.assertions ?? []) === stableHash(plan.assertions) && contract.attempts === plan.attempts && contract.delayMs === plan.delayMs && Boolean(contract.matchPreStateHash) === Boolean(plan.matchPreStateHash); }
+function stableHash(value: unknown): string { return createHash("sha256").update(JSON.stringify(sortValue(value))).digest("hex"); }
+function sortValue(value: unknown): unknown { if (Array.isArray(value)) return value.map(sortValue); if (!value || typeof value !== "object") return value; return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, sortValue(child)])); }
