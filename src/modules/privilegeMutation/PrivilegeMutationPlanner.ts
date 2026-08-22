@@ -40,8 +40,8 @@ export interface PrivilegeMutationCasePlan {
   actor: PrivilegeMutationCaseInput["actor"];
   target: { type: string; alias: string; identityFingerprint: string; identityRequest: PrivilegeMutationCaseInput["target"]["identityRequest"]; identityAssertions: PrivilegeMutationCaseInput["target"]["identityAssertions"] };
   attack: { url: string; method: HttpMethod; field: string; valueHash: string; allowedValueCount: number };
-  originalAuthority: PrivilegeMutationCaseInput["originalAuthority"];
-  impact: PrivilegeMutationCaseInput["impact"];
+  originalAuthority: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["originalAuthority"]["assertions"]; attempts: number; delayMs: number };
+  impact: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["impact"]["assertions"]; attempts: number; delayMs: number };
   rollback: { request: { url: string; method: HttpMethod }; verification: PrivilegeMutationCaseInput["rollback"]["verification"] };
 }
 
@@ -58,13 +58,17 @@ export function planPrivilegeMutationTesting(input: PrivilegeMutationInput, opti
       caseId: item.caseId, category: item.category, actor: item.actor,
       target: { type: item.target.type, alias: item.target.alias, identityFingerprint: item.target.identityFingerprint, identityRequest: safeGetRequest(item.target.identityRequest), identityAssertions: item.target.identityAssertions },
       attack: { url: item.attack.request.url, method: item.attack.request.method, field: item.attack.field, valueHash: hash(item.attack.value), allowedValueCount: item.attack.allowedValues.length },
-      originalAuthority: { request: safeGetRequest(item.originalAuthority.request), assertions: item.originalAuthority.assertions },
-      impact: { request: safeGetRequest(item.impact.request), assertions: item.impact.assertions },
-      rollback: { request: { url: item.rollback.request.url, method: item.rollback.request.method }, verification: { request: safeGetRequest(item.rollback.verification.request), assertions: item.rollback.verification.assertions } }
+      originalAuthority: { request: safeGetRequest(item.originalAuthority.request), assertions: item.originalAuthority.assertions, attempts: verificationAttempts(item.originalAuthority), delayMs: verificationDelay(item.originalAuthority) },
+      impact: { request: safeGetRequest(item.impact.request), assertions: item.impact.assertions, attempts: verificationAttempts(item.impact), delayMs: verificationDelay(item.impact) },
+      rollback: { request: { url: item.rollback.request.url, method: item.rollback.request.method }, verification: { request: safeGetRequest(item.rollback.verification.request), assertions: item.rollback.verification.assertions, attempts: verificationAttempts(item.rollback.verification), delayMs: verificationDelay(item.rollback.verification), matchPreStateHash: Boolean((item.rollback.verification as { matchPreStateHash?: boolean }).matchPreStateHash) } }
     };
   });
-  return { schemaVersion: 1, enabled: true, cases, maxCases: options.maxCases, maxRequests: cases.length * 7, notes: ["Only operator-supplied cases are executed.", "Exactly one explicitly allowlisted authority field/value is transmitted per case.", "Security impact and restoration require independent configured GET verification."] };
+  const requestBudget = input.cases.reduce((total, item) => total + verificationAttempts(item.originalAuthority) + 1 + verificationAttempts(item.impact) + 1 + verificationAttempts(item.rollback.verification), 0);
+  return { schemaVersion: 1, enabled: true, cases, maxCases: options.maxCases, maxRequests: requestBudget, notes: ["Only operator-supplied cases are executed.", "Exactly one explicitly allowlisted authority field/value is transmitted per case.", "Exactly enough request budget is reserved for configured verification attempts and cleanup."] };
 }
+
+function verificationAttempts(value: unknown): number { const attempts = (value as { attempts?: unknown }).attempts; return typeof attempts === "number" && Number.isInteger(attempts) && attempts > 0 ? attempts : 3; }
+function verificationDelay(value: unknown): number { const delay = (value as { delayMs?: unknown }).delayMs; return typeof delay === "number" && Number.isInteger(delay) && delay >= 0 ? delay : 250; }
 
 function safeGetRequest(request: { url: string; method: "GET"; headers?: Record<string, string> | undefined }): { url: string; method: "GET" } { return { url: request.url, method: "GET" }; }
 function hash(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }

@@ -2,7 +2,6 @@ import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import type { PrivilegeMutationObservation, PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
 import type { PrivilegeMutationCasePlan } from "./PrivilegeMutationPlanner.js";
-import { ControlledMutationExecutor } from "../../core/offensive/ControlledMutationExecutor.js";
 import { createHash } from "node:crypto";
 
 export class PrivilegeMutationModule implements RouteCairnPlugin {
@@ -48,10 +47,10 @@ async function execute(_context: ScanContext, cases: readonly PrivilegeMutationC
       observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", requestTransmitted: false, targetIdentityVerified: false, originalAuthorityVerified: false, authorityChangeVerified: false, protectedActionVerified: false, comparisonIdentity: "", notes: ["Approved mutation contract did not match the planned semantic case; no request was sent."], result: { caseId: item.caseId, outcome: "BLOCKED_BY_SAFETY", securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", journalPath: "", comparisonIdentity: "", notes: [] } });
       continue;
     }
-    const result = await new ControlledMutationExecutor(_context.createControlledMutationHttpClient(), { journalDirectory: _context.options.outputDir, cleanupTransport: _context.createControlledMutationCleanupHttpClient() }).execute(contract);
+    const result = await _context.runControlledMutation(contract);
     const proven = result.securityOutcome === "EXPLOIT_PROVEN";
     const securityOutcome: PrivilegeMutationObservation["securityOutcome"] = proven ? categoryOutcome(item.category) : result.securityOutcome === "SECURE_FOR_CASE" ? "MUTATION_REJECTED" : result.securityOutcome === "BLOCKED_BY_SAFETY" ? "BLOCKED_BY_SAFETY" : "INCONCLUSIVE";
-    observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome, cleanupOutcome: result.cleanupOutcome, requestTransmitted: Boolean(result.attackResponseHash), targetIdentityVerified: result.securityOutcome !== "BLOCKED_BY_SAFETY", originalAuthorityVerified: Boolean(result.preStateHash), authorityChangeVerified: proven, protectedActionVerified: false, comparisonIdentity: result.comparisonIdentity, notes: result.notes, result });
+    observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome, cleanupOutcome: result.cleanupOutcome, requestTransmitted: Boolean(result.attackResponseHash), targetIdentityVerified: Boolean(result.preStateHash), originalAuthorityVerified: Boolean(result.preStateHash), authorityChangeVerified: proven && Boolean(result.verificationResponseHash), protectedActionVerified: false, comparisonIdentity: result.comparisonIdentity, notes: result.notes, result });
   }
   return { enabled: true, plannedCases: cases.length, executedCases: observations.filter((item) => item.requestTransmitted).length, provenFindings: observations.filter((item) => item.securityOutcome.endsWith("PROVEN")).length, cleanupRequired: observations.filter((item) => item.cleanupOutcome !== "ROLLBACK_VERIFIED" && item.cleanupOutcome !== "NOT_REQUIRED").length, observations, notes: ["Only exact worker-bound contracts were eligible for transmission.", "Cleanup status remains independent from security outcome."] };
 }

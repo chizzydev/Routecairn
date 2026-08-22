@@ -22,7 +22,7 @@ describe("privilege mutation planner", () => {
     expect(plan.cases[0]?.attack.valueHash).toHaveLength(64);
     expect((plan.cases[0]?.attack as Record<string, unknown>).request).toBeUndefined();
     expect(JSON.stringify(plan.cases[0])).not.toContain('{"role":"user"}');
-    expect(plan.maxRequests).toBe(7);
+    expect(plan.maxRequests).toBe(11);
   });
 
   it("rejects an authority mutation with more than one body field", () => {

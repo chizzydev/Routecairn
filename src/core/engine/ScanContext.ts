@@ -1,6 +1,8 @@
 import type { RouteCairnConfig, RouteCairnScope } from "../../config/ConfigSchema.js";
 import type { AuthProfile } from "../auth/AuthProfile.js";
 import type { AuthProfileSet } from "../auth/AuthProfileSet.js";
+import type { ControlledMutationContract, ControlledMutationResult } from "../offensive/ControlledMutationTypes.js";
+import { ControlledMutationExecutor } from "../offensive/ControlledMutationExecutor.js";
 import { RequestSafetyBroker } from "../http/RequestSafetyBroker.js";
 import type { ModuleId, ModuleSettings, ResolvedScanPlan } from "../planning/ScanPlan.js";
 import { ScopeMatcher } from "../scope/ScopeMatcher.js";
@@ -54,16 +56,8 @@ export class ScanContext {
     );
   }
 
-  public createControlledMutationHttpClient(): RequestSafetyBroker {
-    return this.createMutationBroker(true);
-  }
-
-  public createControlledMutationCleanupHttpClient(): RequestSafetyBroker {
-    return this.createMutationBroker(false);
-  }
-
-  private createMutationBroker(withAbortSignal: boolean): RequestSafetyBroker {
-    return new RequestSafetyBroker({
+  public async runControlledMutation(contract: ControlledMutationContract): Promise<ControlledMutationResult> {
+    const attackTransport = new RequestSafetyBroker({
       userAgent: this.options.scope.userAgent,
       timeoutMs: this.options.plan.limits.requestTimeoutMs,
       rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -73,8 +67,20 @@ export class ScanContext {
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests: this.options.plan.privilegeMutationTesting?.maxRequests ?? 1,
       controlledMutationEnabled: true,
-      ...(withAbortSignal && this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry));
+    const cleanupTransport = new RequestSafetyBroker({
+      userAgent: this.options.scope.userAgent,
+      timeoutMs: this.options.plan.limits.requestTimeoutMs,
+      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+      concurrency: 1,
+      bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes,
+      maxResponseBytes: this.options.plan.limits.maxResponseBytes,
+      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+      maxRequests: this.options.plan.privilegeMutationTesting?.maxRequests ?? 1,
+      controlledMutationEnabled: true
+    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry));
+    return new ControlledMutationExecutor(attackTransport, { journalDirectory: this.options.outputDir, cleanupTransport }).execute(contract);
   }
 
   public moduleSettings(moduleId: ModuleId): Readonly<ModuleSettings> {
