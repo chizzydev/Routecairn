@@ -20,6 +20,7 @@ import type { CredentialVault } from "../credentials/CredentialVault.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
 import { verifyScanIdentities } from "../../core/auth/IdentityVerification.js";
 import { RetestTemplateVault } from "../retests/RetestTemplateVault.js";
+import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 
 const maxQueuedScans = 20;
 
@@ -27,6 +28,7 @@ interface QueueItem {
   scanId: string;
   request: DashboardScanCreateRequest;
   abortController: AbortController;
+  mutationContracts?: readonly ControlledMutationContract[];
 }
 
 export class ScanExecutionService {
@@ -109,7 +111,7 @@ export class ScanExecutionService {
     return redactDashboardValue({ ...result, requestAudit: context.state.getRequestAudit() }) as Record<string, unknown>;
   }
 
-  public async enqueue(request: DashboardScanCreateRequest): Promise<string> {
+  public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[]): Promise<string> {
     if (this.queue.length >= maxQueuedScans) {
       throw new Error(`Scan queue is full. Maximum queued scans: ${maxQueuedScans}.`);
     }
@@ -139,7 +141,7 @@ export class ScanExecutionService {
       this.events.append(scanId, "SCAN_QUEUED", "Scan queued.", { profile: request.profile, target: targetOrigin });
       this.retestTemplates.save(scanId, request.studio?.workflows ?? []);
     });
-    this.queue.push({ scanId, request, abortController: new AbortController() });
+    this.queue.push({ scanId, request, abortController: new AbortController(), ...(mutationContracts?.length ? { mutationContracts } : {}) });
     void this.pump();
     return scanId;
   }
@@ -250,7 +252,7 @@ export class ScanExecutionService {
         onHeartbeat: (message) => {
           this.events.append(item.scanId, "WORKER_HEARTBEAT", "Worker heartbeat.", { workerId: message.workerId, timestamp: message.timestamp });
         }
-      });
+      }, item.mutationContracts?.length ? { contracts: item.mutationContracts } : undefined);
       if (result.status === "FAILED" || result.status === "INTERRUPTED") throw new Error(result.error ?? "Worker scan failed.");
       if (result.status === "CANCELLED") {
         this.database.transaction(() => {

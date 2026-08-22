@@ -53,6 +53,7 @@ export interface TargetSummary {
   authorizationType: string;
   authorizationSummary: string;
   approvedScope: Record<string, unknown>;
+  productionEnabled: boolean;
   defaultProfile?: string;
   createdAt: string;
   updatedAt: string;
@@ -142,6 +143,7 @@ export class TargetRepository {
     authorizationType: string;
     authorizationSummary: string;
     approvedScope: Record<string, unknown>;
+    productionEnabled?: boolean;
     defaultProfile?: string | undefined;
     defaultConfigurationId?: string | undefined;
     defaultCredentialProfileId?: string | undefined;
@@ -176,6 +178,7 @@ export class TargetRepository {
         now,
         now
       );
+    this.database.db.prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?").run(input.productionEnabled ? 1 : 0, id);
     return id;
   }
 
@@ -205,6 +208,7 @@ export class TargetRepository {
         ...(input.expectedVersion === undefined ? [] : [input.expectedVersion])
       );
     if (result.changes !== 1) throw new Error("TARGET_CONFLICT: Target changed or is unavailable.");
+    if (input.productionEnabled !== undefined) this.database.db.prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?").run(input.productionEnabled ? 1 : 0, id);
   }
 
   public archive(id: string): void {
@@ -867,6 +871,7 @@ interface DbTargetRow {
   default_credential_profile_id: string | null;
   default_evidence_level: string | null;
   default_auth_template_json: string;
+  production_mutation_enabled: number;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -924,6 +929,7 @@ function targetFromRow(database: DashboardDatabase, row: DbTargetRow): TargetSum
     authorizationType: row.authorization_type,
     authorizationSummary: row.authorization_summary,
     approvedScope: safeJsonObject(row.approved_scope_json),
+    productionEnabled: Boolean(row.production_mutation_enabled),
     ...(row.default_profile ? { defaultProfile: row.default_profile } : {}),
     ...(row.default_configuration_id ? { defaultConfigurationId: row.default_configuration_id } : {}),
     ...(row.default_credential_profile_id ? { defaultCredentialProfileId: row.default_credential_profile_id } : {}),

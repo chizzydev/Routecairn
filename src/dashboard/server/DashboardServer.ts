@@ -10,6 +10,7 @@ import { ControlledMutationApprovalRepository } from "../db/ControlledMutationAp
 import { LocalSessionManager, SessionError } from "../auth/LocalSession.js";
 import { PermissionError, ServerSessionManager, type ServerRuntimeSecurity } from "../auth/ServerSession.js";
 import type { DashboardPermission, DashboardPrincipal } from "../auth/Permissions.js";
+import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
 import { credentialMetadataSchema, credentialProfileSchema, credentialSecretSchema, dashboardScanCreateSchema, compareRequestSchema, dashboardSettingsUpdateSchema, importReportSchema, loginSchema, projectSchema, proofPackCreateSchema, savedConfigurationSchema, targetSchema, userCreateSchema, userUpdateSchema } from "../contracts/DashboardSchemas.js";
 import { ScanExecutionService } from "../execution/ScanExecutionService.js";
 import { ComparisonService } from "../services/ComparisonService.js";
@@ -44,6 +45,9 @@ import { scopeSchema } from "../../config/ConfigSchema.js";
 import { controlledMutationApprovalSchema } from "../contracts/ControlledMutationSchemas.js";
 import { controlledMutationRecoverySchema } from "../contracts/ControlledMutationRecoverySchemas.js";
 import { ControlledMutationRecoveryService } from "../execution/ControlledMutationRecoveryService.js";
+import { productionMutationApprovalSchema } from "../contracts/ProductionMutationApprovalSchemas.js";
+import { productionMutationCaseSchema } from "../contracts/ProductionMutationCaseSchemas.js";
+import { compileProductionMutationCase, productionMutationPlanIdentity } from "../execution/ProductionMutationCaseCompiler.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -551,6 +555,46 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
   const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
+  if (request.method === "POST" && url.pathname === "/api/production-mutations/preview") {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = productionMutationCaseSchema.parse(await readJson(request));
+    const target = targets.get(parsed.targetId);
+    if (!target) throw new HttpError(404, "Production target not found.");
+    const compiled = compileProductionMutationCase(parsed, target, nowIso(), context.principal?.userId ?? "local-operator");
+    const planIdentity = productionMutationPlanIdentity(parsed, target);
+    sendJson(response, 200, { preview: compiled.preview, planIdentity });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/production-mutations/approvals") {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = productionMutationApprovalSchema.parse(await readJson(request));
+    const target = targets.get(parsed.case.targetId);
+    if (!target) throw new HttpError(404, "Production target not found.");
+    const compiled = compileProductionMutationCase(parsed.case, target, nowIso(), context.principal?.userId ?? "local-operator");
+    const planIdentity = productionMutationPlanIdentity(parsed.case, target);
+    const targetIdentityFingerprint = createHash("sha256").update(`${target.id}:${target.rowVersion}:${target.baseOrigin}`).digest("hex");
+    const scopeDigest = createHash("sha256").update(JSON.stringify(target.approvedScope, Object.keys(target.approvedScope).sort())).digest("hex");
+    const id = mutationApprovals.create({ caseId: parsed.case.caseId, targetId: parsed.case.targetId, targetOrigin: target.baseOrigin, targetIdentityFingerprint, scopeDigest, planIdentity, authorizationSummary: parsed.authorizationDeclaration, expiresAt: parsed.case.authorizationExpiresAt });
+    audit.append({ actorLabel: context.principal?.userId, action: "PRODUCTION_MUTATION_APPROVAL_CREATED", resourceType: "MUTATION_APPROVAL", resourceId: id, summary: "Production controlled-mutation approval created from an explicit case.", metadata: { caseId: parsed.case.caseId, targetId: parsed.case.targetId, planIdentity } });
+    sendJson(response, 201, { approval: mutationApprovals.get(id), preview: compiled.preview });
+    return;
+  }
+  const productionExecute = /^\/api\/production-mutations\/approvals\/(?<id>[0-9a-f-]+)\/execute$/.exec(url.pathname);
+  if (request.method === "POST" && productionExecute?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = productionMutationCaseSchema.parse(await readJson(request));
+    const approval = mutationApprovals.get(productionExecute.groups.id);
+    const target = targets.get(parsed.targetId);
+    if (!approval || approval.status !== "APPROVED" || !target) throw new HttpError(409, "PRODUCTION_MUTATION_APPROVAL_REQUIRED");
+    const compiled = compileProductionMutationCase(parsed, target, nowIso(), context.principal?.userId ?? "local-operator");
+    const planIdentity = productionMutationPlanIdentity(parsed, target);
+    if (approval.caseId !== parsed.caseId || approval.targetId !== parsed.targetId || approval.planIdentity !== planIdentity) throw new HttpError(409, "PRODUCTION_MUTATION_PLAN_MISMATCH");
+    const requestForWorker: DashboardScanCreateRequest = { target: target.baseOrigin, targetId: target.id, profile: "authenticated", credentialProfileId: parsed.actorCredentialProfileId, authorizationDeclaration: "Approved production controlled-mutation case.", studio: { version: 1, scanName: `Production mutation ${parsed.caseId}`, authorization: { category: "OWNED", confirmed: true }, scope: scopeSchema.parse(target.approvedScope), authentication: { mode: "primary", primary: { source: "saved", credentialProfileId: parsed.actorCredentialProfileId } }, outputs: { json: true, markdown: true, html: true }, moduleSettings: {}, workflows: [], workflowSummary: [] }, includeModules: ["privilege-mutation-testing"] };
+    const scanId = await execution.enqueue(requestForWorker, [compiled.contract]);
+    audit.append({ actorLabel: context.principal?.userId, action: "PRODUCTION_MUTATION_EXECUTION_QUEUED", resourceType: "SCAN", resourceId: scanId, summary: "Approved production controlled-mutation case queued through the isolated worker.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, approvalId: productionExecute.groups.id } });
+    sendJson(response, 202, { scanId, approvalId: productionExecute.groups.id, status: "QUEUED", preview: compiled.preview });
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/api/controlled-mutations/approvals") {
     requirePermission(context, "controlledMutation.approve");
     const parsed = controlledMutationApprovalSchema.parse(await readJson(request));

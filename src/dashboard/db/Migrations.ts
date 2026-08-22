@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 15;
+export const dashboardSchemaVersion = 16;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -800,6 +800,12 @@ CREATE TABLE IF NOT EXISTS controlled_mutation_recovery_leases (
   release_category TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_mutation_recovery_leases_worker ON controlled_mutation_recovery_leases(worker_id);
+`
+  },
+  {
+    version: 16,
+    sql: `
+ALTER TABLE targets ADD COLUMN production_mutation_enabled INTEGER NOT NULL DEFAULT 0;
 `
   }
 ];
