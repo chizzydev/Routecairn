@@ -53,7 +53,16 @@ export class ControlledMutationExecutor {
       }
       preStateHash = preState.response.bodyHash;
       await this.journal.append({ ...base(contract, "PRE_STATE_CAPTURED"), responseStatus: preState.response.statusCode, responseHash: preStateHash });
-      const recovery: MutationRecoveryBundle = { caseId: contract.caseId, targetOrigin: contract.targetOrigin, rollbackRequest: contract.rollback.request as HttpRequest, rollbackVerification: contract.rollback.verification, preStateHash };
+      const recovery: MutationRecoveryBundle = {
+        caseId: contract.caseId,
+        targetOrigin: contract.targetOrigin,
+        targetIdentityFingerprint: contract.target.identityFingerprint,
+        authorizationExpiresAt: contract.authorization.expiresAt,
+        contractDigest: comparisonIdentity(contract),
+        rollbackRequest: contract.rollback.request as HttpRequest,
+        rollbackVerification: contract.rollback.verification,
+        preStateHash
+      };
       recoveryRef = await this.vault.seal(recovery);
       await this.journal.append({ ...base(contract, "MUTATION_ARMED"), requestMethod: contract.attack.request.method, requestUrl: safeRequestUrl(contract.attack.request.url), requestBodyAttestation: this.journal.attestBody(contract.attack.request.body), recoveryBundleRef: recoveryRef, note: "Encrypted recovery material and mutation intent were durably flushed before network transmission." });
       mutationArmed = true;
@@ -96,6 +105,9 @@ export class ControlledMutationExecutor {
 
   public async recover(bundlePath: string, caseId: string): Promise<ControlledMutationResult> {
     const bundle = await this.vault.open(bundlePath, caseId);
+    if (bundle.caseId !== caseId) throw new MutationSafetyError("Recovery case binding mismatch.", "RECOVERY_CASE_MISMATCH");
+    if (bundle.authorizationExpiresAt && Date.parse(bundle.authorizationExpiresAt) <= Date.now()) throw new MutationSafetyError("Recovery authorization has expired.", "RECOVERY_AUTHORIZATION_EXPIRED");
+    if (bundle.targetOrigin !== new URL(bundle.rollbackRequest.url).origin) throw new MutationSafetyError("Recovery rollback endpoint does not match the bound target origin.", "RECOVERY_ORIGIN_MISMATCH");
     await this.lock.acquire(caseId);
     try {
       const response = await this.transport.send(bundle.rollbackRequest);

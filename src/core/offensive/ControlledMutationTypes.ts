@@ -103,6 +103,9 @@ export interface ControlledMutationResult {
 export interface MutationRecoveryBundle {
   caseId: string;
   targetOrigin: string;
+  targetIdentityFingerprint?: string;
+  authorizationExpiresAt?: string;
+  contractDigest?: string;
   rollbackRequest: HttpRequest;
   rollbackVerification: MutationVerification;
   preStateHash?: string;
