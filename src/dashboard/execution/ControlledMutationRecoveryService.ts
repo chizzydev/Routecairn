@@ -34,14 +34,14 @@ export class ControlledMutationRecoveryService {
     const currentScopeDigest = createHash("sha256").update(JSON.stringify(target.approvedScope, Object.keys(target.approvedScope).sort())).digest("hex");
     if (currentTargetFingerprint !== approval.targetIdentityFingerprint || currentScopeDigest !== approval.scopeDigest) throw new Error("RECOVERY_TARGET_CHANGED: Registered target identity or approved scope changed after approval.");
     if (bundle.targetIdentityFingerprint !== approval.targetIdentityFingerprint || bundle.contractDigest !== approval.planIdentity) throw new Error("RECOVERY_BINDING_MISMATCH: Recovery bundle does not match the approved mutation identity.");
-    this.approvals.beginRecovery(input.approvalId);
+    this.approvals.beginRecovery(input.approvalId, input.recoveryJobId);
     try {
       const result = await this.workers.runRecovery(input.recoveryJobId, input.workerRequest, input.caseId, canonicalBundle);
       if (result.caseId !== input.caseId) throw new Error("RECOVERY_CASE_MISMATCH: Worker returned a different recovery case.");
-      this.approvals.updateStatus(input.approvalId, result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "COMPLETED" : "CLEANUP_FAILED");
+      this.approvals.updateStatus(input.approvalId, result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "COMPLETED" : "CLEANUP_FAILED", result.cleanupOutcome === "ROLLBACK_VERIFIED" ? undefined : result.notes.join(" "));
       return result;
     } catch (error) {
-      this.approvals.updateStatus(input.approvalId, "CLEANUP_FAILED");
+      this.approvals.updateStatus(input.approvalId, "CLEANUP_FAILED", error instanceof Error ? error.message : "Recovery failed.");
       throw error;
     }
   }

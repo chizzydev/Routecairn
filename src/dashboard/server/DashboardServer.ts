@@ -307,6 +307,14 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     sendJson(response, 200, { entries: capabilityParityManifest, valid: validateCapabilityParityManifest().length === 0 });
     return;
   }
+  const recoveryStatus = /^\/api\/controlled-mutations\/recovery\/(?<jobId>[0-9a-f-]+)$/.exec(url.pathname);
+  if (recoveryStatus?.groups?.jobId) {
+    requirePermission(context, "controlledMutation.recover");
+    const approval = context.mutationApprovals.getByRecoveryJob(recoveryStatus.groups.jobId);
+    if (!approval) throw new HttpError(404, "Controlled mutation recovery job not found.");
+    sendJson(response, 200, { recoveryJob: approval });
+    return;
+  }
   const approvalDetail = /^\/api\/controlled-mutations\/approvals\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (approvalDetail?.groups?.id) {
     requirePermission(context, "controlledMutation.approve");

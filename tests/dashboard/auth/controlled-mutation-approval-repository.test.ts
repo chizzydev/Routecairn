@@ -11,7 +11,9 @@ describe("controlled mutation approval repository", () => {
     const id = repository.create({ caseId: "case-1", targetId, targetOrigin: "https://example.test", targetIdentityFingerprint: "b".repeat(64), scopeDigest: "c".repeat(64), planIdentity: "a".repeat(64), authorizationSummary: "Owned staging target", expiresAt: "2099-01-01T00:00:00.000Z" });
     expect(repository.get(id)?.status).toBe("PREVIEWED");
     expect(repository.approve(id, "owner")?.status).toBe("APPROVED");
-    expect(repository.beginRecovery(id)?.status).toBe("EXECUTING");
-    expect(() => repository.beginRecovery(id)).toThrow();
+    expect(repository.beginRecovery(id, "00000000-0000-4000-8000-000000000002")?.recoveryJobId).toBe("00000000-0000-4000-8000-000000000002");
+    repository.updateStatus(id, "CLEANUP_FAILED", "worker timeout");
+    expect(repository.get(id)?.recoveryErrorSummary).toBe("worker timeout");
+    expect(repository.get(id)?.recoveryCompletedAt).toBeTruthy();
   });
 });

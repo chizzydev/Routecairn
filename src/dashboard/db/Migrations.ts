@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 13;
+export const dashboardSchemaVersion = 14;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -775,6 +775,16 @@ CREATE INDEX IF NOT EXISTS idx_mutation_approvals_target_status ON controlled_mu
     sql: `
 ALTER TABLE controlled_mutation_approvals ADD COLUMN target_identity_fingerprint TEXT NOT NULL DEFAULT '';
 ALTER TABLE controlled_mutation_approvals ADD COLUMN scope_digest TEXT NOT NULL DEFAULT '';
+`
+  },
+  {
+    version: 14,
+    sql: `
+ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_job_id TEXT;
+ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_started_at TEXT;
+ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_completed_at TEXT;
+ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_error_summary TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_approvals_recovery_job ON controlled_mutation_approvals(recovery_job_id) WHERE recovery_job_id IS NOT NULL;
 `
   }
 ];
