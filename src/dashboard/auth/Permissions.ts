@@ -37,7 +37,9 @@ export type DashboardPermission =
   | "users.manage"
   | "settings.manage"
   | "audit.read"
-  | "artifacts.download";
+  | "artifacts.download"
+  | "controlledMutation.approve"
+  | "controlledMutation.recover";
 
 const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>> = {
   OWNER: new Set([
@@ -73,7 +75,9 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "users.manage",
     "settings.manage",
     "audit.read",
-    "artifacts.download"
+    "artifacts.download",
+    "controlledMutation.approve",
+    "controlledMutation.recover"
   ]),
   ANALYST: new Set([
     "scans.read",
