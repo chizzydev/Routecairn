@@ -18,7 +18,8 @@ const workflowByModule: Record<string, string> = {
   "object-pair-testing": "object-pair", "field-exposure-testing": "field-exposure",
   "authorization-matrix-testing": "authorization-matrix", "equivalent-route-testing": "equivalent-route",
   "collection-authorization-testing": "collection-authorization", "bulk-authorization-testing": "bulk-authorization",
-  "file-authorization-testing": "file-authorization"
+  "file-authorization-testing": "file-authorization",
+  "privilege-mutation-testing": "privilege-mutation"
 };
 
 export class ScanComparisonCoverageService {
@@ -91,6 +92,11 @@ export class ScanComparisonCoverageService {
     if (newCase.execution_state === "BUDGET_EXHAUSTED") return decision("NOT_RETESTED", "BUDGET_EXHAUSTED", "The matching workflow case exhausted its request or evidence budget before adequate execution.", { workflow, safeCaseAlias: alias });
     if (newCase.execution_state === "BLOCKED") return decision("NOT_RETESTED", "CASE_BLOCKED", "The matching workflow case was blocked before adequate execution.", { workflow, safeCaseAlias: alias });
     if (newCase.execution_state !== "COMPLETED" || !newCase.request_transmitted) return decision("NOT_RETESTED", "CASE_NOT_EXECUTED", "The matching workflow case did not transmit and complete the relevant request.", { workflow, safeCaseAlias: alias, caseState: newCase.execution_state });
+    if (workflow === "privilege-mutation") {
+      const result = parseJson(newCase.safe_result_json);
+      if (result.cleanupOutcome !== "ROLLBACK_VERIFIED") return decision("NOT_RETESTED", "CLEANUP_NOT_VERIFIED", "The matching mutation case did not independently verify restoration, so the newer scan cannot prove resolution.", { workflow, safeCaseAlias: alias, cleanupOutcome: result.cleanupOutcome });
+      if (!String(result.securityOutcome ?? "").endsWith("PROVEN")) return decision("NOT_RETESTED", "SECURITY_PROOF_INCOMPLETE", "The matching mutation case did not prove the configured authority outcome.", { workflow, safeCaseAlias: alias, securityOutcome: result.securityOutcome });
+    }
     return decision("ADEQUATE", "COMPATIBLE_CASE_COVERAGE", `The newer scan covered the same target, endpoint, module, ${workflow} case, actor semantics, and evidence model; the matching request completed.`, { workflow, safeCaseAlias: alias, evidenceStrength: newCase.evidence_strength });
   }
 
@@ -119,6 +125,7 @@ function pathMatches(path: string, rule: string): boolean { const prefix = rule.
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []; }
 function object(value: string): Record<string, unknown> | undefined { try { return record(JSON.parse(value)); } catch { return undefined; } }
 function record(value: unknown): Record<string, unknown> | undefined { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined; }
+function parseJson(value: string): Record<string, unknown> { try { const parsed = JSON.parse(value) as unknown; return record(parsed) ?? {}; } catch { return {}; } }
 function authSemantics(value: Record<string, unknown>): unknown { return { mode: value.mode ?? "public", actors: [value.primary, value.accountA, value.accountB].filter(Boolean).map((v) => { const actor = record(v); return { identityVerification: actor?.identityVerification ?? "disabled", sourceKind: actor?.source ? "configured" : undefined }; }) }; }
 function identitySemantics(value: Record<string, unknown>): unknown { return [value.primary, value.accountA, value.accountB].filter(Boolean).map((v) => { const actor = record(v); return { identityVerification: actor?.identityVerification ?? "disabled" }; }); }
 function stable(value: unknown): string { return JSON.stringify(sort(value)); }

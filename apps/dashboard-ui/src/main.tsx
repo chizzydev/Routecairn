@@ -61,6 +61,7 @@ export function App() {
         <button className={view === "compare" ? "active" : ""} onClick={() => setView("compare")}>Compare</button>
         <button className={view === "proof" ? "active" : ""} onClick={() => setView("proof")}>Proof Packs</button>
         <button className={view === "offensive" ? "active" : ""} onClick={() => setView("offensive")}>Offensive Safety</button>
+        <button className={view === "mutation" ? "active" : ""} onClick={() => setView("mutation")}>Mutation Approval</button>
         <button className={view === "configurations" ? "active" : ""} onClick={() => setView("configurations")}>Configurations</button>
         <button className={view === "credentials" ? "active" : ""} onClick={() => setView("credentials")}>Credentials</button>
         <button className={view === "users" ? "active" : ""} onClick={() => setView("users")}>Users</button>
@@ -82,6 +83,7 @@ export function App() {
         {view === "compare" && <Compare />}
         {view === "proof" && <ProofPacks />}
         {view === "offensive" && <OffensiveSafety />}
+        {view === "mutation" && <ControlledMutationWorkspace />}
         {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setView("new-scan"); }} />}
         {view === "credentials" && <Credentials />}
         {view === "users" && <Users />}
@@ -128,6 +130,15 @@ function OffensiveSafety() {
     </div>
     {status && status.cases.length === 0 && <EmptyState text="No unresolved controlled-mutation cleanup obligations were discovered across registered journal directories." />}
   </section>;
+}
+
+function ControlledMutationWorkspace() {
+  const [targets, setTargets] = useState<TargetSummary[]>([]); const [targetId, setTargetId] = useState(""); const [caseId, setCaseId] = useState(""); const [planIdentity, setPlanIdentity] = useState(""); const [authorizationDeclaration, setAuthorizationDeclaration] = useState(""); const [expiresAt, setExpiresAt] = useState(""); const [approval, setApproval] = useState<any>(); const [message, setMessage] = useState("");
+  useEffect(() => { void apiGet<{ targets: TargetSummary[] }>("/api/targets").then((body) => { setTargets(body.targets); if (body.targets[0]) setTargetId(body.targets[0].id); }).catch((cause: unknown) => setMessage(errorText(cause))); }, []);
+  const selected = targets.find((target) => target.id === targetId);
+  const preview = async () => { if (!selected) throw new Error("Select a registered target."); const result = await apiMutation<{ approval: any }>("/api/controlled-mutations/approvals", "POST", { caseId, targetId, targetOrigin: selected.baseOrigin, planIdentity, authorizationDeclaration, expiresAt: new Date(expiresAt).toISOString(), confirmation: "I_CONFIRM_EXPLICIT_AUTHORIZATION_AND_CLEANUP_DUTY" }); setApproval(result.approval); setMessage("Exact approval preview persisted."); };
+  const approve = async () => { if (!approval) return; const result = await apiMutation<{ approval: any }>(`/api/controlled-mutations/approvals/${approval.id}/approve`, "POST", {}); setApproval(result.approval); setMessage("Case approved. Worker execution remains contract-bound."); };
+  return <section><Header title="Controlled Mutation Workspace" subtitle="Explicit privilege-boundary cases with approval, expiry, and cleanup visibility." /><div className="cleanup-emergency" role="note"><div><strong>Deletion tiers unavailable</strong><p>Only reversible, operator-supplied mutations are eligible. Raw bodies and credentials are never entered here.</p></div><span>OWNER APPROVAL REQUIRED</span></div><form className="form" onSubmit={(event) => { event.preventDefault(); void preview().catch((cause: unknown) => setMessage(errorText(cause))); }}><label>Registered target<select value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">Select target</option>{targets.map((target) => <option key={target.id} value={target.id}>{target.displayName} · {target.baseOrigin}</option>)}</select></label><label>Exact case ID<input value={caseId} onChange={(event) => setCaseId(event.target.value)} placeholder="role-boundary-001" /></label><label>Redacted plan identity<input value={planIdentity} onChange={(event) => setPlanIdentity(event.target.value)} placeholder="64-character plan hash" /></label><label>Authorization declaration<textarea value={authorizationDeclaration} onChange={(event) => setAuthorizationDeclaration(event.target.value)} placeholder="Owned staging environment and disposable target authorized for this case." /></label><label>Authorization expiry<input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label><button className="primary" disabled={!targetId || !caseId || planIdentity.length !== 64 || authorizationDeclaration.length < 20 || !expiresAt}>Create exact preview</button></form>{message && <p aria-live="polite">{message}</p>}<h3>Execution timeline</h3><div className="table compact-table"><div className="row cleanup-row head"><span>Case</span><span>Target</span><span>Plan</span><span>Status</span><span>Action</span></div>{approval && <div className="row cleanup-row"><span><strong>{approval.caseId}</strong><small>{approval.authorizationSummary}</small></span><span>{approval.targetOrigin}</span><span><code>{approval.planIdentity}</code></span><span><Badge value={approval.status} /><small>Expires {approval.expiresAt}</small></span><span>{approval.status === "PREVIEWED" ? <button onClick={() => void approve().catch((cause: unknown) => setMessage(errorText(cause)))}>Approve case</button> : <span>Awaiting worker execution</span>}</span></div>}</div>{!approval && <EmptyState text="No mutation case previewed in this session." />}</section>;
 }
 
 function Login(props: { onLogin: (principal: unknown) => void }) {
