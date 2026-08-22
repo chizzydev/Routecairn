@@ -10,6 +10,7 @@ import type { CredentialVault } from "../credentials/CredentialVault.js";
 import { resolveCredentialAuthForDashboardScan } from "../execution/ScanExecutionShared.js";
 import { parseWorkerMessage, workerProtocolVersion, type WorkerToApiMessage } from "./ScanWorkerProtocol.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
+import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
 
 export interface WorkerRunHandlers {
   onPlan(message: Extract<WorkerToApiMessage, { type: "JOB_PLAN" }>): void;
@@ -36,11 +37,14 @@ export class ScanWorkerManager {
 
   public constructor(private readonly database: DashboardDatabase, private readonly paths: DashboardPaths, private readonly vault?: CredentialVault) {}
 
-  public recoverExpiredLeases(): string[] {
+  public async recoverExpiredLeases(): Promise<string[]> {
     const expired = this.database.db.prepare("SELECT job_id FROM scan_job_leases WHERE released_at IS NULL AND expires_at < ?").all(nowIso()) as Array<{ job_id: string }>;
     for (const row of expired) {
+      const cleanupStatus = await readMutationCleanupStatus(this.paths.mutationJournalDir, this.paths.mutationJournalRegistryPath);
+      const cleanupRequired = cleanupStatus.cleanupRequired > 0;
       this.database.transaction(() => {
-        this.database.db.prepare("UPDATE scans SET status = 'INTERRUPTED', completed_at = ?, error_summary = ? WHERE id = ? AND status IN ('QUEUED','PLANNING','RUNNING','CANCEL_REQUESTED')").run(nowIso(), "Worker lease expired before the scan reached a terminal state.", row.job_id);
+        this.database.db.prepare("UPDATE scans SET status = 'INTERRUPTED', completed_at = ?, error_summary = ? WHERE id = ? AND status IN ('QUEUED','PLANNING','RUNNING','CANCEL_REQUESTED')").run(nowIso(), cleanupRequired ? "Worker lease expired while a controlled mutation cleanup obligation remains unresolved. Operator recovery is required before new mutations." : "Worker lease expired before the scan reached a terminal state.", row.job_id);
+        this.database.db.prepare("INSERT INTO scan_events (id, seq, scan_id, event_type, safe_message, safe_metadata_json, created_at) SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ? FROM scan_events WHERE scan_id = ?").run(randomUUID(), row.job_id, cleanupRequired ? "MUTATION_CLEANUP_REQUIRED" : "SCAN_INTERRUPTED", cleanupRequired ? "Worker lease expired; controlled mutation cleanup requires operator recovery." : "Worker lease expired before the scan reached a terminal state.", JSON.stringify({ cleanupRequired }), nowIso(), row.job_id);
         this.database.db.prepare("UPDATE scan_job_leases SET released_at = ?, release_category = 'EXPIRED' WHERE job_id = ? AND released_at IS NULL").run(nowIso(), row.job_id);
       });
     }

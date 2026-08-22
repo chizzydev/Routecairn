@@ -301,6 +301,14 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     sendJson(response, 200, { entries: capabilityParityManifest, valid: validateCapabilityParityManifest().length === 0 });
     return;
   }
+  const approvalDetail = /^\/api\/controlled-mutations\/approvals\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (approvalDetail?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const approval = context.mutationApprovals.get(approvalDetail.groups.id);
+    if (!approval) throw new HttpError(404, "Controlled mutation approval not found.");
+    sendJson(response, 200, { approval });
+    return;
+  }
   if (url.pathname === "/api/offensive/status") {
     requirePermission(context, "scans.read");
     sendJson(response, 200, await readMutationCleanupStatus(paths.mutationJournalDir, paths.mutationJournalRegistryPath));
