@@ -6,6 +6,7 @@ import { extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DashboardDatabase, nowIso } from "../db/DashboardDatabase.js";
 import { ArtifactRepository, AuditRepository, EventRepository, FindingRepository, ProjectRepository, SavedConfigurationRepository, ScanRepository, TargetRepository } from "../db/DashboardRepositories.js";
+import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
 import { LocalSessionManager, SessionError } from "../auth/LocalSession.js";
 import { PermissionError, ServerSessionManager, type ServerRuntimeSecurity } from "../auth/ServerSession.js";
 import type { DashboardPermission, DashboardPrincipal } from "../auth/Permissions.js";
@@ -39,6 +40,7 @@ import {
 import type { ReviewStatus } from "../types/DashboardTypes.js";
 import { capabilityParityManifest, validateCapabilityParityManifest } from "../admin/CapabilityParityManifest.js";
 import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
+import { controlledMutationApprovalSchema } from "../contracts/ControlledMutationSchemas.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -90,6 +92,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const artifacts = new ArtifactRepository(database);
   const configurations = new SavedConfigurationRepository(database);
   const audit = new AuditRepository(database);
+  const mutationApprovals = new ControlledMutationApprovalRepository(database);
   const vaultKey = parseVaultKey(options.masterKey ?? process.env.ROUTECAIRN_MASTER_KEY, options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   const vault = new CredentialVault(database, vaultKey);
   const retestTemplates = new RetestTemplateVault(database.db, vaultKey);
@@ -146,6 +149,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           importer,
           paths
           ,database
+          ,mutationApprovals
         });
         return;
       }
@@ -216,6 +220,7 @@ interface ApiContext {
   importer: HistoricalReportImporter;
   paths: DashboardPaths;
   database: DashboardDatabase;
+  mutationApprovals: ControlledMutationApprovalRepository;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -523,7 +528,25 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 }
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
-  const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit } = context;
+  const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals } = context;
+  if (request.method === "POST" && url.pathname === "/api/controlled-mutations/approvals") {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = controlledMutationApprovalSchema.parse(await readJson(request));
+    const target = targets.get(parsed.targetId);
+    if (!target || target.baseOrigin !== new URL(parsed.targetOrigin).origin) throw new HttpError(400, "Mutation approval target does not match the registered target origin.");
+    const id = mutationApprovals.create({ ...parsed, authorizationSummary: parsed.authorizationDeclaration });
+    audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_PREVIEWED", resourceType: "MUTATION_APPROVAL", resourceId: id, summary: "Controlled mutation approval preview persisted.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, planIdentity: parsed.planIdentity } });
+    sendJson(response, 201, { approval: mutationApprovals.get(id) });
+    return;
+  }
+  const approval = /^\/api\/controlled-mutations\/approvals\/(?<id>[0-9a-f-]+)\/approve$/.exec(url.pathname);
+  if (request.method === "POST" && approval?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const approved = mutationApprovals.approve(approval.groups.id, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_APPROVED", resourceType: "MUTATION_APPROVAL", resourceId: approval.groups.id, summary: "Controlled mutation case approved for exact execution.", metadata: { caseId: approved.caseId, targetId: approved.targetId, planIdentity: approved.planIdentity } });
+    sendJson(response, 200, { approval: approved });
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/api/session/logout") {
     if (context.mode === "local") context.localSessions?.destroy(response);
     else context.serverSessions?.logout(request, response);

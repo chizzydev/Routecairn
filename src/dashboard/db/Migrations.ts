@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 11;
+export const dashboardSchemaVersion = 12;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -747,6 +747,27 @@ CREATE TABLE IF NOT EXISTS dashboard_csrf_tokens (
 CREATE INDEX IF NOT EXISTS idx_dashboard_csrf_tokens_created ON dashboard_csrf_tokens(session_id, created_at DESC);
 INSERT OR IGNORE INTO dashboard_csrf_tokens (session_id, token_hash, created_at)
 SELECT id, csrf_token_hash, created_at FROM dashboard_sessions;
+`
+  },
+  {
+    version: 12,
+    sql: `
+CREATE TABLE IF NOT EXISTS controlled_mutation_approvals (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL,
+  target_id TEXT NOT NULL REFERENCES targets(id),
+  target_origin TEXT NOT NULL,
+  plan_identity TEXT NOT NULL,
+  authorization_summary TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('PREVIEWED','APPROVED','EXECUTING','COMPLETED','CLEANUP_REQUIRED','CLEANUP_FAILED','REJECTED','EXPIRED')),
+  approved_by TEXT,
+  approved_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(case_id, plan_identity)
+);
+CREATE INDEX IF NOT EXISTS idx_mutation_approvals_target_status ON controlled_mutation_approvals(target_id, status, updated_at DESC);
 `
   }
 ];
