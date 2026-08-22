@@ -27,6 +27,7 @@ export class RequestSafetyBroker {
   private browserPolicyEventLimit = 0;
   private readonly maxRequests: number;
   private readonly abortSignal: AbortSignal | undefined;
+  private readonly controlledMutationEnabled: boolean;
 
   public constructor(
     options: RequestBrokerOptions,
@@ -34,6 +35,7 @@ export class RequestSafetyBroker {
     private readonly recordAudit: RequestAuditRecorder
   ) {
     this.abortSignal = options.abortSignal;
+    this.controlledMutationEnabled = options.controlledMutationEnabled === true;
     this.transport = new HttpClient({
       userAgent: options.userAgent,
       timeoutMs: options.timeoutMs,
@@ -58,6 +60,13 @@ export class RequestSafetyBroker {
   public async send(requestInput: HttpRequest): Promise<HttpResponse> {
     this.throwIfAborted();
     const observation = this.valueAttestor.observe(requestInput.url, requestInput.headers);
+    if (requestInput.method === "DELETE" || ((requestInput.method === "PATCH" || requestInput.method === "PUT") && !this.controlledMutationEnabled)) {
+      const reason = requestInput.method === "DELETE" ? "controlled-deletion-tier-unavailable" : "controlled-mutation-mode-required";
+      const baseResponse = sanitizeResponse(skippedResponse(requestInput, "ControlledMutationBlocked", `Request blocked by scan-wide broker: ${reason}.`), observation);
+      const response = this.finalizeResponse(baseResponse, observation, "policy-blocked");
+      this.recordAudit(auditEntry(requestInput, response, "scope-skipped", [], reason, this.auditFingerprintSalt));
+      return response;
+    }
     const scopeDecision = this.scopeMatcher.decide(requestInput.url, requestInput.method);
 
     if (!scopeDecision.allowed || !scopeDecision.normalizedUrl) {
@@ -73,7 +82,7 @@ export class RequestSafetyBroker {
     const scopedRequest = { ...requestInput, url: scopeDecision.normalizedUrl };
     const key = requestKey(scopedRequest, this.auditFingerprintSalt);
 
-    const cacheable = scopedRequest.method !== "POST" && !scopedRequest.skipCache;
+    const cacheable = (scopedRequest.method === "GET" || scopedRequest.method === "HEAD" || scopedRequest.method === "OPTIONS") && !scopedRequest.skipCache;
     if (cacheable) {
       const cached = this.requestCache.get(key);
       if (cached) {
@@ -87,7 +96,7 @@ export class RequestSafetyBroker {
       this.throwIfAborted();
       await this.rateLimiter.wait();
       this.throwIfAborted();
-      const rawResponse = scopedRequest.disableRetries
+      const rawResponse = scopedRequest.disableRetries || isMutationMethod(scopedRequest.method)
         ? await this.sendWithRedirects(scopedRequest, scopedRequest.url, [])
         : await this.retryPolicy.run(() => this.sendWithRedirects(scopedRequest, scopedRequest.url, []));
       return attachTransientResponseAnalysis(sanitizeResponse(rawResponse, observation), rawResponse);
@@ -259,6 +268,16 @@ export class RequestSafetyBroker {
     const response = await this.transport.send(requestInput, currentUrl, redirectChain);
     const redirectLocation = response.redirectLocation;
 
+    if (isMutationMethod(requestInput.method) && isRedirect(response.statusCode) && redirectLocation) {
+      return {
+        ...response,
+        error: {
+          name: "ControlledMutationRedirectBlocked",
+          message: "State-changing redirects are not followed; authorize the exact final endpoint instead."
+        }
+      };
+    }
+
     if (!isRedirect(response.statusCode) || !redirectLocation || redirectChain.length >= maxRedirects) {
       return response;
     }
@@ -369,6 +388,10 @@ export class RequestSafetyBroker {
       ...(valueAttestations.length > 0 ? { valueAttestations } : {})
     };
   }
+}
+
+function isMutationMethod(method: HttpRequest["method"]): boolean {
+  return method === "POST" || method === "PATCH" || method === "PUT" || method === "DELETE";
 }
 
 function requestKey(requestInput: HttpRequest, key: Buffer): string {

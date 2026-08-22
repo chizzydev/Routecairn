@@ -25,6 +25,33 @@ describe("RouteCairn dashboard UI", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renders a persistent emergency alert for unresolved controlled-mutation cleanup", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/api/auth/session")
+        ? { principal: { login: "owner", role: "OWNER" } }
+        : url.includes("/api/offensive/status")
+          ? {
+              globalMutationActive: true,
+              cleanupRequired: 1,
+              modes: { CONTROLLED_MUTATION: "AVAILABLE" },
+              cases: [{ journalId: "journal-1", caseId: "role-mutation-017", stage: "CLEANUP_FAILED", outcome: "CLEANUP_FAILED", timestamp: "2026-08-22T00:00:00.000Z", targetOrigin: "https://example.test", recoveryBundleAvailable: true, warning: "UNRESOLVED CLEANUP — RouteCairn cannot prove the original target state was restored." }]
+            }
+          : { scans: { total: 0, queued: 0, running: 0, completed: 0, failed: 0, interrupted: 0 }, findings: { open: 0, unreviewed: 0, confirmed: 0, falsePositive: 0, acceptedRisk: 0, resolved: 0, reopened: 0 }, recentScans: [] };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+    const user = userEvent.setup();
+    const rendered = render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Offensive Safety" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED");
+    expect(screen.getByText("role-mutation-017")).toBeTruthy();
+    expect(screen.getAllByText("AVAILABLE").length).toBeGreaterThan(0);
+    expect(screen.getByText("BLOCKED")).toBeTruthy();
+    rendered.unmount();
+    vi.unstubAllGlobals();
+  });
+
   it("labels compact scan cards without separating headers from values", async () => {
     vi.stubGlobal(
       "fetch",

@@ -1,0 +1,13 @@
+{
+  "program": "Explicitly Authorized Staging Mutation Test",
+  "allowedDomains": ["staging.example.com"],
+  "disallowedPaths": ["/logout", "/delete", "/payment"],
+  "allowedMethods": ["GET", "PATCH", "PUT", "POST"],
+  "rateLimitPerSecond": 1,
+  "concurrency": 1,
+  "maxDepth": 0,
+  "sameOriginOnly": true,
+  "includeSubdomains": false,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn/0.1 ControlledMutation"
+}

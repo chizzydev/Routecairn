@@ -8,6 +8,8 @@ export interface DashboardPaths {
   artifactsDir: string;
   proofPacksDir: string;
   fingerprintKeyPath: string;
+  mutationJournalDir: string;
+  mutationJournalRegistryPath: string;
 }
 
 export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
@@ -18,7 +20,9 @@ export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
     reportsDir: resolve(root, "reports"),
     artifactsDir: resolve(root, "artifacts"),
     proofPacksDir: resolve(root, "proof-packs"),
-    fingerprintKeyPath: resolve(root, "keys", "finding-fingerprint.key")
+    fingerprintKeyPath: resolve(root, "keys", "finding-fingerprint.key"),
+    mutationJournalDir: resolve(root, "controlled-mutations"),
+    mutationJournalRegistryPath: resolve(root, "controlled-mutation-journals.json")
   };
 }
 

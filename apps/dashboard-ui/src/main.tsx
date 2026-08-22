@@ -6,7 +6,7 @@ import { ScanStudio } from "./ScanStudio";
 import { FindingsCommandCenter, type RetestDraft } from "./FindingsCommandCenter";
 import type { ComparisonResult } from "../../../src/dashboard/types/DashboardTypes";
 
-type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "configurations" | "credentials" | "users" | "audit" | "settings";
+type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "configurations" | "credentials" | "users" | "audit" | "settings";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -60,6 +60,7 @@ export function App() {
         <button className={view === "findings" ? "active" : ""} onClick={() => { setFindingFilters({}); setView("findings"); }}>Findings</button>
         <button className={view === "compare" ? "active" : ""} onClick={() => setView("compare")}>Compare</button>
         <button className={view === "proof" ? "active" : ""} onClick={() => setView("proof")}>Proof Packs</button>
+        <button className={view === "offensive" ? "active" : ""} onClick={() => setView("offensive")}>Offensive Safety</button>
         <button className={view === "configurations" ? "active" : ""} onClick={() => setView("configurations")}>Configurations</button>
         <button className={view === "credentials" ? "active" : ""} onClick={() => setView("credentials")}>Credentials</button>
         <button className={view === "users" ? "active" : ""} onClick={() => setView("users")}>Users</button>
@@ -80,6 +81,7 @@ export function App() {
         {view === "findings" && <FindingsCommandCenter initialFilters={findingFilters} principal={principal} onRetest={(draft) => { setRetestDraft(draft); setView("new-scan"); }} />}
         {view === "compare" && <Compare />}
         {view === "proof" && <ProofPacks />}
+        {view === "offensive" && <OffensiveSafety />}
         {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setView("new-scan"); }} />}
         {view === "credentials" && <Credentials />}
         {view === "users" && <Users />}
@@ -88,6 +90,44 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function OffensiveSafety() {
+  const [status, setStatus] = useState<any>();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const load = () => void apiGet<any>("/api/offensive/status").then(setStatus).catch((cause: unknown) => setError(errorText(cause)));
+    load();
+    const timer = window.setInterval(load, 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <section>
+    <Header title="Offensive Safety" subtitle="Live controlled-mutation stages and unresolved cleanup obligations. Execution and emergency recovery remain local CLI operations in this release." />
+    {error && <p className="error">{error}</p>}
+    {status?.cleanupRequired > 0 && <div className="cleanup-emergency" role="alert" aria-live="assertive">
+      <div>
+        <strong>UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED</strong>
+        <p>RouteCairn cannot prove that every controlled mutation was restored. Stop new mutation work and perform explicit recovery for each case below.</p>
+      </div>
+      <span>{status.cleanupRequired} OPERATOR ACTION{status.cleanupRequired === 1 ? "" : "S"} REQUIRED</span>
+    </div>}
+    <div className="cards">
+      <div className={`metric ${status?.globalMutationActive ? "danger-metric" : ""}`}><strong>{status?.globalMutationActive ? "BLOCKED" : "IDLE"}</strong><span>New mutation execution</span></div>
+      <div className="metric"><strong>{status?.cleanupRequired ?? 0}</strong><span>Cleanup obligations</span></div>
+      <div className="metric"><strong>{status?.modes?.CONTROLLED_MUTATION ?? "Loading"}</strong><span>Controlled mutation</span></div>
+    </div>
+    <div className="table compact-table">
+      <div className="row cleanup-row head"><span>Case</span><span>Stage</span><span>Recovery</span><span>Warning</span><span>Updated</span></div>
+      {(status?.cases ?? []).map((item: any) => <div className="row cleanup-row" key={`${item.journalId}:${item.caseId}`}>
+        <span><strong>{item.caseId}</strong><small>{item.targetOrigin ?? "Target origin encrypted or unavailable"}</small></span>
+        <span><Badge value={item.stage} /></span>
+        <span><Badge value={item.recoveryBundleAvailable ? "AVAILABLE" : "MISSING"} /></span>
+        <span className="cleanup-warning">{item.warning}</span>
+        <span>{item.timestamp}</span>
+      </div>)}
+    </div>
+    {status && status.cases.length === 0 && <EmptyState text="No unresolved controlled-mutation cleanup obligations were discovered across registered journal directories." />}
+  </section>;
 }
 
 function Login(props: { onLogin: (principal: unknown) => void }) {

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "caseId": "disposable-user-role-boundary",
+  "targetOrigin": "https://staging.example.com",
+  "mode": "CONTROLLED_MUTATION",
+  "environment": "STAGING",
+  "productionAcknowledged": false,
+  "authorization": {
+    "authorizedBy": "replace-with-authorizing-owner",
+    "changeTicket": "replace-with-ticket",
+    "confirmation": "I_CONFIRM_EXPLICIT_AUTHORIZATION_AND_CLEANUP_DUTY",
+    "authorizedAt": "2020-01-01T00:00:00.000Z",
+    "expiresAt": "2020-01-01T01:00:00.000Z"
+  },
+  "target": {
+    "disposable": true,
+    "type": "user",
+    "alias": "replace-with-disposable-alias",
+    "identityFingerprint": "83d6864868aaeafdbf2b53008d28fc72e23bc66a21fd59f96bcd5264ed12b48e",
+    "identityAssertion": { "path": "id", "operator": "EQUALS", "expectedValue": "disposable-id" }
+  },
+  "attack": {
+    "request": {
+      "url": "https://staging.example.com/api/users/disposable-id",
+      "method": "PATCH",
+      "headers": { "content-type": "application/json", "authorization": "Bearer replace-at-runtime" },
+      "body": "{\"role\":\"admin\"}"
+    },
+    "allowedFields": ["role"],
+    "allowedValues": { "role": ["admin"] },
+    "semanticEffect": "UPDATE_EXISTING"
+  },
+  "precondition": {
+    "request": { "url": "https://staging.example.com/api/users/disposable-id", "method": "GET", "headers": { "authorization": "Bearer replace-at-runtime" } },
+    "assertions": [{ "path": "id", "operator": "EQUALS", "expectedValue": "disposable-id" }, { "path": "role", "operator": "EQUALS", "expectedValue": "user" }],
+    "attempts": 1,
+    "delayMs": 0
+  },
+  "impact": {
+    "request": { "url": "https://staging.example.com/api/users/disposable-id", "method": "GET", "headers": { "authorization": "Bearer replace-at-runtime" } },
+    "assertions": [{ "path": "role", "operator": "EQUALS", "expectedValue": "admin" }],
+    "attempts": 3,
+    "delayMs": 500
+  },
+  "rollback": {
+    "request": { "url": "https://staging.example.com/api/users/disposable-id", "method": "PATCH", "headers": { "content-type": "application/json", "authorization": "Bearer replace-at-runtime" }, "body": "{\"role\":\"user\"}" },
+    "verification": {
+      "request": { "url": "https://staging.example.com/api/users/disposable-id", "method": "GET", "headers": { "authorization": "Bearer replace-at-runtime" } },
+      "matchPreStateHash": true,
+      "attempts": 3,
+      "delayMs": 500
+    }
+  }
+}

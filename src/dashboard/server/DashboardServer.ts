@@ -38,6 +38,7 @@ import {
 } from "../contracts/FindingSchemas.js";
 import type { ReviewStatus } from "../types/DashboardTypes.js";
 import { capabilityParityManifest, validateCapabilityParityManifest } from "../admin/CapabilityParityManifest.js";
+import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -71,6 +72,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   mkdirSync(paths.reportsDir, { recursive: true });
   mkdirSync(paths.artifactsDir, { recursive: true });
   mkdirSync(paths.proofPacksDir, { recursive: true });
+  mkdirSync(paths.mutationJournalDir, { recursive: true });
   const database = new DashboardDatabase(paths.databasePath);
   database.migrate();
   database.recoverInterruptedScans();
@@ -292,6 +294,11 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   if (url.pathname === "/api/admin/capability-parity") {
     requirePermission(context, "settings.manage");
     sendJson(response, 200, { entries: capabilityParityManifest, valid: validateCapabilityParityManifest().length === 0 });
+    return;
+  }
+  if (url.pathname === "/api/offensive/status") {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, await readMutationCleanupStatus(paths.mutationJournalDir, paths.mutationJournalRegistryPath));
     return;
   }
   if (url.pathname === "/api/vault/status") {

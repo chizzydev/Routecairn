@@ -22,7 +22,7 @@ export class ScopeMatcher {
       return { allowed: false, reason: "invalid-url" };
     }
 
-    if (!this.scope.allowedMethods.includes(method.toUpperCase() as "GET" | "HEAD" | "OPTIONS" | "POST")) {
+    if (!this.scope.allowedMethods.includes(method.toUpperCase() as (typeof this.scope.allowedMethods)[number])) {
       return { allowed: false, reason: "method-not-allowed", normalizedUrl };
     }
 

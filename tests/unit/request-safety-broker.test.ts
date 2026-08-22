@@ -751,3 +751,50 @@ function brokerFor(target: string, dnsResolver: DnsResolver, maxRequests = 10, r
     () => undefined
   );
 }
+
+describe("controlled mutation broker boundary", () => {
+  it("blocks PATCH by default and DELETE even when controlled mutation transport is enabled", async () => {
+    let networkRequests = 0;
+    const server = await testServer((_request, response) => { networkRequests += 1; response.writeHead(200); response.end("ok"); });
+    const target = `http://127.0.0.1:${server.port}/`;
+    const defaultBroker = mutationBroker(target, false);
+    const enabledBroker = mutationBroker(target, true);
+
+    expect((await defaultBroker.send({ url: `${target}object`, method: "PATCH", body: "{}" })).error?.name).toBe("ControlledMutationBlocked");
+    expect((await enabledBroker.send({ url: `${target}object`, method: "DELETE" })).error?.name).toBe("ControlledMutationBlocked");
+    expect(networkRequests).toBe(0);
+  });
+
+  it("never caches or retries enabled mutations and refuses mutation redirects", async () => {
+    let networkRequests = 0;
+    const server = await testServer((request, response) => {
+      networkRequests += 1;
+      if (request.url === "/redirect") { response.writeHead(302, { location: "/final" }); response.end(); return; }
+      response.writeHead(200, { "content-type": "application/json" }); response.end("{}");
+    });
+    const target = `http://127.0.0.1:${server.port}/`;
+    const broker = mutationBroker(target, true);
+    await broker.send({ url: `${target}object`, method: "PATCH", body: "{}" });
+    await broker.send({ url: `${target}object`, method: "PATCH", body: "{}" });
+    const redirected = await broker.send({ url: `${target}redirect`, method: "PUT", body: "{}" });
+
+    expect(networkRequests).toBe(3);
+    expect(redirected.error?.name).toBe("ControlledMutationRedirectBlocked");
+    expect(redirected.redirectChain).toEqual([]);
+  });
+});
+
+function mutationBroker(target: string, enabled: boolean): RequestSafetyBroker {
+  const scope = { ...exampleScope, allowedDomains: ["127.0.0.1"], allowedMethods: ["GET", "POST", "PATCH", "PUT", "DELETE"] as const, disallowedPaths: [], rateLimitPerSecond: 100, concurrency: 1 };
+  return new RequestSafetyBroker({
+    userAgent: "RouteCairn/ControlledMutationTest",
+    timeoutMs: 3000,
+    bodyPreviewBytes: 1024,
+    maxResponseBytes: 4096,
+    rateLimitPerSecond: 100,
+    concurrency: 1,
+    maxRequests: 10,
+    controlledMutationEnabled: enabled,
+    retry: { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1, retryStatusCodes: [302, 500] }
+  }, new ScopeMatcher(target, scope), () => undefined);
+}

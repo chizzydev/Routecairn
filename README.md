@@ -1117,3 +1117,33 @@ The CLI remains fully usable without the dashboard or dashboard database. Existi
 Dashboard v1 does not implement organizations, teams beyond local users, cloud sync, billing, notifications, distributed workers, remote agents, scheduled scans, persistent raw credential storage, browser login automation, PDF proof-pack generation, or WebSocket dashboard updates. Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
 
 The Authorization Workflow Studio milestone remains incomplete at the guided-UX layer. The current shared editor cannot add every absent optional schema field without Advanced JSON, and it does not yet provide the requested Object Pair relationship diagram, dedicated safe field-path row editor, semantic matrix table and filters, collection completeness/reference controls, bulk body/baseline/postcondition controls, file proof-mode and signed-URL controls, per-field inline schema diagnostics, stable editing-only case IDs, or the full visual and behavioral test matrix for those specialized controls. Immutable saved-configuration version history, full worker resource limits/process-tree cleanup, and a full worker diagnostics page also remain incomplete.
+# Controlled Offensive Execution & Recovery
+
+RouteCairn includes an initial controlled-mutation kernel for explicitly authorized, reversible `POST`, `PATCH`, and `PUT` security tests. Ordinary scans remain read-oriented: the broker blocks `PATCH` and `PUT` unless a dedicated controlled-mutation transport is enabled, always blocks `DELETE`, does not retry mutation requests, does not cache them, and refuses to follow state-changing redirects.
+
+The kernel requires an expiring authorization, exact origin, disposable target, exact field/value allowlists, authoritative pre-state and impact checks, a rollback request, and independent restoration verification. It uses a global single-mutation lock, an fsync-backed redacted journal, HMAC body attestations, and an AES-256-GCM encrypted recovery bundle. Before any attack request enters the network transport, RouteCairn durably records `MUTATION_ARMED` with the recovery-bundle reference. A successful HTTP response alone never proves exploitation.
+
+The example contract is deliberately expired and must be reviewed and updated by the authorizing operator:
+
+```powershell
+routecairn offensive run `
+  --contract ./examples/controlled-mutation.example.json `
+  --scope ./examples/controlled-mutation.scope.example.json `
+  --journal-dir ./data/controlled-mutations `
+  --approve disposable-user-role-boundary `
+  --output ./reports/controlled-mutation-result.json
+```
+
+If a worker or process stops after a mutation was sent, the encrypted `*.recovery.enc` bundle remains. Recovery is an explicit local operation:
+
+```powershell
+routecairn offensive recover `
+  --bundle ./data/controlled-mutations/<case-id>.recovery.enc `
+  --case-id <case-id> `
+  --target https://staging.example.com `
+  --scope ./examples/controlled-mutation.scope.example.json `
+  --journal-dir ./data/controlled-mutations `
+  --output ./reports/controlled-mutation-recovery.json
+```
+
+The CLI defaults to the dashboard’s canonical `controlled-mutations` directory. When an operator supplies another `--journal-dir`, RouteCairn durably registers it with the dashboard, which aggregates all registered journals without returning their filesystem paths to the browser. The **Offensive Safety** view also discovers encrypted recovery bundles independently: a bundle without a trustworthy terminal journal state becomes `MUTATION_STATE_UNCERTAIN` and triggers the persistent **UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED** alert. New controlled mutations remain blocked until every cleanup obligation is independently verified. Mutation execution and emergency recovery intentionally remain CLI-only in this release. `CONTROLLED_DELETION` and `LAB_DESTRUCTIVE` are represented policy tiers but unavailable until stronger restoration contracts are implemented.

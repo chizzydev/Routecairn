@@ -1,6 +1,6 @@
 import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
 
-export type HttpMethod = "GET" | "HEAD" | "OPTIONS" | "POST";
+export type HttpMethod = "GET" | "HEAD" | "OPTIONS" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export interface HttpClientOptions {
   userAgent: string;
@@ -19,6 +19,7 @@ export interface RequestBrokerOptions extends HttpClientOptions {
   concurrency: number;
   maxRequests: number;
   retry: RetryPolicyOptions;
+  controlledMutationEnabled?: boolean;
 }
 
 export interface RetryPolicyOptions {

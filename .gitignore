@@ -1,5 +1,8 @@
 node_modules/
 dist/
+*.recovery.enc
+recovery.key
+global-mutation.lock
 reports/
 data/dashboard*/
 *.log
