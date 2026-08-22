@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { mkdirSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
@@ -40,7 +40,10 @@ import {
 import type { ReviewStatus } from "../types/DashboardTypes.js";
 import { capabilityParityManifest, validateCapabilityParityManifest } from "../admin/CapabilityParityManifest.js";
 import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
+import { scopeSchema } from "../../config/ConfigSchema.js";
 import { controlledMutationApprovalSchema } from "../contracts/ControlledMutationSchemas.js";
+import { controlledMutationRecoverySchema } from "../contracts/ControlledMutationRecoverySchemas.js";
+import { ControlledMutationRecoveryService } from "../execution/ControlledMutationRecoveryService.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -92,9 +95,10 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const artifacts = new ArtifactRepository(database);
   const configurations = new SavedConfigurationRepository(database);
   const audit = new AuditRepository(database);
-  const mutationApprovals = new ControlledMutationApprovalRepository(database);
   const vaultKey = parseVaultKey(options.masterKey ?? process.env.ROUTECAIRN_MASTER_KEY, options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   const vault = new CredentialVault(database, vaultKey);
+  const mutationApprovals = new ControlledMutationApprovalRepository(database);
+  const mutationRecovery = new ControlledMutationRecoveryService(database, paths, targets, vault);
   const retestTemplates = new RetestTemplateVault(database.db, vaultKey);
   const findingCommandCenter = new FindingCommandCenterService(database, retestTemplates);
   const execution = new ScanExecutionService(database, paths, vault, retestTemplates);
@@ -150,6 +154,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           paths
           ,database
           ,mutationApprovals
+          ,mutationRecovery
         });
         return;
       }
@@ -221,6 +226,7 @@ interface ApiContext {
   paths: DashboardPaths;
   database: DashboardDatabase;
   mutationApprovals: ControlledMutationApprovalRepository;
+  mutationRecovery: ControlledMutationRecoveryService;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -536,13 +542,15 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 }
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
-  const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals } = context;
+  const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
   if (request.method === "POST" && url.pathname === "/api/controlled-mutations/approvals") {
     requirePermission(context, "controlledMutation.approve");
     const parsed = controlledMutationApprovalSchema.parse(await readJson(request));
     const target = targets.get(parsed.targetId);
     if (!target || target.baseOrigin !== new URL(parsed.targetOrigin).origin) throw new HttpError(400, "Mutation approval target does not match the registered target origin.");
-    const id = mutationApprovals.create({ ...parsed, authorizationSummary: parsed.authorizationDeclaration });
+    const targetIdentityFingerprint = createHash("sha256").update(`${target.id}:${target.rowVersion}:${target.baseOrigin}`).digest("hex");
+    const scopeDigest = createHash("sha256").update(JSON.stringify(target.approvedScope, Object.keys(target.approvedScope).sort())).digest("hex");
+    const id = mutationApprovals.create({ ...parsed, authorizationSummary: parsed.authorizationDeclaration, targetIdentityFingerprint, scopeDigest });
     audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_PREVIEWED", resourceType: "MUTATION_APPROVAL", resourceId: id, summary: "Controlled mutation approval preview persisted.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, planIdentity: parsed.planIdentity } });
     sendJson(response, 201, { approval: mutationApprovals.get(id) });
     return;
@@ -553,6 +561,17 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     const approved = mutationApprovals.approve(approval.groups.id, context.principal?.userId ?? "local-operator");
     audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_APPROVED", resourceType: "MUTATION_APPROVAL", resourceId: approval.groups.id, summary: "Controlled mutation case approved for exact execution.", metadata: { caseId: approved.caseId, targetId: approved.targetId, planIdentity: approved.planIdentity } });
     sendJson(response, 200, { approval: approved });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/controlled-mutations/recover") {
+    requirePermission(context, "controlledMutation.recover");
+    const parsed = controlledMutationRecoverySchema.parse(await readJson(request));
+    const target = targets.get(parsed.targetId);
+    if (!target) throw new HttpError(404, "Controlled mutation recovery target not found.");
+    if (!parsed.credentialProfileId) throw new HttpError(400, "Controlled mutation recovery requires a fresh credential profile.");
+    const jobId = randomUUID();
+    void mutationRecovery.queueRecovery({ recoveryJobId: jobId, approvalId: parsed.approvalId, bundlePath: parsed.bundlePath, caseId: parsed.caseId, targetId: parsed.targetId, credentialProfileId: parsed.credentialProfileId, workerRequest: { target: target.baseOrigin, targetId: target.id, profile: "authenticated", authorizationDeclaration: "Approved controlled-mutation recovery operation.", includeModules: ["privilege-mutation-testing"], studio: { version: 1, scanName: `Recovery ${parsed.caseId}`, authorization: { category: "OWNED", confirmed: true }, scope: scopeSchema.parse(target.approvedScope), authentication: { mode: "primary", primary: { source: "saved", credentialProfileId: parsed.credentialProfileId } }, outputs: { json: true, markdown: true, html: true }, moduleSettings: {}, workflows: [], workflowSummary: [] } } }).then((result) => audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_RECOVERY_COMPLETED", resourceType: "MUTATION_APPROVAL", resourceId: parsed.approvalId, summary: `Controlled mutation recovery completed with ${result.cleanupOutcome}.`, metadata: { caseId: parsed.caseId, targetId: parsed.targetId, cleanupOutcome: result.cleanupOutcome } })).catch((error: unknown) => audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_RECOVERY_FAILED", resourceType: "MUTATION_APPROVAL", resourceId: parsed.approvalId, summary: "Controlled mutation recovery failed; operator action remains required.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, error: error instanceof Error ? error.message.slice(0, 200) : "unknown" } }));
+    sendJson(response, 202, { recoveryJobId: jobId, status: "QUEUED" });
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/session/logout") {

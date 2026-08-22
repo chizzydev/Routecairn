@@ -1,10 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { HttpClient } from "../../core/http/HttpClient.js";
+import { ControlledMutationExecutor } from "../../core/offensive/ControlledMutationExecutor.js";
+import type { MutationTransport } from "../../core/offensive/ControlledMutationTypes.js";
 import { RouteCairnEngine } from "../../core/engine/RouteCairnEngine.js";
 import type { ScanExecutionEvent, ScanEventSink } from "../../core/engine/ScanEvents.js";
 import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
-import { authProfileSchema, type AuthProfile } from "../../core/auth/AuthProfile.js";
+import { authProfileSchema, authHeadersForProfile, type AuthProfile } from "../../core/auth/AuthProfile.js";
 import type { AuthProfileSet } from "../../core/auth/AuthProfileSet.js";
 import { planSnapshot, resolveDashboardScanPlan } from "../execution/ScanExecutionShared.js";
 import type { DashboardResolvedAuth } from "../execution/ScanExecutionShared.js";
@@ -15,7 +18,7 @@ const workerGeneration = process.env.ROUTECAIRN_WORKER_GENERATION ?? "";
 const workerSecret = process.env.ROUTECAIRN_WORKER_SESSION_SECRET ?? "";
 let jobId = "";
 let request: DashboardScanCreateRequest | undefined;
-let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fingerprintKeyPath: string } | undefined;
+let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fingerprintKeyPath: string; mutationJournalDir: string } | undefined;
 let abortController: AbortController | undefined;
 let acceptedEnvelope = false;
 let acceptedEnvelopeAuth: DashboardResolvedAuth | undefined;
@@ -61,6 +64,11 @@ async function handleMessage(raw: unknown): Promise<void> {
       if (message.jobId !== jobId) throw new Error("Start job mismatch.");
       await startJob();
       break;
+    case "RECOVER_MUTATION":
+      if (message.jobId !== jobId) throw new Error("Recovery job mismatch.");
+      validateRecoveryMessage(message);
+      await recoverMutation(message);
+      break;
     case "CANCEL_JOB":
       if (message.jobId === jobId) abortController?.abort();
       break;
@@ -70,6 +78,17 @@ async function handleMessage(raw: unknown): Promise<void> {
       process.exit(0);
       break;
   }
+}
+
+async function recoverMutation(message: Extract<ApiToWorkerMessage, { type: "RECOVER_MUTATION" }>): Promise<void> {
+  if (!paths || !acceptedEnvelope) throw new Error("Worker refused recovery without initialized paths and authenticated credentials.");
+  const client = new HttpClient({ userAgent: "RouteCairn controlled-mutation-recovery", timeoutMs: 15000, maxResponseBytes: 1024 * 1024, bodyPreviewBytes: 64 * 1024, allowedPrivateOrigins: [] });
+  const freshProfile = acceptedEnvelopeAuth?.authProfile;
+  if (!freshProfile) throw new Error("Worker refused recovery without a fresh primary credential profile.");
+  const freshHeaders = authHeadersForProfile(freshProfile);
+  const transport: MutationTransport = { send: (request) => client.send({ ...request, headers: { ...request.headers, ...freshHeaders } }) };
+  const result = await new ControlledMutationExecutor(transport, { journalDirectory: paths.mutationJournalDir }).recover(message.bundlePath, message.caseId);
+  send({ protocolVersion: workerProtocolVersion, type: "JOB_MUTATION_RECOVERY", workerId: requireWorkerId(), jobId: message.jobId, caseId: message.caseId, cleanupOutcome: result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED", notes: result.notes.slice(0, 20) });
 }
 
 function initialize(message: Extract<ApiToWorkerMessage, { type: "INITIALIZE_JOB" }>): void {
@@ -203,6 +222,16 @@ function validateMutationContracts(message: Extract<ApiToWorkerMessage, { type: 
   if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired mutation contract envelope rejected.");
   const { hmac, ...body } = message;
   if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Mutation contract envelope authentication failed.");
+  lastSensitiveSequence = message.sequence;
+}
+
+function validateRecoveryMessage(message: Extract<ApiToWorkerMessage, { type: "RECOVER_MUTATION" }>): void {
+  if (!workerSecret || !workerGeneration) throw new Error("Worker IPC authentication was not initialized.");
+  if (abortController) throw new Error("Recovery received after scan start.");
+  if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order recovery envelope rejected.");
+  if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired recovery envelope rejected.");
+  const { hmac, ...body } = message;
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Recovery envelope authentication failed.");
   lastSensitiveSequence = message.sequence;
 }
 

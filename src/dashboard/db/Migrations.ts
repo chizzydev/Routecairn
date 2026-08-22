@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 12;
+export const dashboardSchemaVersion = 13;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -768,6 +768,13 @@ CREATE TABLE IF NOT EXISTS controlled_mutation_approvals (
   UNIQUE(case_id, plan_identity)
 );
 CREATE INDEX IF NOT EXISTS idx_mutation_approvals_target_status ON controlled_mutation_approvals(target_id, status, updated_at DESC);
+`
+  },
+  {
+    version: 13,
+    sql: `
+ALTER TABLE controlled_mutation_approvals ADD COLUMN target_identity_fingerprint TEXT NOT NULL DEFAULT '';
+ALTER TABLE controlled_mutation_approvals ADD COLUMN scope_digest TEXT NOT NULL DEFAULT '';
 `
   }
 ];

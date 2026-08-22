@@ -29,7 +29,10 @@ export interface WorkerRunResult {
 
 export interface WorkerMutationOptions { contracts: readonly ControlledMutationContract[] }
 
+export interface WorkerRecoveryResult { workerId: string; caseId: string; cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_FAILED"; notes: string[]; }
+
 const leaseTtlMs = 30_000;
+const recoveryTimeoutMs = 60_000;
 const cancellationTimeoutMs = 5_000;
 
 export class ScanWorkerManager {
@@ -90,7 +93,7 @@ export class ScanWorkerManager {
           if (message.workerId !== workerId) throw new Error("Worker ID mismatch.");
           switch (message.type) {
             case "WORKER_READY":
-              child.send({ protocolVersion: workerProtocolVersion, type: "INITIALIZE_JOB", workerId, jobId, request: safeWorkerRequest(request), paths: this.paths });
+              child.send({ protocolVersion: workerProtocolVersion, type: "INITIALIZE_JOB", workerId, jobId, request: safeWorkerRequest(request), paths: { reportsDir: this.paths.reportsDir, artifactsDir: this.paths.artifactsDir, proofPacksDir: this.paths.proofPacksDir, fingerprintKeyPath: this.paths.fingerprintKeyPath, mutationJournalDir: this.paths.mutationJournalDir } });
               break;
             case "JOB_ACCEPTED":
               this.database.db.prepare("UPDATE scan_workers SET state = 'RUNNING', current_job_id = ?, last_heartbeat_at = ? WHERE id = ?").run(jobId, nowIso(), workerId);
@@ -132,6 +135,34 @@ export class ScanWorkerManager {
       child.on("exit", (code, signal) => {
         settle({ workerId, status: "INTERRUPTED", error: `Worker exited before completion. code=${code ?? "none"} signal=${signal ?? "none"}` });
       });
+    });
+  }
+
+  public runRecovery(jobId: string, request: DashboardScanCreateRequest, caseId: string, bundlePath: string): Promise<WorkerRecoveryResult> {
+    const workerId = randomUUID();
+    const workerGeneration = randomUUID();
+    const workerSecret = randomBytes(32).toString("base64url");
+    const child = fork(workerEntryPath(), [], { execArgv: workerEntryPath().endsWith(".ts") ? ["--import", "tsx"] : [], env: { ...process.env, ROUTECAIRN_WORKER_ID: workerId, ROUTECAIRN_WORKER_GENERATION: workerGeneration, ROUTECAIRN_WORKER_SESSION_SECRET: workerSecret }, stdio: ["ignore", "ignore", "ignore", "ipc"] });
+    this.recordWorker(workerId, child.pid ?? null);
+    this.acquireLease(jobId, workerId);
+    return new Promise<WorkerRecoveryResult>((resolveRecovery, rejectRecovery) => {
+      let settled = false;
+      const timeout = setTimeout(() => settle(undefined, new Error("Recovery worker exceeded the bounded cleanup timeout.")), recoveryTimeoutMs);
+      timeout.unref();
+      const settle = (result?: WorkerRecoveryResult, error?: Error) => { if (settled) return; settled = true; clearTimeout(timeout); this.releaseLease(jobId, result?.cleanupOutcome ?? "FAILED"); this.database.db.prepare("UPDATE scan_workers SET state = ?, current_job_id = NULL, shutdown_at = ? WHERE id = ?").run(result?.cleanupOutcome === "ROLLBACK_VERIFIED" ? "STOPPED" : "EXITED", nowIso(), workerId); if (!child.killed) child.kill(); if (error) rejectRecovery(error); else resolveRecovery(result!); };
+      child.on("message", (raw: unknown) => {
+        try {
+          const message = parseWorkerMessage(raw);
+          if (message.workerId !== workerId) throw new Error("Worker ID mismatch.");
+          if (message.type === "WORKER_READY") { child.send({ protocolVersion: workerProtocolVersion, type: "INITIALIZE_JOB", workerId, jobId, request: safeWorkerRequest(request), paths: { reportsDir: this.paths.reportsDir, artifactsDir: this.paths.artifactsDir, proofPacksDir: this.paths.proofPacksDir, fingerprintKeyPath: this.paths.fingerprintKeyPath, mutationJournalDir: this.paths.mutationJournalDir } }); return; }
+          if (message.type === "JOB_ACCEPTED") { child.send(secretEnvelopeMessage({ workerId, jobId, request, workerSecret, workerGeneration, attempt: 1, vault: this.vault })); child.send(recoveryMessage({ workerId, jobId, caseId, bundlePath, workerSecret })); return; }
+          if (message.type === "JOB_HEARTBEAT") { this.renewLease(jobId, workerId); return; }
+          if (message.type === "JOB_MUTATION_RECOVERY") { if (message.jobId !== jobId || message.caseId !== caseId) throw new Error("Recovery result binding mismatch."); settle({ workerId, caseId: message.caseId, cleanupOutcome: message.cleanupOutcome, notes: message.notes }); return; }
+          if (message.type === "WORKER_ERROR") { settle(undefined, new Error(message.error)); return; }
+          if (message.type === "WORKER_SHUTDOWN") { settle(undefined, new Error("Recovery worker shut down before cleanup result.")); }
+        } catch (error) { settle(undefined, error instanceof Error ? error : new Error("Invalid worker recovery message.")); }
+      });
+      child.on("exit", (code, signal) => settle(undefined, new Error(`Recovery worker exited before completion. code=${code ?? "none"} signal=${signal ?? "none"}`)));
     });
   }
 
@@ -234,6 +265,11 @@ function secretEnvelopeMessage(input: { workerId: string; jobId: string; request
 
 function mutationContractMessage(input: { workerId: string; jobId: string; contracts: readonly ControlledMutationContract[]; workerSecret: string }) {
   const body = { protocolVersion: workerProtocolVersion, type: "PROVIDE_MUTATION_CONTRACTS" as const, workerId: input.workerId, jobId: input.jobId, sequence: 2, expiresAt: new Date(Date.now() + 30_000).toISOString(), nonce: randomBytes(18).toString("base64url"), contracts: [...input.contracts] };
+  return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
+}
+
+function recoveryMessage(input: { workerId: string; jobId: string; caseId: string; bundlePath: string; workerSecret: string }) {
+  const body = { protocolVersion: workerProtocolVersion, type: "RECOVER_MUTATION" as const, workerId: input.workerId, jobId: input.jobId, sequence: 2, expiresAt: new Date(Date.now() + 30_000).toISOString(), nonce: randomBytes(18).toString("base64url"), caseId: input.caseId, bundlePath: input.bundlePath };
   return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
 }
 

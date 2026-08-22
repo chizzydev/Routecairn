@@ -15,7 +15,8 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
       reportsDir: z.string(),
       artifactsDir: z.string(),
       proofPacksDir: z.string(),
-      fingerprintKeyPath: z.string()
+      fingerprintKeyPath: z.string(),
+      mutationJournalDir: z.string()
     })
   }),
   z.object({
@@ -40,6 +41,18 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
     expiresAt: z.string().datetime(),
     nonce: z.string().min(16).max(120),
     contracts: z.array(controlledMutationContractSchema).min(1).max(10),
+    hmac: z.string().regex(/^[a-f0-9]{64}$/)
+  }),
+  z.object({
+    protocolVersion: z.literal(workerProtocolVersion),
+    type: z.literal("RECOVER_MUTATION"),
+    workerId: z.string().uuid(),
+    jobId: z.string().uuid(),
+    sequence: z.number().int().positive(),
+    expiresAt: z.string().datetime(),
+    nonce: z.string().min(16).max(120),
+    caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(120),
+    bundlePath: z.string().min(1).max(1000).regex(/\.recovery\.enc$/).refine((value) => !value.includes("..") && !value.includes("\\"), "Recovery bundle path traversal is not allowed"),
     hmac: z.string().regex(/^[a-f0-9]{64}$/)
   }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("START_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
@@ -74,7 +87,14 @@ export const workerToApiMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     protocolVersion: z.literal(workerProtocolVersion),
-    type: z.literal("JOB_COMPLETED"),
+    type: z.literal("JOB_MUTATION_RECOVERY"),
+    workerId: z.string().uuid(),
+    jobId: z.string().uuid(),
+    caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(120),
+    cleanupOutcome: z.enum(["ROLLBACK_VERIFIED", "CLEANUP_FAILED"]),
+    notes: z.array(z.string().max(800)).max(20)
+  }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("JOB_COMPLETED"),
     workerId: z.string().uuid(),
     jobId: z.string().uuid(),
     reportPath: z.string(),
