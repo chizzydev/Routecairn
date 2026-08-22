@@ -13,6 +13,7 @@ describe("controlled mutation approval repository", () => {
     expect(repository.approve(id, "owner")?.status).toBe("APPROVED");
     expect(repository.beginRecovery(id, "00000000-0000-4000-8000-000000000002")?.recoveryJobId).toBe("00000000-0000-4000-8000-000000000002");
     repository.updateStatus(id, "CLEANUP_FAILED", "worker timeout");
+    expect(repository.get(id)?.status).toBe("CLEANUP_FAILED");
     expect(repository.get(id)?.recoveryErrorSummary).toBe("worker timeout");
     expect(repository.get(id)?.recoveryCompletedAt).toBeTruthy();
   });

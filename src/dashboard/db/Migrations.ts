@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 14;
+export const dashboardSchemaVersion = 15;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -785,6 +785,21 @@ ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_started_at TEXT;
 ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_completed_at TEXT;
 ALTER TABLE controlled_mutation_approvals ADD COLUMN recovery_error_summary TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mutation_approvals_recovery_job ON controlled_mutation_approvals(recovery_job_id) WHERE recovery_job_id IS NOT NULL;
+`
+  },
+  {
+    version: 15,
+    sql: `
+CREATE TABLE IF NOT EXISTS controlled_mutation_recovery_leases (
+  job_id TEXT PRIMARY KEY,
+  worker_id TEXT NOT NULL REFERENCES scan_workers(id) ON DELETE CASCADE,
+  acquired_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_renewed_at TEXT NOT NULL,
+  released_at TEXT,
+  release_category TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mutation_recovery_leases_worker ON controlled_mutation_recovery_leases(worker_id);
 `
   }
 ];
