@@ -29,6 +29,7 @@ import type {
   VulnerabilityWorkflowReport,
   WorkflowValidationReport
 } from "../../reports/ReportTypes.js";
+import type { PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
 import type { Finding } from "../findings/Finding.js";
 import type { ModuleResult } from "../plugins/Plugin.js";
 import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
@@ -63,6 +64,7 @@ export class ScanState {
   private vulnerabilityWorkflows: VulnerabilityWorkflowReport | undefined;
   private workflowValidation: WorkflowValidationReport | undefined;
   private proofMode: ProofModeReport | undefined;
+  private privilegeMutation: PrivilegeMutationReport | undefined;
   private baseline: BaselineReport | undefined;
   private startedAt = new Date();
   private completedAt: Date | undefined;
@@ -298,6 +300,8 @@ export class ScanState {
       this.recordProofMode(result.proofMode);
     }
 
+    if (result.privilegeMutation) this.privilegeMutation = result.privilegeMutation;
+
     if (result.findings) {
       this.recordFindings(result.findings);
     }
@@ -459,6 +463,7 @@ export class ScanState {
       ...(this.vulnerabilityWorkflows ? { vulnerabilityWorkflows: this.vulnerabilityWorkflows } : {}),
       ...(this.workflowValidation ? { workflowValidation: this.workflowValidation } : {}),
       ...(this.proofMode ? { proofMode: this.proofMode } : {}),
+      ...(this.privilegeMutation ? { privilegeMutation: this.privilegeMutation } : {}),
       discoveredUrls,
       findings
     };

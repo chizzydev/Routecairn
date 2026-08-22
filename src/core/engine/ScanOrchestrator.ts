@@ -21,6 +21,7 @@ import { CorsReviewModule } from "../../modules/corsReview/CorsReviewModule.js";
 import { ExposureReviewModule } from "../../modules/exposureReview/ExposureReviewModule.js";
 import { EquivalentRouteModule } from "../../modules/equivalentRouteTesting/EquivalentRouteModule.js";
 import { FieldExposureTestingModule } from "../../modules/fieldExposureTesting/FieldExposureTestingModule.js";
+import { PrivilegeMutationModule } from "../../modules/privilegeMutation/PrivilegeMutationModule.js";
 import { HeaderReviewModule } from "../../modules/headerReview/HeaderReviewModule.js";
 import { JsDiscoveryModule } from "../../modules/jsIntelligence/JsDiscoveryModule.js";
 import { MethodReviewModule } from "../../modules/methodReview/MethodReviewModule.js";
@@ -99,6 +100,7 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new BulkAuthorizationModule(), moduleMetadata("bulk-authorization-testing"));
   registry.register(new FileAuthorizationModule(), moduleMetadata("file-authorization-testing"));
   registry.register(new EquivalentRouteModule(), moduleMetadata("equivalent-route-testing"));
+  registry.register(new PrivilegeMutationModule(), moduleMetadata("privilege-mutation-testing"));
   registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
   registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
   registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));

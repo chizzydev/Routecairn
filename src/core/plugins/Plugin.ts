@@ -25,6 +25,7 @@ import type {
   VulnerabilityWorkflowReport,
   WorkflowValidationReport
 } from "../../reports/ReportTypes.js";
+import type { PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
 
 export type PluginPhase = "baseline" | "fingerprint" | "intelligence" | "discovery" | "analysis";
 
@@ -52,6 +53,7 @@ export interface ModuleResult {
   vulnerabilityWorkflows?: VulnerabilityWorkflowReport;
   workflowValidation?: WorkflowValidationReport;
   proofMode?: ProofModeReport;
+  privilegeMutation?: PrivilegeMutationReport;
   discoveredUrls?: ResponseObservation[];
   findings?: Finding[];
   notes?: string[];

@@ -19,6 +19,9 @@ import { loadCollectionAuthorizationInput, planCollectionAuthorizationTesting } 
 import { loadBulkAuthorizationInput, planBulkAuthorizationTesting } from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
 import { loadFileAuthorizationInput, planFileAuthorizationTesting } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
 import { loadEquivalentRouteInput, planEquivalentRouteTesting } from "../../modules/equivalentRouteTesting/EquivalentRoutePlanner.js";
+import { privilegeMutationInputSchema, planPrivilegeMutationTesting } from "../../modules/privilegeMutation/PrivilegeMutationPlanner.js";
+import { readFile } from "node:fs/promises";
+import { controlledMutationContractSchema } from "../../core/offensive/ControlledMutationTypes.js";
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
 
@@ -42,6 +45,8 @@ interface ScanCommandOptions {
   bulkAuthorization?: string;
   fileAuthorization?: string;
   equivalentRoutes?: string;
+  privilegeMutation?: string;
+  mutationContracts?: string;
 }
 
 export function registerScanCommand(program: Command): void {
@@ -66,6 +71,8 @@ export function registerScanCommand(program: Command): void {
     .option("--bulk-authorization <file>", "Path to an explicit controlled bulk authorization testing JSON file.")
     .option("--file-authorization <file>", "Path to an explicit controlled file authorization testing JSON file.")
     .option("--equivalent-routes <file>", "Path to an explicit controlled equivalent-route testing JSON file.")
+    .option("--privilege-mutation <file>", "Path to an explicit authorized privilege/mass-assignment mutation plan.")
+    .option("--mutation-contracts <file>", "Path to exact expiring controlled-mutation contracts.")
     .action(async (target: string, options: ScanCommandOptions) => {
       const result = await runScanCommand(target, options);
       logger.success(`Scan complete. Report written to ${result.reportPath}`);
@@ -117,9 +124,14 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const equivalentRouteTesting = options.equivalentRoutes
     ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
+  const privilegeMutationTesting = options.privilegeMutation
+    ? planPrivilegeMutationTesting(privilegeMutationInputSchema.parse(JSON.parse(await readFile(resolve(options.privilegeMutation), "utf8"))), { target, maxCases: 10 })
+    : undefined;
+  const mutationContractSource = options.mutationContracts ? JSON.parse(await readFile(resolve(options.mutationContracts), "utf8")) : undefined;
+  const parsedMutationContracts = mutationContractSource ? (Array.isArray(mutationContractSource) ? mutationContractSource : [mutationContractSource]).map((value) => controlledMutationContractSchema.parse(value)) : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
   const includeModules =
-    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting
+    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting
       ? [
           ...new Set([
             ...(translated.includeModules ?? []),
@@ -129,7 +141,8 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
             ...(collectionAuthorizationTesting ? (["collection-authorization-testing"] as ModuleId[]) : []),
             ...(bulkAuthorizationTesting ? (["bulk-authorization-testing"] as ModuleId[]) : []),
             ...(fileAuthorizationTesting ? (["file-authorization-testing"] as ModuleId[]) : []),
-            ...(equivalentRouteTesting ? (["equivalent-route-testing"] as ModuleId[]) : [])
+            ...(equivalentRouteTesting ? (["equivalent-route-testing"] as ModuleId[]) : []),
+            ...(privilegeMutationTesting ? (["privilege-mutation-testing"] as ModuleId[]) : [])
           ])
         ]
       : translated.includeModules;
@@ -156,6 +169,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     ...(bulkAuthorizationTesting ? { bulkAuthorizationTesting } : {}),
     ...(fileAuthorizationTesting ? { fileAuthorizationTesting } : {}),
     ...(equivalentRouteTesting ? { equivalentRouteTesting } : {}),
+    ...(privilegeMutationTesting ? { privilegeMutationTesting } : {}),
     ...(translated.legacyMode ? { legacyMode: translated.legacyMode } : {}),
     ...(translated.legacyModeTranslation ? { legacyModeTranslation: translated.legacyModeTranslation } : {})
   });
@@ -167,7 +181,8 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     plan,
     outputDir,
     ...(authProfile ? { authProfile } : {}),
-    ...(authProfileSet ? { authProfileSet } : {})
+    ...(authProfileSet ? { authProfileSet } : {}),
+    ...(parsedMutationContracts ? { controlledMutationContracts: parsedMutationContracts } : {})
   });
 
   const report = await loadReport(result.reportPath);

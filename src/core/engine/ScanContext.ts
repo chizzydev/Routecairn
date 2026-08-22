@@ -17,6 +17,7 @@ export interface ScanContextOptions {
   authProfileSet?: AuthProfileSet;
   eventSink?: ScanEventSink;
   abortSignal?: AbortSignal;
+  controlledMutationContracts?: readonly import("../offensive/ControlledMutationTypes.js").ControlledMutationContract[];
 }
 
 export class ScanContext {
@@ -51,6 +52,21 @@ export class ScanContext {
       this.scopeMatcher,
       (entry) => this.state.recordRequestAudit(entry)
     );
+  }
+
+  public createControlledMutationHttpClient(): RequestSafetyBroker {
+    return new RequestSafetyBroker({
+      userAgent: this.options.scope.userAgent,
+      timeoutMs: this.options.plan.limits.requestTimeoutMs,
+      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+      concurrency: 1,
+      bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes,
+      maxResponseBytes: this.options.plan.limits.maxResponseBytes,
+      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+      maxRequests: this.options.plan.privilegeMutationTesting?.maxRequests ?? 1,
+      controlledMutationEnabled: true,
+      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry));
   }
 
   public moduleSettings(moduleId: ModuleId): Readonly<ModuleSettings> {

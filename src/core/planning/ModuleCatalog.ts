@@ -365,6 +365,21 @@ export const moduleCatalog = {
     supportedSettings: ["maxFileAuthorizationCases"],
     cost: "medium"
   },
+  "privilege-mutation-testing": {
+    ...defaults,
+    id: "privilege-mutation-testing",
+    displayName: "Privilege Mutation Testing",
+    description: "Executes explicitly authorized authority-boundary mutation cases with mandatory rollback verification.",
+    phase: "analysis",
+    capabilities: ["controlled-mutation"],
+    requiresAuthentication: "single-profile",
+    monitoringCompatible: false,
+    supportsEvidence: true,
+    dependencies: [],
+    defaultSettings: {},
+    supportedSettings: [],
+    cost: "high"
+  },
   "header-review": {
     ...defaults,
     id: "header-review",

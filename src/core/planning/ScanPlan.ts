@@ -30,6 +30,7 @@ export type ModuleId =
   | "collection-authorization-testing"
   | "bulk-authorization-testing"
   | "file-authorization-testing"
+  | "privilege-mutation-testing"
   | "equivalent-route-testing"
   | "header-review"
   | "cookie-review"
@@ -55,6 +56,7 @@ export type ModuleCapability =
   | "collection-authorization"
   | "bulk-authorization"
   | "file-authorization"
+  | "controlled-mutation"
   | "equivalent-route"
   | "headers"
   | "cookies"
@@ -1041,6 +1043,7 @@ export interface ResolvedScanPlan {
   bulkAuthorizationTesting?: Readonly<BulkAuthorizationTestingPlan>;
   fileAuthorizationTesting?: Readonly<FileAuthorizationTestingPlan>;
   equivalentRouteTesting?: Readonly<EquivalentRouteTestingPlan>;
+  privilegeMutationTesting?: Readonly<import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan>;
 }
 
 export interface ModuleMetadata {
@@ -1098,6 +1101,7 @@ export interface ScanPlannerInput {
   bulkAuthorizationTesting?: BulkAuthorizationTestingPlan;
   fileAuthorizationTesting?: FileAuthorizationTestingPlan;
   equivalentRouteTesting?: EquivalentRouteTestingPlan;
+  privilegeMutationTesting?: import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan;
   legacyMode?: ScanMode;
   legacyModeTranslation?: string;
 }

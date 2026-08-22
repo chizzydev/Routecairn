@@ -88,7 +88,8 @@ export class ScanPlanner {
       ...(input.collectionAuthorizationTesting ? { collectionAuthorizationTesting: input.collectionAuthorizationTesting } : {}),
       ...(input.bulkAuthorizationTesting ? { bulkAuthorizationTesting: input.bulkAuthorizationTesting } : {}),
       ...(input.fileAuthorizationTesting ? { fileAuthorizationTesting: input.fileAuthorizationTesting } : {}),
-      ...(input.equivalentRouteTesting ? { equivalentRouteTesting: input.equivalentRouteTesting } : {})
+      ...(input.equivalentRouteTesting ? { equivalentRouteTesting: input.equivalentRouteTesting } : {}),
+      ...(input.privilegeMutationTesting ? { privilegeMutationTesting: input.privilegeMutationTesting } : {})
     });
 
     this.validate(plan);
@@ -338,6 +339,10 @@ export class ScanPlanner {
     if (plan.equivalentRouteTesting && !hasEquivalentRouteModule) {
       throw new AppError(`Equivalent route input was supplied but the equivalent-route-testing module was not selected.`, "EQUIVALENT_ROUTE_MODULE_REQUIRED");
     }
+
+    const hasPrivilegeMutationModule = plan.modules.some((modulePlan) => modulePlan.id === "privilege-mutation-testing");
+    if (hasPrivilegeMutationModule && !plan.privilegeMutationTesting) throw new AppError("Privilege mutation testing requires a resolved explicit mutation plan.", "PRIVILEGE_MUTATION_PLAN_REQUIRED");
+    if (plan.privilegeMutationTesting && !hasPrivilegeMutationModule) throw new AppError("Privilege mutation input was supplied but the privilege-mutation-testing module was not selected.", "PRIVILEGE_MUTATION_MODULE_REQUIRED");
   }
 }
 
