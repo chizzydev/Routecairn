@@ -114,7 +114,7 @@ export class ControlledMutationExecutor {
     try {
       const response = await this.cleanupTransport.send(bundle.rollbackRequest);
       await this.journal.append({ ...recoveryBase(bundle, "ROLLBACK_SENT"), requestMethod: bundle.rollbackRequest.method, requestUrl: safeRequestUrl(bundle.rollbackRequest.url), requestBodyAttestation: this.journal.attestBody(bundle.rollbackRequest.body), responseStatus: response.statusCode, responseHash: response.bodyHash, recoveryBundleRef: bundlePath });
-      const verified = await this.verify(bundle.rollbackVerification, bundle.preStateHash);
+      const verified = await this.verify(bundle.rollbackVerification, bundle.preStateHash, this.cleanupTransport);
       const cleanup: CleanupOutcome = verified.matched ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED";
       await this.journal.append({ ...recoveryBase(bundle, cleanup), outcome: cleanup, responseStatus: verified.response.statusCode, responseHash: verified.response.bodyHash, recoveryBundleRef: verified.matched ? undefined : bundlePath, note: verified.notes.join(" ") });
       if (verified.matched) await this.vault.remove(bundlePath);
@@ -125,20 +125,20 @@ export class ControlledMutationExecutor {
   private async rollback(request: HttpRequest, verification: MutationVerification, preStateHash: string | undefined, contract: ControlledMutationContract, recoveryRef: string): Promise<{ outcome: CleanupOutcome; notes: string[]; responseHash?: string }> {
     const response = await this.cleanupTransport.send(request);
     await this.journal.append({ ...base(contract, "ROLLBACK_SENT"), requestMethod: request.method, requestUrl: safeRequestUrl(request.url), requestBodyAttestation: this.journal.attestBody(request.body), responseStatus: response.statusCode, responseHash: response.bodyHash, recoveryBundleRef: recoveryRef });
-    const verified = await this.verify(verification, preStateHash);
+    const verified = await this.verify(verification, preStateHash, this.cleanupTransport);
     const outcome: CleanupOutcome = verified.matched ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED";
     await this.journal.append({ ...base(contract, outcome), outcome, responseStatus: verified.response.statusCode, responseHash: verified.response.bodyHash, recoveryBundleRef: verified.matched ? undefined : recoveryRef, note: verified.notes.join(" ") });
     if (verified.matched) await this.vault.remove(recoveryRef);
     return { outcome, notes: verified.notes, ...(verified.response.bodyHash ? { responseHash: verified.response.bodyHash } : {}) };
   }
 
-  private async verify(verification: MutationVerification, preStateHash?: string): Promise<{ matched: boolean; response: HttpResponse; notes: string[] }> {
-    let response = await this.cleanupTransport.send(verification.request as HttpRequest);
+  private async verify(verification: MutationVerification, preStateHash?: string, transport: MutationTransport = this.transport): Promise<{ matched: boolean; response: HttpResponse; notes: string[] }> {
+    let response = await transport.send(verification.request as HttpRequest);
     for (let attempt = 1; attempt <= verification.attempts; attempt += 1) {
       const assertionsOk = verification.assertions ? assertionsMatch(response, verification.assertions) : true;
       const hashOk = verification.matchPreStateHash ? Boolean(preStateHash && response.bodyHash === preStateHash) : true;
       if (!response.error && assertionsOk && hashOk) return { matched: true, response, notes: [`Verification matched on attempt ${attempt}.`] };
-      if (attempt < verification.attempts) { await this.sleep(verification.delayMs); response = await this.cleanupTransport.send({ ...(verification.request as HttpRequest), skipCache: true }); }
+      if (attempt < verification.attempts) { await this.sleep(verification.delayMs); response = await transport.send({ ...(verification.request as HttpRequest), skipCache: true }); }
     }
     return { matched: false, response, notes: [response.error ? `Verification request failed: ${response.error.name}.` : "Verification assertions did not match within the bounded polling window."] };
   }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { controlledMutationContractSchema } from "../../core/offensive/ControlledMutationTypes.js";
 
 export const workerProtocolVersion = 1;
 export const maxWorkerMessageBytes = 128 * 1024;
@@ -28,6 +29,17 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
     attempt: z.number().int().positive(),
     workerGeneration: z.string().min(1).max(120),
     envelope: z.record(z.unknown()),
+    hmac: z.string().regex(/^[a-f0-9]{64}$/)
+  }),
+  z.object({
+    protocolVersion: z.literal(workerProtocolVersion),
+    type: z.literal("PROVIDE_MUTATION_CONTRACTS"),
+    workerId: z.string().uuid(),
+    jobId: z.string().uuid(),
+    sequence: z.number().int().positive(),
+    expiresAt: z.string().datetime(),
+    nonce: z.string().min(16).max(120),
+    contracts: z.array(controlledMutationContractSchema).min(1).max(10),
     hmac: z.string().regex(/^[a-f0-9]{64}$/)
   }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("START_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid() }),

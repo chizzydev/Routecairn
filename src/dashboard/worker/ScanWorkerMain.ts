@@ -19,6 +19,7 @@ let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fi
 let abortController: AbortController | undefined;
 let acceptedEnvelope = false;
 let acceptedEnvelopeAuth: DashboardResolvedAuth | undefined;
+let acceptedMutationContracts: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract[] = [];
 let lastSensitiveSequence = 0;
 
 send({ protocolVersion: workerProtocolVersion, type: "WORKER_READY", workerId: requireWorkerId() });
@@ -50,6 +51,11 @@ async function handleMessage(raw: unknown): Promise<void> {
       validateSecretEnvelope(message);
       acceptedEnvelope = true;
       acceptedEnvelopeAuth = authFromEnvelope(message.envelope);
+      break;
+    case "PROVIDE_MUTATION_CONTRACTS":
+      if (message.jobId !== jobId) throw new Error("Mutation contract job mismatch.");
+      validateMutationContracts(message);
+      acceptedMutationContracts = message.contracts;
       break;
     case "START_JOB":
       if (message.jobId !== jobId) throw new Error("Start job mismatch.");
@@ -114,6 +120,7 @@ async function startJob(): Promise<void> {
       outputDir,
       ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}),
       ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}),
+      ...(acceptedMutationContracts.length > 0 ? { controlledMutationContracts: acceptedMutationContracts } : {}),
       eventSink: sink,
       abortSignal: abortController.signal
     });
@@ -186,6 +193,16 @@ function validateSecretEnvelope(message: Extract<ApiToWorkerMessage, { type: "PR
   if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order secret envelope rejected.");
   const { hmac, ...body } = message;
   if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Secret envelope authentication failed.");
+  lastSensitiveSequence = message.sequence;
+}
+
+function validateMutationContracts(message: Extract<ApiToWorkerMessage, { type: "PROVIDE_MUTATION_CONTRACTS" }>): void {
+  if (!workerSecret || !workerGeneration) throw new Error("Worker IPC authentication was not initialized.");
+  if (abortController) throw new Error("Mutation contracts received after scan start.");
+  if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order mutation contract envelope rejected.");
+  if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired mutation contract envelope rejected.");
+  const { hmac, ...body } = message;
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Mutation contract envelope authentication failed.");
   lastSensitiveSequence = message.sequence;
 }
 

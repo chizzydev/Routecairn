@@ -9,6 +9,7 @@ import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
 import type { CredentialVault } from "../credentials/CredentialVault.js";
 import { resolveCredentialAuthForDashboardScan } from "../execution/ScanExecutionShared.js";
 import { parseWorkerMessage, workerProtocolVersion, type WorkerToApiMessage } from "./ScanWorkerProtocol.js";
+import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 
 export interface WorkerRunHandlers {
   onPlan(message: Extract<WorkerToApiMessage, { type: "JOB_PLAN" }>): void;
@@ -24,6 +25,8 @@ export interface WorkerRunResult {
   htmlReportPath?: string;
   error?: string;
 }
+
+export interface WorkerMutationOptions { contracts: readonly ControlledMutationContract[] }
 
 const leaseTtlMs = 30_000;
 const cancellationTimeoutMs = 5_000;
@@ -44,7 +47,7 @@ export class ScanWorkerManager {
     return expired.map((row) => row.job_id);
   }
 
-  public run(jobId: string, request: DashboardScanCreateRequest, handlers: WorkerRunHandlers): Promise<WorkerRunResult> {
+  public run(jobId: string, request: DashboardScanCreateRequest, handlers: WorkerRunHandlers, mutationOptions?: WorkerMutationOptions): Promise<WorkerRunResult> {
     const workerId = randomUUID();
     const workerGeneration = randomUUID();
     const workerSecret = randomBytes(32).toString("base64url");
@@ -88,6 +91,7 @@ export class ScanWorkerManager {
             case "JOB_ACCEPTED":
               this.database.db.prepare("UPDATE scan_workers SET state = 'RUNNING', current_job_id = ?, last_heartbeat_at = ? WHERE id = ?").run(jobId, nowIso(), workerId);
               child.send(secretEnvelopeMessage({ workerId, jobId, request, workerSecret, workerGeneration, attempt: 1, vault: this.vault }));
+              if (mutationOptions?.contracts.length) child.send(mutationContractMessage({ workerId, jobId, contracts: mutationOptions.contracts, workerSecret }));
               child.send({ protocolVersion: workerProtocolVersion, type: "START_JOB", workerId, jobId });
               break;
             case "JOB_HEARTBEAT":
@@ -221,6 +225,11 @@ function secretEnvelopeMessage(input: { workerId: string; jobId: string; request
     workerGeneration: input.workerGeneration,
     envelope
   };
+  return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
+}
+
+function mutationContractMessage(input: { workerId: string; jobId: string; contracts: readonly ControlledMutationContract[]; workerSecret: string }) {
+  const body = { protocolVersion: workerProtocolVersion, type: "PROVIDE_MUTATION_CONTRACTS" as const, workerId: input.workerId, jobId: input.jobId, sequence: 2, expiresAt: new Date(Date.now() + 30_000).toISOString(), nonce: randomBytes(18).toString("base64url"), contracts: [...input.contracts] };
   return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
 }
 
