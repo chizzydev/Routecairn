@@ -55,6 +55,14 @@ export class ScanContext {
   }
 
   public createControlledMutationHttpClient(): RequestSafetyBroker {
+    return this.createMutationBroker(true);
+  }
+
+  public createControlledMutationCleanupHttpClient(): RequestSafetyBroker {
+    return this.createMutationBroker(false);
+  }
+
+  private createMutationBroker(withAbortSignal: boolean): RequestSafetyBroker {
     return new RequestSafetyBroker({
       userAgent: this.options.scope.userAgent,
       timeoutMs: this.options.plan.limits.requestTimeoutMs,
@@ -65,7 +73,7 @@ export class ScanContext {
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests: this.options.plan.privilegeMutationTesting?.maxRequests ?? 1,
       controlledMutationEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      ...(withAbortSignal && this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry));
   }
 
