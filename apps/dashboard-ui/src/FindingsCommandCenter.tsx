@@ -12,6 +12,7 @@ type Workspace = "findings" | "queue";
 type DetailTab = "overview" | "evidence" | "occurrences" | "reproduction" | "remediation" | "history" | "related" | "proof";
 
 interface Filters {
+  scanId?: string;
   q: string;
   severity: string;
   confidence: string;
@@ -451,6 +452,7 @@ function filterPayload(filters: Filters): Record<string, string | boolean> {
 }
 
 interface SavedViewQuery {
+  scanId?: string;
   search?: string;
   projectId?: string;
   targetId?: string;
@@ -471,6 +473,7 @@ interface SavedViewQuery {
 
 function savedViewQuery(filters: Filters): SavedViewQuery {
   return {
+    ...(filters.scanId ? { scanId: filters.scanId } : {}),
     ...(filters.q ? { search: filters.q } : {}),
     ...(filters.projectId ? { projectId: filters.projectId } : {}),
     ...(filters.targetId ? { targetId: filters.targetId } : {}),
@@ -509,6 +512,7 @@ function applySavedView(id: string, views: SavedView[], setFilters: React.Dispat
     if (isRecord(parsed)) {
       setFilters({
         ...emptyFilters,
+        scanId: stringValue(parsed.scanId),
         q: stringValue(parsed.search ?? parsed.q),
         projectId: stringValue(parsed.projectId), targetId: stringValue(parsed.targetId),
         module: stringValue(parsed.module), category: stringValue(parsed.category),

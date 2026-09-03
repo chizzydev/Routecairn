@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 20,
+  "maxStepsPerCase": 8,
+  "maxRequests": 50,
+  "maxResponseBytes": 131072,
+  "actors": [
+    { "id": "anonymous", "safeAlias": "anonymous", "authSlot": "anonymous", "relationship": "PUBLIC" },
+    { "id": "owner", "safeAlias": "account-a-owner", "authSlot": "account_a", "relationship": "OWNER", "principalId": "replace-account-a-principal", "tenantId": "replace-tenant-a" },
+    { "id": "foreign", "safeAlias": "account-b-foreign", "authSlot": "account_b", "relationship": "CROSS_TENANT_MEMBER", "principalId": "replace-account-b-principal", "tenantId": "replace-tenant-b" }
+  ],
+  "resources": [
+    { "id": "signed", "safeAlias": "signed-download", "kind": "SIGNED_LINK", "pathTemplate": "/signed/{object}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" },
+    { "id": "invite", "safeAlias": "tenant-invite", "kind": "INVITE", "pathTemplate": "/invites/{token}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" },
+    { "id": "portal", "safeAlias": "customer-portal", "kind": "PORTAL", "pathTemplate": "/portal/{portal}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" },
+    { "id": "export", "safeAlias": "report-export", "kind": "EXPORT", "pathTemplate": "/exports/{export}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" },
+    { "id": "evidence", "safeAlias": "evidence-artifact", "kind": "EVIDENCE_ARTIFACT", "pathTemplate": "/evidence/{artifact}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" },
+    { "id": "object", "safeAlias": "owned-object", "kind": "OBJECT_PATH", "pathTemplate": "/objects/{object}", "allowedOrigins": ["https://app.example.com"], "ownerActorId": "owner", "tenantId": "replace-tenant-a" }
+  ],
+  "cases": [
+    {
+      "id": "signed-expiry", "label": "expired signed link is denied", "category": "SIGNED_LINK_EXPIRY",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "expired", "phase": "VERIFY", "actorId": "anonymous", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:expired_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    },
+    {
+      "id": "signature-tamper", "label": "modified signature is denied", "category": "SIGNATURE_TAMPERING",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "control", "phase": "CONTROL", "actorId": "anonymous", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "tampered", "phase": "VERIFY", "actorId": "anonymous", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a", "tamper": { "kind": "QUERY_PARAMETER", "parameter": "signature", "strategy": "FLIP_LAST_CHARACTER" } }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "id-substitution", "label": "signature cannot move to another object", "category": "ID_SUBSTITUTION",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner-object", "phase": "CONTROL", "actorId": "owner", "resourceId": "object", "request": { "method": "GET", "urlTemplate": "https://app.example.com/objects/{{SECRET:owner_object_id}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "substituted-object", "phase": "VERIFY", "actorId": "foreign", "resourceId": "object", "request": { "method": "GET", "urlTemplate": "https://app.example.com/objects/{{SECRET:foreign_object_id}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "cross-tenant-link", "label": "signed link remains tenant-bound", "category": "CROSS_TENANT_SIGNED_LINK",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner", "phase": "CONTROL", "actorId": "owner", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "signed-replay", "label": "one-time signed redemption cannot replay", "category": "SIGNED_LINK_REPLAY",
+      "authorization": { "mode": "CONTROLLED_LINK_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_LINK_PORTAL_EXPORT_TESTING", "authorizedBy": "replace-operator", "changeTicket": "replace-ticket", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableResource": true },
+      "steps": [
+        { "id": "first-use", "phase": "ACTION", "actorId": "owner", "resourceId": "signed", "request": { "method": "POST", "urlTemplate": "https://app.example.com/signed/redeem", "stateChanging": true, "secretSource": "account_a", "fields": { "token": "{{SECRET:signed_token}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "replay", "phase": "VERIFY", "actorId": "owner", "resourceId": "signed", "request": { "method": "POST", "urlTemplate": "https://app.example.com/signed/redeem", "stateChanging": true, "secretSource": "account_a", "fields": { "token": "{{SECRET:signed_token}}" } }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "signed-revocation", "label": "revoked signed link is denied", "category": "SIGNED_LINK_REVOCATION",
+      "authorization": { "mode": "CONTROLLED_LINK_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_LINK_PORTAL_EXPORT_TESTING", "authorizedBy": "replace-operator", "changeTicket": "replace-ticket", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableResource": true },
+      "steps": [
+        { "id": "before", "phase": "CONTROL", "actorId": "owner", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "revoke", "phase": "ACTION", "actorId": "owner", "resourceId": "signed", "request": { "method": "DELETE", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}", "stateChanging": true, "secretSource": "account_a" }, "assertions": [{ "kind": "STATUS_IN", "values": [200, 204] }] },
+        { "id": "after", "phase": "VERIFY", "actorId": "owner", "resourceId": "signed", "request": { "method": "GET", "urlTemplate": "https://app.example.com/signed/{{SECRET:signed_path}}?signature={{SECRET:signed_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "invite-binding", "label": "invite is bound to recipient email", "category": "INVITE_EMAIL_BINDING",
+      "authorization": { "mode": "CONTROLLED_LINK_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_LINK_PORTAL_EXPORT_TESTING", "authorizedBy": "replace-operator", "changeTicket": "replace-ticket", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableResource": true },
+      "steps": [
+        { "id": "inspect", "phase": "CONTROL", "actorId": "owner", "resourceId": "invite", "request": { "method": "GET", "urlTemplate": "https://app.example.com/invites/{{SECRET:invite_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "JSON_EQUALS_SECRET", "path": "recipient.email", "secretSource": "account_a", "secretRef": "invite_email" }] },
+        { "id": "foreign-accept", "phase": "VERIFY", "actorId": "foreign", "resourceId": "invite", "request": { "method": "POST", "urlTemplate": "https://app.example.com/invites/{{SECRET:invite_token}}/accept", "stateChanging": true, "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "invite-replay", "label": "accepted invite cannot replay", "category": "INVITE_REPLAY",
+      "authorization": { "mode": "CONTROLLED_LINK_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_LINK_PORTAL_EXPORT_TESTING", "authorizedBy": "replace-operator", "changeTicket": "replace-ticket", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableResource": true },
+      "steps": [
+        { "id": "accept", "phase": "ACTION", "actorId": "owner", "resourceId": "invite", "request": { "method": "POST", "urlTemplate": "https://app.example.com/invites/{{SECRET:invite_token}}/accept", "stateChanging": true, "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "accept-again", "phase": "VERIFY", "actorId": "owner", "resourceId": "invite", "request": { "method": "POST", "urlTemplate": "https://app.example.com/invites/{{SECRET:invite_token}}/accept", "stateChanging": true, "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "invite-expiration", "label": "expired invite is denied", "category": "INVITE_EXPIRATION",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "expired", "phase": "VERIFY", "actorId": "anonymous", "resourceId": "invite", "request": { "method": "GET", "urlTemplate": "https://app.example.com/invites/{{SECRET:expired_invite_token}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    },
+    {
+      "id": "portal-tenant", "label": "portal remains tenant-bound", "category": "PORTAL_TENANT_BINDING",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner", "phase": "CONTROL", "actorId": "owner", "resourceId": "portal", "request": { "method": "GET", "urlTemplate": "https://app.example.com/portal/{{SECRET:portal_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "resourceId": "portal", "request": { "method": "GET", "urlTemplate": "https://app.example.com/portal/{{SECRET:portal_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "export-auth", "label": "report export requires owner authorization", "category": "EXPORT_AUTHORIZATION",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner", "phase": "CONTROL", "actorId": "owner", "resourceId": "export", "request": { "method": "GET", "urlTemplate": "https://app.example.com/exports/{{SECRET:export_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }, { "kind": "BODY_FINGERPRINT", "expectedSha256": "0000000000000000000000000000000000000000000000000000000000000000" }] },
+        { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "resourceId": "export", "request": { "method": "GET", "urlTemplate": "https://app.example.com/exports/{{SECRET:export_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "evidence-auth", "label": "evidence artifact requires project authorization", "category": "EVIDENCE_ARTIFACT_AUTHORIZATION",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner", "phase": "CONTROL", "actorId": "owner", "resourceId": "evidence", "request": { "method": "GET", "urlTemplate": "https://app.example.com/evidence/{{SECRET:evidence_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "resourceId": "evidence", "request": { "method": "GET", "urlTemplate": "https://app.example.com/evidence/{{SECRET:evidence_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "object-ownership", "label": "object path remains owner-bound", "category": "OBJECT_PATH_OWNERSHIP",
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        { "id": "owner", "phase": "CONTROL", "actorId": "owner", "resourceId": "object", "request": { "method": "GET", "urlTemplate": "https://app.example.com/objects/{{SECRET:owner_object_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "resourceId": "object", "request": { "method": "GET", "urlTemplate": "https://app.example.com/objects/{{SECRET:owner_object_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    }
+  ]
+}

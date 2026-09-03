@@ -1,0 +1,55 @@
+{
+  "label": "authenticated-browser-example",
+  "safeAlias": "authorized test account",
+  "principalId": "expected-principal-id",
+  "role": "member",
+  "headers": {},
+  "cookies": [],
+  "identityVerification": {
+    "mode": "required",
+    "endpoint": "https://app.example.test/api/me",
+    "method": "GET",
+    "principalIdField": "id",
+    "roleField": "role",
+    "expectedContentType": "application/json",
+    "successStatusCodes": [200],
+    "maxResponseBytes": 8192,
+    "anonymousMarkers": []
+  },
+  "browserBootstrap": {
+    "schemaVersion": 1,
+    "loginSecrets": {
+      "username": "replace-at-runtime",
+      "password": "replace-at-runtime"
+    },
+    "login": {
+      "startUrl": "https://app.example.test/login",
+      "allowedWritePaths": ["/api/session"],
+      "successUrlPrefix": "https://app.example.test/app",
+      "steps": [
+        { "action": "fill", "selector": "input[name=email]", "valueRef": "username" },
+        { "action": "fill", "selector": "input[name=password]", "valueRef": "password" },
+        { "action": "click", "selector": "button[type=submit]" },
+        { "action": "waitForUrl", "urlPrefix": "https://app.example.test/app" }
+      ]
+    },
+    "journeys": [
+      {
+        "id": "account-settings",
+        "label": "Open account settings through legitimate navigation",
+        "steps": [
+          { "action": "clickLink", "selector": "a[href='/settings']" },
+          { "action": "assertVisible", "selector": "main" }
+        ]
+      }
+    ],
+    "identitySelectors": {
+      "principal": "[data-current-user-id]",
+      "role": "[data-current-role]"
+    },
+    "proofCases": []
+  },
+  "notes": [
+    "Example only. Never commit real browser login values. Prefer the encrypted dashboard credential vault for reusable profiles."
+  ]
+}

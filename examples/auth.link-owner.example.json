@@ -1,0 +1,22 @@
+{
+  "label": "link-owner-account-a",
+  "safeAlias": "account-a-owner",
+  "principalId": "replace-account-a-principal",
+  "tenantId": "replace-tenant-a",
+  "headers": { "Authorization": "Bearer replace-account-a-session" },
+  "cookies": [],
+  "lifecycleSecrets": {
+    "signed_path": "replace-disposable-signed-path",
+    "signed_token": "replace-active-signed-token",
+    "expired_token": "replace-expired-signed-token",
+    "owner_object_id": "replace-owner-object-id",
+    "foreign_object_id": "replace-foreign-object-id",
+    "invite_token": "replace-active-invite-token",
+    "expired_invite_token": "replace-expired-invite-token",
+    "invite_email": "replace-invite-recipient@example.test",
+    "portal_id": "replace-portal-id",
+    "export_id": "replace-export-id",
+    "evidence_id": "replace-evidence-artifact-id"
+  },
+  "notes": ["Replace values locally and never commit working credentials or capabilities."]
+}

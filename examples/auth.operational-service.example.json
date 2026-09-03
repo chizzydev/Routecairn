@@ -1,0 +1,27 @@
+{
+  "label": "operational-service",
+  "safeAlias": "operational-service",
+  "principalId": "replace-service-principal",
+  "tenantId": "replace-operations-tenant",
+  "role": "operations-admin",
+  "headers": { "Authorization": "Bearer replace-service-credential" },
+  "cookies": [],
+  "lifecycleSecrets": {
+    "webhook_secret": "replace-webhook-hmac-secret",
+    "webhook_timestamp": "replace-current-webhook-timestamp",
+    "signature_event": "replace-signature-event-id",
+    "replay_event": "replace-replay-event-id",
+    "idempotency_event": "replace-idempotency-event-id",
+    "new_event": "replace-new-event-id",
+    "old_event": "replace-old-event-id",
+    "payload_event": "replace-payload-event-id",
+    "expected_order_status": "completed",
+    "old_order_status": "pending",
+    "expected_amount": "1250",
+    "expected_currency": "USD",
+    "expected_product": "premium-plan",
+    "baseline_product": "none",
+    "cron_nonce": "replace-one-time-cron-nonce"
+  },
+  "notes": ["Replace every placeholder and keep this file outside source control."]
+}

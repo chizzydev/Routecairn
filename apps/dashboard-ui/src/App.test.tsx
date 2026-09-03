@@ -30,6 +30,9 @@ describe("RouteCairn dashboard UI", () => {
       const url = String(input);
       const body = url.includes("/api/auth/session")
         ? { principal: { login: "owner", role: "OWNER" } }
+        : url.includes("/api/workflow-mutations/status") ? { cases: [], jobs: [] }
+        : url.includes("/api/targets") ? { targets: [] }
+        : url.includes("/api/credential-profiles") ? { profiles: [] }
         : url.includes("/api/offensive/status")
           ? {
               globalMutationActive: true,

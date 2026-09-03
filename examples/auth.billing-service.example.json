@@ -1,0 +1,29 @@
+{
+  "label": "synthetic-billing-service",
+  "safeAlias": "synthetic-billing-service",
+  "principalId": "replace-service-principal",
+  "tenantId": "replace-operations-tenant",
+  "role": "fixture-operator",
+  "headers": { "Authorization": "Bearer replace-application-fixture-credential" },
+  "cookies": [],
+  "lifecycleSecrets": {
+    "billing_hmac": "replace-test-webhook-hmac",
+    "billing_timestamp": "replace-test-event-timestamp",
+    "fixture_marker": "replace-disposable-fixture-marker",
+    "manipulated_price": "1",
+    "expected_price": "1250",
+    "substituted_product": "basic-plan",
+    "expected_product": "premium-plan",
+    "synthetic_payment_status": "failed",
+    "event_unverified": "replace-unverified-event-id",
+    "event_duplicate": "replace-duplicate-event-id",
+    "event_replay": "replace-replay-event-id",
+    "event_race": "replace-race-event-id",
+    "subscription_fixture": "replace-subscription-fixture-id",
+    "active_status": "active",
+    "canceled_status": "canceled",
+    "none_status": "none",
+    "refunded_status": "refunded"
+  },
+  "notes": ["Test-provider and disposable application fixture credentials only. Never place a live provider key or payment instrument here."]
+}

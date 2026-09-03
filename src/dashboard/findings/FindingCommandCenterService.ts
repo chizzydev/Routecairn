@@ -4,6 +4,7 @@ import { clamp, nowIso } from "../db/DashboardDatabase.js";
 import type { DashboardPrincipal } from "../auth/Permissions.js";
 import type { RetestTemplateVault } from "../retests/RetestTemplateVault.js";
 import { ScanComparisonCoverageService } from "../comparisons/ScanComparisonCoverageService.js";
+import { hasOccurrenceReview } from "../reviews/AssistedOccurrenceReview.js";
 import type {
   DashboardFindingSummary,
   FindingRetestContext,
@@ -29,6 +30,7 @@ export type FindingSort =
   | "project";
 
 export interface FindingQuery {
+  scanId?: string | undefined;
   search?: string | undefined;
   projectId?: string | undefined;
   targetId?: string | undefined;
@@ -395,7 +397,7 @@ export class FindingCommandCenterService {
         input.reason ? safeText(input.reason, 1_000) : null,
         input.note ? safeText(input.note, 4_000) : null,
         canonicalId, now, input.principal.login, input.source ?? "HUMAN", userId,
-        input.correlationId ?? null, JSON.stringify({ actorRole: input.principal.role, takeover: Boolean(input.takeover), previousReviewerUserId: input.takeover ? current.reviewer_user_id : undefined }));
+        input.correlationId ?? null, JSON.stringify({ occurrenceId: current.latest_occurrence_id, actorRole: input.principal.role, takeover: Boolean(input.takeover), previousReviewerUserId: input.takeover ? current.reviewer_user_id : undefined }));
       const result = this.database.db.prepare(
         `UPDATE findings SET human_review_status = ?, duplicate_of_finding_id = ?,
           reviewer_user_id = CASE WHEN ? = 'IN_REVIEW' OR ? THEN ? ELSE reviewer_user_id END,
@@ -806,7 +808,9 @@ export class FindingCommandCenterService {
        FROM findings WHERE id = ?`
     ).get(findingId) as { human_review_status: ReviewStatus; has_evidence: number; in_pack: number } | undefined;
     if (!row) throw new FindingCommandError("FINDING_NOT_FOUND", "Finding not found.", 404);
-    const readiness: ProofReadinessStatus = row.in_pack
+    const latest = this.database.db.prepare("SELECT id, finding_source_json FROM finding_occurrences WHERE finding_id = ? ORDER BY (id = (SELECT latest_occurrence_id FROM findings WHERE findings.id = finding_occurrences.finding_id)) DESC, created_at DESC, id DESC LIMIT 1").get(findingId) as { id: string; finding_source_json: string } | undefined;
+    const assistedNeedsReview = latest && (JSON.parse(latest.finding_source_json) as { workflow?: unknown }).workflow && !hasOccurrenceReview(this.database, findingId, latest.id, "CONFIRMED");
+    const readiness: ProofReadinessStatus = assistedNeedsReview ? "MISSING_REVIEW" : row.in_pack
       ? "IN_PROOF_PACK"
       : row.human_review_status !== "CONFIRMED"
         ? "MISSING_REVIEW"
@@ -906,6 +910,7 @@ function findingWhere(query: FindingQuery): { where: string; values: SqlValue[] 
   addEquality(clauses, values, "f.project_id", query.projectId);
   addEquality(clauses, values, "f.target_id", query.targetId);
   addEquality(clauses, values, "f.module", query.module);
+  if (query.scanId) { clauses.push("EXISTS(SELECT 1 FROM finding_occurrences scan_occurrence WHERE scan_occurrence.finding_id = f.id AND scan_occurrence.scan_id = ?)"); values.push(query.scanId); }
   addEquality(clauses, values, "f.finding_category", query.category);
   if (query.severity === "High") clauses.push("COALESCE(f.effective_severity, f.current_scanner_severity) IN ('Critical','High')");
   else addEquality(clauses, values, "COALESCE(f.effective_severity, f.current_scanner_severity)", query.severity);

@@ -12,6 +12,8 @@ export type ProofReadinessStatus = "NOT_READY" | "MISSING_REVIEW" | "MISSING_EVI
 
 export interface DashboardScanCreateRequest {
   target: string;
+  recoveryScope?: import("../../config/ConfigSchema.js").RouteCairnScope | undefined;
+  workflowRecoveryDigest?: string | undefined;
   scopeFile?: string | undefined;
   profile: ScanProfileName;
   projectId?: string | undefined;
@@ -26,7 +28,23 @@ export interface DashboardScanCreateRequest {
   credentialProfileBId?: string | undefined;
   rateLimitPerSecond?: number | undefined;
   concurrency?: number | undefined;
+  maxRequests?: number | undefined;
+  cleanupReservedRequests?: number | undefined;
   includeModules?: string[] | undefined;
+  authenticationLifecycleFile?: string | undefined;
+  authenticationLifecycleAutoFile?: string | undefined;
+  businessInvariantFile?: string | undefined;
+  controlledRaceFile?: string | undefined;
+  apiGraphqlFile?: string | undefined;
+  linkPortalSecurityFile?: string | undefined;
+  operationalEndpointSecurityFile?: string | undefined;
+  billingEntitlementFile?: string | undefined;
+  assistedReviewFile?: string | undefined;
+  preHandoverFile?: string | undefined;
+  preHandover?: import("zod").input<typeof import("../../modules/preHandover/PreHandoverPlanner.js").preHandoverInputSchema> | undefined;
+  targetAuthorizationFile?: string | undefined;
+  targetAuthorization?: import("zod").input<typeof import("../../core/authorization/TargetAuthorization.js").targetAuthorizationSchema> | undefined;
+  assistedReview?: import("zod").input<typeof import("../../modules/assistedReview/AssistedReviewPlanner.js").assistedReviewInputSchema> | undefined;
   studio?: ScanStudioData | undefined;
 }
 

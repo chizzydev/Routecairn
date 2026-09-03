@@ -1,0 +1,13 @@
+{
+  "program": "Authorized Operational Endpoint Test",
+  "allowedDomains": ["example.com", "*.example.com"],
+  "disallowedPaths": ["/logout", "/delete", "/checkout", "/cart/remove"],
+  "allowedMethods": ["GET", "HEAD", "OPTIONS", "POST"],
+  "rateLimitPerSecond": 3,
+  "concurrency": 1,
+  "maxDepth": 1,
+  "sameOriginOnly": true,
+  "includeSubdomains": true,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn-Operational/1.0"
+}

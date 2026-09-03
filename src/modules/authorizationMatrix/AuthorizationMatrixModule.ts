@@ -262,7 +262,7 @@ function findingsFromReport(report: AuthorizationMatrixReport, context: ScanCont
       manualTestingSuggestions: ["Verify the configured policy is correct.", "Check whether sharing or public visibility intentionally permits this access.", "Add negative authorization tests for this exact matrix cell."],
       tags: ["authorization-matrix", "access-control", "needs-manual-verification", result.findingCategory.toLowerCase().replace(/_/g, "-")],
       riskScore: riskScorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["authorization-matrix", "access-control"] }),
-      sourceModule: "authorization-matrix-testing",
+      workflowCase: { id: `${result.matrixId}/${result.caseId}` }, sourceModule: "authorization-matrix-testing",
       falsePositiveStatus: "likely-valid" as const,
       timestamp: new Date().toISOString()
     }));

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "categories": [
+    "LOGIN_ENUMERATION_RESISTANCE",
+    "SESSION_ROTATION_AFTER_LOGIN",
+    "SESSION_FIXATION"
+  ],
+  "actor": {
+    "id": "member",
+    "safeAlias": "disposable-member",
+    "authSlot": "primary",
+    "relationship": "SELF",
+    "declaredState": "ACTIVE"
+  },
+  "authorization": {
+    "mode": "CONTROLLED_LIFECYCLE",
+    "environment": "TEST",
+    "confirmation": "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING",
+    "authorizedBy": "replace-with-operator-reference",
+    "changeTicket": "replace-with-change-ticket",
+    "authorizedAt": "2026-01-01T00:00:00.000Z",
+    "expiresAt": "2099-01-01T00:00:00.000Z",
+    "disposableAccounts": true,
+    "productionAcknowledged": false
+  },
+  "login": {
+    "fieldSecretRefs": {},
+    "unknownAccountSecretRef": "unknown_username",
+    "invalidPasswordSecretRef": "invalid_password",
+    "fixedSessionSecretRef": "fixed_session",
+    "successStatusCodes": [200, 201, 204, 302, 303],
+    "failureStatusCodes": [400, 401, 403, 422]
+  },
+  "cleanup": {
+    "method": "POST",
+    "url": "https://app.example.com/api/auth/logout",
+    "headers": {},
+    "successStatusCodes": [200, 204, 401]
+  },
+  "maxResponseBytes": 32768
+}

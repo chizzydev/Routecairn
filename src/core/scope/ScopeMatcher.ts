@@ -1,12 +1,13 @@
 import type { RouteCairnScope } from "../../config/ConfigSchema.js";
 import { normalizeUrl } from "../urls/UrlNormalizer.js";
 import type { ScopeDecision } from "./ScopeTypes.js";
+import type { TargetAuthorizationGuard } from "../authorization/TargetAuthorization.js";
 
 export class ScopeMatcher {
   private readonly target: URL;
   private readonly scope: RouteCairnScope;
 
-  public constructor(targetUrl: string, scope: RouteCairnScope) {
+  public constructor(targetUrl: string, scope: RouteCairnScope, public readonly authorization?: TargetAuthorizationGuard) {
     this.target = new URL(normalizeUrl(targetUrl));
     this.scope = scope;
   }
@@ -38,6 +39,7 @@ export class ScopeMatcher {
       return { allowed: false, reason: "disallowed-path", normalizedUrl };
     }
 
+    if (this.authorization?.check(normalizedUrl, method)) return { allowed: false, reason: "target-authorization-denied", normalizedUrl };
     return { allowed: true, reason: "allowed", normalizedUrl };
   }
 

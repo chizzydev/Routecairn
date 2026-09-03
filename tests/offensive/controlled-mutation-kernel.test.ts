@@ -37,6 +37,16 @@ class StatefulTransport implements MutationTransport {
 }
 
 describe("Controlled Offensive Execution & Recovery Kernel", () => {
+  it("does not seal over unresolved cleanup when a same-case retry has invalid authorization", async () => {
+    const directory = await tempDirectory(); const contract = controlledMutationContractSchema.parse(rawContract());
+    const journal = new MutationJournal(join(directory, "mutation-journal.json"));
+    await journal.append({ caseId: contract.caseId, stage: "CLEANUP_FAILED", mode: contract.mode, targetOrigin: contract.targetOrigin, targetIdentityFingerprint: contract.target.identityFingerprint });
+    const transport = new StatefulTransport();
+    const result = await new ControlledMutationExecutor(transport, { journalDirectory: directory }).execute({ ...contract, authorization: { ...contract.authorization, expiresAt: "2020-01-01T00:00:00.000Z" } });
+    expect(result.securityOutcome).toBe("BLOCKED_BY_SAFETY");
+    expect(transport.requests).toEqual([]);
+    expect(await journal.unresolvedCaseIds()).toEqual([contract.caseId]);
+  });
   it("proves a mutation, rolls it back, verifies restoration, and never journals raw bodies", async () => {
     const directory = await tempDirectory();
     const transport = new StatefulTransport();
@@ -50,6 +60,35 @@ describe("Controlled Offensive Execution & Recovery Kernel", () => {
     expect(journal).not.toContain('"role":"user"');
     expect(journal).toContain("requestBodyAttestation");
     expect(await readdir(directory)).not.toContain("case-1.recovery.enc");
+  });
+
+  it("binds browser protected-action and rollback proof to the exact approved case", async () => {
+    const transport = new StatefulTransport();
+    const phases: string[] = [];
+    const result = await new ControlledMutationExecutor(transport, {
+      journalDirectory: await tempDirectory(),
+      sleep: async () => undefined,
+      browserObserver: {
+        verifyProtectedAction: async (approved) => { phases.push(`protected:${approved.caseId}`); return { configured: true, matched: true, notes: ["browser protected proof"] }; },
+        verifyRollback: async (approved) => { phases.push(`rollback:${approved.caseId}`); return { configured: true, matched: true, notes: ["browser rollback proof"] }; }
+      }
+    }).execute(contract());
+    expect(phases).toEqual(["protected:case-1", "rollback:case-1"]);
+    expect(result).toMatchObject({ browserProtectedActionVerified: true, browserRollbackVerified: true, cleanupOutcome: "ROLLBACK_VERIFIED" });
+  });
+
+  it("retains recovery material when browser rollback proof does not match", async () => {
+    const directory = await tempDirectory();
+    const result = await new ControlledMutationExecutor(new StatefulTransport(), {
+      journalDirectory: directory,
+      sleep: async () => undefined,
+      browserObserver: {
+        verifyProtectedAction: async () => ({ configured: true, matched: true, notes: [] }),
+        verifyRollback: async () => ({ configured: true, matched: false, notes: ["browser rollback mismatch"] })
+      }
+    }).execute(contract());
+    expect(result).toMatchObject({ cleanupOutcome: "CLEANUP_FAILED", browserRollbackVerified: false });
+    expect(await readdir(directory)).toContain("case-1.recovery.enc");
   });
 
   it("durably arms recovery before the mutation request can reach the transport", async () => {
@@ -82,7 +121,7 @@ describe("Controlled Offensive Execution & Recovery Kernel", () => {
     expect(result.notes).toContain("Verification matched on attempt 2.");
   });
 
-  it("blocks expired authorization and unavailable deletion without sending requests", async () => {
+  it("blocks expired authorization and deletion submitted under the wrong execution mode without sending requests", async () => {
     const transport = new StatefulTransport();
     const expired = contract({ expiresAt: "2020-01-01T00:00:00.000Z" });
     const expiredResult = await new ControlledMutationExecutor(transport, { journalDirectory: await tempDirectory() }).execute(expired);
@@ -93,6 +132,24 @@ describe("Controlled Offensive Execution & Recovery Kernel", () => {
     const deletionResult = await new ControlledMutationExecutor(transport, { journalDirectory: await tempDirectory() }).execute(deletion);
     expect(deletionResult.outcome).toBe("BLOCKED_BY_SAFETY");
     expect(transport.requests).toHaveLength(0);
+  });
+
+  it("executes controlled deletion only for a disposable non-production fixture and verifies exact restoration", async () => {
+    const transport = new DisposableDeletionTransport();
+    const result = await new ControlledMutationExecutor(transport, { journalDirectory: await tempDirectory(), sleep: async () => undefined }).execute(deletionContract());
+    expect(result.securityOutcome).toBe("EXPLOIT_PROVEN");
+    expect(result.cleanupOutcome).toBe("ROLLBACK_VERIFIED");
+    expect(transport.exists).toBe(true);
+    expect(transport.requests.map((request) => request.method)).toEqual(["GET", "DELETE", "GET", "POST", "GET"]);
+  });
+
+  it("creates a disposable fixture and permits DELETE cleanup only with exact pre-state restoration", async () => {
+    const transport = new DisposableCreationTransport();
+    const result = await new ControlledMutationExecutor(transport, { journalDirectory: await tempDirectory(), sleep: async () => undefined }).execute(creationContract());
+    expect(result.securityOutcome).toBe("EXPLOIT_PROVEN");
+    expect(result.cleanupOutcome).toBe("ROLLBACK_VERIFIED");
+    expect(transport.exists).toBe(false);
+    expect(transport.requests.map((request) => request.method)).toEqual(["GET", "POST", "GET", "DELETE", "GET"]);
   });
 
   it("keeps encrypted recovery material and raises CLEANUP_FAILED when restoration cannot be proven", async () => {
@@ -190,6 +247,47 @@ function rawContract() {
     impact: { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, assertions: [{ path: "role", operator: "EQUALS", expectedValue: "admin" }], attempts: 3, delayMs: 0 },
     rollback: { request: { url: "https://example.test/api/users/disposable-1", method: "PATCH", body: '{"role":"user"}' }, verification: { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, matchPreStateHash: true, attempts: 2, delayMs: 0 } }
   };
+}
+
+class DisposableDeletionTransport implements MutationTransport {
+  public exists = true;
+  public requests: HttpRequest[] = [];
+  public async send(request: HttpRequest): Promise<HttpResponse> {
+    this.requests.push(request);
+    if (request.method === "DELETE") { this.exists = false; return response(request, 204, null); }
+    if (request.method === "POST") { this.exists = true; return response(request, 201, { restored: true }); }
+    return response(request, 200, { id: "disposable-1", exists: this.exists });
+  }
+}
+
+class DisposableCreationTransport implements MutationTransport {
+  public exists = false;
+  public requests: HttpRequest[] = [];
+  public async send(request: HttpRequest): Promise<HttpResponse> {
+    this.requests.push(request);
+    if (request.method === "POST") { this.exists = true; return response(request, 201, { created: true }); }
+    if (request.method === "DELETE") { this.exists = false; return response(request, 204, null); }
+    return response(request, 200, { id: "disposable-1", exists: this.exists });
+  }
+}
+
+function deletionContract() {
+  const raw = rawContract();
+  raw.mode = "CONTROLLED_DELETION";
+  raw.attack = { request: { url: "https://example.test/api/users/disposable-1", method: "DELETE" }, allowedFields: ["__delete__"], allowedValues: { __delete__: [true] }, semanticEffect: "DELETE" };
+  raw.precondition = { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, assertions: [{ path: "id", operator: "EQUALS", expectedValue: "disposable-1" }, { path: "exists", operator: "EQUALS", expectedValue: true }], attempts: 1, delayMs: 0 };
+  raw.impact = { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, assertions: [{ path: "exists", operator: "EQUALS", expectedValue: false }], attempts: 1, delayMs: 0 };
+  raw.rollback = { request: { url: "https://example.test/api/users/disposable-1", method: "POST", body: '{"id":"disposable-1"}' }, verification: { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, matchPreStateHash: true, attempts: 1, delayMs: 0 } };
+  return controlledMutationContractSchema.parse(raw);
+}
+
+function creationContract() {
+  const raw = rawContract();
+  raw.attack = { request: { url: "https://example.test/api/users", method: "POST", body: '{"id":"disposable-1"}' }, allowedFields: ["id"], allowedValues: { id: ["disposable-1"] }, semanticEffect: "CREATE_DISPOSABLE" };
+  raw.precondition = { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, assertions: [{ path: "id", operator: "EQUALS", expectedValue: "disposable-1" }, { path: "exists", operator: "EQUALS", expectedValue: false }], attempts: 1, delayMs: 0 };
+  raw.impact = { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, assertions: [{ path: "exists", operator: "EQUALS", expectedValue: true }], attempts: 1, delayMs: 0 };
+  raw.rollback = { request: { url: "https://example.test/api/users/disposable-1", method: "DELETE" }, verification: { request: { url: "https://example.test/api/users/disposable-1", method: "GET" }, matchPreStateHash: true, attempts: 1, delayMs: 0 } };
+  return controlledMutationContractSchema.parse(raw);
 }
 
 function response(request: HttpRequest, statusCode: number, body: unknown): HttpResponse {

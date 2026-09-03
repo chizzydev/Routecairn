@@ -18,7 +18,7 @@ describe("dashboard product workflows", () => {
         const capabilities = await apiGet<any>(handle.url, "/api/capabilities", auth.cookie);
         expect(capabilities.schemaVersion).toBe(1);
         expect(capabilities.generatedFrom).toBe("scanner-core");
-        expect(capabilities.profiles.map((profile: any) => profile.name)).toEqual(["quick", "full", "authenticated", "monitor", "proof"]);
+        expect(capabilities.profiles.map((profile: any) => profile.name)).toEqual(["pre-handover", "quick", "full", "authenticated", "monitor", "proof"]);
         expect(capabilities.modules.some((module: any) => module.id === "browser-crawler")).toBe(true);
         expect(capabilities.controlledWorkflows.map((workflow: any) => workflow.id)).toEqual([
           "object-pair",

@@ -3,10 +3,14 @@ dist/
 *.recovery.enc
 recovery.key
 global-mutation.lock
-reports/
+*.reaping.sqlite*
+*.coordination.sqlite*
+/reports/
 data/dashboard*/
 *.log
 .env
 .env.*
 !.env.example
 .qa/
+.routecairn-validation/
+.hermes/

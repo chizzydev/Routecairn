@@ -282,7 +282,7 @@ function findingsFromReport(report: FileAuthorizationReport, context: ScanContex
     manualTestingSuggestions: ["Verify the supplied file relationship and expected policy.", "Confirm whether sharing or public visibility intentionally permits this exact access.", "Repeat only the bounded proof request."],
     tags: ["file-authorization", "access-control", observation.findingCategory.toLowerCase().replace(/_/g, "-")],
     riskScore: scorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["file-authorization", "access-control"] }),
-    sourceModule: "file-authorization-testing",
+    workflowCase: { id: `${observation.definitionId}/${observation.caseId}` }, sourceModule: "file-authorization-testing",
     falsePositiveStatus: "likely-valid" as const,
     timestamp: new Date().toISOString()
   }));

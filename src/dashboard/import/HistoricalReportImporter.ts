@@ -43,7 +43,7 @@ export class HistoricalReportImporter {
       this.scans.create({
         id: scanId,
         source: "REPORT_IMPORTED",
-        status: "IMPORTED",
+        status: report.execution?.partial ? report.execution.status === "CANCELLED" ? "CANCELLED" : report.execution.status === "FAILED" ? "FAILED" : "INTERRUPTED" : "IMPORTED",
         targetOrigin,
         safeTargetLabel: targetOrigin,
         profile: report.profile?.name ?? report.mode,

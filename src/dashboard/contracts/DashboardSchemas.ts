@@ -1,9 +1,16 @@
 import { z } from "zod";
+import { scopeSchema } from "../../config/ConfigSchema.js";
 import { scanProfileNameSchema } from "../../config/ScanProfiles.js";
 import { scanStudioSchema } from "./ScanStudioSchemas.js";
+import { browserBootstrapSchema } from "../../core/auth/AuthProfile.js";
+import { assistedReviewInputSchema } from "../../modules/assistedReview/AssistedReviewPlanner.js";
+import { preHandoverInputSchema } from "../../modules/preHandover/PreHandoverPlanner.js";
+import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
 
 export const dashboardScanCreateSchema = z.object({
   target: z.string().url(),
+  recoveryScope: scopeSchema.optional(),
+  workflowRecoveryDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   scopeFile: z.string().min(1).max(1000).optional(),
   profile: scanProfileNameSchema,
   projectId: z.string().uuid().optional(),
@@ -18,11 +25,36 @@ export const dashboardScanCreateSchema = z.object({
   credentialProfileBId: z.string().uuid().optional(),
   rateLimitPerSecond: z.number().positive().max(50).optional(),
   concurrency: z.number().int().positive().max(50).optional(),
+  maxRequests: z.number().int().positive().max(10000).optional(),
+  cleanupReservedRequests: z.number().int().min(0).max(5000).optional(),
   includeModules: z.array(z.string().min(1).max(120)).max(40).optional(),
+  authenticationLifecycleFile: z.string().min(1).max(1000).optional(),
+  authenticationLifecycleAutoFile: z.string().min(1).max(1000).optional(),
+  businessInvariantFile: z.string().min(1).max(1000).optional(),
+  controlledRaceFile: z.string().min(1).max(1000).optional(),
+  apiGraphqlFile: z.string().min(1).max(1000).optional(),
+  linkPortalSecurityFile: z.string().min(1).max(1000).optional(),
+  operationalEndpointSecurityFile: z.string().min(1).max(1000).optional(),
+  billingEntitlementFile: z.string().min(1).max(1000).optional(),
+  assistedReviewFile: z.string().min(1).max(1000).optional(),
+  preHandoverFile: z.string().min(1).max(1000).optional(),
+  preHandover: preHandoverInputSchema.optional(),
+  targetAuthorizationFile: z.string().min(1).max(1000).optional(),
+  targetAuthorization: targetAuthorizationSchema.optional(),
+  assistedReview: assistedReviewInputSchema.optional(),
   studio: scanStudioSchema.optional()
 }).superRefine((value, ctx) => {
+  if (value.maxRequests !== undefined && value.cleanupReservedRequests !== undefined && value.cleanupReservedRequests > value.maxRequests) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cleanupReservedRequests"], message: "Cleanup reserve cannot exceed the total scan request budget." });
+  }
+  if (value.preHandover && value.preHandoverFile) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use an inline pre-handover manifest or a file, not both." });
+  if (value.targetAuthorization && value.targetAuthorizationFile) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use inline target authorization or a file, not both." });
+  if (value.assistedReview && value.assistedReviewFile) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["assistedReview"], message: "Use an inline review manifest or a review file, not both." });
   if (!value.scopeFile && !value.studio?.scope) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeFile"], message: "Provide either an inline Scan Studio scope or a scope file." });
+  }
+  if (value.authenticationLifecycleFile && value.authenticationLifecycleAutoFile) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["authenticationLifecycleAutoFile"], message: "Use either an explicit lifecycle manifest or browser-learned lifecycle automation, not both." });
   }
   if ((value.credentialProfileAId && !value.credentialProfileBId) || (!value.credentialProfileAId && value.credentialProfileBId)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["credentialProfileAId"], message: "Account-pair credential profiles require both Account A and Account B." });
@@ -157,7 +189,9 @@ export const credentialProfileSchema = z.object({
       tenantFieldPath: z.string().max(200).optional(),
       roleFieldPath: z.string().max(200).optional(),
       accountStateFieldPath: z.string().max(200).optional()
-    }).optional()
+    }).optional(),
+    browserBootstrap: browserBootstrapSchema.optional(),
+    lifecycleSecrets: z.record(z.string().regex(/^[A-Za-z0-9._-]{1,100}$/), z.string().min(1).max(8192)).optional()
   })
 });
 

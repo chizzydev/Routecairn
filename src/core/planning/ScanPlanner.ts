@@ -4,6 +4,8 @@ import { scanProfileDefinitions } from "./ProfileDefinitions.js";
 import type { ScanProfileName } from "../../config/ScanProfiles.js";
 import type { EvidenceLevel, EvidencePolicy, ModuleId, ModulePlan, ModuleSettings, ResolvedScanPlan, ScanLimits, ScanPlannerInput, ScanProfileDefinition } from "./ScanPlan.js";
 import { scanPlanSchemaVersion } from "./ScanPlan.js";
+import { validatePreHandoverBindings } from "../../modules/preHandover/PreHandoverPlanner.js";
+import { targetAuthorizationSchema } from "../authorization/TargetAuthorization.js";
 
 const defaultRetry = { maxAttempts: 2, baseDelayMs: 250, maxDelayMs: 2000, retryStatusCodes: [408, 429, 500, 502, 503, 504] };
 const hardSafetyCeilings = {
@@ -13,6 +15,7 @@ const hardSafetyCeilings = {
   bodyPreviewBytes: 1024 * 1024,
   maxResponseBytes: 4 * 1024 * 1024,
   maxRequests: 10000,
+  cleanupReservedRequests: 5000,
   maxScanDurationMs: 60 * 60 * 1000,
   retryMaxAttempts: 5
 };
@@ -40,6 +43,20 @@ export class ScanPlanner {
   ) {}
 
   public resolve(input: ScanPlannerInput): ResolvedScanPlan {
+    validatePreHandoverBindings(input);
+    if (input.targetAuthorization) {
+      const authorization = targetAuthorizationSchema.parse(input.targetAuthorization);
+      if (authorization.bugBounty && !authorization.bugBounty.authenticationPermitted && (input.authProfile || input.authProfileSet)) throw new Error("TARGET_AUTHENTICATION_PROHIBITED");
+      input = { ...input, targetAuthorization: authorization };
+    }
+    if (input.preHandover) {
+      if (input.assistedReview && JSON.stringify(input.assistedReview) !== JSON.stringify(input.preHandover.review)) throw new Error("PRE_HANDOVER_REVIEW_CONFLICT");
+      const selected = new Set<ModuleId>([...(input.overrides?.includeModules ?? []), ...input.preHandover.sequence, "assisted-review"]);
+      const addDependencies = (module: ModuleId): void => { for (const dependency of this.registry.get(module)?.metadata.dependencies ?? []) if (!selected.has(dependency)) { selected.add(dependency); addDependencies(dependency); } };
+      for (const module of selected) addDependencies(module);
+      if (input.overrides?.excludeModules?.some((module) => selected.has(module))) throw new Error("PRE_HANDOVER_REQUIRED_MODULE_EXCLUDED");
+      input = { ...input, assistedReview: input.preHandover.review, overrides: { ...input.overrides, includeModules: [...selected] } };
+    }
     const definition = this.definitions[input.requestedProfile];
     if (!definition) {
       throw new AppError(`Unknown scan profile "${input.requestedProfile}".`, "SCAN_PROFILE_INVALID");
@@ -58,7 +75,16 @@ export class ScanPlanner {
     if (authentication.requireAccountPair && !authentication.hasAccountPair) {
       throw new AppError(`Profile "${definition.name}" requires --auth-a and --auth-b.`, "SCAN_AUTH_PAIR_REQUIRED");
     }
-    const limits = freezeLimits(resolveLimits(definition, input));
+    const resolvedLimits = resolveLimits(definition, input);
+    const program = input.targetAuthorization?.bugBounty;
+    const limits = freezeLimits(program ? {
+      ...resolvedLimits,
+      rateLimitPerSecond: Math.min(resolvedLimits.rateLimitPerSecond, program.rateLimitPerSecond),
+      maxRequests: Math.min(resolvedLimits.maxRequests, program.maxRequests),
+      cleanupReservedRequests: Math.min(resolvedLimits.cleanupReservedRequests, resolvedLimits.maxRequests, program.maxRequests)
+    } : resolvedLimits);
+    if (input.assistedReview?.requireVerifiedIdentity && !input.authProfile && !input.authProfileSet) throw new AppError("This review requires an authenticated identity profile.", "ASSISTED_REVIEW_AUTH_REQUIRED");
+    if (input.assistedReview?.requireAccountPair && !input.authProfileSet) throw new AppError("This review requires an Account A/B profile pair.", "ASSISTED_REVIEW_AUTH_PAIR_REQUIRED");
     const { modules, skippedModules } = this.resolveModules(definition, limits, authentication, input);
 
     const plan: ResolvedScanPlan = deepFreeze({
@@ -82,6 +108,9 @@ export class ScanPlanner {
       failurePolicy: definition.failurePolicy,
       optionalModulesMayBeSkipped: definition.optionalModulesMayBeSkipped,
       reportFocus: [...definition.reportFocus],
+      ...(input.targetAuthorization ? { targetAuthorization: input.targetAuthorization } : {}),
+      ...(input.preHandover ? { preHandover: input.preHandover } : {}),
+      ...(input.assistedReview ? { assistedReview: input.assistedReview } : {}),
       ...(input.objectPairTesting ? { objectPairTesting: input.objectPairTesting } : {}),
       ...(input.fieldExposureTesting ? { fieldExposureTesting: input.fieldExposureTesting } : {}),
       ...(input.authorizationMatrixTesting ? { authorizationMatrixTesting: input.authorizationMatrixTesting } : {}),
@@ -89,7 +118,15 @@ export class ScanPlanner {
       ...(input.bulkAuthorizationTesting ? { bulkAuthorizationTesting: input.bulkAuthorizationTesting } : {}),
       ...(input.fileAuthorizationTesting ? { fileAuthorizationTesting: input.fileAuthorizationTesting } : {}),
       ...(input.equivalentRouteTesting ? { equivalentRouteTesting: input.equivalentRouteTesting } : {}),
-      ...(input.privilegeMutationTesting ? { privilegeMutationTesting: input.privilegeMutationTesting } : {})
+      ...(input.privilegeMutationTesting ? { privilegeMutationTesting: input.privilegeMutationTesting } : {}),
+      ...(input.supabaseAuthorization ? { supabaseAuthorization: input.supabaseAuthorization } : {}),
+      ...(input.authenticationLifecycle ? { authenticationLifecycle: input.authenticationLifecycle } : {}),
+      ...(input.businessInvariant ? { businessInvariant: input.businessInvariant } : {}),
+      ...(input.controlledRace ? { controlledRace: input.controlledRace } : {}),
+      ...(input.apiGraphql ? { apiGraphql: input.apiGraphql } : {}),
+      ...(input.linkPortalSecurity ? { linkPortalSecurity: input.linkPortalSecurity } : {}),
+      ...(input.operationalEndpointSecurity ? { operationalEndpointSecurity: input.operationalEndpointSecurity } : {})
+      ,...(input.billingEntitlement ? { billingEntitlement: input.billingEntitlement } : {})
     });
 
     this.validate(plan);
@@ -146,7 +183,7 @@ export class ScanPlanner {
       });
     }
 
-    const sorted = this.orderModules(modulePlans);
+    const sorted = this.orderModules(modulePlans, input.preHandover?.sequence);
 
     this.validateDependencies(definition.name, sorted);
     this.validateEvidence(definition, sorted);
@@ -155,13 +192,13 @@ export class ScanPlanner {
     return { modules: sorted, skippedModules };
   }
 
-  private orderModules(modulePlans: readonly ModulePlan[]): ModulePlan[] {
+  private orderModules(modulePlans: readonly ModulePlan[], sequence: readonly ModuleId[] = []): ModulePlan[] {
     const remaining = new Map(modulePlans.map((modulePlan) => [modulePlan.id, modulePlan]));
     const ordered: ModulePlan[] = [];
 
     while (remaining.size > 0) {
       const ready = [...remaining.values()]
-        .filter((modulePlan) => this.constraintsFor(modulePlan.id).every((dependency) => !remaining.has(dependency)))
+        .filter((modulePlan) => this.constraintsFor(modulePlan.id).every((dependency) => !remaining.has(dependency)) && sequence.slice(0, Math.max(0, sequence.indexOf(modulePlan.id))).every((dependency) => !remaining.has(dependency)))
         .sort((left, right) => {
           const leftMetadata = this.registry.get(left.id)?.metadata;
           const rightMetadata = this.registry.get(right.id)?.metadata;
@@ -262,7 +299,7 @@ export class ScanPlanner {
   }
 
   private validateMonitoring(definition: ScanProfileDefinition, modules: readonly ModulePlan[]): void {
-    if (!definition.output.stableForDiff) {
+    if (definition.name !== "monitor") {
       return;
     }
 
@@ -273,6 +310,8 @@ export class ScanPlanner {
   }
 
   private validate(plan: ResolvedScanPlan): void {
+    const assistedSelected = plan.modules.some((module) => module.id === "assisted-review");
+    if (assistedSelected !== Boolean(plan.assistedReview)) throw new AppError("Assisted review requires both its explicit review manifest and selected module.", "ASSISTED_REVIEW_PLAN_REQUIRED");
     if (plan.modules.length === 0) {
       throw new AppError(`Profile "${plan.profile}" resolved to an empty module plan.`, "SCAN_PLAN_EMPTY");
     }
@@ -343,6 +382,34 @@ export class ScanPlanner {
     const hasPrivilegeMutationModule = plan.modules.some((modulePlan) => modulePlan.id === "privilege-mutation-testing");
     if (hasPrivilegeMutationModule && !plan.privilegeMutationTesting) throw new AppError("Privilege mutation testing requires a resolved explicit mutation plan.", "PRIVILEGE_MUTATION_PLAN_REQUIRED");
     if (plan.privilegeMutationTesting && !hasPrivilegeMutationModule) throw new AppError("Privilege mutation input was supplied but the privilege-mutation-testing module was not selected.", "PRIVILEGE_MUTATION_MODULE_REQUIRED");
+
+    const hasSupabaseModule = plan.modules.some((modulePlan) => modulePlan.id === "supabase-authorization");
+    if (hasSupabaseModule && !plan.supabaseAuthorization) throw new AppError("Supabase authorization requires a resolved explicit test plan.", "SUPABASE_AUTH_PLAN_REQUIRED");
+    if (plan.supabaseAuthorization && !hasSupabaseModule) throw new AppError("Supabase authorization input was supplied but the supabase-authorization module was not selected.", "SUPABASE_AUTH_MODULE_REQUIRED");
+
+    const hasAuthenticationLifecycleModule = plan.modules.some((modulePlan) => modulePlan.id === "authentication-lifecycle");
+    if (hasAuthenticationLifecycleModule && !plan.authenticationLifecycle) throw new AppError("Authentication lifecycle testing requires a resolved explicit lifecycle plan.", "AUTH_LIFECYCLE_PLAN_REQUIRED");
+    if (plan.authenticationLifecycle && !hasAuthenticationLifecycleModule) throw new AppError("Authentication lifecycle input was supplied but the authentication-lifecycle module was not selected.", "AUTH_LIFECYCLE_MODULE_REQUIRED");
+
+    const hasBusinessInvariantModule = plan.modules.some((modulePlan) => modulePlan.id === "business-invariant");
+    if (hasBusinessInvariantModule && !plan.businessInvariant) throw new AppError("Business invariant testing requires a resolved explicit invariant plan.", "BUSINESS_INVARIANT_PLAN_REQUIRED");
+    if (plan.businessInvariant && !hasBusinessInvariantModule) throw new AppError("Business invariant input was supplied but the business-invariant module was not selected.", "BUSINESS_INVARIANT_MODULE_REQUIRED");
+
+    const hasControlledRaceModule = plan.modules.some((modulePlan) => modulePlan.id === "controlled-race");
+    if (hasControlledRaceModule && !plan.controlledRace) throw new AppError("Controlled race testing requires a resolved explicit race plan.", "CONTROLLED_RACE_PLAN_REQUIRED");
+    if (plan.controlledRace && !hasControlledRaceModule) throw new AppError("Controlled race input was supplied but the controlled-race module was not selected.", "CONTROLLED_RACE_MODULE_REQUIRED");
+    const hasApiGraphqlModule = plan.modules.some((modulePlan) => modulePlan.id === "api-graphql-authorization");
+    if (hasApiGraphqlModule && !plan.apiGraphql) throw new AppError("API/GraphQL authorization requires a resolved explicit review plan.", "API_GRAPHQL_PLAN_REQUIRED");
+    if (plan.apiGraphql && !hasApiGraphqlModule) throw new AppError("API/GraphQL input was supplied but the api-graphql-authorization module was not selected.", "API_GRAPHQL_MODULE_REQUIRED");
+    const hasLinkPortalModule = plan.modules.some((modulePlan) => modulePlan.id === "link-portal-export-security");
+    if (hasLinkPortalModule && !plan.linkPortalSecurity) throw new AppError("Link/portal/export security requires a resolved explicit plan.", "LINK_PORTAL_PLAN_REQUIRED");
+    if (plan.linkPortalSecurity && !hasLinkPortalModule) throw new AppError("Link/portal/export input was supplied but its module was not selected.", "LINK_PORTAL_MODULE_REQUIRED");
+    const hasOperationalModule = plan.modules.some((modulePlan) => modulePlan.id === "operational-endpoint-security");
+    if (hasOperationalModule && !plan.operationalEndpointSecurity) throw new AppError("Operational endpoint security requires a resolved explicit plan.", "OPERATIONAL_ENDPOINT_PLAN_REQUIRED");
+    if (plan.operationalEndpointSecurity && !hasOperationalModule) throw new AppError("Operational endpoint input was supplied but its module was not selected.", "OPERATIONAL_ENDPOINT_MODULE_REQUIRED");
+    const hasBillingModule = plan.modules.some((modulePlan) => modulePlan.id === "billing-entitlement-security");
+    if (hasBillingModule && !plan.billingEntitlement) throw new AppError("Billing and entitlement security requires a resolved explicit synthetic plan.", "BILLING_ENTITLEMENT_PLAN_REQUIRED");
+    if (plan.billingEntitlement && !hasBillingModule) throw new AppError("Billing input was supplied but its module was not selected.", "BILLING_ENTITLEMENT_MODULE_REQUIRED");
   }
 }
 
@@ -355,6 +422,7 @@ function resolveLimits(definition: ScanProfileDefinition, input: ScanPlannerInpu
     bodyPreviewBytes: input.config.bodyPreviewBytes,
     maxResponseBytes: input.config.bodyPreviewBytes * 4,
     maxRequests: 200,
+    cleanupReservedRequests: 0,
     maxScanDurationMs: 300000,
     retry: defaultRetry
   };
@@ -364,13 +432,40 @@ function resolveLimits(definition: ScanProfileDefinition, input: ScanPlannerInpu
     ...definition.limits,
     ...(definition.limits.bodyPreviewBytes ? { maxResponseBytes: definition.limits.bodyPreviewBytes * 4 } : {}),
     ...(input.overrides?.rateLimitPerSecond ? { rateLimitPerSecond: input.overrides.rateLimitPerSecond } : {}),
-    ...(input.overrides?.concurrency ? { concurrency: input.overrides.concurrency } : {})
+    ...(input.overrides?.concurrency ? { concurrency: input.overrides.concurrency } : {}),
+    ...(input.overrides?.maxRequests ? { maxRequests: input.overrides.maxRequests } : {})
   };
+
+  const minimumCleanup = minimumCleanupRequests(input);
+  const cleanupReservedRequests = input.overrides?.cleanupReservedRequests
+    ?? definition.limits.cleanupReservedRequests
+    ?? (minimumCleanup > 0 ? Math.min(merged.maxRequests, Math.max(minimumCleanup, Math.ceil(merged.maxRequests * 0.2))) : 0);
+  if (cleanupReservedRequests < minimumCleanup) {
+    throw new AppError(`cleanupReservedRequests (${cleanupReservedRequests}) is below the ${minimumCleanup}-request minimum required by the selected restoration workflows.`, "SCAN_PLAN_CLEANUP_RESERVE_INSUFFICIENT");
+  }
+  if (minimumCleanup > 0 && cleanupReservedRequests >= merged.maxRequests) {
+    throw new AppError("The total request budget must exceed the cleanup reserve so the authorized workflow can reach its restoration phase.", "SCAN_PLAN_ATTACK_CAPACITY_EMPTY");
+  }
 
   return {
     ...merged,
+    cleanupReservedRequests,
     retry: { ...base.retry, ...(definition.limits.retry ?? {}) }
   };
+}
+
+function minimumCleanupRequests(input: ScanPlannerInput): number {
+  let total = 0;
+  total += input.privilegeMutationTesting?.cases.reduce((count, item) => count + 1 + item.rollback.verification.attempts + (input.authProfile?.browserBootstrap?.proofCases.some((proof) => proof.caseId === item.caseId) ? 20 : 0), 0) ?? 0;
+  total += (input.supabaseAuthorization?.cases.filter((item) => item.mutationContractCaseId).length ?? 0) * 2;
+  total += input.authenticationLifecycle?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
+  total += input.authenticationLifecycle?.automation?.categories.length ?? 0;
+  total += input.businessInvariant?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
+  total += input.controlledRace?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
+  total += input.linkPortalSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
+  total += input.operationalEndpointSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
+  total += input.billingEntitlement?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").reduce((stepCount, step) => stepCount + step.execution.attempts, 0), 0) ?? 0;
+  return total;
 }
 
 function validatePositiveLimits(limits: ScanLimits): void {
@@ -382,12 +477,13 @@ function validatePositiveLimits(limits: ScanLimits): void {
     bodyPreviewBytes: limits.bodyPreviewBytes,
     maxResponseBytes: limits.maxResponseBytes,
     maxRequests: limits.maxRequests,
+    cleanupReservedRequests: limits.cleanupReservedRequests,
     maxScanDurationMs: limits.maxScanDurationMs,
     retryMaxAttempts: limits.retry.maxAttempts
   };
 
   for (const [name, value] of Object.entries(numericLimits)) {
-    if (!Number.isFinite(value) || value < 0 || (name !== "maxDepth" && value === 0)) {
+    if (!Number.isFinite(value) || value < 0 || (!["maxDepth", "cleanupReservedRequests"].includes(name) && value === 0)) {
       throw new AppError(`Invalid scan limit "${name}": ${value}.`, "SCAN_PLAN_INVALID_LIMIT");
     }
   }
@@ -398,6 +494,8 @@ function validatePositiveLimits(limits: ScanLimits): void {
   if (limits.bodyPreviewBytes > hardSafetyCeilings.bodyPreviewBytes) throw new AppError(`bodyPreviewBytes exceeds hard safety ceiling ${hardSafetyCeilings.bodyPreviewBytes}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
   if (limits.maxResponseBytes > hardSafetyCeilings.maxResponseBytes) throw new AppError(`maxResponseBytes exceeds hard safety ceiling ${hardSafetyCeilings.maxResponseBytes}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
   if (limits.maxRequests > hardSafetyCeilings.maxRequests) throw new AppError(`maxRequests exceeds hard safety ceiling ${hardSafetyCeilings.maxRequests}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
+  if (!Number.isInteger(limits.cleanupReservedRequests) || limits.cleanupReservedRequests < 0 || limits.cleanupReservedRequests > limits.maxRequests) throw new AppError("cleanupReservedRequests must be an integer between zero and maxRequests.", "SCAN_PLAN_INVALID_CLEANUP_RESERVE");
+  if (limits.cleanupReservedRequests > hardSafetyCeilings.cleanupReservedRequests) throw new AppError(`cleanupReservedRequests exceeds hard safety ceiling ${hardSafetyCeilings.cleanupReservedRequests}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
   if (limits.maxScanDurationMs > hardSafetyCeilings.maxScanDurationMs) throw new AppError(`maxScanDurationMs exceeds hard safety ceiling ${hardSafetyCeilings.maxScanDurationMs}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
   if (limits.retry.maxAttempts > hardSafetyCeilings.retryMaxAttempts) throw new AppError(`retry.maxAttempts exceeds hard safety ceiling ${hardSafetyCeilings.retryMaxAttempts}.`, "SCAN_PLAN_LIMIT_EXCEEDS_CEILING");
 }

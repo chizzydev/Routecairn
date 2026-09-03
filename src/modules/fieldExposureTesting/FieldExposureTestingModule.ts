@@ -355,7 +355,7 @@ function findingsFromReport(report: FieldExposureTestingReport, context: ScanCon
           manualTestingSuggestions: ["Confirm the field policy with the application owner.", "Check whether the object is intentionally shared.", "Add regression tests for the exact actor and object policy."],
           tags: ["field-exposure", "authorization", "needs-manual-verification"],
           riskScore: riskScorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["field-exposure", "authorization"] }),
-          sourceModule: "field-exposure-testing",
+          workflowCase: { id: testCase.caseId }, sourceModule: "field-exposure-testing",
           falsePositiveStatus: "likely-valid" as const,
           timestamp: new Date().toISOString()
         }))

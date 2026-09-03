@@ -20,9 +20,21 @@ export class ControlledMutationApprovalRepository {
     return this.get(id)!;
   }
   public beginRecovery(id: string, recoveryJobId: string): ControlledMutationApprovalSummary {
-    const now = nowIso(); const result = this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = 'EXECUTING', recovery_job_id = ?, recovery_started_at = ?, recovery_error_summary = NULL, updated_at = ? WHERE id = ? AND status = 'APPROVED' AND expires_at > ?").run(recoveryJobId, now, now, id, now);
+    const now = nowIso(); const result = this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = 'EXECUTING', recovery_job_id = ?, recovery_started_at = ?, recovery_error_summary = NULL, updated_at = ? WHERE id = ? AND status IN ('APPROVED','CLEANUP_REQUIRED','CLEANUP_FAILED') AND expires_at > ?").run(recoveryJobId, now, now, id, now);
     if (result.changes !== 1) throw new Error("MUTATION_RECOVERY_UNAVAILABLE: Approval is not available for exactly one recovery operation.");
     return this.get(id)!;
+  }
+  /** Consumed transactionally with scan creation; an approval cannot enqueue twice. */
+  public beginExecution(id: string, scanId: string): void {
+    const now = nowIso();
+    const result = this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = 'EXECUTING', execution_scan_id = ?, updated_at = ? WHERE id = ? AND status = 'APPROVED' AND execution_scan_id IS NULL AND expires_at > ?").run(scanId, now, id, now);
+    if (result.changes !== 1) throw new Error("MUTATION_EXECUTION_UNAVAILABLE: Approval was consumed, expired, or unavailable.");
+  }
+  public finishExecution(scanId: string, cleanupUnresolved: boolean): void {
+    this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = ?, updated_at = ? WHERE execution_scan_id = ? AND status = 'EXECUTING'").run(cleanupUnresolved ? "CLEANUP_REQUIRED" : "COMPLETED", nowIso(), scanId);
+  }
+  public recoverInterruptedExecutions(): void {
+    this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = 'CLEANUP_REQUIRED', updated_at = ? WHERE status = 'EXECUTING' AND execution_scan_id IN (SELECT id FROM scans WHERE status IN ('FAILED','INTERRUPTED','CANCELLED'))").run(nowIso());
   }
   public updateStatus(id: string, status: ControlledMutationApprovalStatus, errorSummary?: string): void { const completed = status === "COMPLETED" || status === "CLEANUP_FAILED" ? nowIso() : null; const result = this.database.db.prepare("UPDATE controlled_mutation_approvals SET status = ?, recovery_completed_at = COALESCE(?, recovery_completed_at), recovery_error_summary = ?, updated_at = ? WHERE id = ? AND status IN ('EXECUTING','APPROVED')").run(status, completed, errorSummary ? clamp(errorSummary, 800) : null, nowIso(), id); if (result.changes !== 1) throw new Error("MUTATION_RECOVERY_STATE_CONFLICT: Recovery status transition was not applied."); }
 }

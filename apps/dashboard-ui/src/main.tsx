@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { apiGet, apiMutation, bootstrap, DashboardApiError, setCsrfToken, type AuditEvent, type FindingSummary, type PlanPreview, type ProjectSummary, type ScanSummary, type TargetSummary } from "./api";
 import "./styles.css";
 import { ScanStudio } from "./ScanStudio";
+import { AssistedReviewPanel } from "./AssistedReviewPanel";
+import { WorkflowRecoveryPanel } from "./WorkflowRecoveryPanel";
+import { ScanCancellationNotice } from "./ScanCancellationNotice";
 import { FindingsCommandCenter, type RetestDraft } from "./FindingsCommandCenter";
 import type { ComparisonResult } from "../../../src/dashboard/types/DashboardTypes";
 
@@ -79,7 +82,7 @@ export function App() {
         {view === "target-detail" && <TargetDetail targetId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onScan={() => { setRetestDraft(undefined); setView("new-scan"); }} />}
         {view === "scans" && <ScanOverview onOpenScan={(id) => { setSelectedId(id); setView("scan-detail"); }} />}
         {view === "new-scan" && <ScanStudio {...(retestDraft ? { initialDraft: retestDraft } : {})} onLaunched={(id) => { setRetestDraft(undefined); setSelectedId(id); setView("scan-detail"); }} />}
-        {view === "scan-detail" && <ScanDetail scanId={selectedId} />}
+        {view === "scan-detail" && <ScanDetail scanId={selectedId} onRecovery={() => setView("offensive")} onReviewFindings={() => { setFindingFilters({ scanId: selectedId }); setView("findings"); }} />}
         {view === "findings" && <FindingsCommandCenter initialFilters={findingFilters} principal={principal} onRetest={(draft) => { setRetestDraft(draft); setView("new-scan"); }} />}
         {view === "compare" && <Compare />}
         {view === "proof" && <ProofPacks />}
@@ -106,7 +109,7 @@ function OffensiveSafety() {
     return () => window.clearInterval(timer);
   }, []);
   return <section>
-    <Header title="Offensive Safety" subtitle="Live controlled-mutation stages and unresolved cleanup obligations. Execution and emergency recovery remain local CLI operations in this release." />
+    <Header title="Offensive Safety" subtitle="Shared mutation coordination, encrypted cleanup checkpoints, and dashboard-operated recovery." />
     {error && <p className="error">{error}</p>}
     {status?.cleanupRequired > 0 && <div className="cleanup-emergency" role="alert" aria-live="assertive">
       <div>
@@ -131,6 +134,7 @@ function OffensiveSafety() {
       </div>)}
     </div>
     {status && status.cases.length === 0 && <EmptyState text="No unresolved controlled-mutation cleanup obligations were discovered across registered journal directories." />}
+    <WorkflowRecoveryPanel />
   </section>;
 }
 
@@ -151,7 +155,7 @@ function ProductionMutationWorkspace() {
   const previewCase = async () => { const body = await apiMutation<any>("/api/production-mutations/preview", "POST", parseCase()); setPreview(body); setMessage("Production case preview resolved. No mutation was transmitted."); };
   const approveCase = async () => { const body = await apiMutation<any>("/api/production-mutations/approvals", "POST", { case: parseCase(), authorizationDeclaration: authorization, confirmation: "I_CONFIRM_PRODUCTION_CONTROLLED_MUTATION_AND_CLEANUP_DUTY" }); const approved = await apiMutation<any>(`/api/controlled-mutations/approvals/${body.approval.id}/approve`, "POST", {}); setApproval(approved.approval); setPreview(body); setMessage("Production case explicitly approved. Review the exact preview before execution."); };
   const executeCase = async () => { if (!approval) return; const body = await apiMutation<any>(`/api/production-mutations/approvals/${approval.id}/execute`, "POST", parseCase()); setResult(body); setMessage("Approved production mutation queued through the isolated worker."); };
-  return <section><Header title="Production Controlled Mutation" subtitle="Explicit reversible tests for registered production targets. Endpoint paths only; credentials stay in the vault." /><div className="cleanup-emergency" role="alert"><div><strong>Production safety gate</strong><p>Use only disposable accounts and targets you own. RouteCairn blocks arbitrary fields, external origins, deletion tiers, and unapproved scopes.</p></div><span>EXPLICIT APPROVAL REQUIRED</span></div><div className="cards"><div className="metric"><strong>{targets.length}</strong><span>Production-enabled targets</span></div><div className="metric"><strong>{credentials.length}</strong><span>Enabled actor profiles</span></div></div><div className="form"><label>Production case JSON<textarea className="code-input" rows={24} value={caseJson} onChange={(event) => setCaseJson(event.target.value)} spellCheck={false} placeholder='{"caseId":"prod-role-001","targetId":"..."}' /></label><label>Authorization declaration<textarea value={authorization} onChange={(event) => setAuthorization(event.target.value)} placeholder="I own this production target and authorize this exact reversible disposable-account test." /></label><div className="actions"><button onClick={() => void previewCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Resolve exact preview</button><button className="primary" disabled={authorization.length < 40 || !preview} onClick={() => void approveCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Create production approval</button><button className="danger" disabled={!approval} onClick={() => window.confirm("Execute this exact production mutation case now? Rollback remains mandatory.") && void executeCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Execute approved case</button></div></div>{message && <p aria-live="polite">{message}</p>}{preview?.preview && <div className="panel"><h3>Exact request preview</h3><p>Target: {preview.preview.targetOrigin}</p><p>Field: {preview.preview.authorityField}</p><p>Mutation hash: <code>{preview.preview.mutationValueHash}</code></p><ul>{preview.preview.endpoints.map((endpoint: string) => <li key={endpoint}><code>{endpoint}</code></li>)}</ul><p>Protected action: {preview.preview.protectedActionConfigured ? "configured" : "not configured"}</p></div>}{result && <div className="panel"><h3>Execution links</h3><p><a href={`/scans/${result.scanId}`}>Scan {result.scanId}</a></p><p>Approval {result.approvalId}</p><Badge value={result.status} /></div>}</section>;
+  return <section><Header title="Production Controlled Mutation" subtitle="Explicit reversible tests for registered production targets. Endpoint paths only; credentials stay in the vault." /><div className="cleanup-emergency" role="alert"><div><strong>Production safety gate</strong><p>Use only disposable accounts and targets you own. RouteCairn blocks arbitrary fields, external origins, deletion tiers, and unapproved scopes.</p></div><span>EXPLICIT APPROVAL REQUIRED</span></div><div className="cards"><div className="metric"><strong>{targets.length}</strong><span>Production-enabled targets</span></div><div className="metric"><strong>{credentials.length}</strong><span>Enabled actor profiles</span></div></div><div className="form"><label>Production case JSON<textarea className="code-input" rows={24} value={caseJson} onChange={(event) => setCaseJson(event.target.value)} spellCheck={false} placeholder='{"caseId":"prod-role-001","targetId":"..."}' /></label><label>Authorization declaration<textarea value={authorization} onChange={(event) => setAuthorization(event.target.value)} placeholder="I own this production target and authorize this exact reversible disposable-account test." /></label><div className="actions"><button onClick={() => void previewCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Resolve exact preview</button><button className="primary" disabled={authorization.length < 40 || !preview} onClick={() => void approveCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Create production approval</button><button className="danger" disabled={!approval} onClick={() => window.confirm("Execute this exact production mutation case now? Rollback remains mandatory.") && void executeCase().catch((cause: unknown) => setMessage(errorText(cause)))}>Execute approved case</button></div></div>{message && <p aria-live="polite">{message}</p>}{preview?.preview && <div className="panel"><h3>Exact request preview</h3><p>Target: {preview.preview.targetOrigin}</p><p>Actor identity: <code>{preview.preview.identityEndpoint}</code> · assertion <code>{preview.preview.actorIdentityAssertionPath}</code></p><p>Disposable object precondition: <code>{preview.preview.preconditionEndpoint}</code> · assertion <code>{preview.preview.disposableObjectIdentityAssertionPath}</code></p><p>Field: {preview.preview.authorityField}</p><p>Mutation hash: <code>{preview.preview.mutationValueHash}</code></p><ul>{preview.preview.endpoints.map((endpoint: string, index: number) => <li key={`${index}:${endpoint}`}><code>{endpoint}</code></li>)}</ul><p>Protected action: {preview.preview.protectedActionConfigured ? "configured" : "not configured"}</p></div>}{result && <div className="panel"><h3>Execution links</h3><p><a href={`/scans/${result.scanId}`}>Scan {result.scanId}</a></p><p>Approval {result.approvalId}</p><Badge value={result.status} /></div>}</section>;
 }
 
 function Login(props: { onLogin: (principal: unknown) => void }) {
@@ -528,7 +532,7 @@ function LegacyNewScanRemoved() {
   );
 }
 
-function ScanDetail(props: { scanId: string }) {
+function ScanDetail(props: { scanId: string; onReviewFindings: () => void; onRecovery: () => void }) {
   const [detail, setDetail] = useState<any>();
   useEffect(() => {
     if (!props.scanId) return;
@@ -539,10 +543,32 @@ function ScanDetail(props: { scanId: string }) {
   }, [props.scanId, detail?.scan?.status]);
   if (!props.scanId) return <EmptyState text="Select a scan." />;
   if (!detail) return <EmptyState text="Loading scan detail." />;
+  const requestBudget = [...detail.events].reverse().find((event: any) => event.eventType === "BUDGET_UPDATED")?.metadata;
   return (
     <section>
       <Header title="Scan Detail" subtitle={`${detail.scan.target} · ${detail.scan.shortId}`} />
+      <ScanCancellationNotice status={detail.scan.status} hasArtifacts={detail.artifacts.length > 0} onRecovery={props.onRecovery} />
+      <button disabled={!["RUNNING", "PLANNING", "QUEUED"].includes(detail.scan.status)} onClick={() => void apiMutation(`/api/scans/${props.scanId}/cancel`, "POST", {}).then(() => apiGet<any>(`/api/scans/${props.scanId}/detail`)).then(setDetail)}>Cancel scan</button>
+      <AssistedReviewPanel key={props.scanId} scanId={props.scanId} onReviewFindings={props.onReviewFindings} />
       <div className="cards"><div className="metric"><strong>{detail.scan.progressPercent}%</strong><span>Progress</span></div><div className="metric"><strong>{detail.modules.length}</strong><span>Modules</span></div><div className="metric"><strong>{detail.findings.length}</strong><span>Findings</span></div></div>
+      {requestBudget && <>
+        <h3>Scan-wide Request Ledger</h3>
+        <div className="cards">
+          <div className="metric"><strong>{requestBudget.totalTransmitted}/{requestBudget.maxRequests}</strong><span>Physical requests</span></div>
+          <div className="metric"><strong>{requestBudget.scanRemaining}</strong><span>Ordinary remaining</span></div>
+          <div className="metric"><strong>{requestBudget.cleanupRemaining}</strong><span>Cleanup reserve remaining</span></div>
+        </div>
+        <p className="muted">All engines, retries, redirects, browser traffic, and dedicated transports share this ledger. Ordinary traffic cannot consume cleanup capacity.</p>
+      </>}
+      {detail.executablePlan && <>
+        <h3>Immutable Execution Plan</h3>
+        <div className="cards">
+          <div className="metric"><strong>{detail.executablePlan.worker_verified_at ? "Verified" : "Pending"}</strong><span>Worker binding</span></div>
+          <div className="metric"><strong>v{detail.executablePlan.schema_version}</strong><span>Snapshot format</span></div>
+          <div className="metric"><strong>{String(detail.executablePlan.plan_binding).slice(0, 12)}</strong><span>Safe binding prefix</span></div>
+        </div>
+        <p className="muted">The reviewed executable plan is encrypted at enqueue, bound to this scan and target, and verified by the isolated worker before any scan request is sent.</p>
+      </>}
       <h3>Module Timeline</h3><pre className="code">{JSON.stringify(detail.modules, null, 2)}</pre>
       <h3>Events</h3><pre className="code">{JSON.stringify(detail.events, null, 2)}</pre>
       <h3>Artifacts</h3>{detail.artifacts.map((artifact: any) => <p key={artifact.id}><a href={`/api/artifacts/${artifact.id}/download`}>{artifact.safe_display_name}</a> <small>{artifact.artifact_type}</small></p>)}
@@ -734,6 +760,15 @@ function Credentials() {
   const [cookieName, setCookieName] = useState("");
   const [cookieValue, setCookieValue] = useState("");
   const [tenantRole, setTenantRole] = useState("");
+  const [browserStartUrl, setBrowserStartUrl] = useState("");
+  const [browserSuccessUrl, setBrowserSuccessUrl] = useState("");
+  const [browserWritePath, setBrowserWritePath] = useState("");
+  const [browserUsernameSelector, setBrowserUsernameSelector] = useState("");
+  const [browserUsername, setBrowserUsername] = useState("");
+  const [browserPasswordSelector, setBrowserPasswordSelector] = useState("");
+  const [browserPassword, setBrowserPassword] = useState("");
+  const [browserSubmitSelector, setBrowserSubmitSelector] = useState("");
+  const [lifecycleSecretsText, setLifecycleSecretsText] = useState("");
   const [message, setMessage] = useState("");
   const [credentialDetail, setCredentialDetail] = useState<any>();
   const load = () => {
@@ -741,6 +776,27 @@ function Credentials() {
     void apiGet<{ profiles: any[] }>("/api/credential-profiles").then((body) => setProfiles(body.profiles)).catch((cause: unknown) => setMessage(errorText(cause)));
   };
   useEffect(load, []);
+  const browserBootstrapStarted = [browserStartUrl, browserSuccessUrl, browserWritePath, browserUsernameSelector, browserUsername, browserPasswordSelector, browserPassword, browserSubmitSelector].some(Boolean);
+  const browserBootstrapComplete = [browserStartUrl, browserSuccessUrl, browserWritePath, browserUsernameSelector, browserUsername, browserPasswordSelector, browserPassword, browserSubmitSelector].every(Boolean);
+  const browserBootstrap = browserBootstrapComplete ? {
+    schemaVersion: 1 as const,
+    loginSecrets: { username: browserUsername, password: browserPassword },
+    login: {
+      startUrl: browserStartUrl,
+      allowedWritePaths: [browserWritePath],
+      successUrlPrefix: browserSuccessUrl,
+      steps: [
+        { action: "fill" as const, selector: browserUsernameSelector, valueRef: "username" },
+        { action: "fill" as const, selector: browserPasswordSelector, valueRef: "password" },
+        { action: "click" as const, selector: browserSubmitSelector },
+        { action: "waitForUrl" as const, urlPrefix: browserSuccessUrl }
+      ]
+    },
+    journeys: [],
+    proofCases: []
+  } : undefined;
+  const lifecycleSecrets = useMemo(() => parseLifecycleSecrets(lifecycleSecretsText), [lifecycleSecretsText]);
+  const clearBrowserBootstrap = () => { setBrowserStartUrl(""); setBrowserSuccessUrl(""); setBrowserWritePath(""); setBrowserUsernameSelector(""); setBrowserUsername(""); setBrowserPasswordSelector(""); setBrowserPassword(""); setBrowserSubmitSelector(""); };
   const body = {
     name,
     description,
@@ -748,7 +804,9 @@ function Credentials() {
     safeIdentitySummary: { alias: safeAlias, role: tenantRole || undefined },
     secret: {
       ...(authorizationHeader ? { authorizationHeader } : {}),
-      ...(cookieName && cookieValue ? { cookies: { [cookieName]: cookieValue } } : {})
+      ...(cookieName && cookieValue ? { cookies: { [cookieName]: cookieValue } } : {}),
+      ...(browserBootstrap ? { browserBootstrap } : {}),
+      ...(lifecycleSecrets.value ? { lifecycleSecrets: lifecycleSecrets.value } : {})
     }
   };
   return (
@@ -764,7 +822,9 @@ function Credentials() {
         <label>Cookie name<input value={cookieName} onChange={(event) => setCookieName(event.target.value)} /></label>
         <label>Cookie value<input type="password" value={cookieValue} onChange={(event) => setCookieValue(event.target.value)} /></label>
         <label>Expected role or tenant note<input value={tenantRole} onChange={(event) => setTenantRole(event.target.value)} /></label>
-        <div className="actions"><button disabled={!status?.enabled || !name || !safeAlias} onClick={() => void (editing ? apiMutation(`/api/credential-profiles/${editing.id}/metadata`, "PATCH", { name, description, safeAlias, safeIdentitySummary: { alias: safeAlias, role: tenantRole || undefined }, projectId: editing.projectId, targetId: editing.targetId, expiresAt: editing.expiresAt }) : apiMutation<{ profileId: string }>("/api/credential-profiles", "POST", body)).then(() => { setMessage(editing ? "Credential metadata updated without exposing or replacing its secret." : "Credential profile created."); setEditing(undefined); setName(""); setDescription(""); setSafeAlias(""); setAuthorizationHeader(""); setCookieValue(""); load(); }).catch((cause: unknown) => setMessage(errorText(cause)))}>{editing ? "Save Metadata" : "Create Credential Profile"}</button>{editing && <button onClick={() => setEditing(undefined)}>Cancel Edit</button>}</div>
+        <fieldset><legend>Optional authenticated browser login</legend><p className="muted">Secrets stay in component memory until encrypted by the credential vault. The login POST is restricted to the exact path below; learned writes never inherit that permission.</p><label>Login URL<input value={browserStartUrl} onChange={(event) => setBrowserStartUrl(event.target.value)} placeholder="https://app.example.test/login" /></label><label>Successful URL prefix<input value={browserSuccessUrl} onChange={(event) => setBrowserSuccessUrl(event.target.value)} placeholder="https://app.example.test/app" /></label><label>Exact login POST path<input value={browserWritePath} onChange={(event) => setBrowserWritePath(event.target.value)} placeholder="/api/session" /></label><label>Username selector<input value={browserUsernameSelector} onChange={(event) => setBrowserUsernameSelector(event.target.value)} placeholder="input[name=email]" /></label><label>Username value<input type="password" autoComplete="off" value={browserUsername} onChange={(event) => setBrowserUsername(event.target.value)} /></label><label>Password selector<input value={browserPasswordSelector} onChange={(event) => setBrowserPasswordSelector(event.target.value)} placeholder="input[name=password]" /></label><label>Password value<input type="password" autoComplete="new-password" value={browserPassword} onChange={(event) => setBrowserPassword(event.target.value)} /></label><label>Submit selector<input value={browserSubmitSelector} onChange={(event) => setBrowserSubmitSelector(event.target.value)} placeholder="button[type=submit]" /></label>{browserBootstrapStarted && !browserBootstrapComplete && <p className="error">Complete every browser-login field or clear the section.</p>}<button type="button" onClick={clearBrowserBootstrap}>Clear browser login</button></fieldset>
+        <fieldset><legend>Authentication lifecycle secrets</legend><p className="muted">JSON object of reference names to secret values. Values stay in memory until the vault encrypts them and are never returned by the API.</p><label>Secret reference map<textarea value={lifecycleSecretsText} onChange={(event) => setLifecycleSecretsText(event.target.value)} placeholder={'{"username":"disposable@example.test","password":"..."}'} /></label>{lifecycleSecrets.error && <p className="error">{lifecycleSecrets.error}</p>}</fieldset>
+        <div className="actions"><button disabled={!status?.enabled || !name || !safeAlias || (browserBootstrapStarted && !browserBootstrapComplete) || Boolean(lifecycleSecrets.error)} onClick={() => void (editing ? apiMutation(`/api/credential-profiles/${editing.id}/metadata`, "PATCH", { name, description, safeAlias, safeIdentitySummary: { alias: safeAlias, role: tenantRole || undefined }, projectId: editing.projectId, targetId: editing.targetId, expiresAt: editing.expiresAt }) : apiMutation<{ profileId: string }>("/api/credential-profiles", "POST", body)).then(() => { setMessage(editing ? "Credential metadata updated without exposing or replacing its secret." : "Credential profile created."); setEditing(undefined); setName(""); setDescription(""); setSafeAlias(""); setAuthorizationHeader(""); setCookieValue(""); setLifecycleSecretsText(""); clearBrowserBootstrap(); load(); }).catch((cause: unknown) => setMessage(errorText(cause)))}>{editing ? "Save Metadata" : "Create Credential Profile"}</button>{editing && <button onClick={() => setEditing(undefined)}>Cancel Edit</button>}</div>
       </form>
       {message && <p>{message}</p>}
       {credentialDetail && <section className="notice" aria-label="Credential dependencies"><strong>{credentialDetail.profile.safeAlias}</strong><span> Target defaults: {credentialDetail.dependencies.targetDefaults} · configuration references: {credentialDetail.dependencies.configurationReferences} · active scans: {credentialDetail.dependencies.activeScans} · deletion {credentialDetail.dependencies.canDelete ? "allowed" : "blocked"}</span></section>}
@@ -780,7 +840,7 @@ function Credentials() {
               <button onClick={() => void apiMutation(`/api/credential-profiles/${profile.id}/test`, "POST", {}).then(load).catch((cause: unknown) => setMessage(errorText(cause)))}>Test</button>
               <button onClick={() => void apiGet<any>(`/api/credential-profiles/${profile.id}`).then(setCredentialDetail).catch((cause: unknown) => setMessage(errorText(cause)))}>Dependencies</button>
               <button onClick={() => { setEditing(profile); setName(profile.name); setDescription(profile.description ?? ""); setSafeAlias(profile.safeAlias); setTenantRole(String(profile.safeIdentitySummary?.role ?? "")); setAuthorizationHeader(""); setCookieValue(""); }}>Edit Metadata</button>
-              <button disabled={!status?.enabled} onClick={() => { if (!authorizationHeader && !(cookieName && cookieValue)) { setMessage("Enter replacement secret material in the form first."); return; } if (window.confirm(`Replace secret material for ${profile.safeAlias}?`)) void apiMutation(`/api/credential-profiles/${profile.id}/replace-secret`, "POST", body.secret).then(() => { setAuthorizationHeader(""); setCookieValue(""); setMessage("Credential secret replaced safely."); load(); }).catch((cause: unknown) => setMessage(errorText(cause))); }}>Replace Secret</button>
+              <button disabled={!status?.enabled || (browserBootstrapStarted && !browserBootstrapComplete) || Boolean(lifecycleSecrets.error)} onClick={() => { if (!authorizationHeader && !(cookieName && cookieValue) && !browserBootstrap && !lifecycleSecrets.value) { setMessage("Enter replacement secret material in the form first."); return; } if (window.confirm(`Replace secret material for ${profile.safeAlias}?`)) void apiMutation(`/api/credential-profiles/${profile.id}/replace-secret`, "POST", body.secret).then(() => { setAuthorizationHeader(""); setCookieValue(""); setLifecycleSecretsText(""); clearBrowserBootstrap(); setMessage("Credential secret replaced safely."); load(); }).catch((cause: unknown) => setMessage(errorText(cause))); }}>Replace Secret</button>
               <button onClick={() => void apiMutation(`/api/credential-profiles/${profile.id}/${profile.enabled ? "disable" : "enable"}`, "POST", {}).then(load).catch((cause: unknown) => setMessage(errorText(cause)))}>{profile.enabled ? "Disable" : "Enable"}</button>
               <button onClick={() => window.confirm("Delete this credential profile?") && void apiMutation(`/api/credential-profiles/${profile.id}/delete`, "POST", {}).then(load).catch((cause: unknown) => setMessage(errorText(cause)))}>Delete</button>
             </span>
@@ -892,6 +952,20 @@ function errorText(error: unknown): string {
     return `${error.message} ${error.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`;
   }
   return error instanceof Error ? error.message : "Request failed.";
+}
+
+function parseLifecycleSecrets(input: string): { value?: Record<string, string>; error?: string } {
+  if (!input.trim()) return {};
+  try {
+    const parsed = JSON.parse(input) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") return { error: "Lifecycle secrets must be a JSON object." };
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    if (entries.length === 0) return { error: "Lifecycle secret map cannot be empty." };
+    for (const [name, value] of entries) if (!/^[A-Za-z0-9._-]{1,100}$/.test(name) || typeof value !== "string" || value.length < 1 || value.length > 8192) return { error: `Invalid lifecycle secret entry: ${name}` };
+    return { value: Object.fromEntries(entries) as Record<string, string> };
+  } catch {
+    return { error: "Lifecycle secrets must be valid JSON." };
+  }
 }
 
 const root = document.getElementById("root");

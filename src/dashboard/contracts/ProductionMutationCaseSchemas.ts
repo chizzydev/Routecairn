@@ -6,13 +6,19 @@ const verificationSchema = z.object({ method: z.literal("GET"), path: pathSchema
 const mutationSchema = z.object({ method: z.enum(["POST", "PATCH", "PUT"]), path: pathSchema, body: z.record(z.unknown()) }).strict();
 
 export const productionMutationCaseSchema = z.object({
-  schemaVersion: z.literal(1), caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(120), targetId: z.string().uuid(), environment: z.literal("PRODUCTION"), productionAcknowledged: z.literal(true), actorCredentialProfileId: z.string().uuid(), disposableTargetAlias: z.string().min(1).max(160), authorityField: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/), mutationValue: z.unknown(), allowedValues: z.array(z.unknown()).min(1).max(20), identity: verificationSchema, precondition: verificationSchema, mutation: mutationSchema, impactVerification: verificationSchema, protectedAction: verificationSchema.optional(), rollback: mutationSchema, restorationVerification: verificationSchema, authorizationExpiresAt: z.string().datetime()
+  schemaVersion: z.literal(1), caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(120), targetId: z.string().uuid(), environment: z.literal("PRODUCTION"), productionAcknowledged: z.literal(true), actorCredentialProfileId: z.string().uuid(), disposableTargetAlias: z.string().min(1).max(160), authorityField: z.string().min(1).regex(/^[A-Za-z0-9_.-]+$/), mutationValue: z.unknown(), allowedValues: z.array(z.unknown()).min(1).max(20), identity: verificationSchema, actorIdentityAssertionPath: assertionSchema.shape.path, precondition: verificationSchema, disposableObjectIdentityAssertionPath: assertionSchema.shape.path, mutation: mutationSchema, impactVerification: verificationSchema, protectedAction: verificationSchema.optional(), rollback: mutationSchema, restorationVerification: verificationSchema, authorizationExpiresAt: z.string().datetime()
 }).strict().superRefine((value, ctx) => {
   if (!value.allowedValues.some((candidate) => JSON.stringify(candidate) === JSON.stringify(value.mutationValue))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mutationValue"], message: "Mutation value must be explicitly allowlisted" });
   const mutationKeys = Object.keys(value.mutation.body);
   if (mutationKeys.length !== 1 || mutationKeys[0] !== value.authorityField || JSON.stringify(value.mutation.body[value.authorityField]) !== JSON.stringify(value.mutationValue)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["mutation", "body"], message: "Mutation body must contain exactly the configured authority field and value" });
   const rollbackKeys = Object.keys(value.rollback.body);
   if (rollbackKeys.length !== 1 || rollbackKeys[0] !== value.authorityField) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["rollback", "body"], message: "Rollback body must restore exactly the configured authority field" });
+  if (!bindingAssertion(value.identity.assertions, value.actorIdentityAssertionPath)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["actorIdentityAssertionPath"], message: "Actor identity binding must select an EQUALS assertion with an explicit expected value from identity.assertions" });
+  if (!bindingAssertion(value.precondition.assertions, value.disposableObjectIdentityAssertionPath)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["disposableObjectIdentityAssertionPath"], message: "Disposable object binding must select an EQUALS assertion with an explicit expected value from precondition.assertions" });
 });
+
+function bindingAssertion(assertions: readonly z.infer<typeof assertionSchema>[], path: string): boolean {
+  return assertions.some((assertion) => assertion.path === path && assertion.operator === "EQUALS" && assertion.expectedValue !== undefined);
+}
 
 export type ProductionMutationCase = z.infer<typeof productionMutationCaseSchema>;

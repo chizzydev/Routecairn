@@ -8,12 +8,14 @@ export interface DashboardPaths {
   artifactsDir: string;
   proofPacksDir: string;
   fingerprintKeyPath: string;
+  executablePlanKeyPath: string;
   mutationJournalDir: string;
   mutationJournalRegistryPath: string;
 }
 
 export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
   const root = resolve(dataDir ?? process.env.ROUTECAIRN_DASHBOARD_DIR ?? resolve(homedir(), ".routecairn", "dashboard"));
+  const mutationJournalDir = resolve(process.env.ROUTECAIRN_MUTATION_DIR ?? resolve(root, "controlled-mutations"));
   return {
     dataDir: root,
     databasePath: resolve(root, "routecairn-dashboard.sqlite"),
@@ -21,8 +23,9 @@ export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
     artifactsDir: resolve(root, "artifacts"),
     proofPacksDir: resolve(root, "proof-packs"),
     fingerprintKeyPath: resolve(root, "keys", "finding-fingerprint.key"),
-    mutationJournalDir: resolve(root, "controlled-mutations"),
-    mutationJournalRegistryPath: resolve(root, "controlled-mutation-journals.json")
+    executablePlanKeyPath: resolve(root, "keys", "executable-plan.key"),
+    mutationJournalDir,
+    mutationJournalRegistryPath: resolve(mutationJournalDir, "mutation-journals.json")
   };
 }
 

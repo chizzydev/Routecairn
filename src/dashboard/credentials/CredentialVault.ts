@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { clamp, nowIso } from "../db/DashboardDatabase.js";
+import { browserBootstrapSchema } from "../../core/auth/AuthProfile.js";
 
 export const credentialVaultAlgorithm = "aes-256-gcm";
 
@@ -30,6 +31,8 @@ export interface CredentialProfileSecret {
     roleFieldPath?: string | undefined;
     accountStateFieldPath?: string | undefined;
   } | undefined;
+  browserBootstrap?: import("../../core/auth/AuthProfile.js").AuthProfile["browserBootstrap"] | undefined;
+  lifecycleSecrets?: Record<string, string> | undefined;
 }
 
 export interface CredentialProfileInput {
@@ -243,6 +246,13 @@ function validateSecret(secret: CredentialProfileSecret): void {
   for (const name of Object.keys(secret.headers ?? {})) validateHeaderName(name);
   for (const name of Object.keys(secret.cookies ?? {})) validateCookieName(name);
   if (secret.authorizationHeader && /[\r\n]/.test(secret.authorizationHeader)) throw new Error("Authorization header contains invalid characters.");
+  if (secret.browserBootstrap) {
+    const parsed = browserBootstrapSchema.safeParse(secret.browserBootstrap);
+    if (!parsed.success) throw new Error(`Invalid browser bootstrap configuration: ${parsed.error.message}`);
+  }
+  for (const [name, value] of Object.entries(secret.lifecycleSecrets ?? {})) {
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name) || value.length < 1 || value.length > 8192) throw new Error(`Invalid lifecycle secret reference: ${name}`);
+  }
 }
 
 function validateHeaderName(name: string): void {
@@ -260,6 +270,8 @@ function credentialTypeSummary(secret: CredentialProfileSecret): string {
   if (secret.cookies && Object.keys(secret.cookies).length > 0) parts.push(`${Object.keys(secret.cookies).length}-cookie(s)`);
   if (secret.headers && Object.keys(secret.headers).length > 0) parts.push(`${Object.keys(secret.headers).length}-custom-header(s)`);
   if (secret.identityVerification) parts.push("identity-verification");
+  if (secret.browserBootstrap) parts.push("browser-bootstrap");
+  if (secret.lifecycleSecrets && Object.keys(secret.lifecycleSecrets).length > 0) parts.push(`${Object.keys(secret.lifecycleSecrets).length}-lifecycle-secret(s)`);
   return parts.length > 0 ? parts.join(", ") : "metadata-only";
 }
 

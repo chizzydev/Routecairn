@@ -20,6 +20,66 @@ const authCookieSchema = z.object({
   path: z.string().optional()
 });
 
+const browserSelectorSchema = z.string().min(1).max(500).refine((value) => !/[\r\n\0]/.test(value), "Browser selector contains invalid characters.");
+const browserUrlSchema = z.string().url().max(2048);
+const browserLoginStepSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("navigate"), url: browserUrlSchema }).strict(),
+  z.object({ action: z.literal("fill"), selector: browserSelectorSchema, valueRef: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/) }).strict(),
+  z.object({ action: z.literal("click"), selector: browserSelectorSchema }).strict(),
+  z.object({ action: z.literal("waitForUrl"), urlPrefix: browserUrlSchema }).strict(),
+  z.object({ action: z.literal("assertVisible"), selector: browserSelectorSchema }).strict()
+]);
+const browserJourneyStepSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("navigate"), url: browserUrlSchema }).strict(),
+  z.object({ action: z.literal("clickLink"), selector: browserSelectorSchema }).strict(),
+  z.object({ action: z.literal("assertVisible"), selector: browserSelectorSchema }).strict()
+]);
+const lifecycleSecretsSchema = z.record(z.string().regex(/^[A-Za-z0-9._-]{1,100}$/), z.string().min(1).max(8192)).superRefine((value, ctx) => {
+  if (Object.keys(value).length > 64) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets supports at most 64 named values." });
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > 32 * 1024) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets exceeds the 32 KiB secret budget." });
+});
+
+export const browserBootstrapSchema = z.object({
+  schemaVersion: z.literal(1).default(1),
+  loginSecrets: z.record(z.string().min(1).max(8192)).default({}),
+  login: z.object({
+    startUrl: browserUrlSchema,
+    allowedWritePaths: z.array(z.string().startsWith("/").max(500)).min(1).max(12),
+    successUrlPrefix: browserUrlSchema,
+    steps: z.array(browserLoginStepSchema).min(1).max(24)
+  }).strict().optional(),
+  journeys: z.array(z.object({
+    id: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/),
+    label: z.string().min(1).max(160),
+    steps: z.array(browserJourneyStepSchema).min(1).max(30)
+  }).strict()).max(12).default([]),
+  identitySelectors: z.object({
+    principal: browserSelectorSchema.optional(),
+    tenant: browserSelectorSchema.optional(),
+    role: browserSelectorSchema.optional()
+  }).strict().optional(),
+  proofCases: z.array(z.object({
+    caseId: z.string().regex(/^[A-Za-z0-9._-]{1,120}$/),
+    protectedAction: z.object({ url: browserUrlSchema, selector: browserSelectorSchema, readySelector: browserSelectorSchema.optional(), expected: z.enum(["visible", "hidden"]) }).strict(),
+    rollback: z.object({ url: browserUrlSchema, selector: browserSelectorSchema, readySelector: browserSelectorSchema.optional(), expected: z.enum(["visible", "hidden"]) }).strict()
+  }).strict()).max(10).default([])
+}).strict().superRefine((value, ctx) => {
+  if (!value.login && Object.keys(value.loginSecrets).length > 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets"], message: "Browser login secrets require a login workflow." });
+  }
+  const referenced = new Set(value.login?.steps.filter((step) => step.action === "fill").map((step) => step.valueRef) ?? []);
+  for (const name of referenced) {
+    if (!Object.prototype.hasOwnProperty.call(value.loginSecrets, name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets", name], message: `Missing browser login secret reference ${name}.` });
+    }
+  }
+  for (const name of Object.keys(value.loginSecrets)) {
+    if (!referenced.has(name)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets", name], message: `Unused browser login secret ${name} was rejected.` });
+    }
+  }
+});
+
 export const identityVerificationModeSchema = z.enum(["disabled", "optional", "required"]);
 export const identityVerificationMethodSchema = z.enum(["GET", "HEAD"]);
 const identityFieldPathPattern = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\[(?:0|[1-9][0-9]{0,2})\]|\.[A-Za-z_$][A-Za-z0-9_$]*){0,8}$/;
@@ -84,6 +144,8 @@ export const authProfileSchema = z.object({
   headers: z.record(z.string()).default({}),
   cookies: z.array(authCookieSchema).default([]),
   identityVerification: identityVerificationSchema.default({ mode: "disabled" }),
+  browserBootstrap: browserBootstrapSchema.optional(),
+  lifecycleSecrets: lifecycleSecretsSchema.default({}),
   notes: z.array(z.string()).default([])
 });
 
@@ -130,6 +192,17 @@ export function authHeadersForProfile(profile: AuthProfile): Record<string, stri
   }
 
   return headers;
+}
+
+/** Worker-only secret namespace used by authentication lifecycle contracts. */
+export function authenticationLifecycleSecrets(profile: AuthProfile): Record<string, string> {
+  const loginSecrets = profile.browserBootstrap?.loginSecrets ?? {};
+  for (const name of Object.keys(loginSecrets)) {
+    if (Object.prototype.hasOwnProperty.call(profile.lifecycleSecrets, name) && profile.lifecycleSecrets[name] !== loginSecrets[name]) {
+      throw new AppError(`Authentication secret reference ${name} is ambiguous across browserBootstrap.loginSecrets and lifecycleSecrets.`, "AUTH_LIFECYCLE_SECRET_AMBIGUOUS");
+    }
+  }
+  return { ...loginSecrets, ...profile.lifecycleSecrets };
 }
 
 export function summarizeAuthProfile(profile: AuthProfile | undefined): AuthProfileSummary {
@@ -193,7 +266,12 @@ export function redactedCurlCommand(url: string, profile?: AuthProfile): string 
 }
 
 function authSecretValues(profile: AuthProfile): string[] {
-  return [...Object.values(profile.headers), ...profile.cookies.map((cookie) => cookie.value)].filter((value) => value.length >= 4);
+  return [
+    ...Object.values(profile.headers),
+    ...profile.cookies.map((cookie) => cookie.value),
+    ...Object.values(profile.browserBootstrap?.loginSecrets ?? {}),
+    ...Object.values(profile.lifecycleSecrets ?? {})
+  ].filter((value) => value.length >= 4);
 }
 
 function validateAuthHeaders(headers: Record<string, string>): void {

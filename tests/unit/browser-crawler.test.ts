@@ -270,7 +270,7 @@ describe("browser crawler helpers", () => {
     });
   });
 
-  it("does not silently run an anonymous browser crawl for authenticated plans", async () => {
+  it("does not silently run an anonymous browser crawl when an authenticated plan has no primary profile", async () => {
     const basePlan = testPlan("full");
     const plan = { ...basePlan, authentication: { ...basePlan.authentication, required: true } };
     const context = new ScanContext({
@@ -284,6 +284,6 @@ describe("browser crawler helpers", () => {
     const result = await new BrowserCrawlerModule().run(context);
 
     expect(result.browserCrawl).toBeUndefined();
-    expect(result.notes.join(" ")).toContain("authenticated browser bootstrap is not implemented");
+    expect(result.notes.join(" ")).toContain("refused to browse anonymously");
   });
 });

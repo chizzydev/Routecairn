@@ -7,10 +7,12 @@ import { nowIso } from "../db/DashboardDatabase.js";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
 import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
 import type { CredentialVault } from "../credentials/CredentialVault.js";
-import { resolveCredentialAuthForDashboardScan } from "../execution/ScanExecutionShared.js";
+import { resolveCredentialAuthForDashboardScan, type DashboardResolvedAuth } from "../execution/ScanExecutionShared.js";
+import { executableAuthenticationDigest, type BoundExecutablePlan } from "../execution/ExecutablePlanSnapshot.js";
 import { parseWorkerMessage, workerProtocolVersion, type WorkerToApiMessage } from "./ScanWorkerProtocol.js";
-import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
+import { controlledMutationContractSchema, type ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
+import { workerRestorationGraceMs } from "../../core/engine/CleanupExecution.js";
 
 export interface WorkerRunHandlers {
   onPlan(message: Extract<WorkerToApiMessage, { type: "JOB_PLAN" }>): void;
@@ -27,34 +29,43 @@ export interface WorkerRunResult {
   error?: string;
 }
 
-export interface WorkerMutationOptions { contracts: readonly ControlledMutationContract[] }
+export interface WorkerExecutionOptions {
+  executablePlan: BoundExecutablePlan;
+  resolvedAuth: DashboardResolvedAuth;
+  contracts?: readonly ControlledMutationContract[];
+}
 
 export interface WorkerRecoveryResult { workerId: string; caseId: string; cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_FAILED"; notes: string[]; }
 
 const leaseTtlMs = 30_000;
-const recoveryTimeoutMs = 60_000;
-const cancellationTimeoutMs = 5_000;
+const recoveryTimeoutMs = workerRestorationGraceMs;
 
 export class ScanWorkerManager {
-  private readonly active = new Map<string, { child: ChildProcess; workerId: string; settled: Promise<void>; resolveSettled(): void }>();
+  private readonly active = new Map<string, { child: ChildProcess; workerId: string; settled: Promise<void>; resolveSettled(): void; cancellationTimer?: ReturnType<typeof setTimeout> }>();
 
   public constructor(private readonly database: DashboardDatabase, private readonly paths: DashboardPaths, private readonly vault?: CredentialVault) {}
 
   public async recoverExpiredLeases(): Promise<string[]> {
-    const expired = this.database.db.prepare("SELECT job_id FROM scan_job_leases WHERE released_at IS NULL AND expires_at < ?").all(nowIso()) as Array<{ job_id: string }>;
+    const expired = this.database.db.prepare("SELECT leases.job_id, leases.expires_at, workers.process_id FROM scan_job_leases leases LEFT JOIN scan_workers workers ON workers.id = leases.worker_id WHERE leases.released_at IS NULL AND leases.expires_at < ?").all(nowIso()) as Array<{ job_id: string; expires_at: string; process_id: number | null }>;
+    const recovered: string[] = [];
     for (const row of expired) {
-      const cleanupStatus = await readMutationCleanupStatus(this.paths.mutationJournalDir, this.paths.mutationJournalRegistryPath);
-      const cleanupRequired = cleanupStatus.cleanupRequired > 0;
+      // An orphaned worker uses its own restoration grace after IPC loss.
+      // Do not ingest a moving checkpoint while that bounded cleanup is active.
+      if (row.process_id && Date.now() < Date.parse(row.expires_at) + workerRestorationGraceMs && processAlive(row.process_id)) continue;
+      const cleanupStatus = await readMutationCleanupStatus(this.paths.mutationJournalDir, this.paths.mutationJournalRegistryPath).catch(() => undefined);
+      const cleanupRequired = !cleanupStatus || cleanupStatus.cleanupRequired > 0;
       this.database.transaction(() => {
         this.database.db.prepare("UPDATE scans SET status = 'INTERRUPTED', completed_at = ?, error_summary = ? WHERE id = ? AND status IN ('QUEUED','PLANNING','RUNNING','CANCEL_REQUESTED')").run(nowIso(), cleanupRequired ? "Worker lease expired while a controlled mutation cleanup obligation remains unresolved. Operator recovery is required before new mutations." : "Worker lease expired before the scan reached a terminal state.", row.job_id);
         this.database.db.prepare("INSERT INTO scan_events (id, seq, scan_id, event_type, safe_message, safe_metadata_json, created_at) SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ? FROM scan_events WHERE scan_id = ?").run(randomUUID(), row.job_id, cleanupRequired ? "MUTATION_CLEANUP_REQUIRED" : "SCAN_INTERRUPTED", cleanupRequired ? "Worker lease expired; controlled mutation cleanup requires operator recovery." : "Worker lease expired before the scan reached a terminal state.", JSON.stringify({ cleanupRequired }), nowIso(), row.job_id);
         this.database.db.prepare("UPDATE scan_job_leases SET released_at = ?, release_category = 'EXPIRED' WHERE job_id = ? AND released_at IS NULL").run(nowIso(), row.job_id);
       });
+      recovered.push(row.job_id);
     }
-    return expired.map((row) => row.job_id);
+    return recovered;
   }
 
-  public run(jobId: string, request: DashboardScanCreateRequest, handlers: WorkerRunHandlers, mutationOptions?: WorkerMutationOptions): Promise<WorkerRunResult> {
+  public run(jobId: string, request: DashboardScanCreateRequest, handlers: WorkerRunHandlers, options: WorkerExecutionOptions): Promise<WorkerRunResult> {
+    this.verifyExecutionAuthentication(request, options);
     const workerId = randomUUID();
     const workerGeneration = randomUUID();
     const workerSecret = randomBytes(32).toString("base64url");
@@ -78,6 +89,7 @@ export class ScanWorkerManager {
         settled = true;
         try {
           this.releaseLease(jobId, result.status);
+          clearTimeout(this.active.get(jobId)?.cancellationTimer);
           this.database.db.prepare("UPDATE scan_workers SET state = ?, current_job_id = NULL, shutdown_at = COALESCE(shutdown_at, ?) WHERE id = ?").run(result.status === "COMPLETED" ? "STOPPED" : "EXITED", nowIso(), workerId);
           this.active.delete(jobId);
           if (!child.killed) child.kill();
@@ -88,17 +100,20 @@ export class ScanWorkerManager {
       };
 
       child.on("message", (raw: unknown) => {
+        if (settled) return;
         try {
           const message = parseWorkerMessage(raw);
           if (message.workerId !== workerId) throw new Error("Worker ID mismatch.");
+          if ("jobId" in message && message.jobId && message.jobId !== jobId) throw new Error("Worker job binding mismatch.");
           switch (message.type) {
             case "WORKER_READY":
               child.send({ protocolVersion: workerProtocolVersion, type: "INITIALIZE_JOB", workerId, jobId, request: safeWorkerRequest(request), paths: { reportsDir: this.paths.reportsDir, artifactsDir: this.paths.artifactsDir, proofPacksDir: this.paths.proofPacksDir, fingerprintKeyPath: this.paths.fingerprintKeyPath, mutationJournalDir: this.paths.mutationJournalDir } });
               break;
             case "JOB_ACCEPTED":
               this.database.db.prepare("UPDATE scan_workers SET state = 'RUNNING', current_job_id = ?, last_heartbeat_at = ? WHERE id = ?").run(jobId, nowIso(), workerId);
-              child.send(secretEnvelopeMessage({ workerId, jobId, request, workerSecret, workerGeneration, attempt: 1, vault: this.vault }));
-              if (mutationOptions?.contracts.length) child.send(mutationContractMessage({ workerId, jobId, contracts: mutationOptions.contracts, workerSecret }));
+              child.send(secretEnvelopeMessage({ workerId, jobId, request, workerSecret, workerGeneration, attempt: 1, vault: this.vault, resolvedAuth: options.resolvedAuth }));
+              child.send(executablePlanMessage({ workerId, jobId, workerSecret, workerGeneration, executablePlan: options.executablePlan }));
+              if (options.contracts?.length) child.send(mutationContractMessage({ workerId, jobId, contracts: options.contracts, workerSecret }));
               child.send({ protocolVersion: workerProtocolVersion, type: "START_JOB", workerId, jobId });
               break;
             case "JOB_HEARTBEAT":
@@ -106,6 +121,7 @@ export class ScanWorkerManager {
               handlers.onHeartbeat(message);
               break;
             case "JOB_PLAN":
+              if (message.executionPlanBinding !== options.executablePlan.binding) throw new Error("Worker executable plan binding mismatch.");
               handlers.onPlan(message);
               break;
             case "JOB_EVENT":
@@ -115,10 +131,10 @@ export class ScanWorkerManager {
               settle({ workerId, status: "COMPLETED", reportPath: message.reportPath, markdownReportPath: message.markdownReportPath, htmlReportPath: message.htmlReportPath });
               break;
             case "JOB_CANCELLED":
-              settle({ workerId, status: "CANCELLED", error: message.summary });
+              settle({ workerId, status: "CANCELLED", error: message.summary, ...reportPaths(message) });
               break;
             case "JOB_FAILED":
-              settle({ workerId, status: "FAILED", error: message.error });
+              settle({ workerId, status: "FAILED", error: message.error, ...reportPaths(message) });
               break;
             case "WORKER_ERROR":
               settle({ workerId, status: "FAILED", error: message.error });
@@ -135,6 +151,7 @@ export class ScanWorkerManager {
       child.on("exit", (code, signal) => {
         settle({ workerId, status: "INTERRUPTED", error: `Worker exited before completion. code=${code ?? "none"} signal=${signal ?? "none"}` });
       });
+      child.on("error", () => settle({ workerId, status: "INTERRUPTED", error: "Worker process or IPC failed; recovery may be required." }));
     });
   }
 
@@ -151,6 +168,7 @@ export class ScanWorkerManager {
       timeout.unref();
       const settle = (result?: WorkerRecoveryResult, error?: Error) => { if (settled) return; settled = true; clearTimeout(timeout); this.releaseRecoveryLease(jobId, result?.cleanupOutcome ?? "FAILED"); this.database.db.prepare("UPDATE scan_workers SET state = ?, current_job_id = NULL, shutdown_at = ? WHERE id = ?").run(result?.cleanupOutcome === "ROLLBACK_VERIFIED" ? "STOPPED" : "EXITED", nowIso(), workerId); if (!child.killed) child.kill(); if (error) rejectRecovery(error); else resolveRecovery(result!); };
       child.on("message", (raw: unknown) => {
+        if (settled) return;
         try {
           const message = parseWorkerMessage(raw);
           if (message.workerId !== workerId) throw new Error("Worker ID mismatch.");
@@ -168,21 +186,30 @@ export class ScanWorkerManager {
 
   public cancel(jobId: string): void {
     const active = this.active.get(jobId);
-    if (!active) return;
-    active.child.send({ protocolVersion: workerProtocolVersion, type: "CANCEL_JOB", workerId: active.workerId, jobId });
-    setTimeout(() => {
+    if (!active || active.cancellationTimer) return;
+    if (active.child.connected) active.child.send({ protocolVersion: workerProtocolVersion, type: "CANCEL_JOB", workerId: active.workerId, jobId }, () => {});
+    active.cancellationTimer = setTimeout(() => {
       const current = this.active.get(jobId);
       if (current && !current.child.killed) current.child.kill("SIGKILL");
-    }, cancellationTimeoutMs).unref();
+    }, workerRestorationGraceMs);
+    active.cancellationTimer.unref();
   }
 
   public async shutdown(): Promise<void> {
     const activeRuns = [...this.active.values()];
-    for (const active of activeRuns) {
-      active.child.send({ protocolVersion: workerProtocolVersion, type: "SHUTDOWN", workerId: active.workerId });
-      active.child.kill();
-    }
+    for (const jobId of this.active.keys()) this.cancel(jobId);
     await Promise.all(activeRuns.map((active) => active.settled));
+  }
+
+  private verifyExecutionAuthentication(request: DashboardScanCreateRequest, options: WorkerExecutionOptions): void {
+    if (executableAuthenticationDigest(options.resolvedAuth) !== options.executablePlan.payload.authenticationDigest) throw new Error("EXECUTABLE_PLAN_AUTH_BINDING_MISMATCH");
+    const studioAuth = request.studio?.authentication;
+    const studioSaved = studioAuth?.mode === "primary" ? studioAuth.primary.source === "saved" : studioAuth?.mode === "account-pair" ? studioAuth.accountA.source === "saved" || studioAuth.accountB.source === "saved" : false;
+    const savedCredentialRequested = Boolean(request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId || studioSaved);
+    if (!savedCredentialRequested) return;
+    if (!this.vault) throw new Error("EXECUTABLE_PLAN_AUTH_SOURCE_UNAVAILABLE");
+    const current = resolveCredentialAuthForDashboardScan(this.vault, request);
+    if (executableAuthenticationDigest(current) !== options.executablePlan.payload.authenticationDigest) throw new Error("EXECUTABLE_PLAN_AUTH_SOURCE_CHANGED");
   }
 
   private recordWorker(workerId: string, pid: number | null): void {
@@ -213,19 +240,34 @@ private acquireRecoveryLease(jobId: string, workerId: string): void { const now 
   }
 }
 
+function reportPaths(message: { reportPath?: string | undefined; markdownReportPath?: string | undefined; htmlReportPath?: string | undefined }): Pick<WorkerRunResult, "reportPath" | "markdownReportPath" | "htmlReportPath"> {
+  return { ...(message.reportPath ? { reportPath: message.reportPath } : {}), ...(message.markdownReportPath ? { markdownReportPath: message.markdownReportPath } : {}), ...(message.htmlReportPath ? { htmlReportPath: message.htmlReportPath } : {}) };
+}
+
+function processAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return !(error && typeof error === "object" && "code" in error && error.code === "ESRCH"); }
+}
+
 function workerEntryPath(): string {
   const built = resolve("dist", "dashboard", "worker", "ScanWorkerMain.js");
   if (existsSync(built)) return built;
   return resolve("src", "dashboard", "worker", "ScanWorkerMain.ts");
 }
 
-function secretEnvelopePayload(request: DashboardScanCreateRequest, vault: CredentialVault | undefined): Record<string, unknown> {
+function secretEnvelopePayload(request: DashboardScanCreateRequest, vault: CredentialVault | undefined, resolvedAuth?: DashboardResolvedAuth): Record<string, unknown> {
   const summary: Record<string, unknown> = {
     hasSingleProfile: Boolean(request.authFile),
     hasAccountPair: Boolean(request.authAFile && request.authBFile),
     hasSavedCredentialProfile: Boolean(request.credentialProfileId),
     hasSavedCredentialPair: Boolean(request.credentialProfileAId && request.credentialProfileBId),
     hasStudioAuthentication: Boolean(request.studio && request.studio.authentication.mode !== "public")
+  };
+  if (resolvedAuth) return {
+    ...summary,
+    safeSummary: resolvedAuth.safeSummary,
+    ...(resolvedAuth.authProfile ? { authProfile: resolvedAuth.authProfile } : {}),
+    ...(resolvedAuth.authProfileSet ? { authProfileSet: resolvedAuth.authProfileSet } : {})
   };
   if (!request.credentialProfileId && !request.credentialProfileAId && !request.credentialProfileBId && (!request.studio || request.studio.authentication.mode === "public")) return summary;
   if (!vault && request.studio?.authentication.mode !== "primary" && request.studio?.authentication.mode !== "account-pair") throw new Error("Credential vault is unavailable for worker secret delivery.");
@@ -240,18 +282,23 @@ function secretEnvelopePayload(request: DashboardScanCreateRequest, vault: Crede
 }
 
 export function safeWorkerRequest(request: DashboardScanCreateRequest): DashboardScanCreateRequest {
-  if (!request.studio || request.studio.authentication.mode === "public") return request;
   return {
-    ...request,
-    studio: { ...request.studio, authentication: { mode: "public" } }
+    target: request.target,
+    profile: request.profile,
+    ...(request.projectId ? { projectId: request.projectId } : {}),
+    ...(request.targetId ? { targetId: request.targetId } : {}),
+    ...(request.authorizationDeclaration ? { authorizationDeclaration: request.authorizationDeclaration } : {}),
+    ...(request.recoveryScope ? { recoveryScope: request.recoveryScope } : {}),
+    ...(request.workflowRecoveryDigest ? { workflowRecoveryDigest: request.workflowRecoveryDigest } : {}),
+    ...(request.studio ? { studio: { ...request.studio, authentication: { mode: "public" } } } : {})
   };
 }
 
-function secretEnvelopeMessage(input: { workerId: string; jobId: string; request: DashboardScanCreateRequest; workerSecret: string; workerGeneration: string; attempt: number; vault?: CredentialVault | undefined }) {
+function secretEnvelopeMessage(input: { workerId: string; jobId: string; request: DashboardScanCreateRequest; workerSecret: string; workerGeneration: string; attempt: number; vault?: CredentialVault | undefined; resolvedAuth?: DashboardResolvedAuth | undefined }) {
   const sequence = 1;
   const expiresAt = new Date(Date.now() + 30_000).toISOString();
   const nonce = randomBytes(18).toString("base64url");
-  const envelope = secretEnvelopePayload(input.request, input.vault);
+  const envelope = secretEnvelopePayload(input.request, input.vault, input.resolvedAuth);
   const body = {
     protocolVersion: workerProtocolVersion,
     type: "PROVIDE_SECRET_ENVELOPE" as const,
@@ -267,8 +314,26 @@ function secretEnvelopeMessage(input: { workerId: string; jobId: string; request
   return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
 }
 
-function mutationContractMessage(input: { workerId: string; jobId: string; contracts: readonly ControlledMutationContract[]; workerSecret: string }) {
-  const body = { protocolVersion: workerProtocolVersion, type: "PROVIDE_MUTATION_CONTRACTS" as const, workerId: input.workerId, jobId: input.jobId, sequence: 2, expiresAt: new Date(Date.now() + 30_000).toISOString(), nonce: randomBytes(18).toString("base64url"), contracts: [...input.contracts] };
+export function executablePlanMessage(input: { workerId: string; jobId: string; workerSecret: string; workerGeneration: string; executablePlan: BoundExecutablePlan }) {
+  const body = {
+    protocolVersion: workerProtocolVersion,
+    type: "PROVIDE_EXECUTABLE_PLAN" as const,
+    workerId: input.workerId,
+    jobId: input.jobId,
+    sequence: 2,
+    expiresAt: new Date(Date.now() + 30_000).toISOString(),
+    nonce: randomBytes(18).toString("base64url"),
+    workerGeneration: input.workerGeneration,
+    payload: input.executablePlan.payload as unknown as Record<string, unknown>,
+    contentDigest: input.executablePlan.contentDigest,
+    binding: input.executablePlan.binding
+  };
+  return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
+}
+
+export function mutationContractMessage(input: { workerId: string; jobId: string; contracts: readonly ControlledMutationContract[]; workerSecret: string }) {
+  // Sign the schema-normalized payload that the recipient verifies, including defaults and key order.
+  const body = { protocolVersion: workerProtocolVersion, type: "PROVIDE_MUTATION_CONTRACTS" as const, workerId: input.workerId, jobId: input.jobId, sequence: 3, expiresAt: new Date(Date.now() + 30_000).toISOString(), nonce: randomBytes(18).toString("base64url"), contracts: input.contracts.map((contract) => controlledMutationContractSchema.parse(contract)) };
   return { ...body, hmac: envelopeHmac(input.workerSecret, body) };
 }
 

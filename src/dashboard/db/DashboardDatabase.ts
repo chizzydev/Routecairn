@@ -44,12 +44,12 @@ export class DashboardDatabase {
     const interruptedAt = nowIso();
     const tx = this.db.transaction(() => {
       const rows = this.db
-        .prepare("SELECT id FROM scans WHERE status IN ('PLANNING','RUNNING','CANCEL_REQUESTED')")
+        .prepare("SELECT id FROM scans WHERE status IN ('QUEUED','PLANNING','RUNNING','CANCEL_REQUESTED')")
         .all() as Array<{ id: string }>;
       for (const row of rows) {
         this.db
           .prepare("UPDATE scans SET status = 'INTERRUPTED', completed_at = ?, error_summary = ? WHERE id = ?")
-          .run(interruptedAt, "Dashboard process stopped before this scan reached a terminal state.", row.id);
+          .run(interruptedAt, "Dashboard process stopped before this in-memory queued or running scan reached a terminal state.", row.id);
         this.appendEvent(row.id, "SCAN_INTERRUPTED", "Dashboard startup marked an unfinished scan as interrupted.", {});
       }
     });

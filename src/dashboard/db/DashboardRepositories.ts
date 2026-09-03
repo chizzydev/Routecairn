@@ -397,6 +397,7 @@ export class ScanRepository {
       modules: this.database.db.prepare("SELECT * FROM scan_module_executions WHERE scan_id = ? ORDER BY planned_order ASC").all(id),
       events: new EventRepository(this.database).list(id, 0, 200),
       planSnapshot: this.database.db.prepare("SELECT * FROM scan_plan_snapshots WHERE scan_id = ?").get(id),
+      executablePlan: this.database.db.prepare("SELECT schema_version, target_origin, plan_binding, created_at, worker_verified_at, worker_verified_binding FROM scan_executable_plans WHERE scan_id = ?").get(id),
       artifacts: this.database.db.prepare("SELECT id, artifact_type, safe_display_name, size, content_type, retention_state, missing_file_flag FROM artifacts WHERE scan_id = ?").all(id),
       findings: this.database.db
         .prepare(
@@ -945,7 +946,7 @@ function targetFromRow(database: DashboardDatabase, row: DbTargetRow): TargetSum
 }
 
 function scanSummaryFromRow(row: DbScanRow): DashboardScanSummary {
-  const terminal = row.status === "COMPLETED" || row.status === "FAILED" || row.status === "CANCELLED" || row.status === "INTERRUPTED" || row.status === "IMPORTED";
+  const terminalSuccess = row.status === "COMPLETED" || row.status === "IMPORTED";
   const moduleProgress = row.planned_module_count > 0 ? Math.round((row.completed_module_count / row.planned_module_count) * 95) : 0;
   return {
     id: row.id,
@@ -959,7 +960,7 @@ function scanSummaryFromRow(row: DbScanRow): DashboardScanSummary {
     ...(row.started_at ? { startedAt: row.started_at } : {}),
     ...(row.completed_at ? { completedAt: row.completed_at } : {}),
     ...(row.current_module ? { currentModule: row.current_module } : {}),
-    progressPercent: terminal ? 100 : moduleProgress,
+    progressPercent: terminalSuccess ? 100 : moduleProgress,
     plannedModuleCount: row.planned_module_count,
     completedModuleCount: row.completed_module_count,
     failedModuleCount: row.failed_module_count,

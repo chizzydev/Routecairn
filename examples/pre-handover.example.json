@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "assaultId": "release-review",
+  "revision": "replace-with-build-id",
+  "environment": "STAGING",
+  "targetOrigin": "https://app.example.com",
+  "environmentVerification": { "path": "/api/test-environment", "field": "environment", "expected": "STAGING" },
+  "setup": {
+    "mode": "SUPPLIED_DISPOSABLE_ACCOUNTS",
+    "accountA": { "path": "/api/me", "disposableField": "disposable" },
+    "accountB": { "path": "/api/me", "disposableField": "disposable" }
+  },
+  "objects": [{
+    "id": "disposable-wallet-a",
+    "owner": "accountA",
+    "path": "/api/test-wallet",
+    "disposableField": "disposable",
+    "ownerField": "ownerId",
+    "identityField": "id",
+    "identityFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+    "cases": [{ "workflowId": "business-invariant", "caseId": "withdrawal-balance-limit" }]
+  }],
+  "invariants": [{ "workflowId": "business-invariant", "caseId": "withdrawal-balance-limit", "invariantId": "withdrawal-not-overdrawn" }],
+  "races": [],
+  "sequence": ["business-invariant"],
+  "criticalCases": [{ "workflowId": "business-invariant", "caseId": "withdrawal-balance-limit" }],
+  "regressions": [],
+  "review": {
+    "schemaVersion": 1,
+    "reviewId": "release-trust-review",
+    "title": "Disposable pre-handover release review",
+    "focus": ["AUTHORIZATION"],
+    "requiredLanes": ["AUTHORIZATION"],
+    "cases": [{ "workflowId": "business-invariant", "caseId": "withdrawal-balance-limit", "lane": "AUTHORIZATION" }],
+    "authentication": { "requireVerifiedIdentity": true, "requireAccountPair": true },
+    "completionGate": { "requireNoBlocked": true, "requireNoInconclusive": true, "requireHumanReviewForFindings": true }
+  }
+}

@@ -477,7 +477,7 @@ function findingsFromObjectPairReport(report: ObjectPairTestingReport, context: 
       ],
       tags: ["idor", "bola", "object-authorization", "needs-manual-verification"],
       riskScore: riskScorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["idor", "bola", "object-authorization"] }),
-      sourceModule: "object-pair-testing",
+      workflowCase: { id: testCase.caseId }, sourceModule: "object-pair-testing",
       falsePositiveStatus: "likely-valid" as const,
       timestamp: new Date().toISOString()
     }))

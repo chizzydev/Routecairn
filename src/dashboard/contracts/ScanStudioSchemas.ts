@@ -47,6 +47,13 @@ export const nextJsReviewStudioSettingsSchema = z.object({
   maxNextJsRoutesProcessed: z.number().int().positive().max(2000).default(200)
 }).strict();
 
+export const browserStudioSettingsSchema = z.object({
+  browserAllowPrivateNetwork: z.boolean().default(false),
+  browserAllowedPrivateOrigins: z.array(z.string().url().refine((value) => new URL(value).origin === value)).max(10).default([]),
+  browserCaptureScreenshot: z.boolean().default(false),
+  browserMaxPages: z.number().int().min(1).max(10).default(2)
+}).strict();
+
 const workflowEnvelopeShape = {
   enabled: z.boolean().default(true),
   editorMode: z.enum(["guided", "advanced"]).default("guided"),
@@ -80,7 +87,7 @@ export const scanStudioSchema = z.object({
   authentication: scanStudioAuthenticationSchema.default({ mode: "public" }),
   evidenceLevel: z.enum(["minimal", "normal", "strong"]).optional(),
   outputs: scanStudioOutputSchema.default({ json: true, markdown: true, html: true }),
-  moduleSettings: z.object({ nextJsReview: nextJsReviewStudioSettingsSchema.optional() }).strict().default({}),
+  moduleSettings: z.object({ nextJsReview: nextJsReviewStudioSettingsSchema.optional(), browserCrawler: browserStudioSettingsSchema.optional() }).strict().default({}),
   workflows: authorizationWorkflowConfigurationsSchema.default([]),
   workflowSummary: z.array(z.object({ type: z.string().min(1).max(80), caseCount: z.number().int().min(0).max(1000), valid: z.boolean() }).strict()).max(7).default([]),
   retestContext: z.object({

@@ -12,12 +12,46 @@ export type FindingType =
   | "CORS Issue"
   | "HTTP Method Issue"
   | "Object Authorization Issue"
+  | "Privilege Mutation Issue"
   | "Field Exposure Issue"
   | "Authorization Matrix Issue"
   | "Equivalent Route Authorization Issue"
   | "Collection Authorization Issue"
   | "Bulk Authorization Issue"
   | "File Authorization Issue"
+  | "Supabase Authorization Issue"
+  | "Supabase Configuration Risk"
+  | "Authentication Lifecycle Issue"
+  | "Business Logic Invariant Issue"
+  | "Controlled Race Condition"
+  | "API Authorization Issue"
+  | "GraphQL Authorization Issue"
+  | "API Method Confusion"
+  | "GraphQL Introspection Exposure"
+  | "GraphQL Limit Issue"
+  | "API Schema Drift"
+  | "API Version Boundary Issue"
+  | "Signed Link Security Issue"
+  | "Invitation Security Issue"
+  | "Portal Tenant Isolation Issue"
+  | "Export Authorization Issue"
+  | "Evidence Artifact Authorization Issue"
+  | "Object Path Authorization Issue"
+  | "Webhook Security Issue"
+  | "Cron Security Issue"
+  | "Job Authorization Issue"
+  | "Operational Endpoint Authorization Issue"
+  | "Operational Information Exposure"
+  | "Checkout Integrity Issue"
+  | "Payment Entitlement Issue"
+  | "Payment Event Idempotency Issue"
+  | "Premium Access Authorization Issue"
+  | "Subscription State Consistency Issue"
+  | "Payment Event Race Condition"
+  | "Server Credential Exposure"
+  | "Session Secret Exposure"
+  | "Client-Side Session Secret Exposure"
+  | "Sensitive Response Exposure"
   | "Sensitive File Exposure"
   | "Backup File Exposure"
   | "Config Exposure"
@@ -49,6 +83,21 @@ export interface FindingEvidence {
   valueAttestations?: readonly ValuePresenceAttestation[];
 }
 
+export type AssistedAssessmentOutcome = "PROVEN" | "INCONCLUSIVE" | "NOT_ASSESSED" | "BLOCKED";
+
+export interface AssistedWorkflowFindingLinks {
+  workflowId: string;
+  caseId: string;
+  evidenceRef: string;
+  proofPackRefs: string[];
+  proofPackReadiness: "REQUIRES_HUMAN_REVIEW";
+  comparisonFingerprint?: string;
+  assessmentOutcome: AssistedAssessmentOutcome;
+  humanReviewState: "REQUIRED";
+  cleanupOutcome?: string;
+  cleanupFailed: boolean;
+}
+
 export interface Finding {
   id: string;
   title: string;
@@ -67,4 +116,7 @@ export interface Finding {
   sourceModule: string;
   falsePositiveStatus: FalsePositiveStatus;
   timestamp: string;
+  workflow?: AssistedWorkflowFindingLinks;
+  workflowCase?: { id: string; comparisonFingerprint?: string; cleanupOutcome?: string };
+  customerSafeRemediation?: string;
 }

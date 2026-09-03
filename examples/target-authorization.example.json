@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "mode": "PRE_HANDOVER_ASSAULT",
+  "targetOrigin": "https://app.example.com",
+  "proof": {
+    "reference": "Replace with your approved disposable-environment authorization reference",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

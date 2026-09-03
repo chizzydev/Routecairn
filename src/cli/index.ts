@@ -9,6 +9,7 @@ import { registerSearchCommand } from "./commands/search.js";
 import { registerShowCommand } from "./commands/show.js";
 import { registerTriageCommand } from "./commands/triage.js";
 import { registerOffensiveCommand } from "./commands/offensive.js";
+import { registerValidateLocalCommand } from "./commands/validateLocal.js";
 import { AppError } from "../core/errors/AppError.js";
 import { createLogger } from "../core/logging/Logger.js";
 
@@ -31,6 +32,7 @@ export function createCli(): Command {
   registerSearchCommand(program);
   registerTriageCommand(program);
   registerOffensiveCommand(program);
+  registerValidateLocalCommand(program);
 
   return program;
 }

@@ -31,6 +31,16 @@ export type ModuleId =
   | "bulk-authorization-testing"
   | "file-authorization-testing"
   | "privilege-mutation-testing"
+  | "supabase-authorization"
+  | "authentication-lifecycle"
+  | "business-invariant"
+  | "controlled-race"
+  | "api-graphql-authorization"
+  | "link-portal-export-security"
+  | "operational-endpoint-security"
+  | "billing-entitlement-security"
+  | "secret-boundary"
+  | "assisted-review"
   | "equivalent-route-testing"
   | "header-review"
   | "cookie-review"
@@ -40,6 +50,7 @@ export type ModuleId =
   | "proof-mode";
 
 export type ModuleCapability =
+  | "assisted-review"
   | "baseline"
   | "fingerprint"
   | "javascript"
@@ -57,6 +68,15 @@ export type ModuleCapability =
   | "bulk-authorization"
   | "file-authorization"
   | "controlled-mutation"
+  | "supabase-authorization"
+  | "authentication-lifecycle"
+  | "business-invariant"
+  | "controlled-race"
+  | "api-graphql-authorization"
+  | "link-portal-export-security"
+  | "operational-endpoint-security"
+  | "billing-entitlement-security"
+  | "secret-boundary"
   | "equivalent-route"
   | "headers"
   | "cookies"
@@ -94,7 +114,10 @@ export interface ScanLimits {
   requestTimeoutMs: number;
   bodyPreviewBytes: number;
   maxResponseBytes: number;
+  /** Total physical network transmissions across every broker, including cleanup. */
   maxRequests: number;
+  /** Capacity withheld from ordinary scan traffic and available only to cleanup/restoration. */
+  cleanupReservedRequests: number;
   maxScanDurationMs: number;
   retry: RetryPolicyOptions;
 }
@@ -998,6 +1021,14 @@ export interface ModuleSettings {
   maxCollectionAuthorizationCases?: number;
   maxBulkAuthorizationCases?: number;
   maxFileAuthorizationCases?: number;
+  maxSecretBoundaryObservedResponses?: number;
+  maxSecretBoundaryAdditionalRequests?: number;
+  maxSecretBoundarySourceMaps?: number;
+  maxSecretBoundaryCandidatesPerSource?: number;
+  maxSecretBoundaryCandidates?: number;
+  maxSecretBoundaryAnalysisBytes?: number;
+  inspectSecretBoundarySourceMaps?: boolean;
+  secretBoundaryProbePaths?: readonly string[];
 }
 
 export interface ModulePlan {
@@ -1022,6 +1053,9 @@ export interface ScanPlanMetadata {
 }
 
 export interface ResolvedScanPlan {
+  targetAuthorization?: import("../authorization/TargetAuthorization.js").TargetAuthorization;
+  preHandover?: import("../../modules/preHandover/PreHandoverPlanner.js").PreHandoverPlan;
+  assistedReview?: Readonly<import("../../modules/assistedReview/AssistedReviewTypes.js").AssistedReviewPlan>;
   schemaVersion: typeof scanPlanSchemaVersion;
   profile: ScanProfileName;
   displayName: string;
@@ -1044,6 +1078,14 @@ export interface ResolvedScanPlan {
   fileAuthorizationTesting?: Readonly<FileAuthorizationTestingPlan>;
   equivalentRouteTesting?: Readonly<EquivalentRouteTestingPlan>;
   privilegeMutationTesting?: Readonly<import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan>;
+  supabaseAuthorization?: Readonly<import("../../modules/supabaseAuthorization/SupabaseAuthorizationTypes.js").SupabaseAuthorizationPlan>;
+  authenticationLifecycle?: Readonly<import("../../modules/authenticationLifecycle/AuthenticationLifecycleTypes.js").AuthenticationLifecyclePlan>;
+  businessInvariant?: Readonly<import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan>;
+  controlledRace?: Readonly<import("../../modules/controlledRace/ControlledRaceTypes.js").ControlledRacePlan>;
+  apiGraphql?: Readonly<import("../../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlReviewPlan>;
+  linkPortalSecurity?: Readonly<import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan>;
+  operationalEndpointSecurity?: Readonly<import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan>;
+  billingEntitlement?: Readonly<import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan>;
 }
 
 export interface ModuleMetadata {
@@ -1081,6 +1123,9 @@ export interface ScanProfileDefinition {
 }
 
 export interface ScanPlannerInput {
+  targetAuthorization?: import("../authorization/TargetAuthorization.js").TargetAuthorization;
+  preHandover?: import("../../modules/preHandover/PreHandoverPlanner.js").PreHandoverPlan;
+  assistedReview?: import("../../modules/assistedReview/AssistedReviewTypes.js").AssistedReviewPlan;
   requestedProfile: ScanProfileName;
   scope: RouteCairnScope;
   config: RouteCairnConfig;
@@ -1089,6 +1134,8 @@ export interface ScanPlannerInput {
   overrides?: {
     rateLimitPerSecond?: number;
     concurrency?: number;
+    maxRequests?: number;
+    cleanupReservedRequests?: number;
     includeModules?: ModuleId[];
     excludeModules?: ModuleId[];
     moduleSettings?: Partial<Record<ModuleId, ModuleSettings>>;
@@ -1102,6 +1149,14 @@ export interface ScanPlannerInput {
   fileAuthorizationTesting?: FileAuthorizationTestingPlan;
   equivalentRouteTesting?: EquivalentRouteTestingPlan;
   privilegeMutationTesting?: import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan;
+  supabaseAuthorization?: import("../../modules/supabaseAuthorization/SupabaseAuthorizationTypes.js").SupabaseAuthorizationPlan;
+  authenticationLifecycle?: import("../../modules/authenticationLifecycle/AuthenticationLifecycleTypes.js").AuthenticationLifecyclePlan;
+  businessInvariant?: import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan;
+  controlledRace?: import("../../modules/controlledRace/ControlledRaceTypes.js").ControlledRacePlan;
+  apiGraphql?: import("../../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlReviewPlan;
+  linkPortalSecurity?: import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan;
+  operationalEndpointSecurity?: import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan;
+  billingEntitlement?: import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan;
   legacyMode?: ScanMode;
   legacyModeTranslation?: string;
 }

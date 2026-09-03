@@ -1,0 +1,10 @@
+{
+  "label": "billing-owner",
+  "safeAlias": "billing-owner",
+  "principalId": "replace-account-a-principal",
+  "tenantId": "replace-tenant-a",
+  "headers": { "Authorization": "Bearer replace-account-a-fixture-credential" },
+  "cookies": [],
+  "lifecycleSecrets": { "subscription_id": "replace-owned-subscription-id", "owner_id": "replace-owner-id" },
+  "notes": ["Controlled Account A fixture only."]
+}

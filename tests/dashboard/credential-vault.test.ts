@@ -50,6 +50,51 @@ describe("dashboard credential vault", () => {
     }
   });
 
+  it("keeps browser bootstrap secrets encrypted and returns only safe profile metadata", () => {
+    const dir = tempDir("routecairn-vault-browser-");
+    try {
+      const database = openDatabase(dir);
+      const vault = new CredentialVault(database, parseVaultKey(keyA, "1"));
+      const browserPassword = "vault-browser-password";
+      const id = vault.create({
+        name: "Browser account",
+        safeAlias: "browser-account",
+        safeIdentitySummary: { principalId: "principal-a" },
+        secret: {
+          browserBootstrap: {
+            schemaVersion: 1,
+            loginSecrets: { password: browserPassword },
+            login: { startUrl: "https://app.example.test/login", allowedWritePaths: ["/session"], successUrlPrefix: "https://app.example.test/app", steps: [{ action: "fill", selector: "#password", valueRef: "password" }] },
+            journeys: [],
+            proofCases: []
+          }
+        }
+      });
+      const row = database.db.prepare("SELECT ciphertext FROM credential_profiles WHERE id = ?").get(id) as { ciphertext: string };
+      expect(JSON.stringify(row)).not.toContain(browserPassword);
+      expect(JSON.stringify(vault.getSummary(id))).not.toContain(browserPassword);
+      expect(vault.getSummary(id)?.credentialTypeSummary).toContain("browser-bootstrap");
+      expect(vault.decryptForUse(id).browserBootstrap?.loginSecrets.password).toBe(browserPassword);
+      database.close();
+    } finally { cleanup(dir); }
+  });
+
+  it("keeps lifecycle secret references encrypted and exposes only their count in safe type metadata", () => {
+    const dir = tempDir("routecairn-vault-lifecycle-");
+    try {
+      const database = openDatabase(dir);
+      const vault = new CredentialVault(database, parseVaultKey(keyA, "1"));
+      const lifecyclePassword = "vault-lifecycle-password";
+      const id = vault.create({ name: "Lifecycle account", safeAlias: "disposable-member", safeIdentitySummary: {}, secret: { lifecycleSecrets: { username: "disposable@example.test", password: lifecyclePassword } } });
+      const row = database.db.prepare("SELECT ciphertext FROM credential_profiles WHERE id = ?").get(id) as { ciphertext: string };
+      expect(JSON.stringify(row)).not.toContain(lifecyclePassword);
+      expect(JSON.stringify(vault.getSummary(id))).not.toContain(lifecyclePassword);
+      expect(vault.getSummary(id)?.credentialTypeSummary).toContain("2-lifecycle-secret(s)");
+      expect(vault.decryptForUse(id).lifecycleSecrets?.password).toBe(lifecyclePassword);
+      database.close();
+    } finally { cleanup(dir); }
+  });
+
   it("binds ciphertext to profile ID, installation ID, and key version through associated data", () => {
     const dir = tempDir("routecairn-vault-ad-");
     try {

@@ -31,7 +31,7 @@ describe("scan profile definitions", () => {
   });
 
   it("has centralized definitions for every supported profile", () => {
-    expect(Object.keys(scanProfileDefinitions).sort()).toEqual(["authenticated", "full", "monitor", "proof", "quick"]);
+    expect(Object.keys(scanProfileDefinitions).sort()).toEqual(["authenticated", "full", "monitor", "pre-handover", "proof", "quick"]);
   });
 
   it("publishes exact bounded Next.js default and deep request ceilings", () => {

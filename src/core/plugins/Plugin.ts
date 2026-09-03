@@ -26,10 +26,20 @@ import type {
   WorkflowValidationReport
 } from "../../reports/ReportTypes.js";
 import type { PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
+import type { SupabaseAuthorizationReport } from "../../reports/SupabaseAuthorizationReport.js";
+import type { AuthenticationLifecycleReport } from "../../reports/AuthenticationLifecycleReport.js";
+import type { BusinessInvariantReport } from "../../reports/BusinessInvariantReport.js";
+import type { ControlledRaceReport } from "../../reports/ControlledRaceReport.js";
+import type { ApiGraphqlReviewReport } from "../../reports/ApiGraphqlReport.js";
+import type { LinkPortalSecurityReport } from "../../reports/LinkPortalSecurityReport.js";
+import type { OperationalEndpointSecurityReport } from "../../reports/OperationalEndpointSecurityReport.js";
+import type { BillingEntitlementReport } from "../../reports/BillingEntitlementReport.js";
+import type { SecretBoundaryReport } from "../../reports/SecretBoundaryReport.js";
 
 export type PluginPhase = "baseline" | "fingerprint" | "intelligence" | "discovery" | "analysis";
 
 export interface ModuleResult {
+  assistedReview?: import("../../reports/AssistedReviewReport.js").AssistedReviewReport;
   pluginName: string;
   baseline?: BaselineReport;
   technologies?: DetectedTechnology[];
@@ -54,6 +64,15 @@ export interface ModuleResult {
   workflowValidation?: WorkflowValidationReport;
   proofMode?: ProofModeReport;
   privilegeMutation?: PrivilegeMutationReport;
+  supabaseAuthorization?: SupabaseAuthorizationReport;
+  authenticationLifecycle?: AuthenticationLifecycleReport;
+  businessInvariant?: BusinessInvariantReport;
+  controlledRace?: ControlledRaceReport;
+  apiGraphql?: ApiGraphqlReviewReport;
+  linkPortalSecurity?: LinkPortalSecurityReport;
+  operationalEndpointSecurity?: OperationalEndpointSecurityReport;
+  billingEntitlement?: BillingEntitlementReport;
+  secretBoundary?: SecretBoundaryReport;
   discoveredUrls?: ResponseObservation[];
   findings?: Finding[];
   notes?: string[];

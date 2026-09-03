@@ -97,7 +97,8 @@ describe("equivalent route testing integration", () => {
     expect(vulnerable?.findingCategory).toBe("LEGACY_ROUTE_AUTHORIZATION_BYPASS");
     expect(report.equivalentRouteTesting?.confirmedIssues).toBe(1);
     expect(report.findings.filter((finding) => finding.type === "Equivalent Route Authorization Issue")).toHaveLength(1);
-    expect(report.findings[0]?.evidence.curlCommand).toContain("Cookie: <redacted>");
+    expect(report.findings[0]?.evidence.curlCommand).toBeUndefined();
+    expect(report.findings[0]?.evidence.source).toMatch(/^assisted-workflow:equivalent-route-testing:/);
 
     for (const serialized of [jsonText, markdownText]) {
       expect(serialized).not.toContain("doc-a-001");

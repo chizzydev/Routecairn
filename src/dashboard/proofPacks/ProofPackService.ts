@@ -1,5 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import type { Finding } from "../../core/findings/Finding.js";
+import { hasOccurrenceReview } from "../reviews/AssistedOccurrenceReview.js";
 import { resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
@@ -26,7 +28,7 @@ export class ProofPackService {
     const excluded = findings.filter((finding) => finding.human_review_status !== "CONFIRMED");
     if (excluded.length > 0) throw new Error("Proof packs include confirmed findings only by default.");
     const selected = findings.map((finding, index) => {
-      const occurrence = this.database.db.prepare("SELECT id FROM finding_occurrences WHERE finding_id = ? ORDER BY created_at DESC LIMIT 1").get(finding.id) as { id: string } | undefined;
+      const occurrence = this.database.db.prepare("SELECT id, scan_id, workflow_case_alias, finding_source_json FROM finding_occurrences WHERE finding_id = ? ORDER BY (id = (SELECT latest_occurrence_id FROM findings WHERE findings.id = finding_occurrences.finding_id)) DESC, created_at DESC, id DESC LIMIT 1").get(finding.id) as { id: string; scan_id: string; workflow_case_alias: string | null; finding_source_json: string } | undefined;
       if (!occurrence) {
         throw new Error(`Finding ${finding.id} has no occurrence for proof-pack generation.`);
       }
@@ -39,10 +41,14 @@ export class ProofPackService {
       const attestations = deduplicateAttestations(
         evidence.flatMap((record) => extractSafeValuePresenceAttestations(parseJson(record.safe_structured_data_json)))
       );
-      return { finding, occurrence, evidence, attestations, sortOrder: index + 1 };
+      const source = parseJson(occurrence.finding_source_json) as Finding | undefined;
+      if (source?.workflow && !hasOccurrenceReview(this.database, finding.id, occurrence.id, "CONFIRMED")) throw new Error("The selected assisted finding occurrence requires human confirmation before proof-pack generation.");
+      return { finding, occurrence, evidence, attestations, workflow: source?.workflow, sortOrder: index + 1 };
     });
 
-    const mutationProof = this.database.db.prepare("SELECT safe_case_alias, safe_semantics_json, safe_result_json, evidence_strength FROM scan_workflow_case_executions WHERE workflow_id = 'privilege-mutation' AND execution_state = 'COMPLETED' AND request_transmitted = 1 ORDER BY created_at DESC LIMIT 100").all() as MutationProofRow[];
+    const mutationProof = selected.filter((item) => item.finding.module === "privilege-mutation-testing" && item.occurrence.workflow_case_alias).flatMap((item) =>
+      this.database.db.prepare("SELECT safe_case_alias, safe_semantics_json, safe_result_json, evidence_strength FROM scan_workflow_case_executions WHERE scan_id = ? AND workflow_id = 'privilege-mutation' AND safe_case_alias = ? AND execution_state = 'COMPLETED' AND request_transmitted = 1").all(item.occurrence.scan_id, item.occurrence.workflow_case_alias) as MutationProofRow[]
+    );
 
     const proofPackId = randomUUID();
     const dir = resolve(this.paths.proofPacksDir, proofPackId);
@@ -69,7 +75,7 @@ export class ProofPackService {
           versionRow.version,
           nowIso(),
           nowIso(),
-          JSON.stringify([...new Set(findings.map((finding) => finding.last_occurrence_scan_id))]),
+          JSON.stringify([...new Set(selected.map((item) => item.occurrence.scan_id))]),
           "Generated from confirmed local dashboard findings.",
           findings.length,
           JSON.stringify([markdownArtifact, htmlArtifact]),
@@ -85,7 +91,7 @@ export class ProofPackService {
           item.occurrence.id,
           item.sortOrder,
           JSON.stringify(item.evidence.map((evidence) => evidence.id)),
-          JSON.stringify({ finding: item.finding, valuePresenceAttestations: item.attestations }),
+          JSON.stringify({ finding: item.finding, workflow: item.workflow, valuePresenceAttestations: item.attestations }),
           nowIso()
         );
       }
@@ -110,12 +116,13 @@ export class ProofPackService {
 
   private recordArtifact(proofPackId: string, path: string, type: string, contentType: string): string {
     const stat = statSync(path);
-    return this.artifacts.create({ proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: stat.size, contentType, hash: createHash("sha256").update(path).digest("hex") });
+    return this.artifacts.create({ proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: stat.size, contentType, hash: createHash("sha256").update(readFileSync(path)).digest("hex") });
   }
 }
 
 interface ProofFindingRow {
   id: string;
+  module: string;
   canonical_title: string;
   current_scanner_severity: string;
   current_scanner_confidence: string;
@@ -129,6 +136,7 @@ interface MutationProofRow { safe_case_alias: string; safe_semantics_json: strin
 interface SelectedProofFinding {
   readonly finding: ProofFindingRow;
   readonly attestations: readonly SafeValuePresenceAttestation[];
+  readonly workflow?: Finding["workflow"];
 }
 
 function renderMarkdown(title: string, description: string | undefined, selected: readonly SelectedProofFinding[], mutationProof: readonly MutationProofRow[]): string {
@@ -138,6 +146,7 @@ function renderMarkdown(title: string, description: string | undefined, selected
     lines.push(`## ${safeMarkdown(finding.canonical_title)}`, "");
     lines.push(`- Severity: ${safeMarkdown(finding.current_scanner_severity)}`);
     lines.push(`- Confidence: ${safeMarkdown(finding.current_scanner_confidence)}`);
+    if (item.workflow) lines.push(`- Workflow: ${safeMarkdown(item.workflow.workflowId)}; case: ${safeMarkdown(item.workflow.caseId)}; assessment: ${item.workflow.assessmentOutcome}; cleanup: ${safeMarkdown(item.workflow.cleanupOutcome ?? "NOT_APPLICABLE")}${item.workflow.cleanupFailed ? " (UNRESOLVED)" : ""}.`, `- Evidence: ${safeMarkdown(item.workflow.evidenceRef)}; comparison fingerprint: ${safeMarkdown(item.workflow.comparisonFingerprint ?? "UNAVAILABLE")}.`);
     lines.push(`- Endpoint: \`${safeMarkdown(finding.safe_endpoint_identity)}\``);
     lines.push("");
     appendMarkdownAttestations(lines, item.attestations);
@@ -152,8 +161,8 @@ function parseSafeJson(value: string): Record<string, unknown> { try { const par
 function renderHtml(title: string, description: string | undefined, selected: readonly SelectedProofFinding[], mutationProof: readonly MutationProofRow[]): string {
   const items = selected
     .map(
-      ({ finding, attestations }) =>
-        `<section><h2>${safeProofHtml(finding.canonical_title)}</h2><dl><dt>Severity</dt><dd>${safeProofHtml(finding.current_scanner_severity)}</dd><dt>Confidence</dt><dd>${safeProofHtml(finding.current_scanner_confidence)}</dd><dt>Endpoint</dt><dd><code>${safeProofHtml(finding.safe_endpoint_identity)}</code></dd></dl>${renderHtmlAttestations(attestations)}</section>`
+      ({ finding, attestations, workflow }) =>
+        `<section><h2>${safeProofHtml(finding.canonical_title)}</h2><dl><dt>Severity</dt><dd>${safeProofHtml(finding.current_scanner_severity)}</dd><dt>Confidence</dt><dd>${safeProofHtml(finding.current_scanner_confidence)}</dd><dt>Endpoint</dt><dd><code>${safeProofHtml(finding.safe_endpoint_identity)}</code></dd></dl>${workflow ? `<p>Workflow: ${safeProofHtml(workflow.workflowId)}; case: ${safeProofHtml(workflow.caseId)}; assessment: ${workflow.assessmentOutcome}; cleanup: ${safeProofHtml(workflow.cleanupOutcome ?? "NOT_APPLICABLE")}${workflow.cleanupFailed ? " (UNRESOLVED)" : ""}.</p><p>Evidence: ${safeProofHtml(workflow.evidenceRef)}; comparison fingerprint: ${safeProofHtml(workflow.comparisonFingerprint ?? "UNAVAILABLE")}.</p>` : ""}${renderHtmlAttestations(attestations)}</section>`
     )
     .join("");
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>${safeProofHtml(title)}</title><style>body{font-family:system-ui;margin:2rem;line-height:1.5}code{background:#f4f4f4;padding:.1rem .25rem}</style></head><body><h1>${safeProofHtml(title)}</h1><p>${safeProofHtml(description ?? "Generated by RouteCairn Dashboard.")}</p>${items}${renderHtmlMutationProof(mutationProof)}</body></html>`;

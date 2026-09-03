@@ -43,7 +43,7 @@ export interface TransientValueObservation {
   readonly values: readonly ObservedValue[];
 }
 
-const sensitiveNamePattern = /(?:token|secret|session|cookie|auth|password|pass|key|jwt|sig|signature|credential|csrf|tenant|org|organization|workspace|policy|expires|expiry|x-amz-|x-goog-)/i;
+const sensitiveNamePattern = /(?:token|secret|session|cookie|auth|password|pass|key|jwt|sig|signature|credential|csrf|tenant|org|organization|workspace|policy|expires|expiry|email|username|user_?id|account|principal|identity|invite|verification|recovery|code|x-amz-|x-goog-)/i;
 const authenticationCookiePattern = /(?:session|sess|sid|auth|token|jwt|csrf|xsrf|identity|principal|tenant|org|organization|workspace)/i;
 
 export class ValuePresenceAttestor {
@@ -150,7 +150,7 @@ export function redactSensitiveUrl(url: string): string {
     const base = parsed.toString().split("?")[0] ?? parsed.toString();
     return `${base}?${redactedQuery}${parsed.hash}`;
   } catch {
-    return url.replace(/([?&][^=]*(?:token|secret|session|cookie|auth|password|pass|key|jwt|sig|signature|credential|csrf|tenant|org|workspace|policy|x-amz-|x-goog-)[^=]*=)[^&\s]+/gi, "$1<redacted>");
+    return url.replace(/([?&][^=]*(?:token|secret|session|cookie|auth|password|pass|key|jwt|sig|signature|credential|csrf|tenant|org|workspace|policy|email|username|user_?id|account|principal|identity|invite|verification|recovery|code|x-amz-|x-goog-)[^=]*=)[^&\s]+/gi, "$1<redacted>");
   }
 }
 

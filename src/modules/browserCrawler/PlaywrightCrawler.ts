@@ -7,8 +7,19 @@ import type {
   PathCandidate
 } from "../../reports/ReportTypes.js";
 import type { RequestSafetyBroker } from "../../core/http/RequestSafetyBroker.js";
+import type { AuthProfile } from "../../core/auth/AuthProfile.js";
 import { normalizeUrl } from "../../core/urls/UrlNormalizer.js";
 import { BrowserPolicyEngine, canonicalBrowserUrl, type BrowserPolicy } from "./BrowserPolicy.js";
+import {
+  applyBrowserCredentials,
+  browserExtraHeaders,
+  BrowserLearningCollector,
+  executeJourneys,
+  executeLogin,
+  isExplicitLoginWriteAllowed,
+  isWriteMethod,
+  type BrowserLoginWriteGate
+} from "./BrowserLearning.js";
 import { Screenshotter } from "./Screenshotter.js";
 
 export interface PlaywrightCrawlerOptions {
@@ -19,6 +30,8 @@ export interface PlaywrightCrawlerOptions {
   sameOriginOnly: boolean;
   policy: BrowserPolicy;
   requestBroker: RequestSafetyBroker;
+  authProfile?: AuthProfile;
+  browserRestartCount?: number;
   abortSignal?: AbortSignal;
 }
 
@@ -39,6 +52,15 @@ export class PlaywrightCrawler {
     const requestsByPage = new Map<string, number>();
     const visitedPages: Array<{ url: string; depth: number }> = [];
     const policyEngine = new BrowserPolicyEngine(options.targetUrl, options.policy);
+    const targetOrigin = new URL(options.targetUrl).origin;
+    const bootstrap = options.authProfile?.browserBootstrap;
+    const writeGate: BrowserLoginWriteGate = {
+      active: false,
+      allowedPaths: new Set(bootstrap?.login?.allowedWritePaths ?? []),
+      allowed: 0,
+      blocked: 0
+    };
+    const learning = options.authProfile ? new BrowserLearningCollector(options.authProfile, targetOrigin) : undefined;
     const browser = await chromium.launch({ headless: true });
     const openWebSockets: WebSocketRoute[] = [];
     let attemptBudgetExceeded = false;
@@ -49,10 +71,13 @@ export class PlaywrightCrawler {
       options.abortSignal?.addEventListener("abort", abortBrowser, { once: true });
       const context = await browser.newContext({
         userAgent: options.userAgent,
+        ...(options.authProfile && Object.keys(browserExtraHeaders(options.authProfile)).length > 0 ? { extraHTTPHeaders: browserExtraHeaders(options.authProfile) } : {}),
         ignoreHTTPSErrors: true,
         acceptDownloads: false,
         serviceWorkers: options.policy.allowServiceWorkers ? "allow" : "block"
       });
+      if (options.authProfile) await applyBrowserCredentials(context, options.authProfile, options.targetUrl);
+      context.on("response", (response) => learning?.recordResponse(response));
       await context.exposeBinding("__routeCairnPolicyEvent", (_source, event: { url?: string; reason?: string }) => {
         const decision = options.requestBroker.recordBrowserPolicyBlock({
           url: event.url ?? "about:blank",
@@ -128,7 +153,7 @@ export class PlaywrightCrawler {
           await route.abort("blockedbyclient").catch(() => undefined);
           return;
         }
-        const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage);
+        const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage, writeGate, learning);
         attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
       });
       await context.routeWebSocket("**", async (webSocket) => {
@@ -159,6 +184,11 @@ export class PlaywrightCrawler {
       const queued = new Set<string>([canonicalBrowserUrl(options.targetUrl, options.targetUrl)]);
       const visited = new Set<string>();
       let formsDetected = 0;
+      let formsSubmitted = 0;
+      let loginStepsExecuted = 0;
+      let bootstrapSucceeded = !bootstrap?.login;
+      let journeysExecuted = false;
+      let lastPage: Page | undefined;
 
       while (frontier.length > 0 && visited.size < options.policy.maxPages && !attemptBudgetExceeded) {
         if (options.abortSignal?.aborted) {
@@ -170,30 +200,45 @@ export class PlaywrightCrawler {
         const canonical = canonicalBrowserUrl(next.url, options.targetUrl);
         if (visited.has(canonical)) continue;
         visited.add(canonical);
-        visitedPages.push({ url: canonical, depth: next.depth });
+        visitedPages.push({ url: options.authProfile ? redactAllQueryValues(canonical) : canonical, depth: next.depth });
 
         creatingManagedPage = true;
         const page = await context.newPage().finally(() => {
           creatingManagedPage = false;
         });
+        lastPage = page;
         attachDiagnostics(page, consoleErrors, policyEvents, next.depth, options);
 
         try {
           if (options.abortSignal?.aborted) {
             break;
           }
+          if (options.authProfile && bootstrap?.login && !bootstrapSucceeded) {
+            const loginResult = await executeLogin(page, options.authProfile, writeGate, (url) => assertSameOrigin(url, targetOrigin));
+            loginStepsExecuted = loginResult.steps;
+            formsSubmitted += loginResult.formsSubmitted;
+            bootstrapSucceeded = true;
+          }
           await page.goto(canonical, {
             waitUntil: "networkidle",
             timeout: options.timeoutMs
           });
 
+          await learning?.inspectPage(page);
+          if (options.authProfile && !journeysExecuted) {
+            journeysExecuted = true;
+            await executeJourneys(page, options.authProfile, (url) => assertSameOrigin(url, targetOrigin), async (journeyPage) => learning?.inspectPage(journeyPage));
+          }
+
           const hrefs = await page.$$eval("a[href]", (anchors) =>
             anchors.map((anchor) => anchor.getAttribute("href")).filter((href): href is string => typeof href === "string" && href.length > 0)
           );
           formsDetected += await page.$$eval("form", (forms) => forms.length);
+          await learning?.inspectStorage(context, page);
 
           for (const candidate of toPathCandidates(hrefs.slice(0, options.policy.maxLinksPerPage), canonical, options.sameOriginOnly)) {
-            renderedLinks.set(`${candidate.source}:${candidate.path}`, candidate);
+            const safeCandidate = options.authProfile ? { ...candidate, path: candidate.path.split("?", 1)[0] || "/" } : candidate;
+            renderedLinks.set(`${safeCandidate.source}:${safeCandidate.path}`, safeCandidate);
           }
 
           for (const href of hrefs.slice(0, options.policy.maxLinksPerPage)) {
@@ -227,6 +272,7 @@ export class PlaywrightCrawler {
             screenshotPath = await this.screenshotter.capture(page, options.outputDir);
           }
         } catch (error) {
+          if (bootstrap?.login && !bootstrapSucceeded) throw error;
           consoleErrors.push({
             type: "navigation",
             text: error instanceof Error ? error.message : "Unknown browser navigation error"
@@ -236,13 +282,17 @@ export class PlaywrightCrawler {
         }
       }
 
+      await learning?.inspectStorage(context, lastPage);
+      const redactedHarPath = learning ? await learning.writeRedactedHar(options.outputDir) : undefined;
+      const lifecycleLearning = learning ? await learning.writeLifecycleLearningBundle(options.outputDir) : undefined;
+
       await Promise.all(openWebSockets.map((webSocket) => webSocket.close({ code: 1000, reason: "routecairn-scan-complete" }).catch(() => undefined)));
       await context.close();
       options.abortSignal?.removeEventListener("abort", abortBrowser);
 
       const brokerSnapshot = options.requestBroker.budgetSnapshot();
       return {
-        startUrl: options.targetUrl,
+        startUrl: options.authProfile ? redactAllQueryValues(options.targetUrl) : options.targetUrl,
         renderedLinks: [...renderedLinks.values()],
         networkRequests: options.policy.evidence.level === "minimal" ? [] : networkRequests,
         policyEvents,
@@ -253,7 +303,20 @@ export class PlaywrightCrawler {
         consoleErrors,
         ...(screenshotPath ? { screenshotPath } : {}),
         formsDetected,
-        formsSubmitted: 0,
+        formsSubmitted,
+        ...(learning && options.authProfile ? {
+          authentication: learning.report({
+            mode: bootstrap?.login ? "learned-login-flow" : "header-cookie-bootstrap",
+            bootstrapSucceeded,
+            loginStepsExecuted,
+            formsSubmitted,
+            gate: writeGate,
+            restartCount: options.browserRestartCount ?? 0,
+            ...(redactedHarPath ? { harPath: redactedHarPath } : {}),
+            learningBundlePath: lifecycleLearning!.path,
+            learnedCases: lifecycleLearning!.cases
+          })
+        } : {}),
         notes: [
           `Rendered links discovered: ${renderedLinks.size}.`,
           `Browser policy events: ${brokerSnapshot.browserPolicyEvents}.`,
@@ -261,7 +324,8 @@ export class PlaywrightCrawler {
           `Browser requests blocked before network transmission: ${policyEvents.filter((event) => !event.transmitted).length}.`,
           "Blocked browser requests consume policy-event budget, not network request budget.",
           ...(attemptBudgetExceeded ? ["Browser crawl stopped because the browser attempt budget was exhausted."] : []),
-          "Forms were detected but not submitted."
+          ...(formsSubmitted > 0 ? [`Submitted ${formsSubmitted} explicitly configured authentication form(s); no learned application form was submitted.`] : ["Forms were detected but not submitted."]),
+          ...(learning ? ["Browser traffic was stored as redacted metadata; request bodies, response bodies, cookies, storage values, and identity values were not persisted.", "Learned mutation hypotheses are non-executable drafts and require a separate explicit operator case and approval."] : [])
         ]
       };
     } finally {
@@ -275,12 +339,23 @@ export class PlaywrightCrawler {
     policyEngine: BrowserPolicyEngine,
     networkRequests: BrowserNetworkRequest[],
     policyEvents: BrowserPolicyEvent[],
-    requestsByPage: Map<string, number>
+    requestsByPage: Map<string, number>,
+    writeGate: BrowserLoginWriteGate,
+    learning?: BrowserLearningCollector
   ): Promise<string> {
     const request = route.request();
     const pageUrl = pageUrlForRequest(request, options.targetUrl);
     const requestsSeenForPage = (requestsByPage.get(pageUrl) ?? 0) + 1;
     requestsByPage.set(pageUrl, requestsSeenForPage);
+    if (options.authProfile && isWriteMethod(request.method()) && !isExplicitLoginWriteAllowed(request.url(), writeGate)) {
+      writeGate.blocked += 1;
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({ url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl }, "browser-write-requires-explicit-operator-case");
+      addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, brokerDecision.reason, false));
+      networkRequests.push(networkRequest(request, "blocked", brokerDecision.reason, false));
+      learning?.recordRequest(request, pageUrl, { transmitted: false, authorizationContext: "BLOCKED_MUTATION_HYPOTHESIS", blockedReason: brokerDecision.reason });
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return brokerDecision.reason;
+    }
     const policyDecision = await policyEngine.evaluateRequest({
       url: request.url(),
       pageUrl,
@@ -303,13 +378,15 @@ export class PlaywrightCrawler {
       return brokerDecision.reason;
     }
 
-    const brokerDecision = options.requestBroker.evaluateBrowserRequest({
+    const brokerInput = {
       url: policyDecision.normalizedUrl,
       method: request.method(),
       resourceType: request.resourceType(),
       pageUrl,
       isRedirect: request.redirectedFrom() !== null
-    });
+    };
+    const explicitLoginWrite = isWriteMethod(request.method()) && isExplicitLoginWriteAllowed(request.url(), writeGate);
+    const brokerDecision = explicitLoginWrite ? options.requestBroker.evaluateBrowserLoginRequest(brokerInput) : options.requestBroker.evaluateBrowserRequest(brokerInput);
 
     if (!brokerDecision.allowed) {
       addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, brokerDecision.reason, false));
@@ -319,7 +396,11 @@ export class PlaywrightCrawler {
     }
 
     networkRequests.push(networkRequest(request, "allowed", "allowed", true));
-    await route.continue().catch(() => undefined);
+    if (explicitLoginWrite) writeGate.allowed += 1;
+    learning?.recordRequest(request, pageUrl, { transmitted: true, authorizationContext: explicitLoginWrite ? "EXPLICIT_LOGIN" : "READ_ONLY" });
+    await options.requestBroker.dispatchApprovedBrowserRequest(
+      () => route.continue({ headers: browserContinuationHeaders(request, options.authProfile, new URL(options.targetUrl).origin) }).catch(() => undefined)
+    );
     return "allowed";
   }
 
@@ -330,6 +411,12 @@ export class PlaywrightCrawler {
     policyEvents: BrowserPolicyEvent[],
     openWebSockets: WebSocketRoute[]
   ): Promise<string> {
+    if (options.authProfile && browserNetworkOrigin(webSocket.url()) !== browserNetworkOrigin(options.targetUrl)) {
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({ url: webSocket.url(), method: "GET", resourceType: "websocket", pageUrl: options.targetUrl }, "authenticated-third-party-websocket-blocked");
+      addPolicyEvent(policyEvents, options.policy, { url: redactSensitiveUrl(webSocket.url()), method: "GET", resourceType: "websocket", pageUrl: redactSensitiveUrl(options.targetUrl), reason: brokerDecision.reason, transmitted: false });
+      await webSocket.close({ code: 1008, reason: "routecairn-auth-boundary" }).catch(() => undefined);
+      return brokerDecision.reason;
+    }
     const policyDecision = await policyEngine.evaluateRequest({
       url: webSocket.url(),
       pageUrl: options.targetUrl,
@@ -376,7 +463,7 @@ export class PlaywrightCrawler {
       return brokerDecision.reason;
     }
 
-    const server = webSocket.connectToServer();
+    const server = await options.requestBroker.dispatchApprovedBrowserRequest(async () => webSocket.connectToServer());
     openWebSockets.push(webSocket, server);
     return "allowed";
   }
@@ -538,16 +625,45 @@ function resolveUrlForEvent(url: string, baseUrl: string): string {
 function redactSensitiveUrl(url: string): string {
   try {
     const parsed = new URL(url);
-    const sensitive = /(?:token|secret|session|cookie|auth|password|pass|key|jwt)/i;
     for (const key of [...parsed.searchParams.keys()]) {
-      if (sensitive.test(key)) {
-        parsed.searchParams.set(key, "<redacted>");
-      }
+      parsed.searchParams.set(key, "<redacted>");
     }
+    parsed.hash = "";
     parsed.username = "";
     parsed.password = "";
     return parsed.toString();
   } catch {
     return url.replace(/([?&][^=]*(?:token|secret|session|cookie|auth|password|pass|key|jwt)[^=]*=)[^&\s]+/gi, "$1<redacted>");
   }
+}
+
+function redactAllQueryValues(value: string): string {
+  try {
+    const url = new URL(value);
+    for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, "<redacted>");
+    url.hash = "";
+    url.username = "";
+    url.password = "";
+    return url.toString();
+  } catch { return "about:invalid"; }
+}
+
+function assertSameOrigin(url: string, targetOrigin: string): void {
+  const parsed = new URL(url);
+  if (parsed.origin !== targetOrigin) throw new Error(`Authenticated browser workflow URL is outside the target origin: ${parsed.origin}.`);
+}
+
+function browserContinuationHeaders(request: Request, profile: AuthProfile | undefined, targetOrigin: string): Record<string, string> {
+  const headers = { ...request.headers() };
+  if (!profile || new URL(request.url()).origin === targetOrigin) return headers;
+  const profileHeaderNames = new Set(Object.keys(profile.headers).map((name) => name.toLowerCase()));
+  for (const name of Object.keys(headers)) if (profileHeaderNames.has(name.toLowerCase())) delete headers[name];
+  return headers;
+}
+
+function browserNetworkOrigin(value: string): string {
+  const url = new URL(value);
+  if (url.protocol === "ws:") url.protocol = "http:";
+  if (url.protocol === "wss:") url.protocol = "https:";
+  return url.origin;
 }

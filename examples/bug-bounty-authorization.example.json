@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "mode": "BUG_BOUNTY_AUTHORIZED",
+  "targetOrigin": "https://app.example.com",
+  "proof": { "reference": "Replace with the actual program authorization reference", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+  "bugBounty": {
+    "program": "Replace with program name",
+    "platform": "Replace with program platform",
+    "scopeDocumentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "inScope": [{ "origin": "https://app.example.com", "pathPrefix": "/" }],
+    "outOfScope": [{ "origin": "https://app.example.com", "pathPrefix": "/payments" }, { "origin": "https://app.example.com", "pathPrefix": "/admin/jobs" }],
+    "rules": ["Replace with the actual program rules; encode enforceable restrictions in scope and request permissions."],
+    "prohibitedActions": ["No destructive testing", "No real payments", "No state-changing requests", "No unbounded load testing"],
+    "startsAt": "2000-01-01T00:00:00.000Z",
+    "expiresAt": "2000-01-02T00:00:00.000Z",
+    "maxRequests": 40,
+    "rateLimitPerSecond": 2,
+    "authenticationPermitted": false,
+    "mutationPermitted": false,
+    "destructivePermitted": false,
+    "racePermitted": false,
+    "disposableAccountsSupplied": false,
+    "requests": [],
+    "reportMode": "BUG_BOUNTY_SAFE"
+  }
+}

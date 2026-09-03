@@ -1,3 +1,5 @@
+import { classifyTransientSecret } from "../secretBoundary/SecretBoundaryClassifier.js";
+
 export interface SecretPatternMatch {
   name: string;
   count: number;
@@ -23,23 +25,9 @@ const secretPatterns: Array<{ name: string; pattern: RegExp; valueGroup: number 
 
 export class SecretPatternDetector {
   public detect(bodyPreview: string | undefined): SecretPatternMatch[] {
-    if (!bodyPreview) {
-      return [];
-    }
-
-    return secretPatterns.flatMap((rule) => {
-      const count = countMatches(bodyPreview, rule.pattern);
-      if (count === 0) {
-        return [];
-      }
-
-      return [
-        {
-          name: rule.name,
-          count
-        }
-      ];
-    });
+    const counts = new Map<string, number>();
+    for (const match of this.detectForTransientAnalysis(bodyPreview, 256)) counts.set(match.name, (counts.get(match.name) ?? 0) + 1);
+    return [...counts].map(([name, count]) => ({ name, count }));
   }
 
   public detectForTransientAnalysis(bodyPreview: string | undefined, maximumMatches = 32): TransientSecretPatternMatch[] {
@@ -50,6 +38,8 @@ export class SecretPatternDetector {
       for (const match of bodyPreview.matchAll(new RegExp(rule.pattern.source, flags))) {
         const value = match[rule.valueGroup];
         if (!value || isPlaceholder(value)) continue;
+        const classification = classifyTransientSecret({ name: rule.name, value, surface: "HTML", publicExposure: true });
+        if (["NON_SENSITIVE", "PUBLIC_CLIENT_CONFIG", "PUBLISHABLE_CLIENT_KEY", "SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY"].includes(classification.materialClass)) continue;
         matches.push({ name: rule.name, count: 1, value });
         if (matches.length >= maximumMatches) return matches;
       }
@@ -60,9 +50,4 @@ export class SecretPatternDetector {
 
 function isPlaceholder(value: string): boolean {
   return /^(?:example|sample|placeholder|changeme|replace[_-]?me|your[_-].*|xxx+|test)$/i.test(value) || value.length < 8;
-}
-
-function countMatches(value: string, pattern: RegExp): number {
-  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
-  return [...value.matchAll(new RegExp(pattern.source, flags))].length;
 }

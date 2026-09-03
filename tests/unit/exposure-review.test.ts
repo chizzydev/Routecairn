@@ -20,6 +20,15 @@ describe("exposure review", () => {
     expect(JSON.stringify(matches)).not.toContain("AKIA1234567890ABCDEF");
   });
 
+  it("does not confuse a public Supabase anon key with a service-role credential", () => {
+    const detector = new SecretPatternDetector();
+    const anon = jwtWithRole("anon");
+    const serviceRole = jwtWithRole("service_role");
+
+    expect(detector.detect(`API_KEY=${anon}`)).toEqual([]);
+    expect(detector.detect(`API_KEY=${serviceRole}`)).toEqual([{ name: "API_KEY", count: 1 }]);
+  });
+
   it("classifies config, backup, and directory listing evidence", () => {
     expect(isConfigPath("/.env")).toBe(true);
     expect(isConfigPath("/config.json")).toBe(true);
@@ -55,3 +64,8 @@ describe("exposure review", () => {
     );
   });
 });
+
+function jwtWithRole(role: "anon" | "service_role"): string {
+  const encode = (value: object): string => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ role, iss: "supabase" })}.signature-material`;
+}

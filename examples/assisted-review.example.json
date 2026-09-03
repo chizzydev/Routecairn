@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "disposable-auth-review",
+  "title": "Disposable-account authentication review",
+  "focus": ["AUTH_LIFECYCLE"],
+  "requiredLanes": ["AUTH_LIFECYCLE"],
+  "cases": [
+    { "workflowId": "authentication-lifecycle", "caseId": "login-enumeration", "lane": "AUTH_LIFECYCLE" },
+    { "workflowId": "authentication-lifecycle", "caseId": "session-rotation", "lane": "AUTH_LIFECYCLE" }
+  ],
+  "authentication": { "requireVerifiedIdentity": true, "requireAccountPair": false },
+  "completionGate": {
+    "requireNoBlocked": true,
+    "requireNoInconclusive": true,
+    "requireHumanReviewForFindings": true
+  },
+  "customer": { "name": "Disposable application fixture" }
+}

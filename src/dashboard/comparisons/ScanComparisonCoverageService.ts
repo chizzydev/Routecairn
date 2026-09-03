@@ -1,4 +1,5 @@
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
+import { assistedFindingModules } from "../../core/findings/AssistedWorkflowFindingAcceptance.js";
 
 export type CoverageDisposition = "ADEQUATE" | "NOT_RETESTED" | "INCOMPARABLE";
 
@@ -36,7 +37,7 @@ export class ScanComparisonCoverageService {
     const scan = this.scan(scanId);
     const snapshot = Boolean(this.database.db.prepare("SELECT 1 FROM scan_plan_snapshots WHERE scan_id = ?").get(scanId));
     const modules = Boolean(this.database.db.prepare("SELECT 1 FROM scan_module_executions WHERE scan_id = ? LIMIT 1").get(scanId));
-    if (scan.source === "DASHBOARD") return snapshot && modules ? "NATIVE_FULL" : "NATIVE_PARTIAL";
+    if (scan.source === "DASHBOARD") return scan.status === "COMPLETED" && snapshot && modules ? "NATIVE_FULL" : "NATIVE_PARTIAL";
     return snapshot && modules ? "IMPORTED_WITH_COVERAGE" : "IMPORTED_FINDINGS_ONLY";
   }
 
@@ -70,7 +71,10 @@ export class ScanComparisonCoverageService {
     if (!sameTarget(older, newer)) return decision("INCOMPARABLE", "TARGET_INCOMPATIBLE", "The scans represent different durable targets or origins; remediation cannot be inferred across them.", { olderTarget: older.target_origin, newerTarget: newer.target_origin });
     if (!["COMPLETED", "IMPORTED"].includes(newer.status)) return decision("NOT_RETESTED", newer.status === "CANCELLED" ? "SCAN_CANCELLED" : "SCAN_INCOMPLETE", "The newer scan did not complete, so absence cannot establish resolution.", { newerStatus: newer.status });
     if (this.sourceQuality(newerScanId) === "IMPORTED_FINDINGS_ONLY") return decision("NOT_RETESTED", "HISTORICAL_DATA_INSUFFICIENT", "The newer imported report contains findings but no execution coverage capable of proving resolution.", { sourceQuality: "IMPORTED_FINDINGS_ONLY" });
-    const scope = this.endpointCoverage(newerScanId, occurrence.safe_endpoint);
+    const assisted = assistedFindingModules.has(occurrence.module) && !workflowByModule[occurrence.module];
+    const scope = assisted && occurrence.safe_endpoint.startsWith("redacted:") && this.scopeState(olderScanId, newerScanId) === "EQUIVALENT_FOR_FINDING"
+      ? { covered: true, incomparable: false, reasonCode: "SCOPE_EQUIVALENT", explanation: "Identical scope snapshots cover the explicitly configured case.", facts: {} }
+      : this.endpointCoverage(newerScanId, occurrence.safe_endpoint);
     if (!scope.covered) return decision(scope.incomparable ? "INCOMPARABLE" : "NOT_RETESTED", scope.reasonCode, scope.explanation, scope.facts);
     const module = this.module(newerScanId, occurrence.module);
     if (!module) return decision("NOT_RETESTED", "MODULE_NOT_PLANNED", "The newer scan did not plan the module that produced the older finding.", { module: occurrence.module });
@@ -79,6 +83,7 @@ export class ScanComparisonCoverageService {
       return decision("NOT_RETESTED", code, `The relevant module did not complete (${module.status}).`, { module: occurrence.module, moduleStatus: module.status });
     }
     const workflow = workflowByModule[occurrence.module];
+    if (assisted) return this.evaluateAssistedCase(olderScanId, newerScanId, occurrence);
     if (!workflow) return decision("ADEQUATE", "COMPATIBLE_MODULE_COVERAGE", "The newer scan covered the same target and endpoint and completed the relevant module.", { module: occurrence.module, moduleStatus: module.status });
     if (this.compareAuthentication(olderScanId, newerScanId) === "CHANGED") return decision("INCOMPARABLE", "ACTOR_MODEL_INCOMPATIBLE", "The safe authentication actor model changed for an authorization-sensitive finding.", { workflow });
     if (this.compareIdentity(olderScanId, newerScanId) === "CHANGED") return decision("INCOMPARABLE", "IDENTITY_MODEL_INCOMPATIBLE", "The verified identity model changed for an authorization-sensitive finding.", { workflow });
@@ -94,13 +99,28 @@ export class ScanComparisonCoverageService {
     if (newCase.execution_state !== "COMPLETED" || !newCase.request_transmitted) return decision("NOT_RETESTED", "CASE_NOT_EXECUTED", "The matching workflow case did not transmit and complete the relevant request.", { workflow, safeCaseAlias: alias, caseState: newCase.execution_state });
     if (workflow === "privilege-mutation") {
       const result = parseJson(newCase.safe_result_json);
-      if (result.cleanupOutcome !== "ROLLBACK_VERIFIED") return decision("NOT_RETESTED", "CLEANUP_NOT_VERIFIED", "The matching mutation case did not independently verify restoration, so the newer scan cannot prove resolution.", { workflow, safeCaseAlias: alias, cleanupOutcome: result.cleanupOutcome });
-      if (!String(result.securityOutcome ?? "").endsWith("PROVEN")) return decision("NOT_RETESTED", "SECURITY_PROOF_INCOMPLETE", "The matching mutation case did not prove the configured authority outcome.", { workflow, safeCaseAlias: alias, securityOutcome: result.securityOutcome });
+      if (!["ROLLBACK_VERIFIED", "NOT_REQUIRED"].includes(String(result.cleanupOutcome))) return decision("NOT_RETESTED", "CLEANUP_NOT_VERIFIED", "The matching mutation case did not independently verify restoration, so the newer scan cannot prove resolution.", { workflow, safeCaseAlias: alias, cleanupOutcome: result.cleanupOutcome });
+      if (!["SECURE_FOR_CASE", "MUTATION_REJECTED"].includes(String(result.securityOutcome))) return decision("NOT_RETESTED", "SECURITY_PROOF_INCOMPLETE", "The matching mutation case did not prove rejection of the configured authority change.", { workflow, safeCaseAlias: alias, securityOutcome: result.securityOutcome });
     }
     return decision("ADEQUATE", "COMPATIBLE_CASE_COVERAGE", `The newer scan covered the same target, endpoint, module, ${workflow} case, actor semantics, and evidence model; the matching request completed.`, { workflow, safeCaseAlias: alias, evidenceStrength: newCase.evidence_strength });
   }
 
   public modules(scanId: string): ModuleRow[] { return this.database.db.prepare("SELECT module_id, status, planned_request_count, executed_request_count, safe_failure_category, safe_failure_summary FROM scan_module_executions WHERE scan_id = ? ORDER BY planned_order").all(scanId) as ModuleRow[]; }
+
+  private evaluateAssistedCase(olderScanId: string, newerScanId: string, occurrence: OccurrenceRow): CoverageDecision {
+    const facts = { workflow: occurrence.module, safeCaseAlias: occurrence.workflow_case_alias };
+    if (this.compareAuthentication(olderScanId, newerScanId) !== "EQUIVALENT" || this.compareIdentity(olderScanId, newerScanId) !== "EQUIVALENT") return decision("INCOMPARABLE", "ACTOR_MODEL_INCOMPATIBLE", "Comparable authenticated actor and identity snapshots are required.", facts);
+    if (!occurrence.workflow_case_alias) return decision("NOT_RETESTED", "CASE_IDENTITY_UNAVAILABLE", "The older finding lacks an explicit case identity.", facts);
+    const query = this.database.db.prepare("SELECT assessment_outcome, conclusion, cleanup_unresolved, comparison_fingerprint FROM assisted_case_results WHERE scan_id = ? AND workflow_id = ? AND case_id = ?");
+    type Case = { assessment_outcome: string; conclusion: string; cleanup_unresolved: number; comparison_fingerprint: string | null };
+    const before = query.get(olderScanId, occurrence.module, occurrence.workflow_case_alias) as Case | undefined;
+    const after = query.get(newerScanId, occurrence.module, occurrence.workflow_case_alias) as Case | undefined;
+    if (!after) return decision("NOT_RETESTED", "CASE_MISSING", "The newer scan did not execute this assisted workflow case.", facts);
+    if (!before?.comparison_fingerprint || !after.comparison_fingerprint || before.comparison_fingerprint !== after.comparison_fingerprint) return decision("INCOMPARABLE", "CASE_CHANGED", "The exact case contracts and comparison fingerprints must match.", facts);
+    if (after.cleanup_unresolved) return decision("NOT_RETESTED", "CLEANUP_NOT_VERIFIED", "Unresolved cleanup independently prevents remediation acceptance.", facts);
+    if (after.assessment_outcome !== "PROVEN" || after.conclusion !== "NO_FINDING") return decision("NOT_RETESTED", "SECURITY_PROOF_INCOMPLETE", "Only a proven clean execution of the same case establishes remediation.", { ...facts, outcome: after.assessment_outcome, conclusion: after.conclusion });
+    return decision("ADEQUATE", "COMPATIBLE_CASE_COVERAGE", "The same assisted case completed with matching contracts, actors, and a proven clean conclusion.", facts);
+  }
   public cases(scanId: string): CaseRow[] { return this.database.db.prepare("SELECT id, workflow_id, module_id, safe_case_alias, safe_case_fingerprint, execution_state, request_transmitted, evidence_strength, safe_semantics_json, safe_result_json FROM scan_workflow_case_executions WHERE scan_id = ? ORDER BY workflow_id, safe_case_alias").all(scanId) as CaseRow[]; }
 
   private module(scanId: string, moduleId: string): ModuleRow | undefined { return this.database.db.prepare("SELECT module_id, status, planned_request_count, executed_request_count, safe_failure_category, safe_failure_summary FROM scan_module_executions WHERE scan_id = ? AND module_id = ? ORDER BY planned_order LIMIT 1").get(scanId, moduleId) as ModuleRow | undefined; }

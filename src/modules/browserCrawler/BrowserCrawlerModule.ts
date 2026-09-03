@@ -7,16 +7,16 @@ import { PlaywrightCrawler } from "./PlaywrightCrawler.js";
 
 export class BrowserCrawlerModule implements RouteCairnPlugin {
   public readonly name = "browser-crawler";
-  public readonly description = "Renders the target with Playwright, captures screenshots, links, console errors, and network requests without submitting forms.";
+  public readonly description = "Renders the target with Playwright, supports isolated authenticated bootstrap, and captures redacted traffic without submitting application forms.";
   public readonly phase = "intelligence";
   private readonly crawler = new PlaywrightCrawler();
 
   public async run(context: ScanContext): Promise<ModuleResult> {
-    if (context.options.plan.authentication.required) {
+    if (context.options.plan.authentication.required && !context.options.authProfile) {
       return {
         pluginName: this.name,
         notes: [
-          "Browser crawl skipped: authenticated browser bootstrap is not implemented, so RouteCairn will not browse anonymously during an authenticated scan."
+          "Browser crawl skipped: an authenticated plan had no primary credential profile. RouteCairn refused to browse anonymously."
         ]
       };
     }
@@ -36,16 +36,26 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
     try {
       const settings = context.moduleSettings("browser-crawler");
       const policy = browserPolicyFromSettings(settings, context.options.plan.limits, context.options.plan.evidence);
-      const browserCrawl = await this.crawler.crawl({
-        targetUrl: decision.normalizedUrl,
-        outputDir: context.options.outputDir,
-        userAgent: context.options.scope.userAgent,
-        timeoutMs: context.options.plan.limits.requestTimeoutMs,
-        sameOriginOnly: context.options.scope.sameOriginOnly,
-        policy,
-        requestBroker: context.httpClient,
-        ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
-      });
+      const crawlerOptions = {
+          targetUrl: decision.normalizedUrl,
+          outputDir: context.options.outputDir,
+          userAgent: context.options.scope.userAgent,
+          timeoutMs: context.options.plan.limits.requestTimeoutMs,
+          sameOriginOnly: context.options.scope.sameOriginOnly,
+          policy,
+          requestBroker: context.httpClient,
+          ...(context.options.authProfile ? { authProfile: context.options.authProfile } : {}),
+          ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
+        };
+      let browserCrawl;
+      try {
+        browserCrawl = await this.crawler.crawl({ ...crawlerOptions, browserRestartCount: 0 });
+      } catch (firstError) {
+        if (context.options.abortSignal?.aborted) throw firstError;
+        await context.eventSink.emit({ type: "OBSERVATION_RECORDED", moduleId: this.name, message: "Browser process failed; restarting one isolated Chromium context.", metadata: { restartAttempt: 1 } });
+        browserCrawl = await this.crawler.crawl({ ...crawlerOptions, browserRestartCount: 1 });
+        browserCrawl.notes.push("Chromium/browser context was restarted once and authenticated bootstrap was replayed from the in-memory profile.");
+      }
 
       return {
         pluginName: this.name,
@@ -53,6 +63,7 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
         notes: browserCrawl.notes
       };
     } catch (error) {
+      if (context.options.plan.authentication.required) throw error;
       const message = error instanceof Error ? error.message : "Unknown browser crawl error";
       return {
         pluginName: this.name,

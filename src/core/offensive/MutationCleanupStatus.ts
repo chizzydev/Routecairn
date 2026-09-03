@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { MutationJournal } from "./MutationJournal.js";
-import { MutationJournalRegistry } from "./MutationJournalRegistry.js";
+import { MutationJournalRegistry, mutationRegistryPaths } from "./MutationJournalRegistry.js";
 import type { MutationJournalEntry, MutationJournalStage, MutationOutcome, OffensiveExecutionMode } from "./ControlledMutationTypes.js";
 
 export type MutationCleanupStage = MutationJournalStage | "MUTATION_STATE_UNCERTAIN";
@@ -37,11 +37,11 @@ export interface MutationCleanupStatus {
 const obligationStages = new Set<MutationJournalStage>(["MUTATION_ARMED", "MUTATION_SENT", "IMPACT_VERIFIED", "ROLLBACK_SENT", "CLEANUP_REQUIRED", "CLEANUP_FAILED"]);
 
 export async function readMutationCleanupStatus(primaryDirectory: string, registryPath: string): Promise<MutationCleanupStatus> {
-  const registered = await new MutationJournalRegistry(registryPath).directories().catch(() => []);
+  const registered = (await Promise.all(mutationRegistryPaths(primaryDirectory, registryPath).map((path) => new MutationJournalRegistry(path).directories()))).flat();
   const directories = [...new Set([resolve(primaryDirectory), ...registered.map((directory) => resolve(directory))])];
   const cases = (await Promise.all(directories.map(readDirectoryStatus))).flat().sort((left, right) => right.timestamp.localeCompare(left.timestamp));
   return {
-    modes: { OBSERVE: "AVAILABLE", SAFE_ACTIVE: "AVAILABLE", CONTROLLED_MUTATION: "AVAILABLE", CONTROLLED_DELETION: "PLANNED_UNAVAILABLE", LAB_DESTRUCTIVE: "PLANNED_UNAVAILABLE" },
+    modes: { OBSERVE: "AVAILABLE", SAFE_ACTIVE: "AVAILABLE", CONTROLLED_MUTATION: "AVAILABLE", CONTROLLED_DELETION: "AVAILABLE", LAB_DESTRUCTIVE: "PLANNED_UNAVAILABLE" },
     globalMutationActive: cases.length > 0,
     cleanupRequired: cases.length,
     cases
@@ -50,7 +50,7 @@ export async function readMutationCleanupStatus(primaryDirectory: string, regist
 
 async function readDirectoryStatus(directory: string): Promise<MutationCleanupCase[]> {
   const journalId = createHash("sha256").update(resolve(directory)).digest("hex").slice(0, 16);
-  const entries = await new MutationJournal(join(directory, "mutation-journal.json")).read().catch(() => []);
+  const entries = await new MutationJournal(join(directory, "mutation-journal.json")).read();
   const latest = new Map<string, MutationJournalEntry>();
   for (const entry of entries) latest.set(entry.caseId, entry);
   const bundles = await recoveryBundles(directory);
@@ -94,7 +94,7 @@ function fromEntry(journalId: string, entry: MutationJournalEntry, bundleAvailab
 }
 
 async function recoveryBundles(directory: string): Promise<Map<string, string>> {
-  const names = await readdir(directory).catch(() => []);
+  const names = await readdir(directory).catch((error: unknown) => { if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return []; throw error; });
   const bundles = new Map<string, string>();
   for (const name of names) {
     const match = /^(?<caseId>[a-zA-Z0-9._-]+)\.recovery\.enc$/.exec(name);

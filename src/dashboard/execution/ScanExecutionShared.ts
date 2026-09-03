@@ -22,6 +22,21 @@ import { planEquivalentRouteTesting } from "../../modules/equivalentRouteTesting
 import { planCollectionAuthorizationTesting } from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
 import { planBulkAuthorizationTesting } from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
 import { planFileAuthorizationTesting } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
+import { loadAuthenticationLifecycleInput, planAuthenticationLifecycle } from "../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js";
+import { loadBrowserLearnedLifecycleAutomationInput, planBrowserLearnedLifecycleAutomation } from "../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js";
+import { loadBusinessInvariantInput, planBusinessInvariant } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
+import { loadControlledRaceInput, planControlledRace } from "../../modules/controlledRace/ControlledRacePlanner.js";
+import { loadApiGraphqlInput, planApiGraphqlReview } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
+import { loadLinkPortalSecurityInput, planLinkPortalSecurity } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
+import { loadOperationalEndpointSecurityInput, planOperationalEndpointSecurity } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
+import { loadBillingEntitlementInput, planBillingEntitlement } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
+import { loadAssistedReviewInput, planAssistedReview } from "../../modules/assistedReview/AssistedReviewPlanner.js";
+import { resolveScanProfile } from "../../config/ScanProfiles.js";
+import { readFile } from "node:fs/promises";
+import { planPreHandover } from "../../modules/preHandover/PreHandoverPlanner.js";
+import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
+import { approvedMutationPlan } from "./ApprovedMutationPlan.js";
+import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 
 export interface DashboardResolvedAuth {
   authProfile?: AuthProfile | undefined;
@@ -29,7 +44,7 @@ export interface DashboardResolvedAuth {
   safeSummary: Record<string, unknown>;
 }
 
-export async function resolveDashboardScanPlan(request: DashboardScanCreateRequest, resolvedAuth?: DashboardResolvedAuth): Promise<ResolvedPlanInputs> {
+export async function resolveDashboardScanPlan(request: DashboardScanCreateRequest, resolvedAuth?: DashboardResolvedAuth, mutationContracts: readonly ControlledMutationContract[] = []): Promise<ResolvedPlanInputs> {
   if ((request.authAFile && !request.authBFile) || (!request.authAFile && request.authBFile)) {
     throw new Error("Account-pair authentication requires both authAFile and authBFile.");
   }
@@ -42,22 +57,62 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
   const authProfile = resolvedAuth?.authProfile ?? studioEphemeralAuth?.authProfile ?? (request.authFile ? await loadAuthProfile(resolve(request.authFile)) : undefined);
   const authProfileSet = resolvedAuth?.authProfileSet ?? studioEphemeralAuth?.authProfileSet ?? (request.authAFile && request.authBFile ? await loadAuthProfileSet(resolve(request.authAFile), resolve(request.authBFile)) : undefined);
   const workflowPlans = resolveStudioWorkflowPlans(request, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) });
+  const authenticationLifecycle = request.authenticationLifecycleFile
+    ? planAuthenticationLifecycle(await loadAuthenticationLifecycleInput(resolve(request.authenticationLifecycleFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : request.authenticationLifecycleAutoFile
+      ? planBrowserLearnedLifecycleAutomation(await loadBrowserLearnedLifecycleAutomationInput(resolve(request.authenticationLifecycleAutoFile)), request.target)
+      : undefined;
+  if (request.authenticationLifecycleAutoFile && !authProfile) throw new Error("Browser-learned lifecycle automation requires a single authenticated browser profile.");
+  const businessInvariant = request.businessInvariantFile
+    ? planBusinessInvariant(await loadBusinessInvariantInput(resolve(request.businessInvariantFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const controlledRace = request.controlledRaceFile
+    ? planControlledRace(await loadControlledRaceInput(resolve(request.controlledRaceFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const apiGraphql = request.apiGraphqlFile
+    ? planApiGraphqlReview(await loadApiGraphqlInput(resolve(request.apiGraphqlFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const linkPortalSecurity = request.linkPortalSecurityFile
+    ? planLinkPortalSecurity(await loadLinkPortalSecurityInput(resolve(request.linkPortalSecurityFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const operationalEndpointSecurity = request.operationalEndpointSecurityFile
+    ? planOperationalEndpointSecurity(await loadOperationalEndpointSecurityInput(resolve(request.operationalEndpointSecurityFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const billingEntitlement = request.billingEntitlementFile
+    ? planBillingEntitlement(await loadBillingEntitlementInput(resolve(request.billingEntitlementFile)), { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const requestedModules = request.includeModules && request.includeModules.length > 0 ? request.includeModules as ModuleId[] : undefined;
+  const includeModules = authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement ? [...new Set([...(requestedModules ?? []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(request.authenticationLifecycleAutoFile ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
   const input: ScanPlannerInput = {
+    ...(request.includeModules?.includes("privilege-mutation-testing") && mutationContracts.length ? { privilegeMutationTesting: approvedMutationPlan(mutationContracts) } : {}),
+    ...(request.preHandover || request.preHandoverFile ? { preHandover: planPreHandover(request.preHandover ?? JSON.parse(await readFile(resolve(request.preHandoverFile!), "utf8"))) } : {}),
+    ...(request.targetAuthorization || request.targetAuthorizationFile ? { targetAuthorization: targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) } : {}),
+    ...(request.assistedReview || request.assistedReviewFile ? { assistedReview: planAssistedReview(request.assistedReview ?? await loadAssistedReviewInput(resolve(request.assistedReviewFile!))) } : {}),
     requestedProfile: request.profile,
     scope,
     config,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
     ...workflowPlans,
+    ...(authenticationLifecycle ? { authenticationLifecycle } : {}),
+    ...(businessInvariant ? { businessInvariant } : {}),
+    ...(controlledRace ? { controlledRace } : {}),
+    ...(apiGraphql ? { apiGraphql } : {}),
+    ...(linkPortalSecurity ? { linkPortalSecurity } : {}),
+    ...(operationalEndpointSecurity ? { operationalEndpointSecurity } : {}),
+    ...(billingEntitlement ? { billingEntitlement } : {}),
     overrides: {
       ...(request.rateLimitPerSecond ? { rateLimitPerSecond: request.rateLimitPerSecond } : {}),
       ...(request.concurrency ? { concurrency: request.concurrency } : {}),
+      ...(request.maxRequests ? { maxRequests: request.maxRequests } : {}),
+      ...(request.cleanupReservedRequests !== undefined ? { cleanupReservedRequests: request.cleanupReservedRequests } : {}),
       ...(request.studio?.evidenceLevel ? { evidenceLevel: request.studio.evidenceLevel } : {}),
-      ...(request.includeModules && request.includeModules.length > 0 ? { includeModules: request.includeModules as ModuleId[] } : {}),
-      ...(request.studio?.moduleSettings.nextJsReview ? { moduleSettings: { "nextjs-review": request.studio.moduleSettings.nextJsReview } } : {})
+      ...(request.assistedReview || request.assistedReviewFile ? { includeModules: [...new Set([...(includeModules ?? resolveScanProfile(request.profile).enabledModules), "assisted-review" as ModuleId])] } : includeModules && includeModules.length > 0 ? { includeModules } : {}),
+      moduleSettings: { ...(request.studio?.moduleSettings.nextJsReview ? { "nextjs-review": request.studio.moduleSettings.nextJsReview } : {}), ...(request.studio?.moduleSettings.browserCrawler ? { "browser-crawler": request.studio.moduleSettings.browserCrawler } : {}) }
     }
   };
   const planner = new ScanPlanner(createDefaultPluginRegistry());
+  if (request.studio?.authorization.category === "BUG_BOUNTY" && input.targetAuthorization?.mode !== "BUG_BOUNTY_AUTHORIZED") throw new Error("BUG_BOUNTY_PROGRAM_AUTHORIZATION_REQUIRED");
   return { plan: planner.resolve(input), config, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) };
 }
 
@@ -117,14 +172,31 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     credentialProfileB: request.credentialProfileBId ? safeCredentialReferenceForId(request.credentialProfileBId, "accountB") : undefined,
     rateLimitPerSecond: request.rateLimitPerSecond,
     concurrency: request.concurrency,
+    maxRequests: request.maxRequests,
+    cleanupReservedRequests: request.cleanupReservedRequests,
     includeModules: request.includeModules ?? [],
+    authenticationLifecycleFileLabel: request.authenticationLifecycleFile ? safePathLabel(request.authenticationLifecycleFile) : undefined,
+    authenticationLifecycleAutoFileLabel: request.authenticationLifecycleAutoFile ? safePathLabel(request.authenticationLifecycleAutoFile) : undefined,
+    businessInvariantFileLabel: request.businessInvariantFile ? safePathLabel(request.businessInvariantFile) : undefined,
+    controlledRaceFileLabel: request.controlledRaceFile ? safePathLabel(request.controlledRaceFile) : undefined,
+    apiGraphqlFileLabel: request.apiGraphqlFile ? safePathLabel(request.apiGraphqlFile) : undefined,
+    linkPortalSecurityFileLabel: request.linkPortalSecurityFile ? safePathLabel(request.linkPortalSecurityFile) : undefined,
+    operationalEndpointSecurityFileLabel: request.operationalEndpointSecurityFile ? safePathLabel(request.operationalEndpointSecurityFile) : undefined,
+    billingEntitlementFileLabel: request.billingEntitlementFile ? safePathLabel(request.billingEntitlementFile) : undefined,
+    assistedReviewFileLabel: request.assistedReviewFile ? safePathLabel(request.assistedReviewFile) : undefined,
+    assistedReview: request.assistedReview,
+    preHandoverFileLabel: request.preHandoverFile ? safePathLabel(request.preHandoverFile) : undefined,
+    targetAuthorizationFileLabel: request.targetAuthorizationFile ? safePathLabel(request.targetAuthorizationFile) : undefined,
+    targetMode: request.targetAuthorization?.mode,
+    preHandover: request.preHandover ? { assaultId: request.preHandover.assaultId, revision: request.preHandover.revision } : undefined,
     studio: request.studio ? safeStudioSummary(request) : undefined
   };
 }
 
 export function safePlanIdentity(request: DashboardScanCreateRequest, plan: ResolvedScanPlan): string {
   const stablePlan = redactDashboardValue({ ...plan, metadata: { ...plan.metadata, createdAt: "<volatile>" } });
-  return createHash("sha256").update(JSON.stringify({ request: safeConfigurationSummary(request), plan: stablePlan })).digest("hex");
+  const targetPolicyBinding = createHash("sha256").update(JSON.stringify(plan.targetAuthorization ?? null)).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ request: safeConfigurationSummary(request), plan: stablePlan, targetPolicyBinding })).digest("hex");
 }
 
 export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<typeof loadScope>>) {
@@ -136,7 +208,14 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
     collectionAuthorizationTesting: workflowPlanSummary(plan.collectionAuthorizationTesting),
     bulkAuthorizationTesting: workflowPlanSummary(plan.bulkAuthorizationTesting),
     fileAuthorizationTesting: workflowPlanSummary(plan.fileAuthorizationTesting),
-    equivalentRouteTesting: workflowPlanSummary(plan.equivalentRouteTesting)
+    equivalentRouteTesting: workflowPlanSummary(plan.equivalentRouteTesting),
+    authenticationLifecycle: workflowPlanSummary(plan.authenticationLifecycle),
+    businessInvariant: workflowPlanSummary(plan.businessInvariant),
+    controlledRace: workflowPlanSummary(plan.controlledRace),
+    apiGraphql: workflowPlanSummary(plan.apiGraphql),
+    linkPortalSecurity: workflowPlanSummary(plan.linkPortalSecurity),
+    operationalEndpointSecurity: workflowPlanSummary(plan.operationalEndpointSecurity),
+    billingEntitlement: workflowPlanSummary(plan.billingEntitlement)
   });
   return {
     plannerVersion: String(plan.schemaVersion),
@@ -145,7 +224,7 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
     limits: plan.limits,
     evidencePolicy: plan.evidence,
     browserPolicySummary: plan.modules.find((modulePlan) => modulePlan.id === "browser-crawler")?.settings ?? {},
-    scopeSummary: { allowedDomains: scope.allowedDomains, sameOriginOnly: scope.sameOriginOnly, includeSubdomains: scope.includeSubdomains },
+    scopeSummary: { allowedDomains: scope.allowedDomains, disallowedPaths: scope.disallowedPaths, allowedMethods: scope.allowedMethods, sameOriginOnly: scope.sameOriginOnly, includeSubdomains: scope.includeSubdomains, ...(plan.targetAuthorization ? { targetPolicyFingerprint: targetPolicyFingerprint(plan) } : {}) },
     authenticationSummary: plan.authentication,
     controlledWorkflowSummary: {
       objectPairTesting: Boolean(plan.objectPairTesting),
@@ -154,7 +233,15 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
       collectionAuthorizationTesting: Boolean(plan.collectionAuthorizationTesting),
       bulkAuthorizationTesting: Boolean(plan.bulkAuthorizationTesting),
       fileAuthorizationTesting: Boolean(plan.fileAuthorizationTesting),
-      equivalentRouteTesting: Boolean(plan.equivalentRouteTesting)
+      equivalentRouteTesting: Boolean(plan.equivalentRouteTesting),
+      authenticationLifecycle: Boolean(plan.authenticationLifecycle),
+      businessInvariant: Boolean(plan.businessInvariant),
+      controlledRace: Boolean(plan.controlledRace),
+      apiGraphql: Boolean(plan.apiGraphql),
+      linkPortalSecurity: Boolean(plan.linkPortalSecurity),
+      operationalEndpointSecurity: Boolean(plan.operationalEndpointSecurity),
+      billingEntitlement: Boolean(plan.billingEntitlement),
+      assistedReview: Boolean(plan.assistedReview)
     },
     redactedPlan
   };
@@ -327,6 +414,8 @@ function authProfileFromSecret(summary: CredentialProfileSummary, secret: Creden
     ...(typeof summary.safeIdentitySummary.accountState === "string" ? { accountState: summary.safeIdentitySummary.accountState } : {}),
     headers,
     cookies: Object.entries(secret.cookies ?? {}).map(([name, value]) => ({ name, value })),
+    ...(secret.browserBootstrap ? { browserBootstrap: secret.browserBootstrap } : {}),
+    lifecycleSecrets: secret.lifecycleSecrets ?? {},
     identityVerification: secret.identityVerification
       ? {
           mode: "required",
@@ -365,4 +454,11 @@ function safeCredentialReferenceForId(id: string, role: string): Record<string, 
 
 function safePathLabel(path: string): string {
   return path.split(/[\\/]/).pop() ?? "file";
+}
+
+function targetPolicyFingerprint(plan: ResolvedScanPlan): string {
+  const authority = plan.targetAuthorization!;
+  const program = authority.bugBounty;
+  const semanticPolicy = { mode: authority.mode, origin: authority.targetOrigin, ...(program ? { inScope: program.inScope, outOfScope: program.outOfScope, authenticationPermitted: program.authenticationPermitted, mutationPermitted: program.mutationPermitted, destructivePermitted: program.destructivePermitted, racePermitted: program.racePermitted, requests: program.requests } : {}) };
+  return createHash("sha256").update(JSON.stringify(semanticPolicy)).digest("hex");
 }

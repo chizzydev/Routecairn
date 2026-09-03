@@ -35,6 +35,16 @@ import { StateAwareApiModule } from "../../modules/stateAwareApi/StateAwareApiMo
 import { TechFingerprintModule } from "../../modules/techFingerprint/TechFingerprintModule.js";
 import { VulnerabilityWorkflowModule } from "../../modules/vulnerabilityWorkflows/VulnerabilityWorkflowModule.js";
 import { WorkflowValidationModule } from "../../modules/workflowValidation/WorkflowValidationModule.js";
+import { SupabaseAuthorizationModule } from "../../modules/supabaseAuthorization/SupabaseAuthorizationModule.js";
+import { AuthenticationLifecycleModule } from "../../modules/authenticationLifecycle/AuthenticationLifecycleModule.js";
+import { BusinessInvariantModule } from "../../modules/businessInvariant/BusinessInvariantModule.js";
+import { ControlledRaceModule } from "../../modules/controlledRace/ControlledRaceModule.js";
+import { ApiGraphqlModule } from "../../modules/apiGraphql/ApiGraphqlModule.js";
+import { LinkPortalSecurityModule } from "../../modules/linkPortalSecurity/LinkPortalSecurityModule.js";
+import { OperationalEndpointSecurityModule } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityModule.js";
+import { BillingEntitlementModule } from "../../modules/billingEntitlement/BillingEntitlementModule.js";
+import { SecretBoundaryModule } from "../../modules/secretBoundary/SecretBoundaryModule.js";
+import { AssistedReviewModule } from "../../modules/assistedReview/AssistedReviewModule.js";
 
 export class ScanOrchestrator {
   private readonly moduleRunner: ModuleRunner;
@@ -101,6 +111,16 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new FileAuthorizationModule(), moduleMetadata("file-authorization-testing"));
   registry.register(new EquivalentRouteModule(), moduleMetadata("equivalent-route-testing"));
   registry.register(new PrivilegeMutationModule(), moduleMetadata("privilege-mutation-testing"));
+  registry.register(new SupabaseAuthorizationModule(), moduleMetadata("supabase-authorization"));
+  registry.register(new AuthenticationLifecycleModule(), moduleMetadata("authentication-lifecycle"));
+  registry.register(new BusinessInvariantModule(), moduleMetadata("business-invariant"));
+  registry.register(new ControlledRaceModule(), moduleMetadata("controlled-race"));
+  registry.register(new ApiGraphqlModule(), moduleMetadata("api-graphql-authorization"));
+  registry.register(new LinkPortalSecurityModule(), moduleMetadata("link-portal-export-security"));
+  registry.register(new OperationalEndpointSecurityModule(), moduleMetadata("operational-endpoint-security"));
+  registry.register(new BillingEntitlementModule(), moduleMetadata("billing-entitlement-security"));
+  registry.register(new SecretBoundaryModule(), moduleMetadata("secret-boundary"));
+  registry.register(new AssistedReviewModule(), moduleMetadata("assisted-review"));
   registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
   registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
   registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));

@@ -117,7 +117,8 @@ describe("bulk authorization testing integration", () => {
     expect(report.bulkAuthorization?.confirmedIssues).toBe(1);
     expect(report.findings.filter((finding) => finding.type === "Bulk Authorization Issue")).toHaveLength(1);
     expect(report.findings[0]?.sourceModule).toBe("bulk-authorization-testing");
-    expect(report.findings[0]?.evidence.curlCommand).toContain("<redacted>");
+    expect(report.findings[0]?.evidence.curlCommand).toBeUndefined();
+    expect(report.findings[0]?.evidence.source).toMatch(/^assisted-workflow:bulk-authorization-testing:/);
     expect(report.requestAudit.some((entry) => entry.requestBodyHash)).toBe(true);
 
     for (const serialized of [jsonText, markdownText]) {
@@ -237,7 +238,7 @@ describe("bulk authorization testing integration", () => {
     expect(vulnerable?.findingCategory).toBe("BULK_SINGLE_OBJECT_AUTHORIZATION_INCONSISTENCY");
     expect(vulnerable?.objects.some((object) => object.baselineDecision === "DENIED_CONFIRMED" && object.included)).toBe(true);
     expect(report.findings.filter((finding) => finding.type === "Bulk Authorization Issue")).toHaveLength(1);
-    expect(report.findings[0]?.evidence.source).toContain("exact supplied object");
+    expect(report.findings[0]?.evidence.source).toBe("assisted-workflow:bulk-authorization-testing:bulk-projects/vulnerable-with-baseline");
     expect(seen.filter((entry) => entry.includes("/api/projects/project-b-002"))).toHaveLength(1);
     expect(seen.some((entry) => entry.includes("page=") || entry.includes("job"))).toBe(false);
   });

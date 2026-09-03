@@ -107,6 +107,34 @@ describe("auth profiles", () => {
       )
     ).rejects.toThrow();
   });
+
+  it("validates browser login secret references and redacts their values", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-browser-profile-"));
+    const profile = await loadAuthProfile(await writeJson(tempDir, "browser.json", {
+      label: "browser-account",
+      headers: {},
+      browserBootstrap: {
+        schemaVersion: 1,
+        loginSecrets: { password: "browser-only-secret" },
+        login: {
+          startUrl: "https://app.example.test/login",
+          allowedWritePaths: ["/session"],
+          successUrlPrefix: "https://app.example.test/app",
+          steps: [{ action: "fill", selector: "#password", valueRef: "password" }, { action: "click", selector: "button[type=submit]" }]
+        },
+        journeys: [],
+        proofCases: []
+      }
+    }));
+    expect(profile.browserBootstrap?.login?.allowedWritePaths).toEqual(["/session"]);
+    expect(redactAuthMaterial("value=browser-only-secret", profile)).toBe("value=<redacted>");
+
+    await expect(loadAuthProfile(await writeJson(tempDir, "unused.json", {
+      label: "bad-browser-account",
+      headers: {},
+      browserBootstrap: { schemaVersion: 1, loginSecrets: { unused: "secret" }, journeys: [], proofCases: [] }
+    }))).rejects.toThrow(/require a login workflow|Unused browser login secret/);
+  });
 });
 
 async function writeJson(tempDir: string, name: string, value: unknown): Promise<string> {

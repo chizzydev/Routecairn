@@ -76,6 +76,29 @@ describe("Scan Studio UI", () => {
     expect((screen.getByLabelText("Target base URL") as HTMLInputElement).value).toBe("https://app.example.test");
   });
 
+  it("exposes authoritative total and cleanup-reserved request budgets", async () => {
+    stubApi();
+    render(<ScanStudio onLaunched={() => undefined} />);
+    fireEvent.change(await screen.findByLabelText("Target base URL"), { target: { value: "https://app.example.test" } });
+    fireEvent.click(screen.getByLabelText(/I confirm I am authorized/));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const domain = screen.getByLabelText("New allowed domains rule");
+    fireEvent.change(domain, { target: { value: "app.example.test" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+    for (let step = 0; step < 4; step += 1) fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(screen.getByRole("heading", { name: "Browser & Limits" })).toBeTruthy();
+    const total = screen.getByLabelText("Total scan request budget") as HTMLInputElement;
+    const cleanupReserve = screen.getByLabelText("Cleanup requests reserved") as HTMLInputElement;
+    expect(total.placeholder).toBe("80");
+    expect(cleanupReserve.placeholder).toBe("Automatic");
+    fireEvent.change(total, { target: { value: "120" } });
+    fireEvent.change(cleanupReserve, { target: { value: "25" } });
+    expect(total.value).toBe("120");
+    expect(cleanupReserve.value).toBe("25");
+    expect(screen.getByText(/enforced across every engine, retry, redirect, API broker/i)).toBeTruthy();
+  });
+
   it("adds normalized scope rules and detects duplicates", async () => {
     stubApi();
     render(<ScanStudio onLaunched={() => undefined} />);

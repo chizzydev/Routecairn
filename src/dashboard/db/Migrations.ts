@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 16;
+export const dashboardSchemaVersion = 20;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -806,6 +806,80 @@ CREATE INDEX IF NOT EXISTS idx_mutation_recovery_leases_worker ON controlled_mut
     version: 16,
     sql: `
 ALTER TABLE targets ADD COLUMN production_mutation_enabled INTEGER NOT NULL DEFAULT 0;
+`
+  },
+  {
+    version: 17,
+    sql: `
+CREATE TABLE IF NOT EXISTS assisted_case_results (
+  scan_id TEXT NOT NULL REFERENCES scans(id) ON DELETE CASCADE,
+  workflow_id TEXT NOT NULL,
+  case_id TEXT NOT NULL,
+  assessment_outcome TEXT NOT NULL CHECK (assessment_outcome IN ('PROVEN','INCONCLUSIVE','NOT_ASSESSED','BLOCKED')),
+  conclusion TEXT NOT NULL CHECK (conclusion IN ('FINDING','NO_FINDING','UNRESOLVED','NOT_RUN')),
+  cleanup_unresolved INTEGER NOT NULL,
+  comparison_fingerprint TEXT,
+  safe_result_json TEXT NOT NULL,
+  PRIMARY KEY(scan_id, workflow_id, case_id)
+);
+CREATE TABLE IF NOT EXISTS assisted_review_runs (
+  scan_id TEXT PRIMARY KEY REFERENCES scans(id) ON DELETE CASCADE,
+  review_id TEXT NOT NULL,
+  safe_report_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS assisted_review_publications (
+  id TEXT PRIMARY KEY,
+  scan_id TEXT NOT NULL REFERENCES assisted_review_runs(scan_id) ON DELETE CASCADE,
+  artifact_id TEXT NOT NULL REFERENCES artifacts(id) ON DELETE RESTRICT,
+  content_sha256 TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assisted_cases_comparison ON assisted_case_results(workflow_id, case_id, comparison_fingerprint);
+`
+  },
+  {
+    version: 18,
+    sql: `
+ALTER TABLE controlled_mutation_approvals ADD COLUMN execution_scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX idx_mutation_approval_execution ON controlled_mutation_approvals(execution_scan_id) WHERE execution_scan_id IS NOT NULL;
+`
+  },
+  {
+    version: 19,
+    sql: `
+CREATE TABLE workflow_recovery_jobs (
+  id TEXT PRIMARY KEY,
+  case_id TEXT NOT NULL,
+  checkpoint_digest TEXT NOT NULL,
+  target_id TEXT NOT NULL REFERENCES targets(id),
+  status TEXT NOT NULL CHECK(status IN ('RUNNING','ROLLBACK_VERIFIED','CLEANUP_FAILED','INTERRUPTED')),
+  requested_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  safe_summary TEXT NOT NULL
+);
+CREATE UNIQUE INDEX workflow_recovery_one_active ON workflow_recovery_jobs(case_id) WHERE status = 'RUNNING';
+`
+  },
+  {
+    version: 20,
+    sql: `
+CREATE TABLE scan_executable_plans (
+  scan_id TEXT PRIMARY KEY REFERENCES scans(id) ON DELETE CASCADE,
+  schema_version INTEGER NOT NULL CHECK(schema_version = 1),
+  target_origin TEXT NOT NULL,
+  content_digest TEXT NOT NULL CHECK(length(content_digest) = 64),
+  plan_binding TEXT NOT NULL CHECK(length(plan_binding) = 64),
+  nonce TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  auth_tag TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  worker_verified_at TEXT,
+  worker_verified_binding TEXT
+);
+CREATE INDEX idx_scan_executable_plan_binding ON scan_executable_plans(plan_binding);
 `
   }
 ];

@@ -9,6 +9,11 @@ import { evidenceFromObservation } from "../evidence/EvidenceBuilder.js";
 export class FindingFactory {
   private readonly riskScorer = new RiskScorer();
 
+  public fromAssistedCase(input: Omit<Finding, "id" | "riskScore" | "timestamp"> & { workflowCase: NonNullable<Finding["workflowCase"]> }): Finding {
+    const id = `finding-${createHash("sha256").update(`${input.sourceModule}:${input.workflowCase.id}:${input.type}:${input.workflowCase.comparisonFingerprint ?? ""}`).digest("hex").slice(0, 24)}`;
+    return { ...input, id, riskScore: this.riskScorer.score(input), timestamp: new Date().toISOString() };
+  }
+
   public fromResponseObservation(observation: ResponseObservation, sourceModule: string): Finding | undefined {
     if (observation.falsePositiveStatus === "likely-false-positive") {
       return undefined;

@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "maxRequests": 40,
+  "maxResponseBytes": 65536,
+  "maxJsonDepth": 12,
+  "maxGraphqlDocumentBytes": 16384,
+  "maxGraphqlAliases": 5,
+  "maxGraphqlBatchOperations": 3,
+  "actors": [
+    { "id": "anonymous", "safeAlias": "anonymous", "authSlot": "anonymous", "relationship": "PUBLIC" },
+    { "id": "owner", "safeAlias": "account-a-owner", "authSlot": "account_a", "relationship": "OWNER", "principalId": "replace-account-a-principal", "tenantId": "replace-tenant-a", "role": "member" },
+    { "id": "foreign", "safeAlias": "account-b-foreign", "authSlot": "account_b", "relationship": "CROSS_TENANT_MEMBER", "principalId": "replace-account-b-principal", "tenantId": "replace-tenant-b", "role": "member" }
+  ],
+  "routes": [
+    { "id": "openapi", "safeAlias": "openapi-schema", "protocol": "REST", "kind": "SCHEMA", "url": "https://app.example.com/openapi.json", "documented": true, "documentedMethods": ["GET"], "inventoryActorId": "anonymous" },
+    { "id": "object-v1", "safeAlias": "account-object-v1", "protocol": "REST", "kind": "OBJECT", "url": "https://app.example.com/api/v1/accounts/disposable-object", "pathTemplate": "/api/v1/accounts/{id}", "version": "v1", "objectType": "account", "documented": true, "documentedMethods": ["GET", "HEAD", "OPTIONS"], "documentedResponseFields": ["id", "tenantId", "email"], "schemaSourceId": "openapi", "schemaPath": "/api/v1/accounts/{id}" },
+    { "id": "object-v2", "safeAlias": "account-object-v2", "protocol": "REST", "kind": "OBJECT", "url": "https://app.example.com/api/v2/accounts/disposable-object", "pathTemplate": "/api/v2/accounts/{id}", "version": "v2", "objectType": "account", "documented": true, "documentedMethods": ["GET"], "documentedResponseFields": ["id", "tenantId", "email"], "schemaSourceId": "openapi", "schemaPath": "/api/v2/accounts/{id}" },
+    { "id": "admin-summary", "safeAlias": "admin-summary", "protocol": "REST", "kind": "FUNCTION", "url": "https://app.example.com/api/admin/summary", "functionName": "admin.summary.read", "documented": true, "documentedMethods": ["GET"] },
+    { "id": "graphql", "safeAlias": "graphql-primary", "protocol": "GRAPHQL", "kind": "FUNCTION", "url": "https://app.example.com/graphql", "functionName": "graphql.query", "documented": true, "documentedMethods": ["POST"] }
+  ],
+  "checks": [
+    {
+      "id": "owner-object",
+      "matrixId": "account-object-access",
+      "label": "Owner can read the supplied object",
+      "kind": "OBJECT_AUTHORIZATION",
+      "routeId": "object-v1",
+      "actorId": "owner",
+      "requireVerifiedIdentity": true,
+      "request": { "method": "GET" },
+      "response": { "expectedDecision": "ALLOW", "identity": { "path": "id", "expectedValue": "disposable-object" }, "tenant": { "path": "tenantId", "expectedValue": "replace-tenant-a", "forbiddenValues": ["replace-tenant-b"] }, "fieldRules": [{ "path": "email", "classification": "PERSONAL", "expectation": "MUST_BE_PRESENT" }] }
+    },
+    {
+      "id": "foreign-object",
+      "matrixId": "account-object-access",
+      "label": "Cross-tenant actor cannot read the object",
+      "kind": "OBJECT_AUTHORIZATION",
+      "routeId": "object-v1",
+      "actorId": "foreign",
+      "requireVerifiedIdentity": true,
+      "request": { "method": "GET" },
+      "response": { "expectedDecision": "DENY" }
+    },
+    {
+      "id": "admin-function",
+      "matrixId": "admin-summary-access",
+      "label": "Member cannot invoke the admin summary function",
+      "kind": "FUNCTION_AUTHORIZATION",
+      "routeId": "admin-summary",
+      "actorId": "foreign",
+      "requireVerifiedIdentity": true,
+      "request": { "method": "GET" },
+      "response": { "expectedDecision": "DENY" }
+    },
+    {
+      "id": "method-boundary",
+      "label": "Alternate safe methods do not change authorization",
+      "kind": "METHOD_CONFUSION",
+      "routeId": "object-v1",
+      "actorId": "foreign",
+      "requireVerifiedIdentity": true,
+      "canonicalMethod": "GET",
+      "alternateMethods": ["HEAD", "OPTIONS"],
+      "expectation": "MUST_MATCH_CANONICAL",
+      "request": {}
+    },
+    {
+      "id": "graphql-fields",
+      "matrixId": "viewer-field-access",
+      "label": "Foreign actor cannot receive private viewer fields",
+      "kind": "FIELD_AUTHORIZATION",
+      "routeId": "graphql",
+      "actorId": "foreign",
+      "requireVerifiedIdentity": true,
+      "request": { "method": "POST", "graphql": { "operationName": "Viewer", "document": "query Viewer { viewer { id tenantId email recoveryCodes } }", "variables": {} } },
+      "response": { "expectedDecision": "ALLOW", "fieldRules": [{ "path": "data.viewer.recoveryCodes", "classification": "SECRET", "expectation": "MUST_BE_ABSENT" }, { "path": "data.viewer.email", "classification": "PERSONAL", "expectation": "MUST_BE_PRESENT" }] }
+    },
+    {
+      "id": "graphql-tenant",
+      "matrixId": "viewer-tenant-access",
+      "label": "GraphQL viewer stays inside the actor tenant",
+      "kind": "TENANT_ISOLATION",
+      "routeId": "graphql",
+      "actorId": "foreign",
+      "requireVerifiedIdentity": true,
+      "request": { "method": "POST", "graphql": { "operationName": "ViewerTenant", "document": "query ViewerTenant { viewer { id tenantId } }", "variables": {} } },
+      "response": { "expectedDecision": "ALLOW", "tenant": { "path": "data.viewer.tenantId", "expectedValue": "replace-tenant-b", "forbiddenValues": ["replace-tenant-a"] } }
+    },
+    { "id": "graphql-introspection", "label": "Production introspection is restricted", "kind": "GRAPHQL_INTROSPECTION", "routeId": "graphql", "actorId": "anonymous", "requireVerifiedIdentity": false, "expectedClassification": "RESTRICTED" },
+    { "id": "graphql-aliases", "label": "Two aliases remain within the configured policy", "kind": "GRAPHQL_ALIAS_LIMIT", "routeId": "graphql", "actorId": "owner", "requireVerifiedIdentity": true, "operationCount": 2, "documents": [{ "operationName": "AliasLimit", "document": "query AliasLimit { first: viewer { id } second: viewer { id } }", "variables": {} }], "expectation": "MUST_ALLOW" },
+    { "id": "graphql-batch", "label": "Bounded batched operations are rejected", "kind": "GRAPHQL_BATCH_LIMIT", "routeId": "graphql", "actorId": "owner", "requireVerifiedIdentity": true, "operationCount": 2, "documents": [{ "operationName": "ViewerA", "document": "query ViewerA { viewer { id } }", "variables": {} }, { "operationName": "ViewerB", "document": "query ViewerB { viewer { id } }", "variables": {} }], "expectation": "MUST_REJECT" },
+    { "id": "version-fields", "label": "Version two does not expose additional fields", "kind": "VERSION_BOUNDARY", "baselineRouteId": "object-v1", "candidateRouteId": "object-v2", "actorId": "owner", "requireVerifiedIdentity": true, "request": { "method": "GET" }, "expectation": "CANDIDATE_MUST_NOT_EXPOSE_MORE_FIELDS" }
+  ]
+}

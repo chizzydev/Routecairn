@@ -1,0 +1,11 @@
+{
+  "label": "operational-foreign",
+  "safeAlias": "operational-foreign",
+  "principalId": "replace-account-b-principal",
+  "tenantId": "replace-tenant-b",
+  "role": "viewer",
+  "headers": { "Authorization": "Bearer replace-account-b-credential" },
+  "cookies": [],
+  "lifecycleSecrets": {},
+  "notes": ["Use a distinct controlled Account B fixture."]
+}

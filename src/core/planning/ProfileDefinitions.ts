@@ -3,6 +3,17 @@ import type { ScanProfileDefinition } from "./ScanPlan.js";
 const safeMethods = ["OPTIONS", "HEAD", "GET"] as const;
 
 export const scanProfileDefinitions = {
+  "pre-handover": {
+    name: "pre-handover", displayName: "Internal Pre-Handover Assault",
+    description: "Explicit disposable-actor workflow sequencing with authoritative setup and handover gates.",
+    enabledModules: ["assisted-review"], disabledModules: [], moduleSettings: {},
+    authentication: { required: true, level: "account-pair", requireSingleProfile: false, requireAccountPair: true },
+    limits: { maxDepth: 1, rateLimitPerSecond: 5, concurrency: 2, requestTimeoutMs: 15000, bodyPreviewBytes: 8192, maxRequests: 500, maxScanDurationMs: 900000, retry: { maxAttempts: 1, baseDelayMs: 250, maxDelayMs: 1000, retryStatusCodes: [] } },
+    perModuleLimits: {}, evidence: { level: "strong", collectRequestAudit: true, collectBodyPreview: false, requireReproducibleEvidence: true, retainProofBlocks: true },
+    output: { json: true, markdown: true, html: true, stableForDiff: true, includePlan: true, includeRequestAudit: true },
+    failurePolicy: "fail-fast", optionalModulesMayBeSkipped: false,
+    reportFocus: ["disposable object ownership", "critical workflows", "cleanup", "fix/regression", "handover readiness"]
+  },
   quick: {
     name: "quick",
     displayName: "Quick Recon",
@@ -65,7 +76,8 @@ export const scanProfileDefinitions = {
       "cookie-review",
       "cors-review",
       "method-review",
-      "exposure-review"
+      "exposure-review",
+      "secret-boundary"
     ],
     disabledModules: ["authenticated-testing", "role-comparison", "state-aware-api", "object-pair-testing", "field-exposure-testing", "authorization-matrix-testing", "collection-authorization-testing", "bulk-authorization-testing", "file-authorization-testing", "equivalent-route-testing", "proof-mode"],
     moduleSettings: {
@@ -135,6 +147,7 @@ export const scanProfileDefinitions = {
       "cors-review",
       "method-review",
       "exposure-review",
+      "secret-boundary",
       "proof-mode"
     ],
     disabledModules: ["object-pair-testing", "field-exposure-testing", "authorization-matrix-testing", "collection-authorization-testing", "bulk-authorization-testing", "file-authorization-testing", "equivalent-route-testing"],
@@ -245,6 +258,7 @@ export const scanProfileDefinitions = {
       "cors-review",
       "method-review",
       "exposure-review",
+      "secret-boundary",
       "proof-mode"
     ],
     disabledModules: ["browser-crawler", "object-pair-testing", "field-exposure-testing", "authorization-matrix-testing", "collection-authorization-testing", "bulk-authorization-testing", "file-authorization-testing", "equivalent-route-testing"],

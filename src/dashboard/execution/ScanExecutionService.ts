@@ -1,6 +1,7 @@
+import { canonicalScanReportPaths, preservePartialScanReport } from "./PartialScanReport.js";
 import { randomUUID, createHash } from "node:crypto";
-import { statSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import { ArtifactRepository, AuditRepository, EventRepository, ModuleExecutionRepository, PlanRepository, ScanRepository } from "../db/DashboardRepositories.js";
@@ -12,15 +13,17 @@ import { entryFromReport, recordScan, scanIndexPath } from "../../storage/ScanIn
 import { FindingNormalizer } from "../findings/FindingNormalizer.js";
 import { ComparisonService } from "../services/ComparisonService.js";
 import { FindingFingerprintService } from "../findings/FindingFingerprintService.js";
-import { planSnapshot, reportDirectoryFor, resolveDashboardScanPlan, safeConfigurationSummary, safePlanIdentity } from "./ScanExecutionShared.js";
-import { resolveCredentialAuthForDashboardScan } from "./ScanExecutionShared.js";
-import { ScanWorkerManager } from "../worker/ScanWorkerManager.js";
+import { planSnapshot, reportDirectoryFor, resolveDashboardScanPlan, resolveCredentialAuthForDashboardScan, safeConfigurationSummary, safePlanIdentity, type DashboardResolvedAuth } from "./ScanExecutionShared.js";
+import { assertExecutablePlanSourcesUnchanged, captureExecutablePlanSources, createExecutablePlanPayload, type BoundExecutablePlan } from "./ExecutablePlanSnapshot.js";
+import { ExecutablePlanStore } from "./ExecutablePlanStore.js";
+import { ScanWorkerManager, type WorkerRunResult } from "../worker/ScanWorkerManager.js";
 import { redactDashboardValue } from "../security/Redaction.js";
 import type { CredentialVault } from "../credentials/CredentialVault.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
 import { verifyScanIdentities } from "../../core/auth/IdentityVerification.js";
 import { RetestTemplateVault } from "../retests/RetestTemplateVault.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
+import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
 
 const maxQueuedScans = 20;
 
@@ -28,6 +31,8 @@ interface QueueItem {
   scanId: string;
   request: DashboardScanCreateRequest;
   abortController: AbortController;
+  executablePlanBinding: string;
+  resolvedAuth: DashboardResolvedAuth;
   mutationContracts?: readonly ControlledMutationContract[];
 }
 
@@ -41,10 +46,13 @@ export class ScanExecutionService {
   private readonly normalizer: FindingNormalizer;
   private readonly workers: ScanWorkerManager;
   private readonly retestTemplates: RetestTemplateVault;
+  private readonly executablePlans: ExecutablePlanStore;
   private readonly queue: QueueItem[] = [];
   private active: QueueItem | undefined;
   private activeCompletion: Promise<void> | undefined;
   private stopping = false;
+  private reconciliation: Promise<void> | undefined;
+  private readonly reconciliationTimer: ReturnType<typeof setInterval>;
 
   public constructor(private readonly database: DashboardDatabase, private readonly paths: DashboardPaths, private readonly vault?: CredentialVault, retestTemplates?: RetestTemplateVault) {
     this.scans = new ScanRepository(database);
@@ -55,8 +63,11 @@ export class ScanExecutionService {
     this.audit = new AuditRepository(database);
     this.normalizer = new FindingNormalizer(database.db, new FindingFingerprintService(paths.fingerprintKeyPath));
     this.workers = new ScanWorkerManager(database, paths, vault);
+    this.executablePlans = new ExecutablePlanStore(database, paths.executablePlanKeyPath);
     this.retestTemplates = retestTemplates ?? new RetestTemplateVault(database.db);
-    this.workers.recoverExpiredLeases();
+    void this.reconcileInterruptedReports();
+    this.reconciliationTimer = setInterval(() => { if (!this.stopping && database.db.open) void this.reconcileInterruptedReports(); }, 30_000);
+    this.reconciliationTimer.unref();
   }
 
   public async preview(request: DashboardScanCreateRequest): Promise<PlanPreviewResponse> {
@@ -111,18 +122,24 @@ export class ScanExecutionService {
     return redactDashboardValue({ ...result, requestAudit: context.state.getRequestAudit() }) as Record<string, unknown>;
   }
 
-  public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[]): Promise<string> {
+  public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[], approvalId?: string): Promise<string> {
     if (this.queue.length >= maxQueuedScans) {
       throw new Error(`Scan queue is full. Maximum queued scans: ${maxQueuedScans}.`);
     }
     const scanId = randomUUID();
+    const sourceBindings = await captureExecutablePlanSources(request);
     const credentialAuth = this.resolveCredentialAuth(request);
-    const { plan } = await resolveDashboardScanPlan(request, credentialAuth);
+    const resolved = await resolveDashboardScanPlan(request, credentialAuth, mutationContracts);
+    await assertExecutablePlanSourcesUnchanged(sourceBindings);
+    const { plan } = resolved;
     if (request.studio?.previewIdentity && request.studio.previewIdentity !== safePlanIdentity({ ...request, studio: { ...request.studio, previewIdentity: undefined } }, plan)) {
       throw new Error("PREVIEW_STALE: Scan Studio configuration changed after plan preview.");
     }
     const targetOrigin = new URL(request.target).origin;
     const outputDirectory = reportDirectoryFor(this.paths.reportsDir, scanId);
+    const resolvedAuth = this.executionAuth(resolved, credentialAuth, request);
+    const executablePayload = createExecutablePlanPayload(request.target, resolved, resolvedAuth, sourceBindings);
+    let executablePlan!: BoundExecutablePlan;
     this.database.transaction(() => {
       this.scans.create({
         id: scanId,
@@ -138,10 +155,16 @@ export class ScanExecutionService {
         targetId: request.targetId,
         authorizationDeclaration: request.authorizationDeclaration
       });
-      this.events.append(scanId, "SCAN_QUEUED", "Scan queued.", { profile: request.profile, target: targetOrigin });
+      executablePlan = this.executablePlans.save(scanId, targetOrigin, executablePayload);
+      this.plans.create(scanId, planSnapshot(plan, resolved.scope));
+      this.modules.createQueued(scanId, plan.modules.map((modulePlan) => ({ id: modulePlan.id, phase: modulePlan.phase })));
+      this.scans.updatePlanSummary(scanId, plan.evidence.level, plan.modules.length);
+      if (approvalId) new ControlledMutationApprovalRepository(this.database).beginExecution(approvalId, scanId);
+      this.events.append(scanId, "PLAN_BOUND", "Reviewed executable plan encrypted and bound to the queued scan.", { binding: executablePlan.binding, schemaVersion: executablePayload.schemaVersion });
+      this.events.append(scanId, "SCAN_QUEUED", "Scan queued.", { profile: request.profile, target: targetOrigin, executablePlanBinding: executablePlan.binding });
       this.retestTemplates.save(scanId, request.studio?.workflows ?? []);
     });
-    this.queue.push({ scanId, request, abortController: new AbortController(), ...(mutationContracts?.length ? { mutationContracts } : {}) });
+    this.queue.push({ scanId, request, abortController: new AbortController(), executablePlanBinding: executablePlan.binding, resolvedAuth, ...(mutationContracts?.length ? { mutationContracts } : {}) });
     void this.pump();
     return scanId;
   }
@@ -152,10 +175,25 @@ export class ScanExecutionService {
     return resolveCredentialAuthForDashboardScan(this.vault, request);
   }
 
+  private executionAuth(resolved: Awaited<ReturnType<typeof resolveDashboardScanPlan>>, credentialAuth: DashboardResolvedAuth | undefined, request: DashboardScanCreateRequest): DashboardResolvedAuth {
+    return {
+      safeSummary: credentialAuth?.safeSummary ?? {
+        source: request.authFile || request.authAFile ? "enqueue-resolved-auth-file" : "public",
+        hasSingleProfile: Boolean(resolved.authProfile),
+        hasAccountPair: Boolean(resolved.authProfileSet),
+        redactionApplied: true
+      },
+      ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}),
+      ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {})
+    };
+  }
+
   public async rerun(scanId: string): Promise<string> {
     const row = this.database.db.prepare("SELECT safe_configuration_summary FROM scans WHERE id = ?").get(scanId) as { safe_configuration_summary: string } | undefined;
     if (!row) throw new Error("Scan not found.");
     const summary = JSON.parse(row.safe_configuration_summary) as Partial<DashboardScanCreateRequest> & { auth?: boolean; accountPair?: boolean };
+    const authorizationSummary = JSON.parse(row.safe_configuration_summary) as Record<string, unknown>;
+    if (authorizationSummary.targetMode || authorizationSummary.targetAuthorizationFileLabel || authorizationSummary.preHandover || authorizationSummary.preHandoverFileLabel) throw new Error("Rerun requires fresh explicit target authorization and workflow manifests.");
     if (summary.auth || summary.accountPair) {
       throw new Error("Rerun for authenticated scans requires supplying fresh ephemeral authentication material.");
     }
@@ -203,6 +241,8 @@ export class ScanExecutionService {
 
   public async shutdown(): Promise<void> {
     this.stopping = true;
+    clearInterval(this.reconciliationTimer);
+    await this.reconciliation;
     if (this.active) {
       this.active.abortController.abort();
       this.workers.cancel(this.active.scanId);
@@ -236,14 +276,15 @@ export class ScanExecutionService {
     try {
       this.scans.updateStatus(item.scanId, "PLANNING");
       this.events.append(item.scanId, "PLAN_STARTED", "Planning started.", {});
+      const executablePlan = this.executablePlans.load(item.scanId, new URL(item.request.target).origin);
+      if (executablePlan.binding !== item.executablePlanBinding) throw new Error("EXECUTABLE_PLAN_QUEUE_BINDING_MISMATCH");
       this.scans.updateStatus(item.scanId, "RUNNING");
       const result = await this.workers.run(item.scanId, item.request, {
         onPlan: (message) => {
           this.database.transaction(() => {
-            this.plans.create(item.scanId, message.planSnapshot as Parameters<PlanRepository["create"]>[1]);
-            this.modules.createQueued(item.scanId, message.modules);
-            this.scans.updatePlanSummary(item.scanId, message.evidenceLevel, message.modules.length);
-            this.events.append(item.scanId, "PLAN_COMPLETED", "Planning completed in isolated worker.", { modules: message.modules.map((modulePlan) => modulePlan.id), workerId: message.workerId });
+            this.executablePlans.markWorkerVerified(item.scanId, message.executionPlanBinding);
+            this.events.append(item.scanId, "PLAN_VERIFIED", "Worker verified and accepted the immutable executable plan.", { modules: message.modules.map((modulePlan) => modulePlan.id), workerId: message.workerId, executablePlanBinding: message.executionPlanBinding });
+            this.events.append(item.scanId, "PLAN_COMPLETED", "Bound planning completed in isolated worker.", { modules: message.modules.map((modulePlan) => modulePlan.id), workerId: message.workerId, executablePlanBinding: message.executionPlanBinding });
           });
         },
         onEvent: (message) => {
@@ -252,20 +293,50 @@ export class ScanExecutionService {
         onHeartbeat: (message) => {
           this.events.append(item.scanId, "WORKER_HEARTBEAT", "Worker heartbeat.", { workerId: message.workerId, timestamp: message.timestamp });
         }
-      }, item.mutationContracts?.length ? { contracts: item.mutationContracts } : undefined);
-      if (result.status === "FAILED" || result.status === "INTERRUPTED") throw new Error(result.error ?? "Worker scan failed.");
-      if (result.status === "CANCELLED") {
-        this.database.transaction(() => {
-          this.scans.updateStatus(item.scanId, "CANCELLED", { cancelledAt: nowIso(), ...(result.error ? { errorSummary: result.error } : {}) });
-          this.events.append(item.scanId, "SCAN_CANCELLED", "Scan cancelled by isolated worker.", { workerId: result.workerId });
+      }, { executablePlan, resolvedAuth: item.resolvedAuth, ...(item.mutationContracts?.length ? { contracts: item.mutationContracts } : {}) });
+      await this.ingestResult(item.scanId, item.request.target, result, item.mutationContracts ?? []);
+    } catch (error) {
+      new ControlledMutationApprovalRepository(this.database).finishExecution(item.scanId, true);
+      this.database.transaction(() => {
+        this.scans.updateStatus(item.scanId, item.abortController.signal.aborted ? "CANCELLED" : "FAILED", {
+          ...(item.abortController.signal.aborted ? { cancelledAt: nowIso() } : {}),
+          errorSummary: safeErrorMessage(error)
         });
+        this.events.append(item.scanId, item.abortController.signal.aborted ? "SCAN_CANCELLED" : "SCAN_FAILED", safeErrorMessage(error), {});
+      });
+    }
+  }
+
+
+  private async ingestResult(scanId: string, target: string, result: WorkerRunResult, contracts: readonly ControlledMutationContract[] = []): Promise<void> {
+    const canonical = canonicalScanReportPaths(this.paths, scanId);
+    if (result.status !== "COMPLETED") {
+      const restored = await preservePartialScanReport(this.paths, scanId, target, result.status);
+      if (!restored) {
+        new ControlledMutationApprovalRepository(this.database).finishExecution(scanId, true);
+        this.scans.updateStatus(scanId, result.status, { ...(result.status === "CANCELLED" ? { cancelledAt: nowIso() } : {}), errorSummary: result.error ?? "Execution ended before a report checkpoint was available." });
+        this.events.append(scanId, result.status === "CANCELLED" ? "SCAN_CANCELLED" : result.status === "INTERRUPTED" ? "SCAN_INTERRUPTED" : "SCAN_FAILED", "Execution ended before any durable report was available. Consult recovery for outstanding cleanup.", {});
+        this.database.db.prepare("UPDATE scans SET import_limitation_summary = COALESCE(import_limitation_summary, 'PARTIAL_REPORT_UNAVAILABLE') WHERE id = ?").run(scanId);
         return;
       }
-      if (!result.reportPath || !result.markdownReportPath || !result.htmlReportPath) throw new Error("Worker completed without report paths.");
+      Object.assign(result, restored);
+    }
+    if (!result.reportPath || !result.markdownReportPath || !result.htmlReportPath) throw new Error("Worker completed without report paths.");
+    if (resolve(result.reportPath) !== canonical.reportPath || resolve(result.markdownReportPath) !== canonical.markdownReportPath || resolve(result.htmlReportPath) !== canonical.htmlReportPath) throw new Error("Worker report path binding mismatch.");
       const report = await loadReport(result.reportPath);
-      const jsonArtifact = this.recordArtifact(item.scanId, result.reportPath, "JSON_REPORT", "application/json");
-      const markdownArtifact = this.recordArtifact(item.scanId, result.markdownReportPath, "MARKDOWN_REPORT", "text/markdown; charset=utf-8");
-      const htmlArtifact = this.recordArtifact(item.scanId, result.htmlReportPath, "HTML_REPORT", "text/html; charset=utf-8");
+      const expectedCases = contracts;
+      const cleanupUnresolved = report.execution?.cleanup.state !== "CLEAR" || expectedCases.some((contract) => {
+        const result = report.privilegeMutation?.observations.find((item) => item.caseId === contract.caseId)?.result;
+        return !result || !["ROLLBACK_VERIFIED", "NOT_REQUIRED"].includes(result.cleanupOutcome);
+      });
+      new ControlledMutationApprovalRepository(this.database).finishExecution(scanId, cleanupUnresolved);
+      const jsonArtifact = this.recordArtifact(scanId, result.reportPath, "JSON_REPORT", "application/json");
+      const markdownArtifact = this.recordArtifact(scanId, result.markdownReportPath, "MARKDOWN_REPORT", "text/markdown; charset=utf-8");
+      const htmlArtifact = this.recordArtifact(scanId, result.htmlReportPath, "HTML_REPORT", "text/html; charset=utf-8");
+      if (report.assistedReview && !report.execution?.partial) {
+        this.recordArtifact(scanId, join(dirname(result.reportPath), "assisted-review.evidence.json"), "ASSISTED_OPERATOR_EVIDENCE", "application/json");
+        this.recordArtifact(scanId, join(dirname(result.reportPath), "assisted-review.customer.json"), "ASSISTED_COVERAGE_DRAFT", "application/json");
+      }
       await recordScan(
         scanIndexPath(this.paths.reportsDir),
         entryFromReport(report, {
@@ -275,23 +346,32 @@ export class ScanExecutionService {
           htmlReportPath: result.htmlReportPath
         })
       );
-      const findingCount = this.normalizer.normalizeReport(item.scanId, report);
+      const findingCount = this.normalizer.normalizeReport(scanId, report);
       this.database.transaction(() => {
-        this.scans.attachArtifacts(item.scanId, { json: jsonArtifact, markdown: markdownArtifact, html: htmlArtifact });
-        this.scans.updateCounters(item.scanId);
-        this.scans.updateStatus(item.scanId, "COMPLETED");
-        this.events.append(item.scanId, "SCAN_COMPLETED", "Scan completed in isolated worker.", { findingCount, workerId: result.workerId });
+        this.scans.attachArtifacts(scanId, { json: jsonArtifact, markdown: markdownArtifact, html: htmlArtifact });
+        this.scans.updateCounters(scanId);
+        this.scans.updateStatus(scanId, result.status, { ...(result.status === "CANCELLED" ? { cancelledAt: nowIso() } : {}), ...(result.error ? { errorSummary: result.error } : {}) });
+        this.events.append(scanId, result.status === "COMPLETED" ? "SCAN_COMPLETED" : result.status === "CANCELLED" ? "SCAN_CANCELLED" : result.status === "INTERRUPTED" ? "SCAN_INTERRUPTED" : "SCAN_FAILED", result.status === "COMPLETED" ? "Scan completed in isolated worker." : "Partial evidence ingested; incomplete coverage is not a security pass.", { findingCount, workerId: result.workerId, partial: result.status !== "COMPLETED", cleanupUnresolved });
+        if (cleanupUnresolved) this.events.append(scanId, "MUTATION_CLEANUP_REQUIRED", "Cleanup remains unresolved or unknown. Use Offensive Safety recovery before further mutation.", { cleanup: report.execution?.cleanup });
       });
-      this.createAutomaticComparison(item.scanId);
-    } catch (error) {
-      this.database.transaction(() => {
-        this.scans.updateStatus(item.scanId, item.abortController.signal.aborted ? "CANCELLED" : "FAILED", {
-          ...(item.abortController.signal.aborted ? { cancelledAt: nowIso() } : {}),
-          errorSummary: safeErrorMessage(error)
-        });
-        this.events.append(item.scanId, item.abortController.signal.aborted ? "SCAN_CANCELLED" : "SCAN_FAILED", safeErrorMessage(error), {});
-      });
-    }
+      if (result.status === "COMPLETED") this.createAutomaticComparison(scanId);
+  }
+
+  private reconcileInterruptedReports(): Promise<void> {
+    if (this.reconciliation) return this.reconciliation;
+    this.reconciliation = (async () => {
+      await this.workers.recoverExpiredLeases();
+      if (!this.database.db.open) return;
+      new ControlledMutationApprovalRepository(this.database).recoverInterruptedExecutions();
+      const rows = this.database.db.prepare("SELECT id, target_origin AS target FROM scans WHERE status = 'INTERRUPTED' AND json_report_artifact_id IS NULL AND import_limitation_summary IS NULL AND deleted_at IS NULL").all() as Array<{ id: string; target: string }>;
+      for (const row of rows) {
+        try { await this.ingestResult(row.id, row.target, { workerId: "recovered", status: "INTERRUPTED", error: "Worker termination interrupted execution." }); }
+        catch { this.audit.append({ action: "PARTIAL_REPORT_RECONCILIATION_FAILED", resourceType: "SCAN", resourceId: row.id, summary: "Interrupted scan report requires operator reconciliation; its durable checkpoint was retained." }); }
+      }
+    })().catch(() => {
+      if (this.database.db.open) this.audit.append({ action: "PARTIAL_REPORT_RECONCILIATION_FAILED", resourceType: "SCAN", summary: "Interrupted scan evidence or cleanup requires reconciliation; durable checkpoints were retained." });
+    }).finally(() => { this.reconciliation = undefined; });
+    return this.reconciliation;
   }
 
   private createAutomaticComparison(scanId: string): void {
@@ -320,7 +400,7 @@ export class ScanExecutionService {
           this.events.append(scanId, event.type, event.message, metadata, event.moduleId);
           if (event.type === "MODULE_STARTED" && event.moduleId) {
             this.modules.mark(scanId, event.moduleId, "RUNNING");
-            this.scans.updateStatus(scanId, "RUNNING", { currentModule: event.moduleId });
+            if (this.active?.abortController.signal.aborted !== true) this.scans.updateStatus(scanId, "RUNNING", { currentModule: event.moduleId });
           }
           if (event.type === "MODULE_COMPLETED" && event.moduleId) {
             this.modules.mark(scanId, event.moduleId, "COMPLETED", undefined, typeof metadata.findings === "number" ? metadata.findings : undefined);
@@ -341,6 +421,11 @@ export class ScanExecutionService {
 
   private recordArtifact(scanId: string, path: string, type: string, contentType: string): string {
     const stat = statSync(path);
+    const existing = this.database.db.prepare("SELECT id FROM artifacts WHERE scan_id = ? AND artifact_type = ? AND canonical_path = ? LIMIT 1").get(scanId, type, path) as { id: string } | undefined;
+    if (existing) {
+      this.database.db.prepare("UPDATE artifacts SET size = ?, scoped_or_full_safe_hash = ? WHERE id = ?").run(stat.size, fileHash(path), existing.id);
+      return existing.id;
+    }
     return this.artifacts.create({
       scanId,
       type,
@@ -358,5 +443,5 @@ function safeErrorMessage(error: unknown): string {
 }
 
 function fileHash(path: string): string {
-  return createHash("sha256").update(path).digest("hex");
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
 }

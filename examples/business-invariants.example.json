@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 10,
+  "maxRequests": 100,
+  "maxResponseBytes": 32768,
+  "maxConcurrency": 2,
+  "cases": [
+    {
+      "id": "withdrawal-balance-limit",
+      "label": "Withdrawal never exceeds the authoritative available balance",
+      "category": "FINANCIAL_LIMIT",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": {
+        "mode": "CONTROLLED_INVARIANT",
+        "environment": "TEST",
+        "confirmation": "I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING",
+        "authorizedBy": "replace-with-operator-reference",
+        "changeTicket": "replace-with-change-ticket",
+        "authorizedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "disposableEntities": true,
+        "productionAcknowledged": false
+      },
+      "preState": [{ "id": "balance-before", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-wallet", "stateChanging": false }, "captures": [{ "name": "balance_before", "source": "JSON", "path": "availableBalance" }] }],
+      "actions": [{
+        "id": "withdraw",
+        "actorId": "member",
+        "request": { "method": "POST", "url": "https://app.example.com/api/test-wallet/withdrawals", "stateChanging": true, "bodyFormat": "JSON", "fields": { "amount": 10 } },
+        "execution": { "mode": "ONCE", "attempts": 1, "maxConcurrency": 1 },
+        "expectation": { "authorization": "ALLOW", "businessRule": "ACCEPT" }
+      }],
+      "postState": [{ "id": "balance-after", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-wallet", "stateChanging": false }, "captures": [{ "name": "balance_after", "source": "JSON", "path": "availableBalance" }] }],
+      "invariants": [
+        { "id": "withdrawal-not-overdrawn", "kind": "VALUE_COMPARE", "left": { "source": "CAPTURE", "ref": "balance_after" }, "operator": "GTE", "right": { "source": "LITERAL", "value": 0 } },
+        { "id": "single-delta", "kind": "NUMERIC_DELTA", "before": "balance_before", "after": "balance_after", "operator": "EQ", "expected": -10 }
+      ],
+      "cleanupRequired": true,
+      "cleanup": [{ "id": "restore-balance", "actorId": "member", "request": { "method": "POST", "url": "https://app.example.com/api/test-wallet/deposits", "stateChanging": true, "bodyFormat": "JSON", "fields": { "amount": 10 } }, "successStatusCodes": [200, 204] }],
+      "cleanupVerification": [{ "id": "balance-restored", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-wallet", "stateChanging": false }, "captures": [{ "name": "balance_restored", "source": "JSON", "path": "availableBalance" }] }],
+      "cleanupInvariants": [{ "id": "original-balance-restored", "kind": "VALUE_COMPARE", "left": { "source": "CAPTURE", "ref": "balance_restored" }, "operator": "EQ", "right": { "source": "CAPTURE", "ref": "balance_before" } }]
+    },
+    {
+      "id": "coupon-only-once",
+      "label": "Coupon effect is applied at most once under concurrent duplicate submission",
+      "category": "ONE_TIME_ACTION",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": {
+        "mode": "CONTROLLED_INVARIANT",
+        "environment": "TEST",
+        "confirmation": "I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING",
+        "authorizedBy": "replace-with-operator-reference",
+        "changeTicket": "replace-with-change-ticket",
+        "authorizedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "disposableEntities": true,
+        "productionAcknowledged": false
+      },
+      "preState": [{ "id": "redemptions-before", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-coupon", "stateChanging": false }, "captures": [{ "name": "redemptions_before", "source": "JSON", "path": "redemptions" }] }],
+      "actions": [{
+        "id": "redeem-twice",
+        "actorId": "member",
+        "request": { "method": "POST", "url": "https://app.example.com/api/test-coupon/redeem", "stateChanging": true, "bodyFormat": "JSON", "fields": { "couponCode": "{{SECRET:test_coupon_code}}" } },
+        "execution": { "mode": "CONCURRENT_DUPLICATE", "attempts": 2, "maxConcurrency": 2 },
+        "expectation": { "authorization": "ALLOW", "businessRule": "NOT_EVALUATED" }
+      }],
+      "postState": [{ "id": "redemptions-after", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-coupon", "stateChanging": false }, "captures": [{ "name": "redemptions_after", "source": "JSON", "path": "redemptions" }] }],
+      "invariants": [
+        { "id": "accepted-at-most-once", "kind": "ACTION_OUTCOME_COUNT", "actionId": "redeem-twice", "outcome": "ACCEPTED", "operator": "LTE", "expected": 1 },
+        { "id": "effect-at-most-once", "kind": "NUMERIC_DELTA", "before": "redemptions_before", "after": "redemptions_after", "operator": "LTE", "expected": 1 }
+      ],
+      "cleanupRequired": true,
+      "cleanup": [{ "id": "reset-coupon", "actorId": "member", "request": { "method": "DELETE", "url": "https://app.example.com/api/test-coupon/redemption", "stateChanging": true }, "successStatusCodes": [200, 204] }],
+      "cleanupVerification": [{ "id": "redemptions-restored", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-coupon", "stateChanging": false }, "captures": [{ "name": "redemptions_restored", "source": "JSON", "path": "redemptions" }] }],
+      "cleanupInvariants": [{ "id": "redemptions-reset", "kind": "VALUE_COMPARE", "left": { "source": "CAPTURE", "ref": "redemptions_restored" }, "operator": "EQ", "right": { "source": "CAPTURE", "ref": "redemptions_before" } }]
+    }
+  ]
+}

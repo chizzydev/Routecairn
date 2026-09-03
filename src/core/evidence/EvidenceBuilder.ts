@@ -3,14 +3,17 @@ import type { FindingEvidence } from "../findings/Finding.js";
 import type { Severity } from "../findings/Severity.js";
 import type { HttpResponse } from "../http/HttpTypes.js";
 import type { ResponseObservation } from "../../reports/ReportTypes.js";
+import { redactSensitiveUrl } from "./ValuePresenceAttestation.js";
 
-const sensitiveHeaderPattern = /^(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|api-key|x-auth-token|x-csrf-token|x-tenant-id|x-org-id|x-organization-id|x-workspace-id)$/i;
+const sensitiveHeaderPattern = /^(?:authorization|proxy-authorization|cookie|set-cookie|apikey|x-api-key|api-key|x-auth-token|x-csrf-token|x-tenant-id|x-org-id|x-organization-id|x-workspace-id)$/i;
 const sensitiveBodyPatterns: Array<[RegExp, string]> = [
-  [/(\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|secret|signing[_-]?secret|session[_-]?secret|password|passwd|pwd|database_url|db_password|private[_-]?key)\b["']?\s*[:=]\s*)["']?[^"'\s,;<>]+/gi, "$1<redacted>"],
+  [/(\b[A-Za-z0-9_.-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|service[_-]?role[_-]?key|secret|signing[_-]?secret|session(?:[_-]?(?:id|token|secret))?|password|passwd|pwd|database[_-]?url|db[_-]?password|private[_-]?key)[A-Za-z0-9_.-]*\b["']?\s*[:=]\s*)["']?[^"'\s,;<>]+/gi, "$1<redacted>"],
   [/("(?:ssn|socialSecurityNumber|taxId|privateEmail|privatePhone|privateAddress|passwordHash)"\s*:\s*")[^"]+("?)/gi, "$1<redacted>$2"],
   [/AKIA[0-9A-Z]{16}/g, "AKIA<redacted>"],
   [/(?:postgres|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi, "<redacted-connection-url>"],
-  [/-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g, "<redacted-private-key>"]
+  [/-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+PRIVATE KEY-----/g, "<redacted-private-key>"],
+  [/\b(?:sb_(?:secret|publishable)_[A-Za-z0-9_-]{8,}|(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g, "<redacted-credential-material>"],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "<redacted-jwt>"]
 ];
 
 export interface EvidenceInput {
@@ -18,6 +21,37 @@ export interface EvidenceInput {
   severity: Severity;
   confidence: Confidence;
   tags: string[];
+}
+
+export function evidenceFromAssistedWorkflow(
+  evidence: FindingEvidence,
+  input: EvidenceInput & { workflowId: string; caseId: string }
+): FindingEvidence {
+  const responseLike: HttpResponse = {
+    requestedUrl: redactSensitiveUrl(evidence.url),
+    finalUrl: redactSensitiveUrl(evidence.url),
+    method: normalizeEvidenceMethod(evidence.method),
+    ...(evidence.statusCode !== undefined ? { statusCode: evidence.statusCode } : {}),
+    headers: Object.fromEntries(Object.entries(evidence.responseHeaders ?? {}).filter(([name]) => /^(?:content-type|content-length|cache-control|pragma|expires|set-cookie)$/i.test(name))),
+    ...(evidence.contentType ? { contentType: evidence.contentType } : {}),
+    ...(evidence.contentLength !== undefined ? { contentLength: evidence.contentLength } : {}),
+    ...(evidence.title ? { title: redactBodyPreview(evidence.title) } : {}),
+    ...(evidence.bodyHash ? { bodyHash: evidence.bodyHash } : {}),
+    ...(evidence.valueAttestations ? { valueAttestations: evidence.valueAttestations } : {}),
+    responseTimeMs: 0,
+    redirectChain: []
+  };
+  const { curlCommand: _curlCommand, ...normalized } = evidenceFromResponse(responseLike, { ...input, source: redactBodyPreview(input.source) });
+  return {
+    ...normalized,
+    method: evidence.method,
+    source: `assisted-workflow:${safeEvidenceLabel(input.workflowId)}:${safeEvidenceLabel(input.caseId)}`,
+    reproductionNotes: [
+      `Workflow ${safeEvidenceLabel(input.workflowId)}; case ${safeEvidenceLabel(input.caseId)}.`,
+      ...(evidence.reproductionNotes ?? []).map((note) => redactBodyPreview(note)),
+      "Human confirmation is required before proof-pack or customer-report inclusion."
+    ].slice(0, 12)
+  };
 }
 
 export function evidenceFromResponse(response: HttpResponse, input: EvidenceInput): FindingEvidence {
@@ -106,4 +140,14 @@ function reproductionNotes(response: HttpResponse): string[] {
   }
 
   return notes;
+}
+
+function normalizeEvidenceMethod(method: string): HttpResponse["method"] {
+  return ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"].includes(method)
+    ? method as HttpResponse["method"]
+    : "GET";
+}
+
+function safeEvidenceLabel(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_.:/-]/g, "-").slice(0, 160);
 }

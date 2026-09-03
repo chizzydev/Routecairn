@@ -300,7 +300,11 @@ Crawl depth is traversal distance from the seed: the initial page is depth `0`, 
 
 DNS checks are policy-time checks. RouteCairn does not currently pin the browser connection to the exact approved DNS answer or route traffic through a scanner-controlled proxy, so DNS rebinding between policy evaluation and browser connection remains a documented residual limitation. Do not describe the browser layer as complete SSRF-grade network isolation.
 
-Authenticated browser bootstrap is separate from the hardened crawl phase. The current scanner does not use a browser login automation workflow. When a resolved plan requires authentication, `browser-crawler` skips with an explicit note rather than browsing anonymously and implying authenticated browser coverage. If browser login is added later, mutating bootstrap exceptions must be scoped to that phase and removed before normal crawling begins.
+Authenticated browser bootstrap is implemented on the hardened crawl path. An authenticated plan must have a primary profile or the crawler refuses to browse anonymously. Header/cookie bootstrap and an optional explicit login workflow run in a fresh isolated Chromium context. Login form values live only in the auth profile or encrypted dashboard vault, arrive at a worker through the existing job/generation/attempt-bound HMAC envelope, and are referenced by name from bounded `fill` steps. The one write exception is an explicit login `POST`: it must match the target origin, scope method allowlist, configured login phase, and exact allowed login path. The exception is removed immediately after login; every later `POST`, `PUT`, `PATCH`, or `DELETE` is blocked before transmission.
+
+Use `browserBootstrap` in the primary `--auth` profile; see `examples/auth.browser.example.json`. Workflows support bounded navigation, secret-backed fills, explicit login clicks, URL/visibility waits, and post-login journeys that may click anchors only. The crawler records cookie/local/session storage metadata with per-run salted digests, DOM writable/read-only/disabled fields, legitimate admin-link discovery, browser/API identity correlation, and transmitted request/response metadata in `browser-traffic.redacted.har.json`. It never persists request bodies, response bodies, cookie values, storage values, login values, or raw identity values. All query values are redacted in browser traffic artifacts.
+
+Browser-learned traffic is not mutation authority. Every allowed and blocked browser request is reduced to a versioned, secret-free candidate in `authentication-lifecycle.learning.json`; blocked writes are observed before transmission. With `--authentication-lifecycle-auto`, RouteCairn can promote the single unambiguous explicit login candidate into login-enumeration, session-rotation, and session-fixation cases, resolve field-to-secret-reference bindings in memory, and execute the ready cases under a separately supplied exact expiring automation policy. Missing or ambiguous fields, cookies, credentials, cleanup, or authorization produce named readiness blockers rather than guessed traffic. Optional `proofCases` can bind read-only browser selector assertions to an already approved controlled-mutation `caseId`. Protected-action proof runs after authoritative impact verification, rollback proof runs before cleanup is sealed, and a failed browser rollback assertion keeps the encrypted recovery bundle and marks cleanup failed. Chromium bootstrap is replayed once after a browser-process failure; credentials remain in memory and no reusable browser state file is written.
 
 ### Object Pair Testing
 
@@ -756,9 +760,303 @@ Public file cases send no authentication headers, cookies, CSRF headers, tenant 
 
 File content, signed URL issuance, and signed URL follow responses are not cached by default; file requests use `skipCache` and exact signed follows disable retries while preserving scope, redirect, rate-limit, concurrency, cache-partition, and global request-budget controls. File probes send `Accept-Encoding: identity`; if a server ignores this, the stream cap still bounds bytes consumed by RouteCairn. Serialized reports redact raw file references, signed URL query secrets, `Location`, auth material, principal IDs, tenant IDs, role values, and file bytes. Findings remain limited to the exact supplied file, actor, endpoint, proof mode, and expected decision.
 
+### Supabase/PostgREST/RLS Authorization
+
+The Supabase authorization engine executes an explicit, bounded matrix across `ANONYMOUS`, `ACCOUNT_A`, `ACCOUNT_B`, and `SERVICE_ROLE`. It covers table `SELECT`/`INSERT`/`UPDATE`/`DELETE`, cross-user and cross-tenant isolation, sensitive columns, storage objects, signed-URL issuance and one-time bounded follows, RPCs, PostgREST relationship traversal, public schema exposure, PostgreSQL grants/RLS metadata, and `SECURITY DEFINER` risk classification.
+
+Keys are never stored in the manifest. Set the environment variables named by `anonKeyEnv` and `serviceRoleKeyEnv`, then run:
+
+```bash
+export SUPABASE_ANON_KEY='...'
+export SUPABASE_SERVICE_ROLE_KEY='...'
+node dist/cli/index.js scan https://your-project.supabase.co \
+  --scope ./examples/scope.example.json \
+  --auth-a ./examples/auth.account-a.example.json \
+  --auth-b ./examples/auth.account-b.example.json \
+  --supabase-authorization ./examples/supabase-authorization.example.json \
+  --mutation-contracts ./controlled-supabase-mutations.json \
+  --output ./reports/supabase-authorization
+```
+
+Each case names one exact surface, resource, actor, operation, method, URL/filter, expected decision, and optional cross-user/cross-tenant/service-role boundary. Successful PostgREST responses are not automatically treated as access: `[]` is an RLS-filtered empty result, and non-empty results require every configured identity assertion to match the same returned row/object before a denial bypass can be confirmed. `forbiddenColumns` checks sensitive paths without persisting their values.
+
+`INSERT`, `UPDATE`, `DELETE`, and mutating RPC cases require `mutationContractCaseId` and an exact expiring controlled-mutation contract. Updates use `CONTROLLED_MUTATION`. Disposable inserts may use a verified DELETE cleanup. Deletes require `CONTROLLED_DELETION`, are limited to `LOCAL`, `TEST`, or `STAGING`, require an explicit reconstructive rollback body, and must prove that the rollback response hash exactly matches the captured pre-state. All mutation intent and encrypted recovery material are durably flushed before transmission; unresolved cleanup blocks later mutations.
+
+The optional `catalog` snapshot records exposed schemas, table RLS/force-RLS state, role grants, sensitive-column exposure, storage bucket ownership policy, PostgREST relationships, RPC execute grants, `SECURITY DEFINER`, `search_path`, and dynamic-SQL declarations. Catalog risks and runtime behavior are reported separately. The report includes per-resource actor/operation coverage, an allowed/denied/inconclusive access matrix, anon-key JWT role classification, and paired service-role boundary verification. No tables, rows, buckets, objects, functions, relationships, or filters are enumerated at runtime.
+
+Credential headers (`apikey`, `Authorization`, cookies, and related auth headers), query values, asserted identifiers, storage path identifiers, signed URL boundaries, response values, and signed query tokens are redacted or omitted from JSON, Markdown, HTML, request audit, scan-plan, and finding evidence. Signed URLs are followed only when `followOnce` is explicitly enabled, the exact origin and configured object path match, and the shared scope/budget/stream limits allow the request; application credentials are never forwarded to the signed destination.
+
+### Shared Mutation Coordination and Dashboard Recovery
+
+**Dashboard → Offensive Safety → Workflow cleanup recovery** is the primary recovery surface for authentication lifecycle, business invariants, controlled races, signed links/portals, operational endpoints, and billing/entitlement workflows. Existing controlled-contract approval/recovery remains in **Production Mutation**. No terminal command is required for the new workflow recovery path.
+
+All these engines, Supabase/privilege controlled contracts, dashboard workers, and normal CLI scans now use one coordination directory. The default is `<dashboard-data-directory>/controlled-mutations`; CLI scans use `ROUTECAIRN_DASHBOARD_DIR` or the standard user dashboard directory. When using a custom dashboard `--data-dir`, set `ROUTECAIRN_MUTATION_DIR` to the same absolute coordination directory in every dashboard/CLI process. Distinct coordination directories are independent installations, not a distributed lock. Use a private local filesystem with working SQLite locks; cross-host distributed coordination is not supported.
+
+The shared lease excludes concurrent mutations across processes and is released by the OS after a worker dies. Durable lock metadata and cleanup journals remain available for inspection. Journal and registry writers are serialized. The canonical `mutation-journals.json` registry lives inside the coordination directory; the previous dashboard registry remains readable for upgrade compatibility. Pending obligations and orphaned encrypted bundles block new mutations across registered directories. Corrupt/unreadable coordination data fails closed.
+
+Before a dedicated engine transmits a mutation, it seals an AES-256-GCM checkpoint containing the exact case, original scope, actor bindings, and captured restoration state. Later checkpoints preserve newly captured state. Raw response-derived tokens or restoration values may therefore exist **encrypted at rest**, but never in dashboard responses, journals, reports, findings, or proof packs. Supplied vault credentials are not copied into these checkpoints. Protect and back up the coordination directory and `recovery.key` together; losing the key makes existing checkpoints unrecoverable. RouteCairn never regenerates a missing key over outstanding bundles.
+
+To recover an interrupted workflow:
+
+1. Select its unresolved obligation in Offensive Safety.
+2. Select the registered target with the exact same origin and fresh enabled vault credentials for the required actor slots. Stable principal/tenant/role bindings must match. Without an original principal ID, the original credential fingerprint must match; RouteCairn cannot safely infer a replacement identity.
+3. Explicitly authorize **only stored cleanup and restoration verification**, then run recovery.
+4. Follow the recovery timeline. Only `ROLLBACK_VERIFIED` clears the obligation and removes its checkpoint. Failure, worker interruption, missing captures, or unverifiable restoration keeps subsequent mutations blocked.
+
+Cleanup contracts should be safe to repeat after an uncertain network outcome and should verify authoritative restored state. Explicitly account for already-restored responses where appropriate (for example, an already-deleted disposable object); recovery does not silently relax the case's assertions or invent a replacement cleanup sequence.
+
+Recovery runs in an isolated worker through the existing authenticated credential handoff. It never reruns login learning, preconditions, attack steps, race groups, or the original scan. It uses the intersection of the sealed scope and the current registered target scope, retains target/program authorization boundaries, disables redirects and mutation retries, and uses a separate bounded cleanup transport so scan cancellation does not cancel restoration. Replaced checkpoints and mismatched actors are rejected before cleanup transmission. A checkpoint cannot reconstruct a server-generated value that was never received before a crash; such cases remain unresolved rather than guessing or replaying the attack. Older per-scan journals without encrypted state cannot acquire retroactive automatic recovery; retain those artifacts and reconcile their targets before sign-off.
+
+### Authentication Lifecycle Testing
+
+The authentication lifecycle engine executes explicit operator-authored cases for login enumeration resistance, post-login session rotation, session fixation, logout/password-change/revocation invalidation, idle and absolute expiration, refresh rotation, password-reset binding/replay/account confusion, email verification, account linking, OAuth/OIDC state and redirect validation, MFA, passkeys, recovery codes, admin and tenant invitations, and disabled-user session behavior.
+
+```bash
+node dist/cli/index.js scan https://app.example.com \
+  --scope ./examples/scope.example.json \
+  --auth ./examples/auth.lifecycle.example.json \
+  --authentication-lifecycle ./examples/authentication-lifecycle.example.json \
+  --output ./reports/authentication-lifecycle
+```
+
+For browser-learned automation, configure `browserBootstrap.login` in the primary auth profile and supply the automation policy instead of an explicit manifest:
+
+```bash
+node dist/cli/index.js scan https://app.example.com \
+  --scope ./examples/scope.example.json \
+  --auth ./examples/auth.browser.example.json \
+  --authentication-lifecycle-auto ./examples/authentication-lifecycle-automation.example.json \
+  --output ./reports/authentication-lifecycle-auto
+```
+
+This one run performs the isolated login, writes the redacted learning bundle, compiles supported cases in memory, executes only fully resolved cases, and writes `authentication-lifecycle.automation.json` with generated categories and readiness blockers. The policy supplies mutation authority, disposable-account confirmation, cleanup, and variant secret references; learning supplies the observed endpoint, method, body format, credential-field bindings, success response, and session-cookie name. Browser `loginSecrets` and `lifecycleSecrets` share a worker-only reference namespace; duplicate names with different values are rejected.
+
+Cases declare a bounded actor model, category, exact requests, transient captures, assertions, and cleanup. Actor slots are `anonymous`, `primary`, `account_a`, and `account_b`; `requestAuthentication` independently controls whether the selected profile's ambient headers/cookies are sent, so login cases can draw secrets from a profile while remaining unauthenticated on the wire. Request values use `{{SECRET:name}}` references resolved from the selected actor's encrypted or worker-held browser/lifecycle secret namespace; response-derived values use `{{CAPTURE:name}}`. Captures can read a bounded JSON path, response header, or named cookie. Raw usernames, email addresses, passwords, tokens, cookies, recovery codes, invitation codes, OAuth state, and session identifiers are never written into the manifest, plan, report, finding, Markdown, HTML, or request audit.
+
+All `POST`, `PUT`, `PATCH`, and `DELETE` steps must explicitly declare `stateChanging: true`. Any state-changing case requires `CONTROLLED_LIFECYCLE`, the exact confirmation literal, an operator reference, change ticket, active authorization window, `disposableAccounts: true`, `cleanupRequired: true`, and at least one asserted `CLEANUP` step. Production additionally requires `productionAcknowledged: true`. Cleanup runs in `finally` after any transmitted state change and is still attempted if verification fails or the authorization window expires during execution. Mutation intent is durably flushed to `mutation-journal.json` before transmission under RouteCairn's global mutation lock; verified cleanup seals the obligation, while unresolved cleanup blocks later state-changing lifecycle cases. The journal contains no credentials, tokens, captures, response bodies, account identifiers, operator identity, or raw change ticket. A cleanup failure is surfaced separately and the disposable account must not be reused until inspected.
+
+Every lifecycle request uses a sequential, independently bounded `RequestSafetyBroker` created by `ScanContext`. It retains DNS-to-socket pinning, exact scope, request budgets, rate limiting, aborts, response byte limits, redacted audit, and one-attempt mutation semantics. Redirect following is disabled for lifecycle requests so OAuth, reset, verification, and invitation redirects are asserted as data rather than navigated. Controlled deletion is enabled only on this explicit lifecycle broker. Raw bounded response bodies and `Set-Cookie` values are exposed through the broker's private transient-analysis `WeakMap`. The module uses them for assertions; retained case state is also sealed in encrypted recovery checkpoints until verified cleanup, never in public evidence.
+
+Assertions support status allow/deny sets, header presence/absence, bounded JSON equality, equality to a secret reference, capture rotation/equality, response similarity/difference, allowed redirect origin/path, and redirect query binding to a secret reference. Response comparison can independently evaluate status, JSON shape, transient exact body digest, length delta, and response-time delta; exact digests remain private to case memory and encrypted recovery checkpoints, never public evidence. `waitBeforeMs` provides bounded idle/absolute-expiration checkpoints, obeys the enforced plan-wide scan deadline, and responds to operator cancellation. A `FAIL` creates a finding only when a configured security expectation is contradicted; missing secrets, expired authorization, policy blocks, response caps, and transport failures are `BLOCKED` or `INCONCLUSIVE` rather than vulnerabilities.
+
+Comparison fingerprints bind the complete executable security contract: assertion operators and expected values, actor relationships/states and tenant/principal fingerprints, request methods/templates/headers/body structure, capture references, resource or endpoint bindings, execution bounds, cleanup, and authoritative verification. Canonical object ordering keeps them stable. Operator approval provenance (identity, ticket, and authorization window) is excluded, while sensitive literal subtrees are domain-separated and hashed before the outer contract digest instead of having their meaning omitted. A changed or weakened assertion therefore produces a different fingerprint and cannot establish remediation for the earlier case.
+
+### Business Invariant Validation
+
+The business-invariant engine models reusable multi-step rules such as withdrawal limits, bounded refunds, one-time payouts or coupons, suspended-user transaction denial, self-approval separation, entitlement gates, and approval-before-delivery ordering. Each explicit case defines authoritative pre-state reads, an ordered action sequence, independent authorization and business-rule expectations, authoritative post-state reads, invariants, an optional state machine, and verified cleanup.
+
+```bash
+node dist/cli/index.js scan https://app.example.com \
+  --scope ./examples/scope.example.json \
+  --auth ./examples/auth.lifecycle.example.json \
+  --business-invariants ./examples/business-invariants.example.json \
+  --output ./reports/business-invariants
+```
+
+Actions can run once, as sequential duplicates, or as bounded concurrent duplicates. Duplicate response acceptance is measured separately from authoritative post-state effects: two successful HTTP statuses do not by themselves prove that a one-time effect occurred twice. Invariants support value comparisons, numeric deltas, allowed state transitions, action-outcome counts, and configurable response equivalence. Authorization status classification is also separate from business-rule acceptance/rejection, preventing a valid authentication decision from masking a broken transaction rule.
+
+`VALUE_COMPARE` and `NUMERIC_DELTA` cover balance, refund, payout, and redemption ceilings. `ACTION_OUTCOME_COUNT` plus authoritative deltas cover payout/coupon replay and duplicate effects. Actor relationships plus separate `DENY` or `REJECT` expectations cover suspended users, self-approval, and entitlement gates. `STATE_TRANSITION` or the case-level state machine covers approval-before-delivery and other ordering constraints. Multi-step cases may combine all of these assertions instead of reducing a workflow to one HTTP response.
+
+Every case requires the exact `CONTROLLED_INVARIANT` confirmation, a currently valid authorization window, disposable entities, explicit cleanup actions, authoritative cleanup observations, and cleanup invariants. Production requires a separate acknowledgement. RouteCairn durably records each mutation intent before transmission, holds the global mutation lock across the workflow, never retries or follows mutation redirects, and blocks later cases when a cleanup obligation remains unresolved. Concurrent attempts are capped at four and are journaled sequentially before their bounded parallel transmission.
+
+Request secrets use the same worker-only `{{SECRET:name}}` namespace as authentication lifecycle cases; response values use temporally ordered `{{CAPTURE:name}}` references. Sensitive literals, forward references, cross-origin requests, unsafe headers, implicit mutations, expired authority, and malformed object keys are rejected during planning. Observed raw captures and balances, secret transaction identifiers, credentials, response bodies, operator identities, and change tickets remain case-local and are absent from emitted evidence. Operator-declared non-secret constants remain visible in the scan plan by design. Case observations retain only status counts, structural fingerprints, invariant outcomes, and stable comparison fingerprints.
+
+### Controlled Race Testing
+
+The controlled-race engine is separate from ordinary parallel scanning and Batch 43 duplicate actions. It releases one explicit group of two to five exact mutation requests through a ready barrier, measures client dispatch skew, and requires the group to remain within its configured skew bound before a race finding is possible. Cases cover same-object operations, duplicate redemption, inventory, payment/entitlement, invitation, and one-time-token races; `CUSTOM` remains available for application-specific state machines.
+
+```bash
+node dist/cli/index.js scan https://app.example.com \
+  --scope ./examples/scope.example.json \
+  --auth ./examples/auth.lifecycle.example.json \
+  --controlled-races ./examples/controlled-races.example.json \
+  --output ./reports/controlled-races
+```
+
+Each case binds a disposable target type and operator-supplied SHA-256 identity fingerprint, an actor model, authoritative pre-state reads, one to three synchronized groups, authoritative post-state reads, explicit invariants, cleanup actions, cleanup observations, and cleanup invariants. `EVENT_COUNT_DELTA` verifies transaction, ledger, email, invitation, entitlement, inventory, or audit-event effects independently of HTTP response codes. `GROUP_OUTCOME_COUNT` verifies accepted, rejected, authorized, or denied request counts. Value, numeric-delta, and state-transition assertions cover remaining authoritative state.
+
+The race-only broker bypasses ordinary inter-request pacing only while releasing one validated group. It still enforces exact scope and origin, DNS-to-socket pinning, global request budgets, concurrency limits, response byte caps, cancellation, redacted request audit, mutation permission, and no retry/no redirect semantics. A group can contain only two to five state-changing requests, the plan supports at most three groups per case, and no repetition, duration loop, adaptive amplification, or unbounded load mode exists.
+
+All group mutation intents are durably journaled before the barrier is released under the global mutation lock. Any possibly transmitted group forces cleanup. Cleanup failure remains an unresolved journal obligation and blocks every later mutation case. A `Controlled Race Condition` finding requires a group that met its synchronization bound plus an explicit invariant contradiction; missing responses, excess dispatch skew, transport errors, missing captures, or cleanup uncertainty remain blocked or inconclusive.
+
+### API and GraphQL Authorization
+
+Batch 45 provides a dedicated, manifest-driven API and GraphQL authorization engine. It turns an operator-supplied route inventory into a structured security model and executes exact object, function, field, tenant, method, schema, GraphQL-limit, introspection, and version-boundary contracts.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.example.json `
+  --auth-a ./examples/auth.account-a.example.json `
+  --auth-b ./examples/auth.account-b.example.json `
+  --api-graphql ./examples/api-graphql.example.json `
+  --output ./reports/api-graphql
+```
+
+The route inventory records a safe alias, protocol, security kind, exact in-scope URL, version, documented methods and fields, and optional OpenAPI schema source/path. Every object route also requires a safe `pathTemplate`, so reports retain the route shape without persisting the supplied object identifier. Authorization cells bind one explicit actor to one fixed request and expected decision; a shared `matrixId` forms an explicit object-, function-, field-, or tenant-authorization matrix and cannot mix routes or check kinds. Response contracts can verify object identity, tenant identity, item bounds, and field rules such as `MUST_BE_PRESENT`, `MUST_BE_ABSENT`, or `MUST_BE_REDACTED`. Authorization decisions and response-field assertions are evaluated separately.
+
+GraphQL support includes fixed named query operations, field-level checks, tenant checks, an explicit minimal introspection query, bounded alias documents, and bounded JSON batches. Alias groups are capped at 10 and batch groups at 5, with lower per-manifest limits supported. Mutations and subscriptions are rejected during planning, response-driven operation generation is forbidden, and documents are depth/byte bounded.
+
+Method-confusion cases directly compare only `GET`, `HEAD`, `OPTIONS`, and explicitly attested non-mutating `POST`. A REST POST requires both route-level and request-level non-mutating confirmation plus an exact marker in the fixed body. `PUT`, `PATCH`, `DELETE`, GraphQL mutations, and any real state change must use RouteCairn's controlled mutation, invariant, lifecycle, or race engines with their cleanup contracts.
+
+OpenAPI comparison fetches only explicit schema/documentation routes and compares configured route paths and methods. Response observations record documented-field present/missing counts and undocumented-field counts without retaining response values. Version checks compare two explicit declared versions for authorization equivalence, identical field sets, or absence of additional candidate fields. The engine never discovers new executable routes from schema or runtime responses.
+
+All requests use the ordinary scope, DNS, pacing, concurrency, response-size, and request-budget broker controls with retries and redirects disabled. Reports retain route aliases, paths, status classes, counts, and structural fingerprints. Authentication material, request bodies, GraphQL variables, response values, object identities, and tenant identities are omitted from JSON, Markdown, HTML, request-audit, and embedded scan-plan output.
+
+### Signed Links, Portals, Invites, and Export Security
+
+Batch 46 is a dedicated multi-step security engine for signed capabilities and protected artifacts. It covers signed-link expiry, signature tampering, identifier substitution, cross-tenant access, replay and revocation; invite identity binding, replay and expiration; portal tenant binding; PDF/report exports; evidence artifacts; and object-path ownership.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.example.json `
+  --auth-a ./examples/auth.link-owner.example.json `
+  --auth-b ./examples/auth.link-foreign.example.json `
+  --link-portal-security ./examples/link-portal-security.example.json `
+  --output ./reports/link-portal-security
+```
+
+The manifest defines explicit actors, safe resource aliases and path templates, exact allowed origins, and ordered `CONTROL`, `ACTION`, `VERIFY`, and optional `CLEANUP` steps. Request authentication and signed-value ownership are independent: for example, Account B can present Account A's controlled signed-link secret without copying that value into the manifest or report. Secrets use `{{SECRET:name}}`; issuance responses may be captured into case-local memory and consumed later with `{{CAPTURE:name}}`. Expanded and captured URLs are revalidated against both the resource's exact origin allowlist and the scan scope immediately before transmission.
+
+`SIGNATURE_TAMPERING` performs a deterministic one-character query-signature modification in memory and requires an explicit tamper step. Identifier substitution and cross-actor cases use only operator-supplied references—there is no identifier guessing, route generation, enumeration, crawling, or response-driven case expansion. Assertions support authorization decisions, status boundaries, header presence, secret-backed JSON identity binding, exact SHA-256 artifact fingerprints, and ordered response-fingerprint comparisons.
+
+Read-only cases use ordinary bounded traffic. Invite acceptance, one-time redemption, and revocation must declare every state-changing request and provide an exact, currently valid `CONTROLLED_LINK_FLOW` authorization. Mutating cases run sequentially under the global mutation lock, journal mutation intent before transmission, never retry, never follow redirects, and require verified cleanup or an explicitly disposable capability/resource. Unresolved cleanup blocks later state-changing cases.
+
+Reports retain only resource aliases, safe path templates, status codes, size bands, structural fingerprints, artifact fingerprints, and assertion outcomes. Signed URLs, signature values, invitation tokens, recipient emails, object identifiers, tenant values, captures, credentials, request bodies, response bodies, authorization identities, and change tickets are excluded from request audit, JSON, Markdown, HTML, and embedded scan plans.
+
+### Webhook, Cron, and Operational Endpoint Security
+
+Batch 47 is a dedicated operational-endpoint engine. It validates webhook signature rejection, replay resistance, idempotency, event ordering, and authoritative amount/currency/product handling; cron authentication, replay, scope, and workload ceilings; job, incident, admin, and worker authorization; and health-endpoint information exposure.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.operational.example.json `
+  --auth ./examples/auth.operational-service.example.json `
+  --auth-a ./examples/auth.operational-owner.example.json `
+  --auth-b ./examples/auth.operational-foreign.example.json `
+  --operational-endpoints ./examples/operational-endpoints.example.json `
+  --output ./reports/operational-endpoints
+```
+
+The manifest is an explicit endpoint inventory and test model, not a discovery or load-testing instruction. Each case binds fixed actors, endpoint aliases, exact origins and URLs, ordered steps, transient captures, and explicit assertions. RouteCairn never enumerates jobs, incidents, cron routes, admin routes, event identifiers, or payload variants. Replay and idempotency cases require two byte-equivalent declared attempts; ordering requires distinct declared events plus authoritative final state; payload integrity requires secret-backed amount, currency, and product assertions; and workload cases require a declared ceiling plus an authoritative numeric delta. Authorization cases require at least two actors, and Account A/B must have distinct principals and authentication material.
+
+Webhook HMACs are generated automatically from the exact serialized request body in case-local worker memory. SHA-256 and SHA-512, hex/base64 encodings, prefixes, and timestamp-dot-body binding are supported. Valid and deliberately tampered signatures are emitted only on the wire. HMAC keys, generated signatures, timestamp values, request bodies, captures, response bodies, actor credentials, operator identities, and tickets are excluded from plans, journals, request audit, findings, and JSON/Markdown/HTML reports.
+
+Every `POST`, `PUT`, `PATCH`, or `DELETE` is an explicit mutation and requires a currently valid `CONTROLLED_OPERATIONAL_FLOW` authorization with the exact confirmation literal, operator and ticket references, and cleanup or a disposable target. Production additionally requires `productionAcknowledged`. Mutations execute sequentially under the global mutation lock, are journaled before transmission, are never retried, and never follow redirects. Cleanup always runs after a possibly transmitted mutation; failed or uncertain cleanup blocks later mutations. This is automation under an operator-authored case and approval boundary—learned traffic or a mutation hypothesis alone never grants authority.
+
+Reports preserve only safe endpoint aliases/path templates, status and content-type classes, size bands, structural/body fingerprints, assertion outcomes, comparison fingerprints, bounded request counts, and cleanup state. A finding requires a concrete contradicted assertion. Missing credentials, unavailable secrets, transport uncertainty, response limits, or expired approval stay blocked or inconclusive rather than being mislabeled as vulnerabilities.
+
+### Checkout, Billing, Entitlement, and Premium Security
+
+Batch 48 provides a dedicated synthetic billing engine for client-side price manipulation, product/plan substitution, entitlement activation without verified payment, entitlement persistence after cancellation, duplicate and replayed payment events, cross-account premium access, refund/downgrade inconsistencies, subscription ownership confusion, and bounded payment-event races.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.billing.example.json `
+  --auth ./examples/auth.billing-service.example.json `
+  --auth-a ./examples/auth.billing-owner.example.json `
+  --auth-b ./examples/auth.billing-foreign.example.json `
+  --billing-entitlement ./examples/billing-entitlement.example.json `
+  --output ./reports/billing-entitlement
+```
+
+Real payment execution is structurally unavailable. The provider declaration accepts only explicit test, sandbox, local-emulator, or custom-synthetic modes and must set `realPaymentExecution` to `FORBIDDEN`. Every state-changing URL must remain on the exact owned application origin and beneath a dedicated path containing `test`, `fixture`, `sandbox`, `emulator`, or `synthetic`. RouteCairn never connects to a provider API, follows a checkout URL, confirms or captures a charge, submits a payment method, or accepts card/PAN/CVV, bank-account, payment-token, client-secret, cryptogram, or confirmation-token fields. Production is not an authorization environment for this engine.
+
+Every synthetic mutation receives `X-RouteCairn-Synthetic-Billing` and `X-RouteCairn-Real-Payment: forbidden` at runtime. Operator-supplied values cannot override those headers. Synthetic webhooks can use SHA-256/SHA-512 exact-body HMACs with optional timestamp binding; signing keys stay in case-local memory; captured restoration state is retained only in encrypted recovery checkpoints until verified cleanup. Custom request-header values and endpoint URLs are fully erased from request audit.
+
+Cases model explicit actors, endpoint kinds, operations, ordered pre-state/action/verification/cleanup steps, transient captures, and payment proof dimensions. Commercial terms and payment/subscription/event/account identifiers must use worker-only `{{SECRET:name}}` or temporally valid `{{CAPTURE:name}}` references. Account-bound cases require genuinely distinct Account A and Account B principals and authentication material. Each category must include its matching operation and authoritative proof: price, product/plan, verified-payment state, entitlement, subscription/refund state, ownership/access, or event-count effects.
+
+Duplicate and replay cases permit exactly two to five declared sequential attempts. A payment-event race uses the dedicated ready barrier for two to five identical synthetic mutations and becomes a finding only when dispatch stays within the configured skew bound and authoritative event-count state contradicts the invariant. There is no repetition loop, adaptive amplification, provider traffic, or load-testing mode.
+
+Every mutating case requires a currently valid `CONTROLLED_SYNTHETIC_BILLING` authorization, the exact confirmation literal, an operator reference, a change ticket, disposable fixtures, a fixture-reset mutation, an authoritative cleanup read, and a cleanup assertion. Mutation intents are durably journaled before transmission under the global mutation lock; requests are never retried or redirected. Cleanup runs after any possibly transmitted mutation, and unresolved cleanup blocks later billing mutations.
+
+Reports retain provider test-mode classification, safe endpoint aliases/path templates, status counts, structural fingerprints, proof dimensions, synchronization measurements, comparison fingerprints, request budgets, and cleanup state. They exclude payment instruments, provider credentials, commercial values, event/subscription/account identifiers, authorization material, request and response bodies, raw captures, operator references, and change tickets.
+
+### Secret Boundary and Sensitive Exposure
+
+Batch 49 adds a first-class read-only secret-boundary engine that correlates HTML, JavaScript bundles, referenced source maps, runtime configuration, error and API responses, authenticated browser local/session storage, cookies, build metadata, debug endpoints, GraphQL responses, and public logs.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.secret-boundary.example.json `
+  --profile quick `
+  --secret-boundary `
+  --output ./reports/secret-boundary
+```
+
+`--secret-boundary` selects the focused baseline, JavaScript, exposure-review, and secret-boundary pipeline shown above. The `full`, `authenticated`, and `proof` profiles include the engine automatically and do not require the flag.
+
+The engine consumes already observed scan and browser traffic, then makes at most twelve additional same-origin `GET` probes and four exact referenced source-map requests by default. It never submits a form, follows a credential from a response, invokes a discovered operation, verifies a credential against a third party, or mutates application state. Probe paths are exact, bounded, query-free relative paths; discovered source maps still pass the ordinary scope and request-budget broker.
+
+Classification uses both the field name and the value's format or claims while the value is held only in transient memory. Server credentials, database connection strings with embedded credentials, private keys, payment-provider secrets, user session/refresh material, one-time/recovery tokens, sensitive response fields, public logs, and script-accessible browser session storage receive distinct impact and boundary classifications. Reports retain safe field paths/names, lengths, types, surfaces, actor context, reason codes, impact, confidence, run-scoped correlation fingerprints, stable value-independent comparison fingerprints, and counts only.
+
+A public client key is not a privileged service credential. RouteCairn explicitly classifies Supabase `sb_publishable_*` keys and legacy JWTs carrying `role: anon` as expected client material. Supabase `sb_secret_*`, JWTs carrying `role: service_role`, or service-role semantics hidden behind `NEXT_PUBLIC_*`, `VITE_*`, or other client-safe naming are server-only Critical exposures. The same semantic distinction applies to publishable payment keys versus secret keys. Generic API-key-looking values remain review observations unless naming, token format, claims, storage context, or demonstrated capability establishes impact.
+
+Browser values never leave the isolated browser collector. Cookies, local storage, and session storage are classified before their raw values are discarded; only salted digests and semantic metadata enter the report. Secure HttpOnly session cookies are recorded as correct boundary storage rather than findings, while reusable session or recovery material in local storage, session storage, or non-HttpOnly cookies is classified as a client-storage risk.
+
+Confirmed findings are deliberately narrower than observations: demonstrable server-only credentials, exposed session/one-time material, script-accessible session secrets, and high-sensitivity fields in public API/GraphQL responses. Build IDs, versions, commit identifiers, source-map availability, publishable client keys, and ordinary public runtime configuration remain informational or expected unless a stronger semantic conflict is present. JavaScript intelligence also redacts sensitive and publishable credential values before they can enter its own config summaries.
+
+Secrets and dynamic target values use worker-only `{{SECRET:name}}` and temporally ordered `{{CAPTURE:name}}` references. Raw target state, request and response bodies, credentials, tokens, operator identities, and change tickets are absent from race evidence, findings, JSON summaries, Markdown, HTML, request audit, and the mutation journal.
+
+### Batch 50A–50B: Assisted Findings and Trust Review
+
+All seventeen assisted security modules now pass through a shared finding-acceptance boundary before scan persistence. Each accepted finding has an explicit workflow/case identity, normalized severity/confidence, existing-factory evidence, a comparison fingerprint, and an independent cleanup outcome. Missing case links fail acceptance without discarding the module's cleanup results. Evidence omits raw bodies and replayable mutation commands. Proof-pack references start empty and resolve to actual retained dashboard packs, not placeholder IDs.
+
+Supply an explicit review inventory alongside the existing engine manifests:
+
+```powershell
+routecairn scan https://your-disposable-app.example `
+  --profile authenticated `
+  --scope ./your-approved-scope.json `
+  --auth ./your-disposable-auth.json `
+  --authentication-lifecycle ./your-reviewed-lifecycle.json `
+  --assisted-review ./examples/assisted-review.example.json `
+  --output ./reports/assisted-review
+```
+
+Review the example case IDs and configure identity verification in your authentication profile. The review inventory is **not** testing authorization: engine manifests, budgets, scope, credentials, explicit mutation approvals, and synthetic-payment restrictions remain mandatory. Missing inventory cases become `NOT_ASSESSED`; they are never silently counted as a pass. Supported lanes are `BROWSER`, `API`, `AUTH_LIFECYCLE`, `AUTHORIZATION`, and `PAYMENT_ENTITLEMENT`.
+
+The module runs after selected engines and generates a case coverage matrix, operator evidence package, review queue, case assessment sequence, remediation roadmap, and completion gate. The dashboard also retains the actual worker/module event timeline. `PROVEN` means the configured case has a supported conclusion, which may be either `FINDING` or `NO_FINDING`; it is not an overall security certification. `INCONCLUSIVE`, `NOT_ASSESSED`, and `BLOCKED` remain separate. Any unresolved cleanup in the scan blocks completion independently of finding decisions.
+
+Scan Studio accepts the manifest path; the API also accepts an inline `assistedReview` object. Scan Detail shows coverage, blockers, current review state, evidence/proof/comparison IDs, and publication controls. The scanner's `assisted-review.customer.json` is a coverage-only draft and contains no unreviewed findings. After reviewing the exact finding occurrences in the Findings workspace, publish a customer report from Scan Detail. The server rechecks the completed scan, human decisions, evidence retention, and cleanup inside a transaction. Publications contain confirmed remediation and coverage, exclude operator evidence, and have content hashes and an audit event. An older scan's confirmation cannot approve a newly collected occurrence automatically.
+
+Operator artifacts are `assisted-review.evidence.json`, the coverage-only draft, and the normal JSON/Markdown/HTML reports. Dashboard customer publications download by artifact UUID. Proof packs now include only evidence belonging to selected occurrences; they cannot pick up another scan's recent mutation case. Assisted regression comparisons require the same explicit case fingerprint, compatible scope/actors, a proven clean retest, and resolved cleanup.
+
+### Batch 50C: Internal Pre-Handover Orchestration
+
+The `pre-handover` profile requires `--pre-handover <manifest>` and a `--target-authorization <manifest>` with mode `PRE_HANDOVER_ASSAULT`. It cannot run against a declared production environment. Before any engine runs, configured read-only endpoints must verify the environment, distinct A/B identities, disposable-account markers, and each registered object's identity and ownership. Accounts must already be supplied; this profile does not silently create accounts. The local acceptance command below provisions its own disposable users automatically.
+
+The manifest defines object, invariant and race registries, critical cases, release revision, module sequence and optional fix/regression references. Invariant/race references must resolve to configured engine cases. Ordering honors existing module dependencies and rejects cycles. Unresolved cleanup stops subsequent engines; the review still reports unexecuted cases. Critical cases require a proven clean conclusion. Regression claims additionally require the exact comparison fingerprint. Human acceptance cannot override incomplete critical coverage or failed cleanup. Scan Detail displays the sequence, critical coverage and regression readiness using the existing review/publication gate.
+
+Start with `examples/pre-handover.example.json` and `examples/target-authorization.example.json`, replacing every placeholder. Object fingerprints are SHA-256 of the UTF-8 string `routecairn-disposable-v1` followed by a NUL byte and `JSON.stringify(identityValue)`. Supply the existing engine manifests and required actor profiles, including `--auth` if an engine uses the primary slot. Registries and learned traffic do not grant mutation permission; each engine's explicit contracts still apply.
+
+### Batch 50D: Bug-Bounty Authorization
+
+`--target-authorization` also accepts the separate modes `OWNED_PRODUCTION`, `INTERNAL_STAGING` and `BUG_BOUNTY_AUTHORIZED`. Bug-bounty mode requires a program/platform, authorization-proof reference/hash, scope-document hash, in/out-of-scope exact origins and path prefixes, rules, prohibited-action notes, a testing window and request/rate ceilings. Import these structured rules through the manifest file or inline dashboard API `targetAuthorization`; the operator must translate the actual program document into these machine-enforced fields. A document hash is a reference, not proof that RouteCairn has verified a program's consent. The example is deliberately expired.
+
+Authentication, mutation, destruction and races are disabled by default. Non-read requests require an exact origin/path/method permission with an explicit effect. Read-only POST/GraphQL permission must additionally bind the exact body bytes by SHA-256, so query permission does not authorize mutations at the same endpoint. Destructive operations and races require their own flags, and mutations require disposable accounts. In/out-of-scope assets, expiry, permissions and the aggregate request/rate ledger apply across dedicated engine brokers, redirects, retries, browser traffic and worker recovery. HTTP waits for pacing; browser interception fails closed if its rate window is full. Streaming channels are blocked in bounty mode. Engines reserve sufficient remaining budget for their configured execution/cleanup bounds before starting; scope or authorization expiry is never bypassed for cleanup.
+
+Free-text rules are operator context, not executable policy: encode prohibited paths in `outOfScope` and do not grant prohibited request effects. Standard customer publication still excludes operator evidence and requires occurrence-specific review. Bounty-authorized runs cannot silently rerun without fresh explicit manifests. Scan Studio accepts the authorization file, and selecting the legacy `BUG_BOUNTY` category now requires this first-class program manifest.
+
+### Batch 50E: Disposable Live-Target Acceptance
+
+```powershell
+npm run build
+node dist/cli/index.js validate-local --output .routecairn-validation
+```
+
+This command accepts **no external target URL**. It creates a fresh loopback-only application and isolated dashboard database; provisions disposable A/B users; performs real login; stores fresh sessions in an encrypted vault; and runs authenticated Chromium and security engines through isolated workers. It exercises a deliberately vulnerable invariant, standard findings/evidence, a fixture-only simulated review and proof pack, a fixed-build rerun, comparison and handover readiness. It also exercises real protected access, browser protected-action/rollback proof, eventual consistency, injected cleanup failure, and fresh-credential recovery in a new worker. Learned mutation attempts must remain blocked. Artifact checks reject leaked login/session secrets.
+
+Each run retains reports, the dashboard timeline/database, proof artifacts and `validation-summary.json` in a unique directory. Its vault key exists only in memory: credentials cannot be reused after the fixture closes. Simulated acceptance decisions apply only to this new fixture database, never to customer findings. Browser proof now uses authenticated DOM readiness (`readySelector`, or the configured principal selector), not global network idleness; an error/login document cannot prove a hidden protected control.
+
+The acceptance run also consumes a single-use approval transactionally with scan creation, rejects reuse, verifies authenticated contract delivery to the worker, and exercises cleanup recovery through the dashboard service with a new vault credential. Dashboard mutation jobs share the durable cleanup journal and lock. Encrypted recovery bundles retain the exact approval/target/scope binding and any program authorization policy; recovery cannot silently drop that policy. Interrupted jobs retain a cleanup obligation, and explicit recovery retries cannot overlap. These checks use only the generated fixture, not a production service.
+
+External staging/production validation remains **NOT_ASSESSED**. No external product has been tested. That lane requires the product URL, explicit authorization/scope and never-test paths, disposable credentials/roles, identity and mutation endpoints, expected fields, rollback values, and the protected endpoint. The local result is integration evidence, not certification of an external application.
+
 ### Budgets And Evidence
 
-The request broker enforces the resolved plan globally across shared module clients. Direct requests, retry attempts, redirect hops, and Playwright requests that reach the network consume the same request budget. Duplicate direct HTTP requests reuse cached responses without additional network traffic.
+`ScanContext` owns one authoritative request ledger for the entire scan. Every ordinary and dedicated engine broker, direct request, retry attempt, redirect hop, synchronized group member, identity probe, and Playwright request that reaches the network consumes that ledger rather than a broker-local approximation. The same ledger paces dispatch and caps aggregate concurrency across independently created transports. Duplicate direct HTTP requests reuse cached responses without additional network traffic.
+
+`maxRequests` is the total physical-transmission ceiling. `cleanupReservedRequests` is a slice of that total which ordinary traffic cannot consume; only cleanup, rollback verification, or explicit recovery transports can use it. The planner derives a cleanup minimum from selected workflow cases, reserves future browser-learned lifecycle cleanup, rejects insufficient or attack-empty splits, and exposes the exact resolved values in Scan Studio, plan previews, live dashboard budget events, JSON/Markdown/HTML reports, and the CLI (`--max-requests`, `--cleanup-reserved-requests`). Cleanup-only recovery workers receive a separate explicit all-cleanup budget. Budget exhaustion returns structural `RequestBudgetExceeded` evidence and never causes a request to exceed the configured lane.
 
 ### Pinned HTTP Transport
 
@@ -966,6 +1264,7 @@ Implemented dashboard v1 capabilities include:
 - encrypted credential-profile CRUD, safe summaries, bounded safe test responses, vault status, offline key rotation, and saved credential binding for dashboard scan preview/execution
 - append-only audit events for bootstrap login, logout, project/target changes, scan lifecycle changes, finding review changes, proof-pack generation, imports, saved-configuration changes, and credential-profile lifecycle events
 - durable worker rows, scan-job leases, worker heartbeats, cancellation across IPC, interrupted-job recovery for expired leases, and authenticated job-bound secret-envelope summaries
+- cancellation-safe restoration with a separate 120-second cleanup budget, a 15-second report-flush margin, durable partial reports, dashboard artifact/finding ingestion for incomplete runs, and restart-time reconciliation
 
 Capability parity is intentionally explicit. Profiles, modules, projects/targets, Scan Studio Core, audit, plan preview, reports, findings, review, proof packs, server-mode login/RBAC, encrypted credential-profile management and scan binding, isolated dashboard workers, safe import, and all seven controlled authorization workflow editors have implemented dashboard surfaces. Full worker resource governance remains partial in the registry instead of being represented as complete.
 
@@ -974,6 +1273,8 @@ Capability parity is intentionally explicit. Profiles, modules, projects/targets
 Scan Studio keeps non-secret configuration and ephemeral secrets in separate typed state. Ephemeral bearer values, headers, and cookies stay in live component memory; they are never written to browser storage, URLs, SQLite, audit/events, plan snapshots, or reports. On launch they move through the existing HMAC-bound job/worker/generation/attempt secret envelope. The ordinary worker initialization message contains a public-auth placeholder and safe references only. Secret references are cleared after successful launch, explicit reset, logout/session expiry, and component teardown where practical. JavaScript cannot guarantee physical memory erasure.
 
 Inline scope is authoritatively parsed by the existing `scopeSchema` on preview and launch. The current core model supports allowed domain rules, denied paths, allowed safe methods, rate, concurrency, crawl depth, same-origin policy, subdomain policy, robots handling, and user agent. Browser-specific third-party/private-origin controls remain module settings resolved by the plan; Scan Studio does not invent duplicate scope semantics.
+
+Dashboard launch resolves the complete executable plan exactly once at enqueue. Every referenced scope, configuration, authentication, lifecycle, invariant, race, API/GraphQL, link, operational, billing, assisted-review, pre-handover, and target-authorization file is byte-hashed before planning and checked again afterward. The resolved plan, configuration, scope, source bindings, target binding, and authentication binding are then canonicalized and stored as an AES-256-GCM snapshot associated with the scan and target; plaintext executable manifests are not stored in SQLite. The isolated worker receives that snapshot in a job-, worker-, generation-, expiry-, nonce-, and HMAC-bound envelope, recomputes its content and actor bindings, checks source files for post-review changes, and executes the snapshot directly. It never reparses normal scan manifests from the initialization request. Changed/deleted manifests, changed saved credentials, database ciphertext modification, target substitution, malformed snapshots, stale/replayed envelopes, and binding mismatches fail closed before scan traffic. Scan Detail exposes only the safe binding prefix, format version, and worker verification state, with `PLAN_BOUND` and `PLAN_VERIFIED` timeline events.
 
 Identity tests use the configured GET/HEAD endpoint and safe field-path grammar. Wildcards, JSONPath/script syntax, recursive paths, and `__proto__`, `prototype`, or `constructor` traversal are rejected. Results contain bounded categories, comparisons, hashes/aliases, and redacted request audit only; raw identity JSON and raw principal values are not returned or persisted.
 
@@ -989,7 +1290,7 @@ The guided surfaces are domain-specific: Object Pair presents the fixed owner-ba
 
 Advanced JSON is capped at 256 KiB, rendered as inert text with a syntax-highlighted preview, rejects prototype-related keys, and passes through the same strict Zod schema and planner as guided configuration. A valid exported envelope can be re-imported without changing semantic fields. It remains an expert inspection/import surface rather than a requirement for ordinary scanner-supported structures.
 
-Planner preview and launch parse every enabled workflow with its existing scanner-core schema and invoke its existing planner before `ScanPlanner.resolve`. Launch independently repeats parsing, actor checks, identity requirements, scope checks, module coupling, and planning. The worker receives the resulting exact fixed request matrices through the existing isolated-worker path. Client-submitted resolved plans are never trusted.
+Planner preview and enqueue parse every enabled workflow with its existing scanner-core schema and invoke its existing planner before `ScanPlanner.resolve`. Enqueue independently repeats parsing, actor checks, identity requirements, scope checks, module coupling, and planning, then seals the exact result into the immutable executable-plan snapshot described above. The worker verifies and executes that server-produced snapshot rather than rereading paths or accepting a client-submitted resolved plan.
 
 Workflow configuration persistence is summary-only. Scan records retain workflow ID, enabled/editor state, case count, and a configuration hash. Persisted plan snapshots retain schema version, bounded request count, and configured status instead of raw object IDs, file references, private values, signed URLs, or authentication material.
 
@@ -1057,6 +1358,8 @@ Dashboard comparison schema version 3 persists immutable, engine-versioned compa
 
 The centralized comparison coverage service evaluates target identity, semantic endpoint scope, terminal scan state, native/import source quality, module execution, safe authentication and identity semantics, workflow identity, case correlation, request transmission, budget/block state, and evidence semantics. All seven controlled authorization workflows persist redacted case facts and use workflow-specific semantic fingerprints: Object Pair baselines and cross-owner directions; Field Exposure field policies; Role/State Matrix rows; Equivalent Route pairs; Collection completeness/reference semantics; Bulk safety/baseline/postconditions; and File identity, stream, and signed-follow proof.
 
+Assisted lifecycle, invariant, race, API/GraphQL, link/portal, operational, billing, and Supabase runtime/catalog cases use the shared versioned security-contract fingerprint. Findings from these engines are rejected at the acceptance boundary when the contract fingerprint is absent or malformed. Proven-clean negative evidence is persisted with that exact fingerprint; comparison and pre-handover remediation gates classify a missing or changed contract as `INCOMPARABLE`/unproven rather than accepting a weaker test as a fix.
+
 The invariant is deliberately strict:
 
 ```text
@@ -1114,7 +1417,7 @@ The CLI remains fully usable without the dashboard or dashboard database. Existi
 
 ### Remaining v1 Limits
 
-Dashboard v1 does not implement organizations, teams beyond local users, cloud sync, billing, notifications, distributed workers, remote agents, scheduled scans, persistent raw credential storage, browser login automation, PDF proof-pack generation, or WebSocket dashboard updates. Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
+Dashboard v1 does not implement organizations, teams beyond local users, cloud sync, billing, notifications, distributed workers, remote agents, scheduled scans, persistent raw credential storage, PDF proof-pack generation, or WebSocket dashboard updates. Authenticated browser bootstrap is available through encrypted credential profiles and the credential API schema; Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
 
 The Authorization Workflow Studio milestone remains incomplete at the guided-UX layer. The current shared editor cannot add every absent optional schema field without Advanced JSON, and it does not yet provide the requested Object Pair relationship diagram, dedicated safe field-path row editor, semantic matrix table and filters, collection completeness/reference controls, bulk body/baseline/postcondition controls, file proof-mode and signed-URL controls, per-field inline schema diagnostics, stable editing-only case IDs, or the full visual and behavioral test matrix for those specialized controls. Immutable saved-configuration version history, full worker resource limits/process-tree cleanup, and a full worker diagnostics page also remain incomplete.
 # Controlled Offensive Execution & Recovery
@@ -1122,6 +1425,8 @@ The Authorization Workflow Studio milestone remains incomplete at the guided-UX 
 RouteCairn includes an initial controlled-mutation kernel for explicitly authorized, reversible `POST`, `PATCH`, and `PUT` security tests. Ordinary scans remain read-oriented: the broker blocks `PATCH` and `PUT` unless a dedicated controlled-mutation transport is enabled, always blocks `DELETE`, does not retry mutation requests, does not cache them, and refuses to follow state-changing redirects.
 
 The kernel requires an expiring authorization, exact origin, disposable target, exact field/value allowlists, authoritative pre-state and impact checks, a rollback request, and independent restoration verification. It uses a global single-mutation lock, an fsync-backed redacted journal, HMAC body attestations, and an AES-256-GCM encrypted recovery bundle. Before any attack request enters the network transport, RouteCairn durably records `MUTATION_ARMED` with the recovery-bundle reference. A successful HTTP response alone never proves exploitation.
+
+Cancellation stops attack and learning traffic but does not abort restoration. Controlled contracts and the authentication-lifecycle, business-invariant, race, signed-link/portal, operational-endpoint, and synthetic-billing engines run cleanup through a separate bounded signal. If cleanup or worker termination exceeds that bound, the encrypted checkpoint and unresolved journal entry survive, subsequent mutation remains blocked, and the dashboard's Offensive Safety panel provides the recovery action. Cancelled, failed, and interrupted scans ingest their safe partial evidence as normal dashboard artifacts/findings, remain explicitly incomplete, and cannot act as completed comparison baselines.
 
 The example contract is deliberately expired and must be reviewed and updated by the authorizing operator:
 
@@ -1146,4 +1451,4 @@ routecairn offensive recover `
   --output ./reports/controlled-mutation-recovery.json
 ```
 
-The CLI defaults to the dashboard’s canonical `controlled-mutations` directory. When an operator supplies another `--journal-dir`, RouteCairn durably registers it with the dashboard, which aggregates all registered journals without returning their filesystem paths to the browser. The **Offensive Safety** view also discovers encrypted recovery bundles independently: a bundle without a trustworthy terminal journal state becomes `MUTATION_STATE_UNCERTAIN` and triggers the persistent **UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED** alert. New controlled mutations remain blocked until every cleanup obligation is independently verified. Mutation execution and emergency recovery intentionally remain CLI-only in this release. `CONTROLLED_DELETION` and `LAB_DESTRUCTIVE` are represented policy tiers but unavailable until stronger restoration contracts are implemented.
+The CLI defaults to the dashboard’s canonical `controlled-mutations` directory. When an operator supplies another `--journal-dir`, RouteCairn durably registers it with the dashboard, which aggregates all registered journals without returning their filesystem paths to the browser. The **Offensive Safety** view also discovers encrypted recovery bundles independently: a bundle without a trustworthy terminal journal state becomes `MUTATION_STATE_UNCERTAIN` and triggers the persistent **UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED** alert. New controlled mutations remain blocked until every cleanup obligation is independently verified. Use the dashboard’s Production Mutation controls for controlled-contract execution/recovery and Offensive Safety for dedicated-workflow recovery; the CLI remains an alternative for controlled contracts. `CONTROLLED_DELETION` is available only for disposable non-production fixtures with reconstructive rollback and exact pre-state hash restoration; `LAB_DESTRUCTIVE` remains planned and unavailable.

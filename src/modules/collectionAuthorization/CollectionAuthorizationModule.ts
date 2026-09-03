@@ -448,7 +448,7 @@ function findingsFromReport(report: CollectionAuthorizationReport, context: Scan
     tags: ["collection-authorization", "access-control", "needs-manual-policy-review", observation.findingCategory.toLowerCase().replace(/_/g, "-")],
     falsePositiveStatus: "likely-valid" as const,
     timestamp: new Date().toISOString(),
-    sourceModule: "collection-authorization-testing",
+    workflowCase: { id: `${observation.collectionId}/${observation.caseId}` }, sourceModule: "collection-authorization-testing",
     riskScore: riskScorer.score({
       severity: "High",
       confidence: "High",

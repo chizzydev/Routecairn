@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 20,
+  "maxStepsPerCase": 8,
+  "maxRequests": 40,
+  "maxResponseBytes": 65536,
+  "actors": [
+    { "id": "public", "safeAlias": "public", "authSlot": "anonymous", "relationship": "PUBLIC" },
+    { "id": "service", "safeAlias": "service", "authSlot": "primary", "relationship": "OPERATIONS_ADMIN", "principalId": "replace-service-principal", "tenantId": "replace-operations-tenant" },
+    { "id": "owner", "safeAlias": "owner", "authSlot": "account_a", "relationship": "OWNER", "principalId": "replace-account-a-principal", "tenantId": "replace-tenant-a" },
+    { "id": "foreign", "safeAlias": "foreign", "authSlot": "account_b", "relationship": "CROSS_TENANT", "principalId": "replace-account-b-principal", "tenantId": "replace-tenant-b" }
+  ],
+  "endpoints": [
+    { "id": "webhook", "safeAlias": "payment-webhook", "kind": "WEBHOOK", "pathTemplate": "/webhooks/payments", "allowedOrigins": ["https://app.example.com"] },
+    { "id": "cron", "safeAlias": "billing-cron", "kind": "CRON", "pathTemplate": "/ops/cron/billing", "allowedOrigins": ["https://app.example.com"], "declaredWorkloadLimit": 2 },
+    { "id": "state", "safeAlias": "authoritative-state", "kind": "JOB", "pathTemplate": "/ops/state/{workflow}", "allowedOrigins": ["https://app.example.com"] },
+    { "id": "job", "safeAlias": "job-detail", "kind": "JOB", "pathTemplate": "/ops/jobs/{job}", "allowedOrigins": ["https://app.example.com"] },
+    { "id": "incident", "safeAlias": "incident-detail", "kind": "INCIDENT", "pathTemplate": "/ops/incidents/{incident}", "allowedOrigins": ["https://app.example.com"] },
+    { "id": "health", "safeAlias": "public-health", "kind": "HEALTH", "pathTemplate": "/health", "allowedOrigins": ["https://app.example.com"] },
+    { "id": "admin", "safeAlias": "worker-admin", "kind": "ADMIN", "pathTemplate": "/ops/admin/{operation}", "allowedOrigins": ["https://app.example.com"] }
+  ],
+  "cases": [
+    {
+      "id": "signature-rejection", "label": "invalid webhook signature is rejected", "category": "WEBHOOK_SIGNATURE_REJECTION",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [
+        { "id": "valid", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:signature_event}}" }, "hmac": { "kind": "HMAC", "algorithm": "sha256", "secretSource": "primary", "secretRef": "webhook_secret", "header": "X-Webhook-Signature", "encoding": "HEX", "prefix": "sha256=", "messageFormat": "TIMESTAMP_DOT_BODY", "timestampHeader": "X-Webhook-Timestamp", "timestampSecretRef": "webhook_timestamp", "tamper": false } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "tampered", "phase": "VERIFY", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:signature_event}}" }, "hmac": { "kind": "HMAC", "algorithm": "sha256", "secretSource": "primary", "secretRef": "webhook_secret", "header": "X-Webhook-Signature", "encoding": "HEX", "prefix": "sha256=", "messageFormat": "TIMESTAMP_DOT_BODY", "timestampHeader": "X-Webhook-Timestamp", "timestampSecretRef": "webhook_timestamp", "tamper": true } }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "webhook-replay", "label": "webhook event cannot replay", "category": "WEBHOOK_REPLAY_PROTECTION",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [
+        { "id": "first", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:replay_event}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "replay", "phase": "VERIFY", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:replay_event}}" } }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }
+      ]
+    },
+    {
+      "id": "webhook-idempotency", "label": "duplicate event has one effect", "category": "WEBHOOK_IDEMPOTENCY",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [
+        { "id": "before", "phase": "PRE_STATE", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/idempotency", "secretSource": "anonymous" }, "captures": [{ "name": "effects_before", "source": "JSON", "path": "effectCount" }], "assertions": [{ "kind": "STATUS_IN", "values": [200] }] },
+        { "id": "first", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:idempotency_event}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "duplicate", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:idempotency_event}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "after", "phase": "VERIFY", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/idempotency", "secretSource": "anonymous" }, "captures": [{ "name": "effects_after", "source": "JSON", "path": "effectCount" }], "assertions": [{ "kind": "NUMERIC_DELTA", "before": "effects_before", "after": "effects_after", "operator": "LTE", "expected": 1 }] }
+      ]
+    },
+    {
+      "id": "event-ordering", "label": "older event cannot overwrite newer state", "category": "WEBHOOK_EVENT_ORDERING",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [
+        { "id": "new", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:new_event}}", "sequence": 2, "status": "{{SECRET:expected_order_status}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "old", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:old_event}}", "sequence": 1, "status": "{{SECRET:old_order_status}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "verify", "phase": "VERIFY", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/order", "secretSource": "anonymous" }, "assertions": [{ "kind": "JSON_EQUALS_SECRET", "path": "status", "secretSource": "primary", "secretRef": "expected_order_status" }] }
+      ]
+    },
+    {
+      "id": "payload-integrity", "label": "authoritative payment fields are preserved", "category": "WEBHOOK_PAYLOAD_INTEGRITY", "cleanupRequired": true,
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": false },
+      "steps": [
+        { "id": "action", "phase": "ACTION", "actorId": "public", "endpointId": "webhook", "request": { "method": "POST", "urlTemplate": "https://app.example.com/webhooks/payments", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "eventId": "{{SECRET:payload_event}}", "amount": "{{SECRET:expected_amount}}", "currency": "{{SECRET:expected_currency}}", "product": "{{SECRET:expected_product}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] },
+        { "id": "verify", "phase": "VERIFY", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/payload", "secretSource": "anonymous" }, "assertions": [{ "kind": "JSON_EQUALS_SECRET", "path": "amount", "secretSource": "primary", "secretRef": "expected_amount" }, { "kind": "JSON_EQUALS_SECRET", "path": "currency", "secretSource": "primary", "secretRef": "expected_currency" }, { "kind": "JSON_EQUALS_SECRET", "path": "product", "secretSource": "primary", "secretRef": "expected_product" }] },
+        { "id": "reset", "phase": "CLEANUP", "actorId": "service", "endpointId": "admin", "request": { "method": "POST", "urlTemplate": "https://app.example.com/ops/admin/reset-payload", "stateChanging": true, "secretSource": "anonymous", "bodyFormat": "JSON", "fields": {} }, "assertions": [{ "kind": "STATUS_IN", "values": [204] }] },
+        { "id": "restored", "phase": "CLEANUP", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/payload", "secretSource": "anonymous" }, "assertions": [{ "kind": "JSON_EQUALS_SECRET", "path": "product", "secretSource": "primary", "secretRef": "baseline_product" }] }
+      ]
+    },
+    {
+      "id": "cron-authentication", "label": "cron requires scheduler identity", "category": "CRON_AUTHENTICATION", "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "public", "phase": "VERIFY", "actorId": "public", "endpointId": "cron", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/cron/billing", "secretSource": "anonymous" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }, { "id": "service", "phase": "VERIFY", "actorId": "service", "endpointId": "cron", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/cron/billing", "secretSource": "anonymous" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }]
+    },
+    {
+      "id": "cron-replay", "label": "cron nonce cannot replay", "category": "CRON_REPLAY_PROTECTION",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [{ "id": "first", "phase": "ACTION", "actorId": "service", "endpointId": "cron", "request": { "method": "POST", "urlTemplate": "https://app.example.com/ops/cron/billing", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "nonce": "{{SECRET:cron_nonce}}" } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }, { "id": "replay", "phase": "VERIFY", "actorId": "service", "endpointId": "cron", "request": { "method": "POST", "urlTemplate": "https://app.example.com/ops/cron/billing", "stateChanging": true, "secretSource": "primary", "bodyFormat": "JSON", "fields": { "nonce": "{{SECRET:cron_nonce}}" } }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    },
+    {
+      "id": "cron-workload", "label": "cron work stays within ceiling", "category": "CRON_SCOPE_WORKLOAD_LIMIT",
+      "authorization": { "mode": "CONTROLLED_OPERATIONAL_FLOW", "environment": "TEST", "confirmation": "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", "authorizedBy": "replace-operator-reference", "changeTicket": "replace-ticket-reference", "authorizedAt": "2026-01-01T00:00:00.000Z", "expiresAt": "2099-01-01T00:00:00.000Z", "disposableTarget": true },
+      "steps": [{ "id": "before", "phase": "PRE_STATE", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/cron", "secretSource": "anonymous" }, "captures": [{ "name": "work_before", "source": "JSON", "path": "workCount" }], "assertions": [{ "kind": "STATUS_IN", "values": [200] }] }, { "id": "action", "phase": "ACTION", "actorId": "service", "endpointId": "cron", "request": { "method": "POST", "urlTemplate": "https://app.example.com/ops/cron/billing", "stateChanging": true, "secretSource": "anonymous", "bodyFormat": "JSON", "fields": { "requested": 2 } }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }, { "id": "after", "phase": "VERIFY", "actorId": "service", "endpointId": "state", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/state/cron", "secretSource": "anonymous" }, "captures": [{ "name": "work_after", "source": "JSON", "path": "workCount" }], "assertions": [{ "kind": "NUMERIC_DELTA", "before": "work_before", "after": "work_after", "operator": "LTE", "expected": 2 }] }]
+    },
+    {
+      "id": "job-authorization", "label": "job remains owner-bound", "category": "JOB_AUTHORIZATION", "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "owner", "phase": "VERIFY", "actorId": "owner", "endpointId": "job", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/jobs/{{SECRET:job_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }, { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "endpointId": "job", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/jobs/{{SECRET:job_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    },
+    {
+      "id": "incident-access", "label": "incident remains tenant-bound", "category": "INCIDENT_ACCESS_CONTROL", "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "owner", "phase": "VERIFY", "actorId": "owner", "endpointId": "incident", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/incidents/{{SECRET:incident_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }, { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "endpointId": "incident", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/incidents/{{SECRET:incident_id}}", "secretSource": "account_a" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    },
+    {
+      "id": "health-exposure", "label": "health response contains no internal detail", "category": "HEALTH_INFORMATION_EXPOSURE", "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "public", "phase": "VERIFY", "actorId": "public", "endpointId": "health", "request": { "method": "GET", "urlTemplate": "https://app.example.com/health", "secretSource": "anonymous" }, "assertions": [{ "kind": "JSON_FIELD_ABSENT", "path": "databaseUrl", "classification": "SECRET" }, { "kind": "JSON_FIELD_ABSENT", "path": "build.commit", "classification": "INTERNAL" }] }]
+    },
+    {
+      "id": "admin-worker-authorization", "label": "worker administration requires operator role", "category": "ADMIN_WORKER_AUTHORIZATION", "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [{ "id": "service", "phase": "VERIFY", "actorId": "service", "endpointId": "admin", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/admin/workers", "secretSource": "anonymous" }, "assertions": [{ "kind": "DECISION", "expected": "ALLOW" }] }, { "id": "foreign", "phase": "VERIFY", "actorId": "foreign", "endpointId": "admin", "request": { "method": "GET", "urlTemplate": "https://app.example.com/ops/admin/workers", "secretSource": "anonymous" }, "assertions": [{ "kind": "DECISION", "expected": "DENY" }] }]
+    }
+  ]
+}

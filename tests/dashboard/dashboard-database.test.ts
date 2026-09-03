@@ -22,7 +22,7 @@ describe("dashboard database", () => {
     }
   });
 
-  it("recovers interrupted running scans on startup", () => {
+  it("recovers interrupted queued and running scans on startup", () => {
     const dir = mkdtempSync(resolve(tmpdir(), "routecairn-dashboard-recovery-"));
     try {
       const database = new DashboardDatabase(resolve(dir, "dashboard.sqlite"));
@@ -38,8 +38,19 @@ describe("dashboard database", () => {
         evidenceLevel: "minimal",
         safeConfigurationSummary: {}
       });
+      scans.create({
+        id: "22222222-2222-4222-8222-222222222222",
+        source: "DASHBOARD",
+        status: "QUEUED",
+        targetOrigin: "https://queued.example.test",
+        safeTargetLabel: "https://queued.example.test",
+        profile: "quick",
+        evidenceLevel: "minimal",
+        safeConfigurationSummary: {}
+      });
       database.recoverInterruptedScans();
       expect(scans.get("11111111-1111-4111-8111-111111111111")?.status).toBe("INTERRUPTED");
+      expect(scans.get("22222222-2222-4222-8222-222222222222")?.status).toBe("INTERRUPTED");
       expect(database.db.prepare("SELECT event_type FROM scan_events WHERE scan_id = ?").all("11111111-1111-4111-8111-111111111111")).toHaveLength(1);
       database.close();
     } finally {

@@ -30,13 +30,32 @@ import type {
   WorkflowValidationReport
 } from "../../reports/ReportTypes.js";
 import type { PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
+import type { SupabaseAuthorizationReport } from "../../reports/SupabaseAuthorizationReport.js";
+import type { AuthenticationLifecycleReport } from "../../reports/AuthenticationLifecycleReport.js";
+import type { BusinessInvariantReport } from "../../reports/BusinessInvariantReport.js";
+import type { ControlledRaceReport } from "../../reports/ControlledRaceReport.js";
+import type { ApiGraphqlReviewReport } from "../../reports/ApiGraphqlReport.js";
+import type { LinkPortalSecurityReport } from "../../reports/LinkPortalSecurityReport.js";
+import type { OperationalEndpointSecurityReport } from "../../reports/OperationalEndpointSecurityReport.js";
+import type { BillingEntitlementReport } from "../../reports/BillingEntitlementReport.js";
+import type { SecretBoundaryReport } from "../../reports/SecretBoundaryReport.js";
 import type { Finding } from "../findings/Finding.js";
 import type { ModuleResult } from "../plugins/Plugin.js";
 import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
+import type { ScanRequestLedgerSnapshot } from "../http/ScanRequestLedger.js";
 
 export class ScanState {
+  private assistedReview: import("../../reports/AssistedReviewReport.js").AssistedReviewReport | undefined;
+  public getAssistedReview() { return this.assistedReview; }
+  public getAuthenticationLifecycle() { return this.authenticationLifecycle; }
+  public getBusinessInvariant() { return this.businessInvariant; }
+  public getControlledRace() { return this.controlledRace; }
+  public getSupabaseAuthorization() { return this.supabaseAuthorization; }
+  public getPrivilegeMutation() { return this.privilegeMutation; }
+  public getModuleResults(): readonly ModuleResult[] { return [...this.moduleResults]; }
   private readonly responses: HttpResponse[] = [];
   private readonly requestAudit: RequestAuditEntry[] = [];
+  private requestBudget: ScanRequestLedgerSnapshot | undefined;
   private readonly scopeDecisions: ScopeDecision[] = [];
   private readonly discoveredUrls: ResponseObservation[] = [];
   private readonly findings: Finding[] = [];
@@ -65,6 +84,15 @@ export class ScanState {
   private workflowValidation: WorkflowValidationReport | undefined;
   private proofMode: ProofModeReport | undefined;
   private privilegeMutation: PrivilegeMutationReport | undefined;
+  private supabaseAuthorization: SupabaseAuthorizationReport | undefined;
+  private authenticationLifecycle: AuthenticationLifecycleReport | undefined;
+  private businessInvariant: BusinessInvariantReport | undefined;
+  private controlledRace: ControlledRaceReport | undefined;
+  private apiGraphql: ApiGraphqlReviewReport | undefined;
+  private linkPortalSecurity: LinkPortalSecurityReport | undefined;
+  private operationalEndpointSecurity: OperationalEndpointSecurityReport | undefined;
+  private billingEntitlement: BillingEntitlementReport | undefined;
+  private secretBoundary: SecretBoundaryReport | undefined;
   private baseline: BaselineReport | undefined;
   private startedAt = new Date();
   private completedAt: Date | undefined;
@@ -75,6 +103,10 @@ export class ScanState {
 
   public recordRequestAudit(entry: RequestAuditEntry): void {
     this.requestAudit.push(entry);
+  }
+
+  public recordRequestBudget(snapshot: ScanRequestLedgerSnapshot): void {
+    this.requestBudget = { ...snapshot };
   }
 
   public recordScopeDecision(decision: ScopeDecision): void {
@@ -301,6 +333,16 @@ export class ScanState {
     }
 
     if (result.privilegeMutation) this.privilegeMutation = result.privilegeMutation;
+    if (result.supabaseAuthorization) this.supabaseAuthorization = result.supabaseAuthorization;
+    if (result.authenticationLifecycle) this.authenticationLifecycle = result.authenticationLifecycle;
+    if (result.businessInvariant) this.businessInvariant = result.businessInvariant;
+    if (result.controlledRace) this.controlledRace = result.controlledRace;
+    if (result.apiGraphql) this.apiGraphql = result.apiGraphql;
+    if (result.linkPortalSecurity) this.linkPortalSecurity = result.linkPortalSecurity;
+    if (result.operationalEndpointSecurity) this.operationalEndpointSecurity = result.operationalEndpointSecurity;
+    if (result.billingEntitlement) this.billingEntitlement = result.billingEntitlement;
+    if (result.secretBoundary) this.secretBoundary = result.secretBoundary;
+    if (result.assistedReview) this.assistedReview = result.assistedReview;
 
     if (result.findings) {
       this.recordFindings(result.findings);
@@ -310,6 +352,13 @@ export class ScanState {
   public getBaseline(): BaselineReport | undefined {
     return this.baseline;
   }
+
+  public recordApiGraphql(report: ApiGraphqlReviewReport): void { this.apiGraphql = report; }
+  public getApiGraphql(): ApiGraphqlReviewReport | undefined { return this.apiGraphql; }
+  public getLinkPortalSecurity(): LinkPortalSecurityReport | undefined { return this.linkPortalSecurity; }
+  public getOperationalEndpointSecurity(): OperationalEndpointSecurityReport | undefined { return this.operationalEndpointSecurity; }
+  public getBillingEntitlement(): BillingEntitlementReport | undefined { return this.billingEntitlement; }
+  public getSecretBoundary(): SecretBoundaryReport | undefined { return this.secretBoundary; }
 
   public getResponses(): HttpResponse[] {
     return [...this.responses];
@@ -434,9 +483,10 @@ export class ScanState {
         startedAt: this.startedAt.toISOString(),
         completedAt: completedAt.toISOString(),
         durationMs: completedAt.getTime() - this.startedAt.getTime(),
-        totalRequests: this.responses.filter((response) => !response.error || response.error.name !== "DuplicateRequest").length,
+        totalRequests: this.requestBudget?.totalTransmitted ?? this.responses.filter((response) => !response.error || response.error.name !== "DuplicateRequest").length,
         failedRequests: this.responses.filter((response) => response.error).length
       },
+      ...(this.requestBudget ? { requestBudget: { ...this.requestBudget } } : {}),
       ...(this.baseline ? { baseline: this.baseline } : {}),
       scopeDecisions: this.scopeDecisions,
       requestAudit: plan.evidence.collectRequestAudit ? this.requestAudit.map(serializeRequestAuditEntry) : [],
@@ -464,6 +514,16 @@ export class ScanState {
       ...(this.workflowValidation ? { workflowValidation: this.workflowValidation } : {}),
       ...(this.proofMode ? { proofMode: this.proofMode } : {}),
       ...(this.privilegeMutation ? { privilegeMutation: this.privilegeMutation } : {}),
+      ...(this.supabaseAuthorization ? { supabaseAuthorization: this.supabaseAuthorization } : {}),
+      ...(this.authenticationLifecycle ? { authenticationLifecycle: this.authenticationLifecycle } : {}),
+      ...(this.businessInvariant ? { businessInvariant: this.businessInvariant } : {}),
+      ...(this.controlledRace ? { controlledRace: this.controlledRace } : {}),
+      ...(this.apiGraphql ? { apiGraphql: this.apiGraphql } : {}),
+      ...(this.linkPortalSecurity ? { linkPortalSecurity: this.linkPortalSecurity } : {}),
+      ...(this.operationalEndpointSecurity ? { operationalEndpointSecurity: this.operationalEndpointSecurity } : {}),
+      ...(this.billingEntitlement ? { billingEntitlement: this.billingEntitlement } : {}),
+      ...(this.secretBoundary ? { secretBoundary: this.secretBoundary } : {}),
+      ...(this.assistedReview ? { assistedReview: this.assistedReview } : {}),
       discoveredUrls,
       findings
     };

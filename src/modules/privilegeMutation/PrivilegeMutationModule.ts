@@ -3,6 +3,8 @@ import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.j
 import type { PrivilegeMutationObservation, PrivilegeMutationReport } from "../../reports/PrivilegeMutationReport.js";
 import type { PrivilegeMutationCasePlan } from "./PrivilegeMutationPlanner.js";
 import { createHash } from "node:crypto";
+import { FindingFactory } from "../../core/findings/FindingFactory.js";
+import { recommendationRules } from "../../intelligence/recommendations/recommendationRules.js";
 
 export class PrivilegeMutationModule implements RouteCairnPlugin {
   public readonly name = "privilege-mutation-testing";
@@ -12,7 +14,20 @@ export class PrivilegeMutationModule implements RouteCairnPlugin {
   public async run(context: ScanContext): Promise<ModuleResult> {
     const plan = context.options.plan.privilegeMutationTesting;
     const report = plan ? await execute(context, plan.cases) : disabledReport();
-    return { pluginName: this.name, privilegeMutation: report, notes: report.notes };
+    const factory = new FindingFactory();
+    const findings = report.observations.filter((item) => item.securityOutcome.endsWith("_PROVEN") && item.authorityChangeVerified).map((item) => factory.fromAssistedCase({
+      title: `Controlled authority mutation: ${item.category}`,
+      type: "Privilege Mutation Issue",
+      severity: "High", confidence: "High", url: item.attackEndpoint, method: item.attackMethod,
+      evidence: { url: item.attackEndpoint, method: item.attackMethod, source: "privilege-mutation-testing", reproductionNotes: ["The exact controlled mutation contradicted its authority boundary after authoritative verification.", "Credential values, authority values, object identifiers, and recovery material are omitted."] },
+      impact: "A lower-privileged actor changed an authority-bearing field outside its intended permission boundary.",
+      recommendation: recommendationRules["Privilege Mutation Issue"],
+      manualTestingSuggestions: ["Reconcile the disposable fixture before reuse.", "Retest the identical approved case and protected action after remediation."],
+      tags: ["controlled-mutation", "authorization", item.category.toLowerCase()],
+      falsePositiveStatus: "likely-valid", sourceModule: this.name,
+      workflowCase: { id: item.caseId, comparisonFingerprint: item.comparisonIdentity, cleanupOutcome: item.cleanupOutcome }
+    }));
+    return { pluginName: this.name, privilegeMutation: report, findings, notes: report.notes };
   }
 }
 
@@ -33,6 +48,7 @@ async function execute(_context: ScanContext, cases: readonly PrivilegeMutationC
     securityOutcome: "INCONCLUSIVE",
     cleanupOutcome: "NOT_REQUIRED",
     requestTransmitted: false,
+    actorIdentityVerified: false,
     targetIdentityVerified: false,
     originalAuthorityVerified: false,
     authorityChangeVerified: false,
@@ -44,13 +60,13 @@ async function execute(_context: ScanContext, cases: readonly PrivilegeMutationC
       continue;
     }
     if (!contractMatchesPlan(contract, item)) {
-      observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", requestTransmitted: false, targetIdentityVerified: false, originalAuthorityVerified: false, authorityChangeVerified: false, protectedActionVerified: false, comparisonIdentity: "", notes: ["Approved mutation contract did not match the planned semantic case; no request was sent."], result: { caseId: item.caseId, outcome: "BLOCKED_BY_SAFETY", securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", journalPath: "", comparisonIdentity: "", notes: [] } });
+      observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", requestTransmitted: false, actorIdentityVerified: false, targetIdentityVerified: false, originalAuthorityVerified: false, authorityChangeVerified: false, protectedActionVerified: false, comparisonIdentity: "", notes: ["Approved mutation contract did not match the planned semantic case; no request was sent."], result: { caseId: item.caseId, outcome: "BLOCKED_BY_SAFETY", securityOutcome: "BLOCKED_BY_SAFETY", cleanupOutcome: "NOT_REQUIRED", journalPath: "", comparisonIdentity: "", notes: [] } });
       continue;
     }
     const result = await _context.runControlledMutation(contract);
     const proven = result.securityOutcome === "EXPLOIT_PROVEN";
     const securityOutcome: PrivilegeMutationObservation["securityOutcome"] = proven ? categoryOutcome(item.category) : result.securityOutcome === "SECURE_FOR_CASE" ? "MUTATION_REJECTED" : result.securityOutcome === "BLOCKED_BY_SAFETY" ? "BLOCKED_BY_SAFETY" : "INCONCLUSIVE";
-    observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome, cleanupOutcome: result.cleanupOutcome, requestTransmitted: Boolean(result.attackResponseHash), targetIdentityVerified: Boolean(result.preStateHash), originalAuthorityVerified: Boolean(result.preStateHash), authorityChangeVerified: proven && Boolean(result.verificationResponseHash), protectedActionVerified: result.protectedActionVerified === true, comparisonIdentity: result.comparisonIdentity, notes: result.notes, result });
+    observations.push({ caseId: item.caseId, category: item.category, actorLabel: item.actor.label, targetAlias: item.target.alias, attackMethod: item.attack.method, attackEndpoint: redactEndpoint(item.attack.url), authorityField: item.attack.field, securityOutcome, cleanupOutcome: result.cleanupOutcome, requestTransmitted: Boolean(result.attackResponseHash), actorIdentityVerified: contract.identity ? Boolean(result.actorIdentityResponseHash) : true, targetIdentityVerified: Boolean(result.targetIdentityResponseHash), originalAuthorityVerified: Boolean(result.preStateHash), authorityChangeVerified: proven && Boolean(result.verificationResponseHash), protectedActionVerified: result.protectedActionVerified === true || result.browserProtectedActionVerified === true, comparisonIdentity: result.comparisonIdentity, notes: result.notes, result });
   }
   return { enabled: true, plannedCases: cases.length, executedCases: observations.filter((item) => item.requestTransmitted).length, provenFindings: observations.filter((item) => item.securityOutcome.endsWith("PROVEN")).length, cleanupRequired: observations.filter((item) => item.cleanupOutcome !== "ROLLBACK_VERIFIED" && item.cleanupOutcome !== "NOT_REQUIRED").length, observations, notes: ["Only exact worker-bound contracts were eligible for transmission.", "Cleanup status remains independent from security outcome."] };
 }
@@ -61,6 +77,9 @@ function categoryOutcome(category: PrivilegeMutationCasePlan["category"]): Privi
 function contractMatchesPlan(contract: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract, plan: PrivilegeMutationCasePlan): boolean {
   if (contract.caseId !== plan.caseId || contract.targetOrigin !== new URL(plan.attack.url).origin || contract.target.identityFingerprint !== plan.target.identityFingerprint || contract.target.identityAssertion.path !== plan.target.identityAssertions.find((assertion) => assertion.operator === "EQUALS")?.path || contract.attack.request.url !== plan.attack.url || contract.attack.request.method !== plan.attack.method || contract.attack.semanticEffect !== plan.attack.semanticEffect || contract.rollback.request.url !== plan.rollback.request.url || contract.rollback.request.method !== plan.rollback.request.method) return false;
   try {
+    if (plan.actor.identityFingerprint || plan.actor.identityRequest || plan.actor.identityAssertions) {
+      if (!contract.actor || !contract.identity || contract.actor.identityFingerprint !== plan.actor.identityFingerprint || contract.actor.credentialReferenceFingerprint !== plan.actor.credentialReferenceFingerprint || !plan.actor.identityRequest || contract.identity.request.url !== plan.actor.identityRequest.url || stableHash(contract.identity.assertions) !== stableHash(plan.actor.identityAssertions)) return false;
+    }
     if (typeof contract.attack.request.body !== "string") return false;
     const body = JSON.parse(contract.attack.request.body) as Record<string, unknown>;
     const value = body[plan.attack.field];

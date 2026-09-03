@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 
 const repoRoot = process.cwd();
-const allowedPlaywrightFiles = new Set([join("src", "modules", "browserCrawler", "PlaywrightCrawler.ts"), join("src", "modules", "browserCrawler", "Screenshotter.ts")]);
+const allowedPlaywrightFiles = new Set([
+  join("src", "modules", "browserCrawler", "PlaywrightCrawler.ts"),
+  join("src", "modules", "browserCrawler", "BrowserLearning.ts"),
+  join("src", "modules", "browserCrawler", "BrowserProofVerifier.ts"),
+  join("src", "modules", "browserCrawler", "Screenshotter.ts")
+]);
 
 describe("browser architecture invariants", () => {
   it("keeps Playwright construction inside the hardened browser layer", () => {

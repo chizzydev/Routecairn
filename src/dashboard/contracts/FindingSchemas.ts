@@ -85,6 +85,7 @@ export const savedFindingViewSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().min(1).max(120),
   query: z.object({
+    scanId: z.string().uuid().optional(),
     search: z.string().max(160).optional(),
     projectId: z.string().uuid().optional(),
     targetId: z.string().uuid().optional(),

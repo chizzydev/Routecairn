@@ -288,7 +288,7 @@ function findingsFromReport(report: EquivalentRouteReport, context: ScanContext)
     manualTestingSuggestions: ["Verify the configured route equivalence is correct.", "Check whether a documented public, tenant, role, sharing, or state policy explains the alternate route access.", "Add negative tests for this exact actor, object, and route pair."],
     tags: ["equivalent-route", "access-control", "needs-manual-verification", observation.findingCategory.toLowerCase().replace(/_/g, "-")],
     riskScore: riskScorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["equivalent-route", "access-control"] }),
-    sourceModule: "equivalent-route-testing",
+    workflowCase: { id: `${observation.routeSetId}/${observation.cellId}` }, sourceModule: "equivalent-route-testing",
     falsePositiveStatus: "likely-valid" as const,
     timestamp: new Date().toISOString()
   }));

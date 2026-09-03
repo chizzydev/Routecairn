@@ -451,7 +451,7 @@ function findingsFromReport(report: BulkAuthorizationReport, context: ScanContex
     manualTestingSuggestions: ["Verify the configured non-mutating safety contract.", "Confirm the supplied object relationship and intended batch policy.", "Add negative tests for this exact mixed batch."],
     tags: ["bulk-authorization", "access-control", observation.findingCategory.toLowerCase().replace(/_/g, "-")],
     riskScore: scorer.score({ severity: "High", confidence: "High", falsePositiveStatus: "likely-valid", tags: ["bulk-authorization", "access-control"] }),
-    sourceModule: "bulk-authorization-testing",
+    workflowCase: { id: `${observation.definitionId}/${observation.caseId}` }, sourceModule: "bulk-authorization-testing",
     falsePositiveStatus: "likely-valid" as const,
     timestamp: new Date().toISOString()
   }));

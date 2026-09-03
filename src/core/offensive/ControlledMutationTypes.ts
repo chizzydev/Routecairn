@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HttpRequest, HttpResponse } from "../http/HttpTypes.js";
+import type { TargetAuthorization } from "../authorization/TargetAuthorization.js";
 
 export const offensiveExecutionModeSchema = z.enum(["OBSERVE", "SAFE_ACTIVE", "CONTROLLED_MUTATION", "CONTROLLED_DELETION", "LAB_DESTRUCTIVE"]);
 export const mutationOutcomeSchema = z.enum(["EXPLOIT_PROVEN", "SECURE_FOR_CASE", "INCONCLUSIVE", "BLOCKED_BY_SAFETY", "ROLLBACK_VERIFIED", "CLEANUP_REQUIRED", "CLEANUP_FAILED"]);
@@ -33,6 +34,11 @@ export const controlledMutationContractSchema = z.object({
   mode: offensiveExecutionModeSchema,
   environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]),
   productionAcknowledged: z.boolean().default(false),
+  approvalBinding: z.object({
+    planIdentity: z.string().regex(/^[a-f0-9]{64}$/),
+    targetIdentityFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    scopeDigest: z.string().regex(/^[a-f0-9]{64}$/)
+  }).strict().optional(),
   authorization: z.object({
     authorizedBy: z.string().min(1),
     changeTicket: z.string().min(1),
@@ -40,6 +46,12 @@ export const controlledMutationContractSchema = z.object({
     authorizedAt: z.string().datetime(),
     expiresAt: z.string().datetime()
   }).strict(),
+  actor: z.object({
+    credentialReferenceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    identityFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    identityAssertion: assertionSchema.extend({ operator: z.literal("EQUALS"), expectedValue: z.unknown() })
+  }).strict().optional(),
+  identity: verificationSchema.extend({ assertions: z.array(assertionSchema).min(1) }).optional(),
   target: z.object({
     disposable: z.literal(true),
     type: z.string().min(1),
@@ -67,7 +79,7 @@ export type MutationVerification = z.infer<typeof verificationSchema>;
 
 export interface MutationTransport { send(request: HttpRequest): Promise<HttpResponse> }
 
-export type MutationJournalStage = "AUTHORIZED" | "PRE_STATE_CAPTURED" | "MUTATION_ARMED" | "MUTATION_SENT" | "IMPACT_VERIFIED" | "ROLLBACK_SENT" | "ROLLBACK_VERIFIED" | "CLEANUP_REQUIRED" | "CLEANUP_FAILED" | "SEALED";
+export type MutationJournalStage = "AUTHORIZED" | "ACTOR_IDENTITY_VERIFIED" | "TARGET_IDENTITY_VERIFIED" | "PRE_STATE_CAPTURED" | "MUTATION_ARMED" | "MUTATION_SENT" | "IMPACT_VERIFIED" | "ROLLBACK_SENT" | "ROLLBACK_VERIFIED" | "CLEANUP_REQUIRED" | "CLEANUP_FAILED" | "SEALED";
 
 export interface MutationJournalEntry {
   sequence: number;
@@ -92,23 +104,39 @@ export interface ControlledMutationResult {
   outcome: MutationOutcome;
   securityOutcome: "EXPLOIT_PROVEN" | "SECURE_FOR_CASE" | "INCONCLUSIVE" | "BLOCKED_BY_SAFETY";
   cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_REQUIRED" | "CLEANUP_FAILED" | "NOT_REQUIRED";
+  actorIdentityResponseHash?: string;
+  targetIdentityResponseHash?: string;
   preStateHash?: string;
   attackResponseHash?: string;
   verificationResponseHash?: string;
   protectedActionResponseHash?: string;
   protectedActionVerified?: boolean;
+  browserProtectedActionVerified?: boolean;
+  browserRollbackVerified?: boolean;
   rollbackResponseHash?: string;
   journalPath: string;
   comparisonIdentity: string;
   notes: string[];
 }
 
+export interface ControlledMutationBrowserObserver {
+  verifyProtectedAction(contract: ControlledMutationContract): Promise<{ configured: boolean; matched: boolean; notes: string[] }>;
+  verifyRollback(contract: ControlledMutationContract): Promise<{ configured: boolean; matched: boolean; notes: string[] }>;
+}
+
 export interface MutationRecoveryBundle {
+  targetAuthorization?: TargetAuthorization;
+  approvalBinding?: ControlledMutationContract["approvalBinding"];
   caseId: string;
   targetOrigin: string;
   targetIdentityFingerprint?: string;
   authorizationExpiresAt?: string;
   contractDigest?: string;
+  actorBinding?: ControlledMutationContract["actor"];
+  actorIdentityVerification?: MutationVerification;
+  actorIdentityResponseHash?: string;
+  targetIdentityVerification?: MutationVerification;
+  targetIdentityResponseHash?: string;
   rollbackRequest: HttpRequest;
   rollbackVerification: MutationVerification;
   preStateHash?: string;

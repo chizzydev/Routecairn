@@ -3,7 +3,7 @@ import type { ScanMode } from "./ConfigSchema.js";
 import { scanProfileDefinitions } from "../core/planning/ProfileDefinitions.js";
 import type { ResolvedScanPlan, ScanProfileDefinition } from "../core/planning/ScanPlan.js";
 
-export const scanProfileNameSchema = z.enum(["quick", "full", "authenticated", "monitor", "proof"]);
+export const scanProfileNameSchema = z.enum(["quick", "full", "authenticated", "monitor", "proof", "pre-handover"]);
 
 export type ScanProfileName = z.infer<typeof scanProfileNameSchema>;
 export type BrowserProfileUse = "off" | "optional" | "on";

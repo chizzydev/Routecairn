@@ -54,7 +54,7 @@ type ScopeState = {
   program: string;
   allowedDomains: string[];
   disallowedPaths: string[];
-  allowedMethods: Array<"GET" | "HEAD" | "OPTIONS" | "POST">;
+  allowedMethods: Array<"GET" | "HEAD" | "OPTIONS" | "POST" | "PATCH" | "PUT" | "DELETE">;
   rateLimitPerSecond: number;
   concurrency: number;
   maxDepth: number;
@@ -98,8 +98,21 @@ type StudioState = {
   accountA: ActorState;
   accountB: ActorState;
   evidenceLevel: "minimal" | "normal" | "strong";
+  maxRequestsOverride: string;
+  cleanupReservedRequestsOverride: string;
   outputs: { json: boolean; markdown: boolean; html: boolean };
   workflows: WorkflowDraft[];
+  authenticationLifecycleFile: string;
+  authenticationLifecycleAutoFile: string;
+  businessInvariantFile: string;
+  controlledRaceFile: string;
+  apiGraphqlFile: string;
+  linkPortalSecurityFile: string;
+  operationalEndpointSecurityFile: string;
+  billingEntitlementFile: string;
+  assistedReviewFile: string;
+  preHandoverFile: string;
+  targetAuthorizationFile: string;
   retestContext?: RetestDraft["context"];
   preview: PlanPreview | undefined;
 };
@@ -254,8 +267,21 @@ export function ScanStudio({
     accountA: initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
     accountB: initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
     evidenceLevel: (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
+    maxRequestsOverride: "",
+    cleanupReservedRequestsOverride: "",
     outputs: initialDraft?.outputs && initialDraft.outputs.json && initialDraft.outputs.markdown && initialDraft.outputs.html ? { json: true, markdown: true, html: true } : { json: true, markdown: true, html: true },
     workflows: (initialDraft?.reusableWorkflows ?? []) as WorkflowDraft[],
+    authenticationLifecycleFile: "",
+    authenticationLifecycleAutoFile: "",
+    businessInvariantFile: "",
+    controlledRaceFile: "",
+    apiGraphqlFile: "",
+    linkPortalSecurityFile: "",
+    operationalEndpointSecurityFile: "",
+    billingEntitlementFile: "",
+    assistedReviewFile: "",
+    preHandoverFile: "",
+    targetAuthorizationFile: "",
     ...(initialDraft ? { retestContext: initialDraft.context } : {}),
     preview: undefined,
   }));
@@ -525,7 +551,32 @@ export function ScanStudio({
             />
           )}
           {state.currentStep === 7 && (
-            <AuthorizationWorkflowStudio
+            <div className="studio-panel">
+              <fieldset>
+                <legend>Authentication lifecycle</legend>
+                <label>Explicit manifest path<input disabled={Boolean(state.authenticationLifecycleAutoFile)} value={state.authenticationLifecycleFile} onChange={(event) => update({ authenticationLifecycleFile: event.target.value })} placeholder="examples/authentication-lifecycle.example.json" /></label>
+                <label>Browser-learned automation policy<input disabled={Boolean(state.authenticationLifecycleFile)} value={state.authenticationLifecycleAutoFile} onChange={(event) => update({ authenticationLifecycleAutoFile: event.target.value })} placeholder="examples/authentication-lifecycle-automation.example.json" /></label>
+                <p className="muted">Automation learns the login request and session-cookie boundary, compiles ready cases, and executes only under the policy's exact expiring authorization. Unresolved recipes are reported as blocked.</p>
+              </fieldset>
+              <fieldset>
+                <legend>Business invariant validation</legend>
+                <label>Explicit invariant manifest path<input value={state.businessInvariantFile} onChange={(event) => update({ businessInvariantFile: event.target.value })} placeholder="examples/business-invariants.example.json" /></label>
+                <p className="muted">Runs only explicit, expiring, disposable-entity cases with authoritative pre/post state, bounded duplicate or concurrency checks, and verified cleanup.</p>
+              </fieldset>
+              <fieldset>
+                <legend>Controlled race testing</legend>
+              <label>Explicit race manifest path<input value={state.controlledRaceFile} onChange={(event) => update({ controlledRaceFile: event.target.value })} placeholder="examples/controlled-races.example.json" /></label>
+              <label>API / GraphQL review manifest path<input value={state.apiGraphqlFile} onChange={(event) => update({ apiGraphqlFile: event.target.value })} placeholder="examples/api-graphql.example.json" /></label>
+              <label>Signed link / portal / export manifest path<input value={state.linkPortalSecurityFile} onChange={(event) => update({ linkPortalSecurityFile: event.target.value })} placeholder="examples/link-portal-security.example.json" /></label>
+              <label>Webhook / cron / operational endpoint manifest path<input value={state.operationalEndpointSecurityFile} onChange={(event) => update({ operationalEndpointSecurityFile: event.target.value })} placeholder="examples/operational-endpoints.example.json" /></label>
+              <label>Assisted review case inventory path<input value={state.assistedReviewFile} onChange={(event) => update({ assistedReviewFile: event.target.value })} placeholder="examples/assisted-review.example.json" /></label>
+              <label>Pre-handover manifest path<input value={state.preHandoverFile} onChange={(event) => update({ preHandoverFile: event.target.value })} placeholder="examples/pre-handover.example.json" /></label>
+              <label>Target authorization / bug-bounty rules path<input value={state.targetAuthorizationFile} onChange={(event) => update({ targetAuthorizationFile: event.target.value })} placeholder="examples/target-authorization.example.json" /></label>
+              <label>Synthetic checkout / billing / entitlement manifest path<input value={state.billingEntitlementFile} onChange={(event) => update({ billingEntitlementFile: event.target.value })} placeholder="examples/billing-entitlement.example.json" /></label>
+              <p className="muted">Executes only explicit bounded route and GraphQL query cases. API discovery never grants mutation authority.</p>
+                <p className="muted">Releases exactly 2–5 declared mutations through a ready barrier, then verifies authoritative state/event counts and cleanup. This is bounded race testing, never load testing.</p>
+              </fieldset>
+              <AuthorizationWorkflowStudio
               workflows={state.workflows}
               diagnostics={workflowDiagnostics}
               capabilities={capabilities?.controlledWorkflows ?? []}
@@ -542,7 +593,8 @@ export function ScanStudio({
                 })
               }
               onPreview={preview}
-            />
+              />
+            </div>
           )}
           {state.currentStep === 8 && (
             <ReviewStep state={state} profile={profile!} />
@@ -1002,7 +1054,7 @@ function ScopeStep({
       <fieldset>
         <legend>Allowed methods</legend>
         <div className="check-row">
-          {(["GET", "HEAD", "OPTIONS", "POST"] as const).map((method) => (
+          {(["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"] as const).map((method) => (
             <label className="checkbox" key={method}>
               <input
                 type="checkbox"
@@ -1746,10 +1798,34 @@ function LimitsStep({
             }
           />
         </label>
+        <label>
+          Total scan request budget
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            placeholder={String(profile?.limits.maxRequests ?? "Profile default")}
+            value={state.maxRequestsOverride}
+            onChange={(event) => update({ maxRequestsOverride: event.target.value })}
+          />
+        </label>
+        <label>
+          Cleanup requests reserved
+          <input
+            type="number"
+            min="0"
+            max="5000"
+            placeholder={String(profile?.limits.cleanupReservedRequests ?? "Automatic")}
+            value={state.cleanupReservedRequestsOverride}
+            onChange={(event) => update({ cleanupReservedRequestsOverride: event.target.value })}
+          />
+        </label>
       </div>
       <p className="muted">
-        Advanced browser module settings remain profile-controlled in this
-        milestone and are shown exactly in Plan Review.
+        The total is enforced across every engine, retry, redirect, API broker,
+        and browser request. Cleanup capacity is withheld from ordinary traffic
+        and can only be used for restoration. Empty fields use the resolved
+        profile and automatic cleanup reserve shown in Plan Review.
       </p>
     </div>
   );
@@ -1835,16 +1911,26 @@ function ReviewStep({
       <Review title="Identity" value={safeIdentityReview(state)} />
       <Review
         title="Controlled workflows"
-        value={state.workflows.map((workflow) => ({
-          workflowId: workflow.workflowId,
-          enabled: workflow.enabled,
-          editorMode: workflow.editorMode,
-          caseCount: workflowCaseCount(workflow),
-          exactPlannedRequests:
-            state.preview?.controlledWorkflowRequests?.find(
-              (item) => item.workflowId === workflow.workflowId,
-            )?.exactRequests ?? "Unknown until planning",
-        }))}
+        value={{
+          authenticationLifecycleFile: state.authenticationLifecycleFile || undefined,
+          authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile || undefined,
+          businessInvariantFile: state.businessInvariantFile || undefined,
+          controlledRaceFile: state.controlledRaceFile || undefined,
+          apiGraphqlFile: state.apiGraphqlFile || undefined,
+          linkPortalSecurityFile: state.linkPortalSecurityFile || undefined,
+          operationalEndpointSecurityFile: state.operationalEndpointSecurityFile || undefined,
+          billingEntitlementFile: state.billingEntitlementFile || undefined,
+          assistedReviewFile: state.assistedReviewFile || undefined,
+          preHandoverFile: state.preHandoverFile || undefined,
+          targetAuthorizationFile: state.targetAuthorizationFile || undefined,
+          workflows: state.workflows.map((workflow) => ({
+            workflowId: workflow.workflowId,
+            enabled: workflow.enabled,
+            editorMode: workflow.editorMode,
+            caseCount: workflowCaseCount(workflow),
+            exactPlannedRequests: state.preview?.controlledWorkflowRequests?.find((item) => item.workflowId === workflow.workflowId)?.exactRequests ?? "Unknown until planning",
+          })),
+        }}
       />
       <Review
         title="Evidence and outputs"
@@ -1955,6 +2041,17 @@ function validate(state: StudioState): ValidationError[] {
       step: 1,
       message: "The target host must be covered by an allowed domain rule.",
     });
+  const maxRequests = state.maxRequestsOverride === "" ? undefined : Number(state.maxRequestsOverride);
+  const cleanupReserve = state.cleanupReservedRequestsOverride === "" ? undefined : Number(state.cleanupReservedRequestsOverride);
+  if (maxRequests !== undefined && (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 10000)) {
+    errors.push({ step: 5, message: "Total scan request budget must be an integer between 1 and 10000." });
+  }
+  if (cleanupReserve !== undefined && (!Number.isInteger(cleanupReserve) || cleanupReserve < 0 || cleanupReserve > 5000)) {
+    errors.push({ step: 5, message: "Cleanup reserve must be an integer between 0 and 5000." });
+  }
+  if (maxRequests !== undefined && cleanupReserve !== undefined && cleanupReserve > maxRequests) {
+    errors.push({ step: 5, message: "Cleanup reserve cannot exceed the total scan request budget." });
+  }
   if (state.scope.allowedMethods.length === 0)
     errors.push({ step: 1, message: "At least one safe method is required." });
   if (!state.profile)
@@ -2142,9 +2239,22 @@ function buildRequest(state: StudioState): Record<string, unknown> {
     authorizationDeclaration: `${state.authorizationCategory}: ${state.authorizationNote || "Authorized in Scan Studio"}`,
     rateLimitPerSecond: state.scope.rateLimitPerSecond,
     concurrency: state.scope.concurrency,
+    ...(state.maxRequestsOverride !== "" ? { maxRequests: Number(state.maxRequestsOverride) } : {}),
+    ...(state.cleanupReservedRequestsOverride !== "" ? { cleanupReservedRequests: Number(state.cleanupReservedRequestsOverride) } : {}),
     ...(state.selectedModules.length
       ? { includeModules: state.selectedModules }
       : {}),
+    ...(state.authenticationLifecycleFile ? { authenticationLifecycleFile: state.authenticationLifecycleFile } : {}),
+    ...(state.authenticationLifecycleAutoFile ? { authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile } : {}),
+    ...(state.businessInvariantFile ? { businessInvariantFile: state.businessInvariantFile } : {}),
+    ...(state.controlledRaceFile ? { controlledRaceFile: state.controlledRaceFile } : {}),
+    ...(state.apiGraphqlFile ? { apiGraphqlFile: state.apiGraphqlFile } : {}),
+    ...(state.linkPortalSecurityFile ? { linkPortalSecurityFile: state.linkPortalSecurityFile } : {}),
+    ...(state.operationalEndpointSecurityFile ? { operationalEndpointSecurityFile: state.operationalEndpointSecurityFile } : {}),
+    ...(state.billingEntitlementFile ? { billingEntitlementFile: state.billingEntitlementFile } : {}),
+    ...(state.assistedReviewFile ? { assistedReviewFile: state.assistedReviewFile } : {}),
+    ...(state.preHandoverFile ? { preHandoverFile: state.preHandoverFile } : {}),
+    ...(state.targetAuthorizationFile ? { targetAuthorizationFile: state.targetAuthorizationFile } : {}),
     studio: {
       version: 1,
       scanName: state.scanName,

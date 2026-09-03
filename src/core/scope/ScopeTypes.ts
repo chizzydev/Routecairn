@@ -2,6 +2,7 @@ import type { RouteCairnScope } from "../../config/ConfigSchema.js";
 
 export type ScopeDecisionReason =
   | "allowed"
+  | "target-authorization-denied"
   | "invalid-url"
   | "domain-not-allowed"
   | "subdomain-not-allowed"

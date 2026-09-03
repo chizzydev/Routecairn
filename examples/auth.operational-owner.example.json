@@ -1,0 +1,14 @@
+{
+  "label": "operational-owner",
+  "safeAlias": "operational-owner",
+  "principalId": "replace-account-a-principal",
+  "tenantId": "replace-tenant-a",
+  "role": "operator",
+  "headers": { "Authorization": "Bearer replace-account-a-credential" },
+  "cookies": [],
+  "lifecycleSecrets": {
+    "job_id": "replace-owned-job-id",
+    "incident_id": "replace-owned-incident-id"
+  },
+  "notes": ["Use a controlled Account A fixture."]
+}

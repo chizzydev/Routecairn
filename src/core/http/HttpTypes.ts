@@ -20,6 +20,8 @@ export interface RequestBrokerOptions extends HttpClientOptions {
   maxRequests: number;
   retry: RetryPolicyOptions;
   controlledMutationEnabled?: boolean;
+  controlledDeletionEnabled?: boolean;
+  controlledRaceEnabled?: boolean;
 }
 
 export interface RetryPolicyOptions {
@@ -46,6 +48,7 @@ export interface HttpRequest {
   maxStreamContentLength?: number;
   retainBodyPreview?: boolean;
   disableRetries?: boolean;
+  disableRedirects?: boolean;
 }
 
 export interface RedirectHop {
@@ -77,6 +80,11 @@ export interface HttpResponse {
     message: string;
     code?: string;
   };
+}
+
+export interface SynchronizedMutationBatchResult {
+  responses: HttpResponse[];
+  dispatchSkewMs: number;
 }
 
 export type RequestAuditOutcome =

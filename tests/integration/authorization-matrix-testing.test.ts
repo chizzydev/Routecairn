@@ -95,7 +95,8 @@ describe("authorization matrix testing integration", () => {
     expect(report.authorizationMatrix?.confirmedIssues).toBe(1);
     expect(report.findings.filter((finding) => finding.type === "Authorization Matrix Issue")).toHaveLength(1);
     expect(report.findings[0]?.sourceModule).toBe("authorization-matrix-testing");
-    expect(report.findings[0]?.evidence.curlCommand).toContain("Cookie: <redacted>");
+    expect(report.findings[0]?.evidence.curlCommand).toBeUndefined();
+    expect(report.findings[0]?.evidence.source).toMatch(/^assisted-workflow:authorization-matrix-testing:/);
 
     for (const serialized of [jsonText, markdownText]) {
       expect(serialized).not.toContain("doc-a-001");

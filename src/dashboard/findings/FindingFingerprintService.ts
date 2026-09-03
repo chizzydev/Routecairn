@@ -17,7 +17,8 @@ export class FindingFingerprintService {
       finding.type,
       finding.method ?? "GET",
       routeIdentity(finding.url),
-      boundaryIdentity(finding.tags ?? [])
+      boundaryIdentity(finding.tags ?? []),
+      ...(finding.workflow ? [finding.workflow.caseId, finding.workflow.comparisonFingerprint ?? ""] : [])
     ];
     return createHmac("sha256", this.key).update(parts.join("\n")).digest("hex");
   }
@@ -46,6 +47,7 @@ function normalizeOrigin(origin: string): string {
 function routeIdentity(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl);
+    if (parsed.protocol === "redacted:") return rawUrl.replace(/[?#].*$/, "");
     parsed.hash = "";
     parsed.username = "";
     parsed.password = "";

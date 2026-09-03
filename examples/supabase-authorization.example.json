@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "projectUrl": "https://your-project.supabase.co",
+  "anonKeyEnv": "SUPABASE_ANON_KEY",
+  "serviceRoleKeyEnv": "SUPABASE_SERVICE_ROLE_KEY",
+  "maxCases": 100,
+  "maxResponseBytes": 131072,
+  "maxSignedUrlBytes": 8192,
+  "cases": [
+    {
+      "id": "documents-anonymous-read-denied",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "SELECT",
+      "actor": "ANONYMOUS",
+      "expectedDecision": "DENY",
+      "boundary": "CROSS_USER",
+      "method": "GET",
+      "url": "/rest/v1/documents?id=eq.operator-owned-fixture-id",
+      "responseShape": "LIST",
+      "identityAssertions": [{ "path": "id", "equals": "operator-owned-fixture-id" }],
+      "forbiddenColumns": ["private_note"],
+      "requireVerifiedIdentity": false
+    },
+    {
+      "id": "documents-account-a-owner-read",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "SELECT",
+      "actor": "ACCOUNT_A",
+      "expectedDecision": "ALLOW",
+      "method": "GET",
+      "url": "/rest/v1/documents?id=eq.operator-owned-fixture-id",
+      "responseShape": "LIST",
+      "identityAssertions": [{ "path": "id", "equals": "operator-owned-fixture-id" }],
+      "requireVerifiedIdentity": true
+    },
+    {
+      "id": "documents-account-b-cross-user-denied",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "SELECT",
+      "actor": "ACCOUNT_B",
+      "expectedDecision": "DENY",
+      "boundary": "CROSS_USER",
+      "method": "GET",
+      "url": "/rest/v1/documents?id=eq.operator-owned-fixture-id",
+      "responseShape": "LIST",
+      "identityAssertions": [{ "path": "id", "equals": "operator-owned-fixture-id" }],
+      "requireVerifiedIdentity": true
+    },
+    {
+      "id": "documents-disposable-insert-denied",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "INSERT",
+      "actor": "ACCOUNT_B",
+      "expectedDecision": "DENY",
+      "boundary": "CROSS_TENANT",
+      "method": "POST",
+      "url": "/rest/v1/documents",
+      "responseShape": "VOID",
+      "requireVerifiedIdentity": true,
+      "mutationContractCaseId": "supabase-documents-insert-disposable"
+    },
+    {
+      "id": "documents-disposable-update-denied",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "UPDATE",
+      "actor": "ACCOUNT_B",
+      "expectedDecision": "DENY",
+      "boundary": "CROSS_USER",
+      "method": "PATCH",
+      "url": "/rest/v1/documents?id=eq.operator-owned-disposable-id",
+      "responseShape": "VOID",
+      "requireVerifiedIdentity": true,
+      "mutationContractCaseId": "supabase-documents-update-disposable"
+    },
+    {
+      "id": "documents-disposable-delete-denied",
+      "surface": "TABLE",
+      "resource": "public.documents",
+      "operation": "DELETE",
+      "actor": "ACCOUNT_B",
+      "expectedDecision": "DENY",
+      "boundary": "CROSS_TENANT",
+      "method": "DELETE",
+      "url": "/rest/v1/documents?id=eq.operator-owned-disposable-id",
+      "responseShape": "VOID",
+      "requireVerifiedIdentity": true,
+      "mutationContractCaseId": "supabase-documents-delete-disposable"
+    }
+  ],
+  "catalog": {
+    "exposedSchemas": ["public"],
+    "expectedExposedSchemas": ["public"],
+    "tables": [
+      {
+        "schema": "public",
+        "name": "documents",
+        "exposed": true,
+        "rlsEnabled": true,
+        "rlsForced": false,
+        "ownerColumn": "owner_id",
+        "tenantColumn": "tenant_id",
+        "grants": [{ "role": "authenticated", "operations": ["SELECT", "INSERT", "UPDATE", "DELETE"] }],
+        "columns": [{ "name": "private_note", "sensitive": true, "exposedTo": ["authenticated"] }]
+      }
+    ],
+    "functions": [],
+    "storageBuckets": [],
+    "relationships": []
+  }
+}

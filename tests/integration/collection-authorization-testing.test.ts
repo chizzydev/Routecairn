@@ -116,7 +116,8 @@ describe("collection authorization testing integration", () => {
     expect(numericId?.findingCategory).toBeUndefined();
     expect(report.collectionAuthorization?.confirmedIssues).toBe(3);
     expect(report.findings.filter((finding) => finding.type === "Collection Authorization Issue")).toHaveLength(3);
-    expect(report.findings[0]?.evidence.curlCommand).toContain("<redacted>");
+    expect(report.findings[0]?.evidence.curlCommand).toBeUndefined();
+    expect(report.findings[0]?.evidence.source).toMatch(/^assisted-workflow:collection-authorization-testing:/);
 
     for (const serialized of [jsonText, markdownText]) {
       expect(serialized).not.toContain("doc-a-001");

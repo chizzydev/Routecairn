@@ -16,6 +16,7 @@ import { ScanExecutionService } from "../execution/ScanExecutionService.js";
 import { ComparisonService } from "../services/ComparisonService.js";
 import { HistoricalReportImporter } from "../import/HistoricalReportImporter.js";
 import { ProofPackService } from "../proofPacks/ProofPackService.js";
+import { AssistedReviewService } from "../reviews/AssistedReviewService.js";
 import { isLoopbackHost, resolveDashboardPaths, type DashboardPaths } from "../services/DashboardPaths.js";
 import { routeCairnCapabilityRegistry } from "../../core/planning/RouteCairnCapabilityRegistry.js";
 import { CredentialVault, parseVaultKey } from "../credentials/CredentialVault.js";
@@ -45,6 +46,7 @@ import { scopeSchema } from "../../config/ConfigSchema.js";
 import { controlledMutationApprovalSchema } from "../contracts/ControlledMutationSchemas.js";
 import { controlledMutationRecoverySchema } from "../contracts/ControlledMutationRecoverySchemas.js";
 import { ControlledMutationRecoveryService } from "../execution/ControlledMutationRecoveryService.js";
+import { WorkflowRecoveryService, workflowRecoveryRequestSchema } from "../execution/WorkflowRecoveryService.js";
 import { productionMutationApprovalSchema } from "../contracts/ProductionMutationApprovalSchemas.js";
 import { productionMutationCaseSchema } from "../contracts/ProductionMutationCaseSchemas.js";
 import { compileProductionMutationCase, productionMutationPlanIdentity } from "../execution/ProductionMutationCaseCompiler.js";
@@ -103,6 +105,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const vault = new CredentialVault(database, vaultKey);
   const mutationApprovals = new ControlledMutationApprovalRepository(database);
   const mutationRecovery = new ControlledMutationRecoveryService(database, paths, targets, vault);
+  const workflowRecovery = new WorkflowRecoveryService(database, paths, targets, vault);
   const retestTemplates = new RetestTemplateVault(database.db, vaultKey);
   const findingCommandCenter = new FindingCommandCenterService(database, retestTemplates);
   const execution = new ScanExecutionService(database, paths, vault, retestTemplates);
@@ -159,6 +162,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,database
           ,mutationApprovals
           ,mutationRecovery
+          ,workflowRecovery
         });
         return;
       }
@@ -178,6 +182,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     ...(localSessions ? { bootstrapUrl: localSessions.bootstrapUrl(url) } : {}),
     close: async () => {
       await execution.shutdown();
+      await workflowRecovery.shutdown();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
       database.close();
     }
@@ -231,6 +236,7 @@ interface ApiContext {
   database: DashboardDatabase;
   mutationApprovals: ControlledMutationApprovalRepository;
   mutationRecovery: ControlledMutationRecoveryService;
+  workflowRecovery: WorkflowRecoveryService;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -280,6 +286,13 @@ function requirePermission(context: ApiContext, permission: DashboardPermission)
 
 async function handleApiGet(context: ApiContext): Promise<void> {
   const { response, url, scans, projects, targets, findingCommandCenter, comparison, events, artifacts, paths } = context;
+  const assistedReview = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/assisted-review$/.exec(url.pathname);
+  if (assistedReview?.groups?.id) {
+    requirePermission(context, "findings.read");
+    try { sendJson(response, 200, new AssistedReviewService(context.database, paths).get(assistedReview.groups.id)); }
+    catch (error) { if (error instanceof Error && error.message === "ASSISTED_REVIEW_NOT_FOUND") sendJson(response, 404, { error: "No assisted review exists for this scan." }); else throw error; }
+    return;
+  }
   if (url.pathname === "/api/session") {
     sendJson(response, 200, { ok: true, principal: context.principal });
     return;
@@ -330,6 +343,11 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   if (url.pathname === "/api/offensive/status") {
     requirePermission(context, "scans.read");
     sendJson(response, 200, await readMutationCleanupStatus(paths.mutationJournalDir, paths.mutationJournalRegistryPath));
+    return;
+  }
+  if (url.pathname === "/api/workflow-mutations/status") {
+    requirePermission(context, "controlledMutation.recover");
+    sendJson(response, 200, await context.workflowRecovery.inventory());
     return;
   }
   if (url.pathname === "/api/vault/status") {
@@ -555,6 +573,20 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
   const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
+  const assistedPublication = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/assisted-review\/publish$/.exec(url.pathname);
+  if (request.method === "POST" && assistedPublication?.groups?.id) {
+    requirePermission(context, "proofPacks.create");
+    try {
+      const published = new AssistedReviewService(context.database, context.paths).publish(assistedPublication.groups.id, context.principal!.userId);
+      audit.append({ actorLabel: context.principal!.userId, action: "ASSISTED_REVIEW_PUBLISHED", resourceType: "SCAN", resourceId: assistedPublication.groups.id, summary: "Published human-reviewed customer report.", metadata: published });
+      sendJson(response, 201, published);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("ASSISTED_REVIEW_NOT_READY:")) sendJson(response, 409, { error: error.message });
+      else if (error instanceof Error && error.message === "ASSISTED_REVIEW_NOT_FOUND") sendJson(response, 404, { error: "No assisted review exists for this scan." });
+      else throw error;
+    }
+    return;
+  }
   if (request.method === "POST" && url.pathname === "/api/production-mutations/preview") {
     requirePermission(context, "controlledMutation.approve");
     const parsed = productionMutationCaseSchema.parse(await readJson(request));
@@ -590,12 +622,14 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     const planIdentity = productionMutationPlanIdentity(parsed, target);
     if (approval.caseId !== parsed.caseId || approval.targetId !== parsed.targetId || approval.planIdentity !== planIdentity) throw new HttpError(409, "PRODUCTION_MUTATION_PLAN_MISMATCH");
     const requestForWorker: DashboardScanCreateRequest = { target: target.baseOrigin, targetId: target.id, profile: "authenticated", credentialProfileId: parsed.actorCredentialProfileId, authorizationDeclaration: "Approved production controlled-mutation case.", studio: { version: 1, scanName: `Production mutation ${parsed.caseId}`, authorization: { category: "OWNED", confirmed: true }, scope: scopeSchema.parse(target.approvedScope), authentication: { mode: "primary", primary: { source: "saved", credentialProfileId: parsed.actorCredentialProfileId } }, outputs: { json: true, markdown: true, html: true }, moduleSettings: {}, workflows: [], workflowSummary: [] }, includeModules: ["privilege-mutation-testing"] };
-    const scanId = await execution.enqueue(requestForWorker, [compiled.contract]);
+    const contract = { ...compiled.contract, approvalBinding: { planIdentity: approval.planIdentity, targetIdentityFingerprint: approval.targetIdentityFingerprint, scopeDigest: approval.scopeDigest } };
+    const scanId = await execution.enqueue(requestForWorker, [contract], approval.id);
     audit.append({ actorLabel: context.principal?.userId, action: "PRODUCTION_MUTATION_EXECUTION_QUEUED", resourceType: "SCAN", resourceId: scanId, summary: "Approved production controlled-mutation case queued through the isolated worker.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, approvalId: productionExecute.groups.id } });
     sendJson(response, 202, { scanId, approvalId: productionExecute.groups.id, status: "QUEUED", preview: compiled.preview });
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/controlled-mutations/approvals") {
+    // Legacy controlled-contract approvals remain distinct from workflow cleanup authorization.
     requirePermission(context, "controlledMutation.approve");
     const parsed = controlledMutationApprovalSchema.parse(await readJson(request));
     const target = targets.get(parsed.targetId);
@@ -605,6 +639,14 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     const id = mutationApprovals.create({ ...parsed, authorizationSummary: parsed.authorizationDeclaration, targetIdentityFingerprint, scopeDigest });
     audit.append({ actorLabel: context.principal?.userId, action: "CONTROLLED_MUTATION_PREVIEWED", resourceType: "MUTATION_APPROVAL", resourceId: id, summary: "Controlled mutation approval preview persisted.", metadata: { caseId: parsed.caseId, targetId: parsed.targetId, planIdentity: parsed.planIdentity } });
     sendJson(response, 201, { approval: mutationApprovals.get(id) });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/workflow-mutations/recovery") {
+    requirePermission(context, "controlledMutation.recover");
+    const parsed = workflowRecoveryRequestSchema.parse(await readJson(request));
+    const jobId = await context.workflowRecovery.enqueue(parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKFLOW_CLEANUP_AUTHORIZED", resourceType: "RECOVERY_JOB", resourceId: jobId, summary: "Operator authorized stored cleanup and verification only.", metadata: { caseId: parsed.caseId, checkpointDigest: parsed.checkpointDigest } });
+    sendJson(response, 202, { jobId });
     return;
   }
   const approval = /^\/api\/controlled-mutations\/approvals\/(?<id>[0-9a-f-]+)\/approve$/.exec(url.pathname);
@@ -709,7 +751,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requirePermission(context, "credentials.test");
     const secret = context.vault.decryptForUse(credentialTest.groups.id);
     audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_TEST_EXECUTED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialTest.groups.id, summary: "Credential profile decrypted for bounded local validation." });
-    sendJson(response, 200, { ok: true, hasAuthorizationHeader: Boolean(secret.authorizationHeader), cookieCount: Object.keys(secret.cookies ?? {}).length, headerCount: Object.keys(secret.headers ?? {}).length, hasIdentityVerification: Boolean(secret.identityVerification) });
+    sendJson(response, 200, { ok: true, hasAuthorizationHeader: Boolean(secret.authorizationHeader), cookieCount: Object.keys(secret.cookies ?? {}).length, headerCount: Object.keys(secret.headers ?? {}).length, hasIdentityVerification: Boolean(secret.identityVerification), hasBrowserBootstrap: Boolean(secret.browserBootstrap), lifecycleSecretCount: Object.keys(secret.lifecycleSecrets ?? {}).length });
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/users") {
@@ -1252,7 +1294,7 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
 
 function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
-  const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE):?/.exec(message)?.[1];
+  const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
   const statusCode = conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError ? 403 : error instanceof SessionError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
@@ -1380,6 +1422,7 @@ function scanSortParam(url: URL) {
 
 function findingQuery(url: URL): FindingQuery {
   return {
+    scanId: stringParam(url, "scanId"),
     search: stringParam(url, "q"),
     projectId: stringParam(url, "projectId"),
     targetId: stringParam(url, "targetId"),

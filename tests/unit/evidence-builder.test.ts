@@ -38,6 +38,17 @@ describe("evidence builder", () => {
       "DATABASE_URL=<redacted>"
     );
   });
+
+  it("redacts client-safe and privileged credential material from generic evidence", () => {
+    const anonJwt = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.signature-material";
+    const preview = redactBodyPreview(`publishable=sb_publishable_1234567890 service=sb_secret_1234567890 anon=${anonJwt}`);
+
+    expect(preview).not.toContain("sb_publishable_1234567890");
+    expect(preview).not.toContain("sb_secret_1234567890");
+    expect(preview).not.toContain(anonJwt);
+    expect(preview).toContain("<redacted-credential-material>");
+    expect(preview).toContain("<redacted-jwt>");
+  });
 });
 
 function response(): HttpResponse {

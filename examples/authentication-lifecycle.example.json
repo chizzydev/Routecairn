@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 20,
+  "maxStepsPerCase": 20,
+  "maxRequests": 60,
+  "maxResponseBytes": 32768,
+  "cases": [
+    {
+      "id": "login-enumeration",
+      "label": "Known and unknown accounts receive equivalent login failures",
+      "category": "LOGIN_ENUMERATION_RESISTANCE",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": {
+        "mode": "CONTROLLED_LIFECYCLE",
+        "environment": "TEST",
+        "confirmation": "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING",
+        "authorizedBy": "replace-with-operator-reference",
+        "changeTicket": "replace-with-change-ticket",
+        "authorizedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "disposableAccounts": true,
+        "productionAcknowledged": false
+      },
+      "cleanupRequired": true,
+      "steps": [
+        {
+          "id": "known-account-login",
+          "phase": "ACTION",
+          "actorId": "member",
+          "request": { "method": "POST", "url": "https://app.example.com/api/auth/login", "stateChanging": true, "bodyFormat": "JSON", "fields": { "username": "{{SECRET:known_username}}", "password": "{{SECRET:password}}" } },
+          "assertions": [{ "kind": "STATUS_IN", "values": [400, 401, 403] }]
+        },
+        {
+          "id": "unknown-account-login",
+          "phase": "VERIFY",
+          "actorId": "member",
+          "request": { "method": "POST", "url": "https://app.example.com/api/auth/login", "stateChanging": true, "bodyFormat": "JSON", "fields": { "username": "{{SECRET:unknown_username}}", "password": "{{SECRET:password}}" } },
+          "assertions": [{ "kind": "RESPONSE_SIMILAR", "stepId": "known-account-login", "compareStatus": true, "compareShape": true, "maxLengthDelta": 64 }]
+        },
+        {
+          "id": "enumeration-cleanup",
+          "phase": "CLEANUP",
+          "actorId": "member",
+          "request": { "method": "POST", "url": "https://app.example.com/api/auth/logout-all", "stateChanging": true },
+          "assertions": [{ "kind": "STATUS_IN", "values": [200, 204, 401] }]
+        }
+      ]
+    },
+    {
+      "id": "session-rotation",
+      "label": "Login replaces a supplied pre-login session",
+      "category": "SESSION_ROTATION_AFTER_LOGIN",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": {
+        "mode": "CONTROLLED_LIFECYCLE",
+        "environment": "TEST",
+        "confirmation": "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING",
+        "authorizedBy": "replace-with-operator-reference",
+        "changeTicket": "replace-with-change-ticket",
+        "authorizedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "disposableAccounts": true,
+        "productionAcknowledged": false
+      },
+      "cleanupRequired": true,
+      "steps": [
+        {
+          "id": "login-with-fixed-session",
+          "phase": "ACTION",
+          "actorId": "member",
+          "request": { "method": "POST", "url": "https://app.example.com/api/auth/login", "stateChanging": true, "headers": { "Cookie": "session={{SECRET:fixed_session}}" }, "bodyFormat": "JSON", "fields": { "username": "{{SECRET:known_username}}", "password": "{{SECRET:password}}" } },
+          "captures": [{ "name": "rotated_session", "source": "COOKIE", "cookie": "session" }],
+          "assertions": [{ "kind": "CAPTURE_ROTATED", "capture": "rotated_session", "comparedTo": { "source": "SECRET", "ref": "fixed_session" } }]
+        },
+        {
+          "id": "logout-rotated-session",
+          "phase": "CLEANUP",
+          "actorId": "member",
+          "request": { "method": "POST", "url": "https://app.example.com/api/auth/logout", "stateChanging": true, "headers": { "Cookie": "session={{CAPTURE:rotated_session}}" } },
+          "assertions": [{ "kind": "STATUS_IN", "values": [200, 204] }]
+        }
+      ]
+    }
+  ]
+}

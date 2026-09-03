@@ -1,4 +1,5 @@
 import type { JsConfigValue } from "../../reports/ReportTypes.js";
+import { classifyTransientSecret } from "../secretBoundary/SecretBoundaryClassifier.js";
 
 const assignmentPattern =
   /\b(?<name>NEXT_PUBLIC_[A-Z0-9_]+|VITE_[A-Z0-9_]+|PUBLIC_[A-Z0-9_]+|apiBaseUrl|baseURL|graphqlEndpoint)\b\s*[:=]\s*["'`](?<value>[^"'`]{1,300})["'`]/gi;
@@ -15,10 +16,14 @@ export class PublicConfigAnalyzer {
         continue;
       }
 
+      const secret = classifyTransientSecret({ name, value, surface: "JAVASCRIPT_BUNDLE", publicExposure: true });
+      const sensitive = !["NON_SENSITIVE", "PUBLIC_CLIENT_CONFIG", "PUBLISHABLE_CLIENT_KEY", "SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY"].includes(secret.materialClass);
+      const clientCredential = ["PUBLISHABLE_CLIENT_KEY", "SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEY"].includes(secret.materialClass);
       values.set(name, {
         name,
-        valuePreview: preview(value),
-        classification: isPublicFrontendName(name) ? "public-frontend-config" : "config-looking-value"
+        valuePreview: sensitive ? "<redacted-sensitive-config>" : clientCredential ? "<redacted-client-material>" : preview(value),
+        classification: sensitive ? "redacted-sensitive-config" : isPublicFrontendName(name) ? "public-frontend-config" : "config-looking-value",
+        ...(!["NON_SENSITIVE", "PUBLIC_CLIENT_CONFIG"].includes(secret.materialClass) ? { secretMaterialClass: secret.materialClass, secretImpact: secret.impact } : {})
       });
     }
 

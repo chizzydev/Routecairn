@@ -1,0 +1,16 @@
+{
+  "label": "disposable-auth-lifecycle-account",
+  "safeAlias": "disposable-member",
+  "headers": {},
+  "cookies": [],
+  "lifecycleSecrets": {
+    "known_username": "replace-with-disposable-account-username",
+    "unknown_username": "replace-with-nonexistent-username",
+    "password": "replace-with-disposable-account-password",
+    "fixed_session": "replace-with-operator-supplied-fixation-candidate"
+  },
+  "notes": [
+    "Keep this file outside version control after inserting real values.",
+    "Lifecycle secret names are referenced by the manifest; values are resolved only in the worker."
+  ]
+}

@@ -45,6 +45,16 @@ describe("PluginRegistry", () => {
     expect(baselineRun).toHaveBeenCalledTimes(1);
     expect(apiRun).not.toHaveBeenCalled();
   });
+
+  it("records an abort-aware module's partial safe result before propagating cancellation", async () => {
+    const registry = new PluginRegistry();
+    const controller = new AbortController();
+    registry.register({ name: "baseline", description: "abort-aware fixture", phase: "baseline", async run() { controller.abort(); return { pluginName: "baseline", baseline: { probes: [], notes: ["partial cleanup evidence"] } }; } }, metadata("baseline", "baseline"));
+    const plan = { ...testPlan("quick"), modules: [{ id: "baseline" as const, phase: "baseline" as const, settings: {}, limits: {}, includedBecause: ["test"] }] };
+    const context = new ScanContext({ target: "https://example.com", scope: exampleScope, config: defaultConfig, plan, outputDir: ".", abortSignal: controller.signal });
+    await expect(new ModuleRunner(registry).runPlan(context, plan)).rejects.toThrow(/cancel/i);
+    expect(context.state.getBaseline()?.notes).toContain("partial cleanup evidence");
+  });
 });
 
 function plugin(name: RouteCairnPlugin["name"], phase: RouteCairnPlugin["phase"]): RouteCairnPlugin {

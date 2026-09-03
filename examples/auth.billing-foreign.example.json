@@ -1,0 +1,10 @@
+{
+  "label": "billing-foreign",
+  "safeAlias": "billing-foreign",
+  "principalId": "replace-account-b-principal",
+  "tenantId": "replace-tenant-b",
+  "headers": { "Authorization": "Bearer replace-account-b-fixture-credential" },
+  "cookies": [],
+  "lifecycleSecrets": {},
+  "notes": ["Distinct controlled Account B fixture only."]
+}

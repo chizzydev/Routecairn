@@ -37,7 +37,7 @@ export type PrivilegeMutationCaseInput = PrivilegeMutationInput["cases"][number]
 export interface PrivilegeMutationCasePlan {
   caseId: string;
   category: PrivilegeMutationCaseInput["category"];
-  actor: PrivilegeMutationCaseInput["actor"];
+  actor: PrivilegeMutationCaseInput["actor"] & { credentialReferenceFingerprint?: string; identityFingerprint?: string; identityRequest?: { url: string; method: "GET" }; identityAssertions?: PrivilegeMutationCaseInput["target"]["identityAssertions"] };
   target: { type: string; alias: string; identityFingerprint: string; identityRequest: { url: string; method: "GET" }; identityAssertions: PrivilegeMutationCaseInput["target"]["identityAssertions"] };
   attack: { url: string; method: HttpMethod; field: string; valueHash: string; allowedValueCount: number; allowedFields: readonly string[]; allowedValuesHash: string; semanticEffect: PrivilegeMutationCaseInput["attack"]["request"]["method"] extends never ? never : "UPDATE_EXISTING" | "CREATE_DISPOSABLE" };
   originalAuthority: { request: { url: string; method: "GET" }; assertions: PrivilegeMutationCaseInput["originalAuthority"]["assertions"]; attempts: number; delayMs: number };
@@ -57,7 +57,7 @@ export function planPrivilegeMutationTesting(input: PrivilegeMutationInput, opti
     return {
       caseId: item.caseId, category: item.category, actor: item.actor,
       target: { type: item.target.type, alias: item.target.alias, identityFingerprint: item.target.identityFingerprint, identityRequest: safeGetRequest(item.target.identityRequest), identityAssertions: item.target.identityAssertions },
-      attack: { url: item.attack.request.url, method: item.attack.request.method, field: item.attack.field, valueHash: hash(item.attack.value), allowedValueCount: item.attack.allowedValues.length, allowedFields: [item.attack.field], allowedValuesHash: hash(item.attack.allowedValues), semanticEffect: item.attack.request.method === "POST" ? ("CREATE_DISPOSABLE" as const) : ("UPDATE_EXISTING" as const) },
+      attack: { url: item.attack.request.url, method: item.attack.request.method, field: item.attack.field, valueHash: hash(item.attack.value), allowedValueCount: item.attack.allowedValues.length, allowedFields: [item.attack.field], allowedValuesHash: hash({ [item.attack.field]: item.attack.allowedValues }), semanticEffect: item.attack.request.method === "POST" ? ("CREATE_DISPOSABLE" as const) : ("UPDATE_EXISTING" as const) },
       originalAuthority: { request: safeGetRequest(item.originalAuthority.request), assertions: item.originalAuthority.assertions, attempts: verificationAttempts(item.originalAuthority), delayMs: verificationDelay(item.originalAuthority) },
       impact: { request: safeGetRequest(item.impact.request), assertions: item.impact.assertions, attempts: verificationAttempts(item.impact), delayMs: verificationDelay(item.impact) },
       rollback: { request: { url: item.rollback.request.url, method: item.rollback.request.method, bodyHash: hash(item.rollback.request.body) }, verification: { request: safeGetRequest(item.rollback.verification.request), assertions: item.rollback.verification.assertions, attempts: verificationAttempts(item.rollback.verification), delayMs: verificationDelay(item.rollback.verification), matchPreStateHash: Boolean((item.rollback.verification as { matchPreStateHash?: boolean }).matchPreStateHash) } }

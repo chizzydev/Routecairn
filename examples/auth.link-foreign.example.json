@@ -1,0 +1,10 @@
+{
+  "label": "link-foreign-account-b",
+  "safeAlias": "account-b-foreign",
+  "principalId": "replace-account-b-principal",
+  "tenantId": "replace-tenant-b",
+  "headers": { "Authorization": "Bearer replace-account-b-session" },
+  "cookies": [],
+  "lifecycleSecrets": { "foreign_email": "replace-foreign-user@example.test" },
+  "notes": ["Use a distinct controlled account in another authorized tenant."]
+}

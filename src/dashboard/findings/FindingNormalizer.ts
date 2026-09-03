@@ -5,6 +5,8 @@ import { nowIso } from "../db/DashboardDatabase.js";
 import { redactDashboardValue, safeJson } from "../security/Redaction.js";
 import { FindingFingerprintService } from "./FindingFingerprintService.js";
 import { recordWorkflowCaseExecutions } from "../comparisons/WorkflowCaseExecutionRecorder.js";
+import { collectReportAssistedCases } from "../../modules/assistedReview/AssistedCaseCollector.js";
+import { serializeAssistedReview } from "../reviews/AssistedReviewSerialization.js";
 
 export class FindingNormalizer {
   public constructor(private readonly db: Database, private readonly fingerprints: FindingFingerprintService) {}
@@ -16,6 +18,9 @@ export class FindingNormalizer {
         this.normalizeFinding(scanId, targetOrigin, finding);
       }
       recordWorkflowCaseExecutions(this.db, scanId, report);
+      const insertCase = this.db.prepare("INSERT OR IGNORE INTO assisted_case_results (scan_id, workflow_id, case_id, assessment_outcome, conclusion, cleanup_unresolved, comparison_fingerprint, safe_result_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+      for (const item of collectReportAssistedCases(report)) insertCase.run(scanId, item.workflowId, item.caseId, item.assessmentOutcome, item.conclusion, item.cleanupFailed ? 1 : 0, item.comparisonFingerprint ?? null, safeJson(item));
+      if (report.assistedReview) this.db.prepare("INSERT OR IGNORE INTO assisted_review_runs (scan_id, review_id, safe_report_json, created_at) VALUES (?, ?, ?, ?)").run(scanId, report.assistedReview.reviewId, serializeAssistedReview(report.assistedReview), nowIso());
     });
     tx();
     return report.findings.length;
@@ -148,7 +153,7 @@ export class FindingNormalizer {
         scan?.target_id ?? null,
         scan?.source === "DASHBOARD" ? "NATIVE" : "IMPORTED",
         workflowCaseAlias(finding),
-        safeJson({ module: finding.sourceModule ?? "unknown-module", workflowCaseAlias: workflowCaseAlias(finding) }),
+        safeJson({ module: finding.sourceModule ?? "unknown-module", workflowCaseAlias: workflowCaseAlias(finding), ...(finding.workflow ? { workflow: finding.workflow } : {}) }),
         safeJson({ method: finding.method ?? "GET", endpoint: safeEndpoint, notes: finding.evidence.reproductionNotes ?? null })
       );
 
@@ -166,7 +171,7 @@ export class FindingNormalizer {
         "report",
         evidenceSummary(finding, safeEndpoint),
         safeJson(redactDashboardValue(finding.evidence)),
-        finding.evidence.bodyHash ?? null,
+        finding.workflow?.comparisonFingerprint ?? finding.evidence.bodyHash ?? null,
         finding.evidence.contentLength ?? null,
         "REDACTED_REPORT_EVIDENCE",
         now
@@ -175,6 +180,7 @@ export class FindingNormalizer {
 }
 
 function workflowCaseAlias(finding: Finding): string | null {
+  if (finding.workflow) return finding.workflow.caseId;
   const tag = finding.tags?.find((value) => /^(?:case|workflow-case):/i.test(value));
   if (tag) return tag.slice(tag.indexOf(":") + 1).slice(0, 160);
   const source = finding.evidence.source ?? "";

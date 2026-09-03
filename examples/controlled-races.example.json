@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 10,
+  "maxGroupsPerCase": 2,
+  "maxRequests": 100,
+  "maxResponseBytes": 32768,
+  "maxConcurrency": 5,
+  "cases": [
+    {
+      "id": "one-time-token-race",
+      "label": "A one-time token produces at most one authoritative event",
+      "category": "ONE_TIME_TOKEN",
+      "target": {
+        "type": "one-time-token",
+        "safeAlias": "disposable-token",
+        "identityFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "disposable": true
+      },
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": {
+        "mode": "CONTROLLED_RACE",
+        "environment": "TEST",
+        "confirmation": "I_AUTHORIZE_CONTROLLED_RACE_TESTING",
+        "authorizedBy": "replace-with-operator-reference",
+        "changeTicket": "replace-with-change-ticket",
+        "authorizedAt": "2026-01-01T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "disposableEntities": true,
+        "productionAcknowledged": false
+      },
+      "preState": [{ "id": "events-before", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-token/state", "stateChanging": false }, "captures": [{ "name": "events_before", "source": "JSON", "path": "eventCount" }] }],
+      "groups": [{
+        "id": "redeem-barrier",
+        "label": "Two synchronized token redemptions",
+        "synchronization": "READY_BARRIER",
+        "maxDispatchSkewMs": 100,
+        "requests": [
+          { "id": "redeem-a", "actorId": "member", "request": { "method": "POST", "url": "https://app.example.com/api/test-token/redeem", "stateChanging": true, "bodyFormat": "JSON", "fields": { "token": "{{SECRET:test_race_token}}" } }, "expectation": { "authorization": "ALLOW", "businessRule": "NOT_EVALUATED" } },
+          { "id": "redeem-b", "actorId": "member", "request": { "method": "POST", "url": "https://app.example.com/api/test-token/redeem", "stateChanging": true, "bodyFormat": "JSON", "fields": { "token": "{{SECRET:test_race_token}}" } }, "expectation": { "authorization": "ALLOW", "businessRule": "NOT_EVALUATED" } }
+        ]
+      }],
+      "postState": [{ "id": "events-after", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-token/state", "stateChanging": false }, "captures": [{ "name": "events_after", "source": "JSON", "path": "eventCount" }] }],
+      "invariants": [
+        { "id": "effect-once", "kind": "EVENT_COUNT_DELTA", "before": "events_before", "after": "events_after", "operator": "LTE", "expected": 1 },
+        { "id": "accepted-once", "kind": "GROUP_OUTCOME_COUNT", "groupId": "redeem-barrier", "outcome": "ACCEPTED", "operator": "LTE", "expected": 1 }
+      ],
+      "cleanupRequired": true,
+      "cleanup": [{ "id": "reset-token", "actorId": "member", "request": { "method": "DELETE", "url": "https://app.example.com/api/test-token/redemption", "stateChanging": true }, "successStatusCodes": [200, 204] }],
+      "cleanupVerification": [{ "id": "events-restored", "actorId": "member", "request": { "method": "GET", "url": "https://app.example.com/api/test-token/state", "stateChanging": false }, "captures": [{ "name": "events_restored", "source": "JSON", "path": "eventCount" }] }],
+      "cleanupInvariants": [{ "id": "event-count-restored", "kind": "VALUE_COMPARE", "left": { "source": "CAPTURE", "ref": "events_restored" }, "operator": "EQ", "right": { "source": "CAPTURE", "ref": "events_before" } }]
+    }
+  ]
+}
