@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { lstat, readdir } from "node:fs/promises";
 import { workerRestorationGraceMs } from "../../core/engine/CleanupExecution.js";
 import { resolve } from "node:path";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -25,7 +26,7 @@ const workerGeneration = process.env.ROUTECAIRN_WORKER_GENERATION ?? "";
 const workerSecret = process.env.ROUTECAIRN_WORKER_SESSION_SECRET ?? "";
 let jobId = "";
 let request: DashboardScanCreateRequest | undefined;
-let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fingerprintKeyPath: string; mutationJournalDir: string } | undefined;
+let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fingerprintKeyPath: string; mutationJournalDir: string; tempDir: string } | undefined;
 const abortController = new AbortController();
 let runningJob: Promise<void> | undefined;
 let jobStarted = false;
@@ -36,12 +37,14 @@ let acceptedExecutablePlan: BoundExecutablePlan | undefined;
 let acceptedMutationContracts: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract[] = [];
 let lastSensitiveSequence = 0;
 let messageChain = Promise.resolve();
+let heartbeatSequence = 0;
+let heartbeatSampling = false;
+let currentModule: string | undefined;
+let cleanupState: "CLEAR" | "PENDING" | "RUNNING" | "REQUIRED" | "UNKNOWN" = "UNKNOWN";
 
 send({ protocolVersion: workerProtocolVersion, type: "WORKER_READY", workerId: requireWorkerId() });
 
-const heartbeat = setInterval(() => {
-  send({ protocolVersion: workerProtocolVersion, type: "JOB_HEARTBEAT", workerId: requireWorkerId(), ...(jobId ? { jobId } : {}), timestamp: new Date().toISOString() });
-}, 1000);
+const heartbeat = setInterval(() => { void sendHeartbeat(); }, 1000);
 
 process.on("message", (raw: unknown) => {
   messageChain = messageChain.then(() => handleMessage(raw)).catch((error: unknown) => {
@@ -97,6 +100,7 @@ async function handleMessage(raw: unknown): Promise<void> {
       if (message.jobId !== jobId) throw new Error("Start job mismatch.");
       if (jobStarted || shutdownRequested) throw new Error("Worker job already started or shutting down.");
       jobStarted = true;
+      cleanupState = "CLEAR";
       runningJob = startJob();
       break;
     case "RECOVER_MUTATION":
@@ -108,7 +112,7 @@ async function handleMessage(raw: unknown): Promise<void> {
       await runningJob;
       break;
     case "CANCEL_JOB":
-      if (message.jobId === jobId) abortController?.abort();
+      if (message.jobId === jobId) { cleanupState = "PENDING"; abortController.abort(message.reason); }
       break;
     case "SHUTDOWN":
       await shutdown();
@@ -147,6 +151,7 @@ function initialize(message: Extract<ApiToWorkerMessage, { type: "INITIALIZE_JOB
   jobId = message.jobId;
   request = message.request as unknown as DashboardScanCreateRequest;
   paths = message.paths;
+  mkdirSync(paths.tempDir, { recursive: true });
   send({ protocolVersion: workerProtocolVersion, type: "JOB_ACCEPTED", workerId: requireWorkerId(), jobId });
 }
 
@@ -182,6 +187,10 @@ async function startJob(): Promise<void> {
     });
     const sink: ScanEventSink = {
       emit: (event: ScanExecutionEvent) => {
+        if (event.type === "MODULE_STARTED" && event.moduleId) currentModule = event.moduleId;
+        if (["MODULE_COMPLETED", "MODULE_FAILED", "MODULE_BLOCKED", "MODULE_CANCELLED"].includes(event.type) && event.moduleId === currentModule) currentModule = undefined;
+        if (event.type === "CLEANUP_STARTED") cleanupState = "RUNNING";
+        if (event.type === "MUTATION_CLEANUP_REQUIRED") cleanupState = "REQUIRED";
         send({
           protocolVersion: workerProtocolVersion,
           type: "JOB_EVENT",
@@ -209,6 +218,7 @@ async function startJob(): Promise<void> {
       eventSink: sink,
       abortSignal: abortController.signal
     });
+    cleanupState = result.status === "COMPLETED" && cleanupState !== "REQUIRED" ? "CLEAR" : cleanupState === "RUNNING" || cleanupState === "PENDING" ? "UNKNOWN" : cleanupState;
     if (result.status === "CANCELLED") {
       send({ protocolVersion: workerProtocolVersion, type: "JOB_CANCELLED", workerId: requireWorkerId(), jobId, summary: "Scan cancelled; partial evidence retained.", ...result });
       return;
@@ -233,6 +243,61 @@ async function startJob(): Promise<void> {
     }
     send({ protocolVersion: workerProtocolVersion, type: "JOB_FAILED", workerId: requireWorkerId(), jobId, error: safeError(error) });
   }
+}
+
+async function sendHeartbeat(): Promise<void> {
+  if (heartbeatSampling) return;
+  heartbeatSampling = true;
+  try {
+    const memory = process.memoryUsage();
+    const cpu = process.cpuUsage();
+    const outputDir = paths && jobId ? resolve(paths.reportsDir, jobId) : undefined;
+    const [outputBytes, tempBytes] = await Promise.all([
+      outputDir ? directoryBytes(outputDir) : Promise.resolve(0),
+      paths?.tempDir ? directoryBytes(paths.tempDir) : Promise.resolve(0)
+    ]);
+    send({
+      protocolVersion: workerProtocolVersion,
+      type: "JOB_HEARTBEAT",
+      workerId: requireWorkerId(),
+      ...(jobId ? { jobId } : {}),
+      timestamp: new Date().toISOString(),
+      resource: {
+        sequence: heartbeatSequence++,
+        rssBytes: memory.rss,
+        heapUsedBytes: memory.heapUsed,
+        externalBytes: memory.external,
+        cpuUserMicros: cpu.user,
+        cpuSystemMicros: cpu.system,
+        outputBytes,
+        tempBytes,
+        ...(currentModule ? { currentModule } : {}),
+        cleanupState
+      }
+    });
+  } finally {
+    heartbeatSampling = false;
+  }
+}
+
+async function directoryBytes(root: string): Promise<number> {
+  let total = 0;
+  const pending = [root];
+  while (pending.length) {
+    const directory = pending.pop()!;
+    let entries;
+    try { entries = await readdir(directory, { withFileTypes: true }); }
+    catch { continue; }
+    for (const entry of entries) {
+      const path = resolve(directory, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) pending.push(path);
+      else if (entry.isFile()) {
+        try { total += (await lstat(path)).size; } catch { /* A concurrent writer may replace a file. */ }
+      }
+    }
+  }
+  return total;
 }
 
 function authFromEnvelope(envelope: Record<string, unknown>): DashboardResolvedAuth | undefined {

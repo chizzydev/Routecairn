@@ -39,7 +39,9 @@ export type DashboardPermission =
   | "audit.read"
   | "artifacts.download"
   | "controlledMutation.approve"
-  | "controlledMutation.recover";
+  | "controlledMutation.recover"
+  | "workers.read"
+  | "workers.manage";
 
 const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>> = {
   OWNER: new Set([
@@ -77,7 +79,9 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "audit.read",
     "artifacts.download",
     "controlledMutation.approve",
-    "controlledMutation.recover"
+    "controlledMutation.recover",
+    "workers.read",
+    "workers.manage"
   ]),
   ANALYST: new Set([
     "scans.read",
@@ -103,9 +107,10 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "credentials.readSummary",
     "credentials.use",
     "credentials.test",
-    "artifacts.download"
+    "artifacts.download",
+    "workers.read"
   ]),
-  VIEWER: new Set(["scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download"])
+  VIEWER: new Set(["scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download", "workers.read"])
 };
 
 export interface DashboardPrincipal {

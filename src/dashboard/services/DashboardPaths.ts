@@ -11,6 +11,7 @@ export interface DashboardPaths {
   executablePlanKeyPath: string;
   mutationJournalDir: string;
   mutationJournalRegistryPath: string;
+  workersDir: string;
 }
 
 export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
@@ -25,7 +26,8 @@ export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
     fingerprintKeyPath: resolve(root, "keys", "finding-fingerprint.key"),
     executablePlanKeyPath: resolve(root, "keys", "executable-plan.key"),
     mutationJournalDir,
-    mutationJournalRegistryPath: resolve(mutationJournalDir, "mutation-journals.json")
+    mutationJournalRegistryPath: resolve(mutationJournalDir, "mutation-journals.json"),
+    workersDir: resolve(root, "workers")
   };
 }
 

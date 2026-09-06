@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toPathCandidates } from "../../src/modules/browserCrawler/PlaywrightCrawler.js";
+import { PlaywrightCrawler, toPathCandidates } from "../../src/modules/browserCrawler/PlaywrightCrawler.js";
 import { BrowserPolicyEngine, browserPolicyFromSettings, isProhibitedAddress } from "../../src/modules/browserCrawler/BrowserPolicy.js";
 import { testPlan } from "../helpers/plan.js";
 import { BrowserCrawlerModule } from "../../src/modules/browserCrawler/BrowserCrawlerModule.js";
@@ -285,5 +285,65 @@ describe("browser crawler helpers", () => {
 
     expect(result.browserCrawl).toBeUndefined();
     expect(result.notes.join(" ")).toContain("refused to browse anonymously");
+  });
+
+  it("restarts a failed browser boundary once with a new generation and emits health diagnostics", async () => {
+    const generations: number[] = [];
+    const emittedGenerations: number[] = [];
+    const crawler: Pick<PlaywrightCrawler, "crawl"> = {
+      async crawl(options) {
+        const generation = options.browserRestartCount ?? 0;
+        generations.push(generation);
+        options.onNetworkBoundaryStatus?.({
+          state: "HEALTHY",
+          generation,
+          connectionsAttempted: 0,
+          connectionsAllowed: 0,
+          connectionsBlocked: 0,
+          activeConnections: 0,
+          pinnedDestinationCount: 0,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          coverage: ["pages", "frames", "workers", "downloads", "websockets", "browser-api"]
+        });
+        if (generation === 0) throw new Error("synthetic proxy failure");
+        return {
+          startUrl: options.targetUrl,
+          renderedLinks: [],
+          networkRequests: [],
+          consoleErrors: [],
+          formsDetected: 0,
+          formsSubmitted: 0,
+          notes: [],
+          networkIsolation: {
+            state: "HEALTHY",
+            generation,
+            connectionsAttempted: 0,
+            connectionsAllowed: 0,
+            connectionsBlocked: 0,
+            activeConnections: 0,
+            pinnedDestinationCount: 0,
+            startedAt: "2026-01-01T00:00:00.000Z",
+            coverage: ["pages", "frames", "workers", "downloads", "websockets", "browser-api"]
+          }
+        };
+      }
+    };
+    const context = new ScanContext({
+      target: "https://example.com/",
+      scope: exampleScope,
+      config: defaultConfig,
+      plan: testPlan("full"),
+      outputDir: ".",
+      eventSink: { emit: async (event) => {
+        if (event.metadata?.kind === "BROWSER_NETWORK_BOUNDARY") emittedGenerations.push(Number(event.metadata.generation));
+      } }
+    });
+
+    const result = await new BrowserCrawlerModule(crawler).run(context);
+
+    expect(generations).toEqual([0, 1]);
+    expect(emittedGenerations).toEqual([0, 1]);
+    expect(result.browserCrawl?.networkIsolation?.generation).toBe(1);
+    expect(result.notes.join(" ")).toContain("restarted once");
   });
 });

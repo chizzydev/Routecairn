@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { controlledMutationContractSchema } from "../../core/offensive/ControlledMutationTypes.js";
 
-export const workerProtocolVersion = 1;
+export const workerProtocolVersion = 2;
 export const maxWorkerMessageBytes = 4 * 1024 * 1024;
 
 export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
@@ -16,7 +16,8 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
       artifactsDir: z.string(),
       proofPacksDir: z.string(),
       fingerprintKeyPath: z.string(),
-      mutationJournalDir: z.string()
+      mutationJournalDir: z.string(),
+      tempDir: z.string()
     })
   }),
   z.object({
@@ -70,14 +71,32 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
     hmac: z.string().regex(/^[a-f0-9]{64}$/)
   }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("START_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
-  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("CANCEL_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("CANCEL_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid(), reason: z.string().max(800).optional() }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("SHUTDOWN"), workerId: z.string().uuid() })
 ]);
 
 export const workerToApiMessageSchema = z.discriminatedUnion("type", [
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("WORKER_READY"), workerId: z.string().uuid() }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("JOB_ACCEPTED"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
-  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("JOB_HEARTBEAT"), workerId: z.string().uuid(), jobId: z.string().uuid().optional(), timestamp: z.string() }),
+  z.object({
+    protocolVersion: z.literal(workerProtocolVersion),
+    type: z.literal("JOB_HEARTBEAT"),
+    workerId: z.string().uuid(),
+    jobId: z.string().uuid().optional(),
+    timestamp: z.string().datetime(),
+    resource: z.object({
+      sequence: z.number().int().nonnegative(),
+      rssBytes: z.number().int().nonnegative(),
+      heapUsedBytes: z.number().int().nonnegative(),
+      externalBytes: z.number().int().nonnegative(),
+      cpuUserMicros: z.number().int().nonnegative(),
+      cpuSystemMicros: z.number().int().nonnegative(),
+      outputBytes: z.number().int().nonnegative(),
+      tempBytes: z.number().int().nonnegative(),
+      currentModule: z.string().max(160).optional(),
+      cleanupState: z.enum(["CLEAR", "PENDING", "RUNNING", "REQUIRED", "UNKNOWN"])
+    })
+  }),
   z.object({
     protocolVersion: z.literal(workerProtocolVersion),
     type: z.literal("JOB_PLAN"),

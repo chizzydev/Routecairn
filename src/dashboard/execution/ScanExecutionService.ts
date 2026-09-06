@@ -4,7 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
-import { ArtifactRepository, AuditRepository, EventRepository, ModuleExecutionRepository, PlanRepository, ScanRepository } from "../db/DashboardRepositories.js";
+import { ArtifactRepository, AuditRepository, EventRepository, ModuleExecutionRepository, PlanRepository, ScanRepository, TargetRepository } from "../db/DashboardRepositories.js";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
 import type { DashboardScanCreateRequest, PlanPreviewResponse } from "../types/DashboardTypes.js";
 import type { ScanExecutionEvent, ScanEventSink } from "../../core/engine/ScanEvents.js";
@@ -13,7 +13,7 @@ import { entryFromReport, recordScan, scanIndexPath } from "../../storage/ScanIn
 import { FindingNormalizer } from "../findings/FindingNormalizer.js";
 import { ComparisonService } from "../services/ComparisonService.js";
 import { FindingFingerprintService } from "../findings/FindingFingerprintService.js";
-import { planSnapshot, reportDirectoryFor, resolveDashboardScanPlan, resolveCredentialAuthForDashboardScan, safeConfigurationSummary, safePlanIdentity, type DashboardResolvedAuth } from "./ScanExecutionShared.js";
+import { authProfileFromCredential, planSnapshot, reportDirectoryFor, resolveDashboardScanPlan, resolveCredentialAuthForDashboardScan, safeConfigurationSummary, safePlanIdentity, type DashboardResolvedAuth } from "./ScanExecutionShared.js";
 import { assertExecutablePlanSourcesUnchanged, captureExecutablePlanSources, createExecutablePlanPayload, type BoundExecutablePlan } from "./ExecutablePlanSnapshot.js";
 import { ExecutablePlanStore } from "./ExecutablePlanStore.js";
 import { ScanWorkerManager, type WorkerRunResult } from "../worker/ScanWorkerManager.js";
@@ -24,6 +24,13 @@ import { verifyScanIdentities } from "../../core/auth/IdentityVerification.js";
 import { RetestTemplateVault } from "../retests/RetestTemplateVault.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
+import { WorkerGovernanceError } from "../worker/WorkerGovernance.js";
+import { assertCredentialBindingsCurrent, evaluateCredentialReadiness, type CredentialExecutionBinding, type CredentialReadinessResult } from "../credentials/CredentialReadiness.js";
+import { assessCredentialIdentity } from "../credentials/CredentialHealth.js";
+import { scopeSchema } from "../../config/ConfigSchema.js";
+import { defaultConfig } from "../../config/defaults.js";
+import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
+import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
 
 const maxQueuedScans = 20;
 
@@ -33,6 +40,7 @@ interface QueueItem {
   abortController: AbortController;
   executablePlanBinding: string;
   resolvedAuth: DashboardResolvedAuth;
+  credentialBindings: CredentialExecutionBinding[];
   mutationContracts?: readonly ControlledMutationContract[];
 }
 
@@ -74,6 +82,7 @@ export class ScanExecutionService {
     const credentialAuth = this.resolveCredentialAuth(request);
     const { plan, scope } = await resolveDashboardScanPlan(request, credentialAuth);
     const previewIdentity = safePlanIdentity(request, plan);
+    const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
     return {
       previewIdentity,
       profile: plan.profile,
@@ -88,10 +97,26 @@ export class ScanExecutionService {
         ["equivalent-route", plan.equivalentRouteTesting],
         ["collection-authorization", plan.collectionAuthorizationTesting],
         ["bulk-authorization", plan.bulkAuthorizationTesting],
-        ["file-authorization", plan.fileAuthorizationTesting]
-      ] as const).flatMap(([workflowId, workflowPlan]) => workflowPlan && typeof workflowPlan.maxRequests === "number" ? [{ workflowId, exactRequests: workflowPlan.maxRequests }] : []),
+        ["file-authorization", plan.fileAuthorizationTesting],
+        ["supabase-authorization", plan.supabaseAuthorization],
+        ["authentication-lifecycle", plan.authenticationLifecycle],
+        ["business-invariant", plan.businessInvariant],
+        ["controlled-race", plan.controlledRace],
+        ["api-graphql-authorization", plan.apiGraphql],
+        ["link-portal-export-security", plan.linkPortalSecurity],
+        ["operational-endpoint-security", plan.operationalEndpointSecurity],
+        ["billing-entitlement-security", plan.billingEntitlement],
+        ["assisted-review", plan.assistedReview],
+        ["pre-handover-assault", plan.preHandover],
+        ["bug-bounty-authorization", plan.targetAuthorization]
+      ] as const).flatMap(([workflowId, workflowPlan]) => workflowPlan ? [{ workflowId, exactRequests: exactWorkflowRequests(workflowId, workflowPlan) }] : []),
       planSnapshot: planSnapshot(plan, scope),
-      warnings: plan.skippedModules.map((skipped) => `${skipped.id}: ${skipped.reason}`)
+      credentialReadiness,
+      warnings: [
+        ...plan.skippedModules.map((skipped) => `${skipped.id}: ${skipped.reason}`),
+        ...credentialReadiness.warnings.map((warning) => `${warning.code}: ${warning.message}`),
+        ...credentialReadiness.blockers.map((blocker) => `${blocker.code}: ${blocker.message}`)
+      ]
     };
   }
 
@@ -122,6 +147,42 @@ export class ScanExecutionService {
     return redactDashboardValue({ ...result, requestAudit: context.state.getRequestAudit() }) as Record<string, unknown>;
   }
 
+  public async testCredentialProfile(profileId: string, targetId?: string): Promise<Record<string, unknown>> {
+    if (!this.vault) throw new Error("Credential vault is unavailable.");
+    const profile = this.vault.getSummary(profileId);
+    if (!profile) throw new Error("Credential profile not found.");
+    const selectedTargetId = targetId ?? profile.targetId;
+    if (!selectedTargetId) {
+      this.vault.recordHealth(profileId, "UNVERIFIED", "DASHBOARD_TEST", "IDENTITY_TARGET_REQUIRED", "Select or bind an approved target before running an identity health check.");
+      throw new Error("IDENTITY_TARGET_REQUIRED: Select or bind an approved target before testing this credential.");
+    }
+    if (profile.targetId && profile.targetId !== selectedTargetId) throw new Error("CREDENTIAL_TARGET_MISMATCH: Credential is bound to a different target.");
+    const target = new TargetRepository(this.database).get(selectedTargetId);
+    if (!target) throw new Error("TARGET_NOT_FOUND: Credential health-check target is unavailable or archived.");
+    if (profile.projectId && target.projectId && profile.projectId !== target.projectId) throw new Error("CREDENTIAL_PROJECT_MISMATCH: Credential is bound to a different project.");
+    const secret = this.vault.decryptForHealthCheck(profileId);
+    if (!secret.identityVerification) {
+      this.vault.recordHealth(profileId, "UNVERIFIED", "DASHBOARD_TEST", "IDENTITY_CONFIGURATION_REQUIRED", "Credential structure decrypted successfully, but no identity verification endpoint is configured.");
+      return { ok: false, health: this.vault.getSummary(profileId)!.health, reason: "IDENTITY_CONFIGURATION_REQUIRED", structuralValidation: credentialStructureSummary(secret) };
+    }
+    const authProfile = authProfileFromCredential(profile, secret);
+    const scope = scopeSchema.parse(target.approvedScope);
+    const plan = new ScanPlanner(createDefaultPluginRegistry()).resolve({
+      requestedProfile: "quick",
+      scope,
+      config: defaultConfig,
+      authProfile,
+      overrides: { maxRequests: 1, cleanupReservedRequests: 0, concurrency: 1, rateLimitPerSecond: 1 }
+    });
+    const context = new ScanContext({ target: target.baseOrigin, scope, config: defaultConfig, plan, outputDir: this.paths.artifactsDir, authProfile });
+    const report = await verifyScanIdentities(context);
+    if (!report) throw new Error("IDENTITY_CONFIGURATION_INVALID: Identity verification did not run.");
+    const assessment = assessCredentialIdentity(profile, report);
+    this.vault.recordHealth(profileId, assessment.classification, "DASHBOARD_IDENTITY_TEST", assessment.reasonCode, assessment.safeSummary, assessment.principalFingerprint);
+    this.audit.append({ action: "CREDENTIAL_HEALTH_CHECKED", resourceType: "CREDENTIAL_PROFILE", resourceId: profileId, summary: assessment.safeSummary, metadata: { classification: assessment.classification, reasonCode: assessment.reasonCode, targetId: selectedTargetId, principalFingerprint: assessment.principalFingerprint } });
+    return redactDashboardValue({ ok: assessment.classification === "HEALTHY" || assessment.classification === "NEAR_EXPIRY", health: this.vault.getSummary(profileId)!.health, identity: report.primary, structuralValidation: credentialStructureSummary(secret), requestAudit: context.state.getRequestAudit() }) as Record<string, unknown>;
+  }
+
   public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[], approvalId?: string): Promise<string> {
     if (this.queue.length >= maxQueuedScans) {
       throw new Error(`Scan queue is full. Maximum queued scans: ${maxQueuedScans}.`);
@@ -132,6 +193,8 @@ export class ScanExecutionService {
     const resolved = await resolveDashboardScanPlan(request, credentialAuth, mutationContracts);
     await assertExecutablePlanSourcesUnchanged(sourceBindings);
     const { plan } = resolved;
+    const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
+    if (!credentialReadiness.ready) throw new Error(`CREDENTIAL_READINESS_BLOCKED: ${credentialReadiness.blockers.map((blocker) => blocker.message).join(" ")}`);
     if (request.studio?.previewIdentity && request.studio.previewIdentity !== safePlanIdentity({ ...request, studio: { ...request.studio, previewIdentity: undefined } }, plan)) {
       throw new Error("PREVIEW_STALE: Scan Studio configuration changed after plan preview.");
     }
@@ -162,9 +225,10 @@ export class ScanExecutionService {
       if (approvalId) new ControlledMutationApprovalRepository(this.database).beginExecution(approvalId, scanId);
       this.events.append(scanId, "PLAN_BOUND", "Reviewed executable plan encrypted and bound to the queued scan.", { binding: executablePlan.binding, schemaVersion: executablePayload.schemaVersion });
       this.events.append(scanId, "SCAN_QUEUED", "Scan queued.", { profile: request.profile, target: targetOrigin, executablePlanBinding: executablePlan.binding });
+      if (credentialReadiness.profiles.length > 0) this.events.append(scanId, "CREDENTIAL_READINESS_VERIFIED", "Credential lifecycle readiness verified for the approved maximum scan duration.", { requiredValidThrough: credentialReadiness.requiredValidThrough, profiles: credentialReadiness.profiles, warnings: credentialReadiness.warnings });
       this.retestTemplates.save(scanId, request.studio?.workflows ?? []);
     });
-    this.queue.push({ scanId, request, abortController: new AbortController(), executablePlanBinding: executablePlan.binding, resolvedAuth, ...(mutationContracts?.length ? { mutationContracts } : {}) });
+    this.queue.push({ scanId, request, abortController: new AbortController(), executablePlanBinding: executablePlan.binding, resolvedAuth, credentialBindings: credentialReadiness.bindings, ...(mutationContracts?.length ? { mutationContracts } : {}) });
     void this.pump();
     return scanId;
   }
@@ -173,6 +237,19 @@ export class ScanExecutionService {
     if (!request.credentialProfileId && !request.credentialProfileAId && !request.credentialProfileBId && (!request.studio || request.studio.authentication.mode === "public")) return undefined;
     if (!this.vault) throw new Error("Credential vault is unavailable for this dashboard scan.");
     return resolveCredentialAuthForDashboardScan(this.vault, request);
+  }
+
+  private evaluateCredentialReadiness(request: DashboardScanCreateRequest, maximumExecutionMs: number): CredentialReadinessResult {
+    const hasSavedCredentials = Boolean(request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId || (request.studio && request.studio.authentication.mode !== "public" && (
+      (request.studio.authentication.mode === "primary" && request.studio.authentication.primary.source === "saved") ||
+      (request.studio.authentication.mode === "account-pair" && (request.studio.authentication.accountA.source === "saved" || request.studio.authentication.accountB.source === "saved"))
+    )));
+    if (!hasSavedCredentials) {
+      const now = new Date();
+      return { ready: true, checkedAt: now.toISOString(), requiredValidThrough: new Date(now.getTime() + maximumExecutionMs).toISOString(), blockers: [], warnings: [], profiles: [], bindings: [] };
+    }
+    if (!this.vault) throw new Error("Credential vault is unavailable for this dashboard scan.");
+    return evaluateCredentialReadiness(this.vault, request, maximumExecutionMs);
   }
 
   private executionAuth(resolved: Awaited<ReturnType<typeof resolveDashboardScanPlan>>, credentialAuth: DashboardResolvedAuth | undefined, request: DashboardScanCreateRequest): DashboardResolvedAuth {
@@ -239,6 +316,13 @@ export class ScanExecutionService {
     throw new Error("Scan is not queued or running.");
   }
 
+  public workerDiagnostics() { return this.workers.diagnostics(); }
+  public restartWorker(workerId: string): void { this.workers.restartWorker(workerId); }
+  public quarantineWorker(workerId: string, reason: string): void { this.workers.quarantineWorker(workerId, reason); }
+  public releaseWorker(workerId: string): void { this.workers.releaseWorker(workerId); }
+  public quarantineWorkerFleet(reason: string): void { this.workers.quarantineFleet(reason); }
+  public releaseWorkerFleet(): void { this.workers.releaseFleet(); }
+
   public async shutdown(): Promise<void> {
     this.stopping = true;
     clearInterval(this.reconciliationTimer);
@@ -278,6 +362,15 @@ export class ScanExecutionService {
       this.events.append(item.scanId, "PLAN_STARTED", "Planning started.", {});
       const executablePlan = this.executablePlans.load(item.scanId, new URL(item.request.target).origin);
       if (executablePlan.binding !== item.executablePlanBinding) throw new Error("EXECUTABLE_PLAN_QUEUE_BINDING_MISMATCH");
+      if (item.credentialBindings.length > 0) {
+        if (!this.vault) throw new Error("CREDENTIAL_VAULT_UNAVAILABLE_AT_EXECUTION");
+        assertCredentialBindingsCurrent(this.vault, item.credentialBindings);
+        const readiness = evaluateCredentialReadiness(this.vault, item.request, executablePlan.payload.plan.limits.maxScanDurationMs);
+        if (!readiness.ready) {
+          this.events.append(item.scanId, "CREDENTIAL_READINESS_BLOCKED", "Credential lifecycle changed while queued; execution was refused.", { blockers: readiness.blockers, requiredValidThrough: readiness.requiredValidThrough });
+          throw new Error(`CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION: ${readiness.blockers.map((blocker) => blocker.message).join(" ")}`);
+        }
+      }
       this.scans.updateStatus(item.scanId, "RUNNING");
       const result = await this.workers.run(item.scanId, item.request, {
         onPlan: (message) => {
@@ -294,6 +387,7 @@ export class ScanExecutionService {
           this.events.append(item.scanId, "WORKER_HEARTBEAT", "Worker heartbeat.", { workerId: message.workerId, timestamp: message.timestamp });
         }
       }, { executablePlan, resolvedAuth: item.resolvedAuth, ...(item.mutationContracts?.length ? { contracts: item.mutationContracts } : {}) });
+      if (result.failureCategory) this.events.append(item.scanId, "WORKER_GOVERNANCE_FAILURE", result.error ?? "Worker governance stopped execution.", { workerId: result.workerId, failureCategory: result.failureCategory });
       await this.ingestResult(item.scanId, item.request.target, result, item.mutationContracts ?? []);
     } catch (error) {
       new ControlledMutationApprovalRepository(this.database).finishExecution(item.scanId, true);
@@ -303,6 +397,7 @@ export class ScanExecutionService {
           errorSummary: safeErrorMessage(error)
         });
         this.events.append(item.scanId, item.abortController.signal.aborted ? "SCAN_CANCELLED" : "SCAN_FAILED", safeErrorMessage(error), {});
+        if (error instanceof WorkerGovernanceError) this.events.append(item.scanId, "WORKER_GOVERNANCE_FAILURE", error.message, { failureCategory: error.category });
       });
     }
   }
@@ -436,6 +531,36 @@ export class ScanExecutionService {
       hash: fileHash(path)
     });
   }
+}
+
+export function exactWorkflowRequests(workflowId: string, value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  const plan = value as Record<string, unknown>;
+  if (workflowId === "supabase-authorization") return array(plan.cases).reduce<number>((total, testCase) => total + 1 + (record(record(testCase).signedUrl).followOnce === true ? 1 : 0), 0);
+  if (workflowId === "authentication-lifecycle") return plan.source === "BROWSER_LEARNED" ? numeric(plan.maxRequests, 0) : array(plan.cases).reduce<number>((total, testCase) => total + array(record(testCase).steps).length, 0);
+  if (workflowId === "link-portal-export-security" || workflowId === "operational-endpoint-security") return array(plan.cases).reduce<number>((total, testCase) => total + array(record(testCase).steps).length, 0);
+  if (workflowId === "business-invariant") return array(plan.cases).reduce<number>((total, testCase) => { const item = record(testCase); return total + array(item.preState).length + array(item.actions).reduce<number>((sum, action) => sum + numeric(record(record(action).execution).attempts, 1), 0) + array(item.postState).length + array(item.cleanup).length + array(item.cleanupVerification).length; }, 0);
+  if (workflowId === "controlled-race") return array(plan.cases).reduce<number>((total, testCase) => { const item = record(testCase); return total + array(item.preState).length + array(item.groups).reduce<number>((sum, group) => sum + array(record(group).requests).length, 0) + array(item.postState).length + array(item.cleanup).length + array(item.cleanupVerification).length; }, 0);
+  if (workflowId === "billing-entitlement-security") return array(plan.cases).reduce<number>((total, testCase) => total + array(record(testCase).steps).reduce<number>((sum, step) => sum + numeric(record(record(step).execution).attempts, 1), 0), 0);
+  if (workflowId === "api-graphql-authorization") return array(plan.checks).reduce<number>((total, check) => { const item = record(check); if (item.kind === "METHOD_CONFUSION") return total + 1 + array(item.alternateMethods).length; if (item.kind === "GRAPHQL_ALIAS_LIMIT" || item.kind === "GRAPHQL_BATCH_LIMIT") return total + array(item.documents).length; if (item.kind === "VERSION_BOUNDARY") return total + 2; return total + 1; }, 0);
+  if (workflowId === "pre-handover-assault") return 3 + array(plan.objects).length;
+  if (workflowId === "assisted-review" || workflowId === "bug-bounty-authorization") return 0;
+  return numeric(plan.maxRequests, 0);
+}
+
+function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
+function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function numeric(value: unknown, fallback: number): number { return typeof value === "number" && Number.isFinite(value) ? value : fallback; }
+
+function credentialStructureSummary(secret: import("../credentials/CredentialVault.js").CredentialProfileSecret): Record<string, unknown> {
+  return {
+    hasAuthorizationHeader: Boolean(secret.authorizationHeader),
+    cookieCount: Object.keys(secret.cookies ?? {}).length,
+    headerCount: Object.keys(secret.headers ?? {}).length,
+    hasIdentityVerification: Boolean(secret.identityVerification),
+    hasBrowserBootstrap: Boolean(secret.browserBootstrap),
+    lifecycleSecretCount: Object.keys(secret.lifecycleSecrets ?? {}).length
+  };
 }
 
 function safeErrorMessage(error: unknown): string {

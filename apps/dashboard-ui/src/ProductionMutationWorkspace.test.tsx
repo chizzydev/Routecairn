@@ -17,6 +17,12 @@ describe("production mutation workspace", () => {
     expect(screen.getByText("Production safety gate")).toBeTruthy();
     expect(screen.getByText("Production-enabled targets")).toBeTruthy();
     expect(screen.getByText("Enabled actor profiles")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Guided builder" }).className).toContain("selected");
+    expect(screen.queryByLabelText("Production case JSON")).toBeNull();
+    expect(screen.getByRole("group", { name: "1. Target and actor" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "10. Approval window" })).toBeTruthy();
+    expect(await screen.findByRole("option", { name: /Production app/ })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Lab app/ })).toBeNull();
     vi.unstubAllGlobals();
   });
 });

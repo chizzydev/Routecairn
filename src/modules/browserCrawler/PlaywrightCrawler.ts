@@ -21,6 +21,8 @@ import {
   type BrowserLoginWriteGate
 } from "./BrowserLearning.js";
 import { Screenshotter } from "./Screenshotter.js";
+import type { DnsResolver } from "../../core/http/HttpTypes.js";
+import { BrowserNetworkBoundary, type BrowserNetworkBoundaryDiagnostics } from "./BrowserNetworkBoundary.js";
 
 export interface PlaywrightCrawlerOptions {
   targetUrl: string;
@@ -33,6 +35,8 @@ export interface PlaywrightCrawlerOptions {
   authProfile?: AuthProfile;
   browserRestartCount?: number;
   abortSignal?: AbortSignal;
+  dnsResolver?: DnsResolver;
+  onNetworkBoundaryStatus?(diagnostics: BrowserNetworkBoundaryDiagnostics): void;
 }
 
 interface CrawlEntry {
@@ -51,7 +55,7 @@ export class PlaywrightCrawler {
     const renderedLinks = new Map<string, PathCandidate>();
     const requestsByPage = new Map<string, number>();
     const visitedPages: Array<{ url: string; depth: number }> = [];
-    const policyEngine = new BrowserPolicyEngine(options.targetUrl, options.policy);
+    const policyEngine = new BrowserPolicyEngine(options.targetUrl, options.policy, options.dnsResolver ? async (hostname) => (await options.dnsResolver!(hostname)).map((answer) => typeof answer === "string" ? answer : answer.address) : undefined);
     const targetOrigin = new URL(options.targetUrl).origin;
     const bootstrap = options.authProfile?.browserBootstrap;
     const writeGate: BrowserLoginWriteGate = {
@@ -61,13 +65,31 @@ export class PlaywrightCrawler {
       blocked: 0
     };
     const learning = options.authProfile ? new BrowserLearningCollector(options.authProfile, targetOrigin) : undefined;
-    const browser = await chromium.launch({ headless: true });
+    const boundary = new BrowserNetworkBoundary({ targetUrl: options.targetUrl, policy: options.policy, timeoutMs: options.timeoutMs, generation: options.browserRestartCount ?? 0, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}), ...(options.onNetworkBoundaryStatus ? { onStatus: options.onNetworkBoundaryStatus } : {}) });
+    await boundary.start();
+    let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
     const openWebSockets: WebSocketRoute[] = [];
     let attemptBudgetExceeded = false;
     options.requestBroker.setBrowserPolicyEventLimit(options.policy.maxPolicyEvents);
 
     try {
-      const abortBrowser = () => void browser.close().catch(() => undefined);
+      browser = await chromium.launch({
+        headless: true,
+        proxy: boundary.playwrightProxy(),
+        args: [
+          "--proxy-bypass-list=<-loopback>",
+          "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+          "--disable-quic",
+          "--disable-background-networking",
+          "--disable-component-update",
+          "--disable-domain-reliability",
+          "--no-pings",
+          "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+          "--disable-features=AsyncDns,DnsOverHttps,HappyEyeballsV3,WebTransport"
+        ]
+      });
+      const launchedBrowser = browser;
+      const abortBrowser = () => void launchedBrowser.close().catch(() => undefined);
       options.abortSignal?.addEventListener("abort", abortBrowser, { once: true });
       const context = await browser.newContext({
         userAgent: options.userAgent,
@@ -156,10 +178,16 @@ export class PlaywrightCrawler {
         const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage, writeGate, learning);
         attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
       });
-      await context.routeWebSocket("**", async (webSocket) => {
-        const decision = await this.handleWebSocket(webSocket, options, policyEngine, policyEvents, openWebSockets);
-        attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
-      });
+      // Playwright's WebSocketRoute.connectToServer() opens a Playwright-side
+      // connection that does not inherit Chromium's outbound proxy. Keep the
+      // route only for the deny-all case. Allowed sockets stay in Chromium so
+      // their actual connection is forced through BrowserNetworkBoundary.
+      if (!options.policy.allowWebSockets) {
+        await context.routeWebSocket("**", async (webSocket) => {
+          const decision = await this.handleWebSocket(webSocket, options, policyEngine, policyEvents, openWebSockets);
+          attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
+        });
+      }
       let creatingManagedPage = false;
       context.on("page", (page) => {
         if (creatingManagedPage || options.policy.allowPopups) {
@@ -280,6 +308,7 @@ export class PlaywrightCrawler {
         } finally {
           await page.close().catch(() => undefined);
         }
+        boundary.assertOperational();
       }
 
       await learning?.inspectStorage(context, lastPage);
@@ -291,6 +320,7 @@ export class PlaywrightCrawler {
       options.abortSignal?.removeEventListener("abort", abortBrowser);
 
       const brokerSnapshot = options.requestBroker.budgetSnapshot();
+      boundary.assertOperational();
       return {
         startUrl: options.authProfile ? redactAllQueryValues(options.targetUrl) : options.targetUrl,
         renderedLinks: [...renderedLinks.values()],
@@ -322,14 +352,17 @@ export class PlaywrightCrawler {
           `Browser policy events: ${brokerSnapshot.browserPolicyEvents}.`,
           `Browser network requests transmitted: ${networkRequests.filter((request) => request.transmitted).length}.`,
           `Browser requests blocked before network transmission: ${policyEvents.filter((event) => !event.transmitted).length}.`,
+          `Pinned browser proxy connections: ${boundary.diagnostics().connectionsAllowed} allowed, ${boundary.diagnostics().connectionsBlocked} blocked.`,
           "Blocked browser requests consume policy-event budget, not network request budget.",
           ...(attemptBudgetExceeded ? ["Browser crawl stopped because the browser attempt budget was exhausted."] : []),
           ...(formsSubmitted > 0 ? [`Submitted ${formsSubmitted} explicitly configured authentication form(s); no learned application form was submitted.`] : ["Forms were detected but not submitted."]),
           ...(learning ? ["Browser traffic was stored as redacted metadata; request bodies, response bodies, cookies, storage values, and identity values were not persisted.", "Learned mutation hypotheses are non-executable drafts and require a separate explicit operator case and approval."] : [])
-        ]
+        ],
+        networkIsolation: boundary.diagnostics()
       };
     } finally {
-      await browser.close();
+      await browser?.close().catch(() => undefined);
+      await boundary.close();
     }
   }
 

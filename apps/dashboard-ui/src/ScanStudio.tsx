@@ -22,6 +22,8 @@ import {
   type WorkflowValidationDiagnostic,
 } from "./WorkflowDiagnostics";
 import type { RetestDraft } from "./FindingsCommandCenter";
+import { AdvancedEngineStudio, advancedEngineRequestValues, type AdvancedEngineDraft } from "./AdvancedEngineStudio";
+import { accountPairIdentityWarnings, credentialUsable, type CredentialSummary } from "./CredentialLifecycle";
 
 type AuthSource = "ephemeral" | "saved";
 type AuthMode = "public" | "primary" | "account-pair";
@@ -102,6 +104,7 @@ type StudioState = {
   cleanupReservedRequestsOverride: string;
   outputs: { json: boolean; markdown: boolean; html: boolean };
   workflows: WorkflowDraft[];
+  advancedEngines: AdvancedEngineDraft[];
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;
@@ -206,14 +209,7 @@ export function ScanStudio({
   const retestScope = initialDraft?.scope as Partial<ScopeState> | undefined;
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [targets, setTargets] = useState<TargetSummary[]>([]);
-  const [credentials, setCredentials] = useState<
-    Array<{
-      id: string;
-      safeAlias: string;
-      enabled: boolean;
-      credentialTypeSummary: string;
-    }>
-  >([]);
+  const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
   const [capabilities, setCapabilities] = useState<CapabilityRegistry>();
   const [moduleSearch, setModuleSearch] = useState("");
   const [message, setMessage] = useState("");
@@ -271,6 +267,7 @@ export function ScanStudio({
     cleanupReservedRequestsOverride: "",
     outputs: initialDraft?.outputs && initialDraft.outputs.json && initialDraft.outputs.markdown && initialDraft.outputs.html ? { json: true, markdown: true, html: true } : { json: true, markdown: true, html: true },
     workflows: (initialDraft?.reusableWorkflows ?? []) as WorkflowDraft[],
+    advancedEngines: [],
     authenticationLifecycleFile: "",
     authenticationLifecycleAutoFile: "",
     businessInvariantFile: "",
@@ -552,30 +549,37 @@ export function ScanStudio({
           )}
           {state.currentStep === 7 && (
             <div className="studio-panel">
-              <fieldset>
-                <legend>Authentication lifecycle</legend>
-                <label>Explicit manifest path<input disabled={Boolean(state.authenticationLifecycleAutoFile)} value={state.authenticationLifecycleFile} onChange={(event) => update({ authenticationLifecycleFile: event.target.value })} placeholder="examples/authentication-lifecycle.example.json" /></label>
-                <label>Browser-learned automation policy<input disabled={Boolean(state.authenticationLifecycleFile)} value={state.authenticationLifecycleAutoFile} onChange={(event) => update({ authenticationLifecycleAutoFile: event.target.value })} placeholder="examples/authentication-lifecycle-automation.example.json" /></label>
-                <p className="muted">Automation learns the login request and session-cookie boundary, compiles ready cases, and executes only under the policy's exact expiring authorization. Unresolved recipes are reported as blocked.</p>
-              </fieldset>
-              <fieldset>
-                <legend>Business invariant validation</legend>
-                <label>Explicit invariant manifest path<input value={state.businessInvariantFile} onChange={(event) => update({ businessInvariantFile: event.target.value })} placeholder="examples/business-invariants.example.json" /></label>
-                <p className="muted">Runs only explicit, expiring, disposable-entity cases with authoritative pre/post state, bounded duplicate or concurrency checks, and verified cleanup.</p>
-              </fieldset>
-              <fieldset>
-                <legend>Controlled race testing</legend>
-              <label>Explicit race manifest path<input value={state.controlledRaceFile} onChange={(event) => update({ controlledRaceFile: event.target.value })} placeholder="examples/controlled-races.example.json" /></label>
-              <label>API / GraphQL review manifest path<input value={state.apiGraphqlFile} onChange={(event) => update({ apiGraphqlFile: event.target.value })} placeholder="examples/api-graphql.example.json" /></label>
-              <label>Signed link / portal / export manifest path<input value={state.linkPortalSecurityFile} onChange={(event) => update({ linkPortalSecurityFile: event.target.value })} placeholder="examples/link-portal-security.example.json" /></label>
-              <label>Webhook / cron / operational endpoint manifest path<input value={state.operationalEndpointSecurityFile} onChange={(event) => update({ operationalEndpointSecurityFile: event.target.value })} placeholder="examples/operational-endpoints.example.json" /></label>
-              <label>Assisted review case inventory path<input value={state.assistedReviewFile} onChange={(event) => update({ assistedReviewFile: event.target.value })} placeholder="examples/assisted-review.example.json" /></label>
-              <label>Pre-handover manifest path<input value={state.preHandoverFile} onChange={(event) => update({ preHandoverFile: event.target.value })} placeholder="examples/pre-handover.example.json" /></label>
-              <label>Target authorization / bug-bounty rules path<input value={state.targetAuthorizationFile} onChange={(event) => update({ targetAuthorizationFile: event.target.value })} placeholder="examples/target-authorization.example.json" /></label>
-              <label>Synthetic checkout / billing / entitlement manifest path<input value={state.billingEntitlementFile} onChange={(event) => update({ billingEntitlementFile: event.target.value })} placeholder="examples/billing-entitlement.example.json" /></label>
-              <p className="muted">Executes only explicit bounded route and GraphQL query cases. API discovery never grants mutation authority.</p>
-                <p className="muted">Releases exactly 2–5 declared mutations through a ready barrier, then verifies authoritative state/event counts and cleanup. This is bounded race testing, never load testing.</p>
-              </fieldset>
+              <AdvancedEngineStudio
+                target={state.target}
+                drafts={state.advancedEngines}
+                selectedModules={state.selectedModules}
+                onChange={(advancedEngines) => {
+                  const hasBugBounty = advancedEngines.some((engine) => engine.enabled && engine.id === "bug-bounty-authorization");
+                  const hasPreHandover = advancedEngines.some((engine) => engine.enabled && engine.id === "pre-handover-assault");
+                  update({
+                    advancedEngines,
+                    ...(hasBugBounty ? { authorizationCategory: "BUG_BOUNTY" as const } : !state.targetAuthorizationFile && state.authorizationCategory === "BUG_BOUNTY" && selectedTarget?.authorizationType !== "BUG_BOUNTY" ? { authorizationCategory: "OWNED" as const } : {}),
+                    ...(hasPreHandover ? { authorizationCategory: "CONTROLLED_LAB" as const, profile: "pre-handover" } : !state.preHandoverFile && state.profile === "pre-handover" ? { profile: "full" } : {})
+                  });
+                }}
+                onEnableModule={(moduleId) => update({ selectedModules: [...new Set([...state.selectedModules, moduleId])] })}
+                onPreview={preview}
+              />
+              <details className="legacy-manifest-inputs">
+                <summary>Legacy server-side manifest paths</summary>
+                <p className="muted">Compatibility-only. Prefer the dashboard builders and browser-side JSON import/export above.</p>
+                <label>Authentication lifecycle file<input value={state.authenticationLifecycleFile} onChange={(event) => update({ authenticationLifecycleFile: event.target.value })} /></label>
+                <label>Learned lifecycle policy file<input value={state.authenticationLifecycleAutoFile} onChange={(event) => update({ authenticationLifecycleAutoFile: event.target.value })} /></label>
+                <label>Business invariant file<input value={state.businessInvariantFile} onChange={(event) => update({ businessInvariantFile: event.target.value })} /></label>
+                <label>Controlled race file<input value={state.controlledRaceFile} onChange={(event) => update({ controlledRaceFile: event.target.value })} /></label>
+                <label>API / GraphQL file<input value={state.apiGraphqlFile} onChange={(event) => update({ apiGraphqlFile: event.target.value })} /></label>
+                <label>Signed-link / portal file<input value={state.linkPortalSecurityFile} onChange={(event) => update({ linkPortalSecurityFile: event.target.value })} /></label>
+                <label>Operational endpoint file<input value={state.operationalEndpointSecurityFile} onChange={(event) => update({ operationalEndpointSecurityFile: event.target.value })} /></label>
+                <label>Billing / entitlement file<input value={state.billingEntitlementFile} onChange={(event) => update({ billingEntitlementFile: event.target.value })} /></label>
+                <label>Assisted review file<input value={state.assistedReviewFile} onChange={(event) => update({ assistedReviewFile: event.target.value })} /></label>
+                <label>Pre-handover file<input value={state.preHandoverFile} onChange={(event) => update({ preHandoverFile: event.target.value })} /></label>
+                <label>Target authorization file<input value={state.targetAuthorizationFile} onChange={(event) => update({ targetAuthorizationFile: event.target.value })} /></label>
+              </details>
               <AuthorizationWorkflowStudio
               workflows={state.workflows}
               diagnostics={workflowDiagnostics}
@@ -1333,12 +1337,7 @@ function AuthenticationStep({
   update,
 }: {
   state: StudioState;
-  credentials: Array<{
-    id: string;
-    safeAlias: string;
-    enabled: boolean;
-    credentialTypeSummary: string;
-  }>;
+  credentials: CredentialSummary[];
   update: (value: Partial<StudioState>) => void;
 }) {
   return (
@@ -1381,6 +1380,7 @@ function AuthenticationStep({
             credentials={credentials}
             onChange={(accountB) => update({ accountB })}
           />
+          {accountPairIdentityWarnings(credentials.find((item) => item.id === state.accountA.savedId), credentials.find((item) => item.id === state.accountB.savedId)).map((warning) => <p className="warning" role="alert" key={warning}>{warning}</p>)}
         </div>
       )}
       <p className="secret-note">
@@ -1400,12 +1400,7 @@ function ActorEditor({
 }: {
   title: string;
   actor: ActorState;
-  credentials: Array<{
-    id: string;
-    safeAlias: string;
-    enabled: boolean;
-    credentialTypeSummary: string;
-  }>;
+  credentials: CredentialSummary[];
   onChange: (actor: ActorState) => void;
 }) {
   return (
@@ -1441,10 +1436,10 @@ function ActorEditor({
           >
             <option value="">Select credential</option>
             {credentials
-              .filter((item) => item.enabled)
+              .filter(credentialUsable)
               .map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.safeAlias} - {item.credentialTypeSummary}
+                  {item.safeAlias} - {item.credentialTypeSummary} - {item.health?.classification ?? "UNVERIFIED"}
                 </option>
               ))}
           </select>
@@ -1912,6 +1907,7 @@ function ReviewStep({
       <Review
         title="Controlled workflows"
         value={{
+          dashboardNativeEngines: state.advancedEngines.filter((engine) => engine.enabled).map((engine) => ({ id: engine.id, caseCount: Array.isArray(engine.value.cases) ? engine.value.cases.length : isObjectRecord(engine.value.orchestration) && Array.isArray(engine.value.orchestration.criticalCases) ? engine.value.orchestration.criticalCases.length : undefined, exactPlannedRequests: state.preview?.controlledWorkflowRequests?.find((item) => item.workflowId === advancedPreviewId(engine.id))?.exactRequests ?? "Unknown until planning", source: "dashboard-inline" })),
           authenticationLifecycleFile: state.authenticationLifecycleFile || undefined,
           authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile || undefined,
           businessInvariantFile: state.businessInvariantFile || undefined,
@@ -1988,6 +1984,12 @@ function LaunchStep({
           ))}
         </div>
       )}
+      {state.preview?.credentialReadiness && !state.preview.credentialReadiness.ready && (
+        <div className="validation-summary" role="alert">
+          {state.preview.credentialReadiness.blockers.map((blocker) => <p key={`${blocker.code}-${blocker.profileId}`}>{blocker.code}: {blocker.message}</p>)}
+        </div>
+      )}
+      {state.preview?.credentialReadiness?.warnings?.map((warning) => <p className="warning" key={`${warning.code}-${warning.profileId ?? "pair"}`}>{warning.code}: {warning.message}</p>)}
       <label className="checkbox">
         <input type="checkbox" checked readOnly /> Non-destructive safety policy
         remains enforced.
@@ -1995,7 +1997,7 @@ function LaunchStep({
       <button
         type="button"
         className="primary"
-        disabled={!state.preview || errors.length > 0 || launching}
+        disabled={!state.preview || state.preview.credentialReadiness?.ready === false || errors.length > 0 || launching}
         onClick={() => void onLaunch()}
       >
         {launching ? "Launching..." : "Confirm and Launch"}
@@ -2244,6 +2246,7 @@ function buildRequest(state: StudioState): Record<string, unknown> {
     ...(state.selectedModules.length
       ? { includeModules: state.selectedModules }
       : {}),
+    ...advancedEngineRequestValues(state.advancedEngines),
     ...(state.authenticationLifecycleFile ? { authenticationLifecycleFile: state.authenticationLifecycleFile } : {}),
     ...(state.authenticationLifecycleAutoFile ? { authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile } : {}),
     ...(state.businessInvariantFile ? { businessInvariantFile: state.businessInvariantFile } : {}),
@@ -2376,6 +2379,12 @@ function errorText(value: unknown): string {
   return value instanceof Error
     ? value.message
     : "Scan Studio operation failed.";
+}
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+function advancedPreviewId(id: AdvancedEngineDraft["id"]): string {
+  return id === "authentication-lifecycle-automation" ? "authentication-lifecycle" : id;
 }
 function workflowModuleId(id: WorkflowDraft["workflowId"]): string {
   return id === "object-pair"

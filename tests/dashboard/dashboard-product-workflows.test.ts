@@ -30,8 +30,8 @@ describe("dashboard product workflows", () => {
           "file-authorization"
         ]);
         expect(capabilities.parity["server-mode-rbac"].status).toBe("FULL_DASHBOARD_PARITY");
-        expect(capabilities.parity["isolated-workers"].status).toBe("PARTIAL_DASHBOARD_PARITY");
-        expect(capabilities.parity["credential-vault"].status).toBe("PARTIAL_DASHBOARD_PARITY");
+        expect(capabilities.parity["isolated-workers"].status).toBe("FULL_DASHBOARD_PARITY");
+        expect(capabilities.parity["credential-vault"].status).toBe("FULL_DASHBOARD_PARITY");
         for (const workflow of capabilities.controlledWorkflows) {
           expect(workflow.moduleId).toMatch(/testing$/);
           expect(workflow.schemaSource).toContain("ScanPlanner");
@@ -247,7 +247,9 @@ async function apiMutation<T>(baseUrl: string, path: string, auth: { cookie: str
 }
 
 async function waitForScan(baseUrl: string, cookie: string, scanId: string): Promise<void> {
-  const deadline = Date.now() + 15000;
+  // A real child worker, browser-network boundary, report writers, and cleanup
+  // all run before terminal ingestion. Windows can legitimately exceed 15s.
+  const deadline = Date.now() + 25000;
   while (Date.now() < deadline) {
     const body = await apiGet<any>(baseUrl, `/api/scans/${scanId}`, cookie);
     if (["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"].includes(body.scan.status)) return;

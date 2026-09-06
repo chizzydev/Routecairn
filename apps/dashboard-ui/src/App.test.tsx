@@ -21,6 +21,7 @@ describe("RouteCairn dashboard UI", () => {
     const rendered = render(<App />);
     expect(await screen.findByRole("button", { name: "Scans" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New Scan" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Workers" })).toBeTruthy();
     rendered.unmount();
     vi.unstubAllGlobals();
   });

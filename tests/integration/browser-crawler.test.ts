@@ -100,6 +100,49 @@ describe("PlaywrightCrawler", () => {
     expect(report.formsSubmitted).toBe(0);
   });
 
+  it("blocks a DNS rebind after policy approval at the actual Chromium connection", async () => {
+    let upstreamRequests = 0;
+    let resolutions = 0;
+    server = createServer((_request, response) => {
+      upstreamRequests += 1;
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end("<!doctype html><html><body>must not render</body></html>");
+    });
+    await listen(server);
+    const port = (server.address() as AddressInfo).port;
+    const outputDir = await mkdtemp(join(tmpdir(), "routecairn-browser-rebind-"));
+    tempDirs.push(outputDir);
+    const target = `http://rebind.test:${port}/`;
+    const scope = { ...exampleScope, allowedDomains: ["rebind.test"], disallowedPaths: [], userAgent: "RouteCairn/Test" };
+    const plan = testPlan("full", { scope });
+    const context = new ScanContext({ target, scope, config: defaultConfig, plan, outputDir });
+
+    const report = await new PlaywrightCrawler().crawl({
+      targetUrl: target,
+      outputDir,
+      userAgent: "RouteCairn/Test",
+      timeoutMs: 5_000,
+      sameOriginOnly: true,
+      policy: browserPolicyFromSettings(
+        { ...context.moduleSettings("browser-crawler"), browserCaptureScreenshot: false },
+        context.options.plan.limits,
+        context.options.plan.evidence
+      ),
+      requestBroker: context.httpClient,
+      dnsResolver: async () => [++resolutions === 1 ? { address: "93.184.216.34", family: 4 as const } : { address: "127.0.0.1", family: 4 as const }]
+    });
+
+    expect(resolutions).toBeGreaterThanOrEqual(2);
+    expect(upstreamRequests).toBe(0);
+    expect(report.networkIsolation).toMatchObject({
+      state: "HEALTHY",
+      connectionsAllowed: 0,
+      connectionsBlocked: 1,
+      lastFailureCode: "DNS_PRIVATE_ORIGIN_NOT_ALLOWED"
+    });
+    expect(JSON.stringify(report.networkIsolation)).not.toContain("127.0.0.1");
+  });
+
   it("blocks out-of-scope redirects, downloads, and third-party resources before completion", async () => {
     server = createServer((request, response) => {
       if (request.url === "/redirect") {
@@ -508,7 +551,7 @@ describe("PlaywrightCrawler", () => {
     const plan = testPlan("full", { scope });
     const context = new ScanContext({ target, scope, config: defaultConfig, plan, outputDir });
 
-    await new PlaywrightCrawler().crawl({
+    const report = await new PlaywrightCrawler().crawl({
       targetUrl: target,
       outputDir,
       userAgent: "RouteCairn/Test",
@@ -529,6 +572,7 @@ describe("PlaywrightCrawler", () => {
     });
 
     await waitFor(() => socketClosed);
+    expect(report.networkIsolation).toMatchObject({ connectionsBlocked: 0, connectionsAllowed: 2 });
     expect(upgrades).toBe(1);
     expect(socketClosed).toBe(true);
   });

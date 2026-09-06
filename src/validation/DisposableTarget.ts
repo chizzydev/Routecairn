@@ -9,9 +9,8 @@ export async function startDisposableTarget() {
   const users: DisposableUser[] = ["a", "b"].map((id) => ({ id: `fixture-${id}`, username: `${id}@fixture.test`, password: randomBytes(24).toString("base64url"), role: "member", balance: 100 }));
   const sessions = new Map<string, DisposableUser>();
   const calls: Array<{ method: string; path: string }> = [];
-  const timers = new Set<ReturnType<typeof setTimeout>>();
   let fixed = false; let cleanupFails = false; let staleReads = 0;
-  const pending = new Set<string>();
+  const pending = new Map<string, { role: "member" | "admin"; readyAt: number; staleReadObserved: boolean }>();
   const server = createServer((request, response) => { void handle(request, response).catch(() => { if (!response.headersSent) json(response, 400, { error: "Invalid fixture request" }); else response.end(); }); });
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const path = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
@@ -33,14 +32,30 @@ export async function startDisposableTarget() {
     const user = cookie ? sessions.get(cookie) : undefined;
     if (!user) { json(response, 401, { error: "Authentication required" }); return; }
     if (path === "/me") { json(response, 200, { id: user.id, role: user.role, disposable: true }); return; }
-    if (path === "/settings" && method === "GET") { if (pending.has(user.id)) staleReads++; json(response, 200, { id: `settings-${user.id}`, ownerId: user.id, role: user.role, disposable: true }); return; }
+    if (path === "/settings" && method === "GET") {
+      const transition = pending.get(user.id);
+      if (transition) {
+        if (!transition.staleReadObserved) {
+          transition.staleReadObserved = true;
+          staleReads++;
+        } else if (Date.now() >= transition.readyAt) {
+          user.role = transition.role;
+          pending.delete(user.id);
+        } else {
+          staleReads++;
+        }
+      }
+      json(response, 200, { id: `settings-${user.id}`, ownerId: user.id, role: user.role, disposable: true }); return;
+    }
     if (path === "/settings" && method === "PATCH") {
       const body = JSON.parse(await readBody(request)) as { role?: unknown };
       if (!Object.keys(body).every((key) => key === "role") || !["member", "admin"].includes(String(body.role))) { json(response, 400, { error: "Invalid field" }); return; }
       if (body.role === "member" && cleanupFails) { json(response, 503, { error: "Injected cleanup failure" }); return; }
-      pending.add(user.id);
-      const timer = setTimeout(() => { user.role = body.role as "member" | "admin"; pending.delete(user.id); timers.delete(timer); }, 80);
-      timers.add(timer); json(response, 202, { accepted: true }); return;
+      // Require one observable stale read before the transition becomes
+      // visible. This models eventual consistency deterministically instead
+      // of relying on host scheduling around an 80 ms timer.
+      pending.set(user.id, { role: body.role as "member" | "admin", readyAt: Date.now() + 80, staleReadObserved: false });
+      json(response, 202, { accepted: true }); return;
     }
     if (path === "/protected") { json(response, user.role === "admin" ? 200 : 403, { allowed: user.role === "admin" }); return; }
     if (path === "/wallet") { json(response, 200, { balance: user.balance }); return; }
@@ -63,7 +78,7 @@ export async function startDisposableTarget() {
       if (response.status !== 303 || !cookie) throw new Error("FIXTURE_LOGIN_FAILED");
       return cookie;
     },
-    async close() { for (const timer of timers) clearTimeout(timer); timers.clear(); pending.clear(); sessions.clear(); for (const user of users) user.password = ""; server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+    async close() { pending.clear(); sessions.clear(); for (const user of users) user.password = ""; server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
   };
 }
 

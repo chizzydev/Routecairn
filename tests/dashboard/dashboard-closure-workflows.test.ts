@@ -65,6 +65,16 @@ describe("dashboard closure workflows", () => {
         const auth = await authenticate(handle.url, handle.bootstrapUrl);
         const capabilities = await apiGet<any>(handle.url, "/api/capabilities", auth.cookie);
         expect(capabilities.modules.some((module: any) => module.id === "object-pair-testing")).toBe(true);
+        expect(capabilities.advancedEngineDashboard).toHaveLength(12);
+        expect(capabilities.advancedEngineDashboard.every((engine: any) => engine.dashboardOperation === "GUIDED_BUILDER")).toBe(true);
+        const advanced = await apiGet<any>(handle.url, "/api/advanced-engines/catalog?target=https%3A%2F%2Fapp.example.test", auth.cookie);
+        expect(advanced.engines).toHaveLength(12);
+        expect(advanced.engines.find((engine: any) => engine.id === "supabase-authorization")?.template.projectUrl).toBe("https://app.example.test");
+        const invalidCatalogTarget = await fetch(`${handle.url}/api/advanced-engines/catalog?target=not-a-url`, { headers: { cookie: auth.cookie } });
+        expect(invalidCatalogTarget.status).toBe(400);
+        const invalidAdvanced = await apiMutation<any>(handle.url, "/api/advanced-engines/validate", auth, { engineId: "supabase-authorization", value: { schemaVersion: 1 } });
+        expect(invalidAdvanced.valid).toBe(false);
+        expect(invalidAdvanced.diagnostics.some((diagnostic: any) => diagnostic.path.join(".") === "projectUrl")).toBe(true);
         const created = await apiMutation<any>(handle.url, "/api/configurations", auth, {
           name: "Quick smoke",
           profile: "quick",

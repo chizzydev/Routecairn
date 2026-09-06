@@ -74,15 +74,6 @@ const full: CapabilityParity = {
   testsRequired: []
 };
 
-const partial = (reason: string, frontendChanges: readonly string[], backendChanges: readonly string[] = []): CapabilityParity => ({
-  status: "PARTIAL_DASHBOARD_PARITY",
-  reason,
-  backendChanges,
-  frontendChanges,
-  securityConcerns: ["Keep secrets out of browser persistence, plan snapshots, logs, events, reports, and audit metadata."],
-  testsRequired: ["API validation", "frontend workflow", "redaction", "planner integration"]
-});
-
 const commonActors = ["OWNER", "NON_OWNER", "SAME_TENANT_MEMBER", "SAME_TENANT_ADMIN", "CROSS_TENANT_MEMBER", "CROSS_TENANT_ADMIN", "PLATFORM_ADMIN", "MODERATOR", "SHARED_PRINCIPAL", "PUBLIC", "CUSTOM_DECLARED_RELATIONSHIP"] as const;
 const decisionExpectations = ["MUST_ALLOW", "MUST_DENY", "MUST_REQUIRE_AUTHENTICATION", "MUST_RETURN_NOT_FOUND", "MUST_MATCH_REFERENCE_DECISION", "MUST_NOT_EXCEED_REFERENCE_ACCESS", "OBSERVE_ONLY"] as const;
 
@@ -133,9 +124,10 @@ export function routeCairnCapabilityRegistry(): RouteCairnCapabilityRegistry {
       "projects-targets": full,
       "scan-builder": full,
       "controlled-workflow-editors": full,
-      "credential-vault": partial("Encrypted credential storage, saved-profile scan binding, mixed saved/ephemeral actor selection, and bounded identity verification through RequestSafetyBroker are implemented. Expiry-warning presentation remains basic.", ["expiry warning polish"]),
+      "credential-vault": full,
       "server-mode-rbac": full,
-      "isolated-workers": partial("Dashboard scans execute in isolated child processes with typed IPC, leases, heartbeats, cancellation, crash containment, and authenticated job-bound secret-envelope summaries. Memory ceilings, process-tree cleanup, failure categories, and a full worker diagnostics page are still incomplete.", ["Worker diagnostics page", "manual worker restart control", "resource-limit controls"]),
+      "isolated-workers": full,
+      "browser-network-isolation": full,
       "audit": full
     }
   };

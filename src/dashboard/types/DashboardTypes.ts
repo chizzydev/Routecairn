@@ -31,13 +31,23 @@ export interface DashboardScanCreateRequest {
   maxRequests?: number | undefined;
   cleanupReservedRequests?: number | undefined;
   includeModules?: string[] | undefined;
+  supabaseAuthorization?: import("zod").input<typeof import("../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js").supabaseAuthorizationInputSchema> | undefined;
+  supabaseAuthorizationFile?: string | undefined;
+  authenticationLifecycle?: import("zod").input<typeof import("../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js").authenticationLifecycleInputSchema> | undefined;
+  authenticationLifecycleAutomation?: import("zod").input<typeof import("../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js").browserLearnedLifecycleAutomationInputSchema> | undefined;
   authenticationLifecycleFile?: string | undefined;
   authenticationLifecycleAutoFile?: string | undefined;
+  businessInvariant?: import("zod").input<typeof import("../../modules/businessInvariant/BusinessInvariantPlanner.js").businessInvariantInputSchema> | undefined;
   businessInvariantFile?: string | undefined;
+  controlledRace?: import("zod").input<typeof import("../../modules/controlledRace/ControlledRacePlanner.js").controlledRaceInputSchema> | undefined;
   controlledRaceFile?: string | undefined;
+  apiGraphql?: import("zod").input<typeof import("../../modules/apiGraphql/ApiGraphqlPlanner.js").apiGraphqlInputSchema> | undefined;
   apiGraphqlFile?: string | undefined;
+  linkPortalSecurity?: import("zod").input<typeof import("../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js").linkPortalSecurityInputSchema> | undefined;
   linkPortalSecurityFile?: string | undefined;
+  operationalEndpointSecurity?: import("zod").input<typeof import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js").operationalEndpointSecurityInputSchema> | undefined;
   operationalEndpointSecurityFile?: string | undefined;
+  billingEntitlement?: import("zod").input<typeof import("../../modules/billingEntitlement/BillingEntitlementPlanner.js").billingEntitlementInputSchema> | undefined;
   billingEntitlementFile?: string | undefined;
   assistedReviewFile?: string | undefined;
   preHandoverFile?: string | undefined;
@@ -57,6 +67,7 @@ export interface PlanPreviewResponse {
   skippedModules: Array<{ id: string; reason: string }>;
   controlledWorkflowRequests: Array<{ workflowId: string; exactRequests: number }>;
   planSnapshot: Record<string, unknown>;
+  credentialReadiness: import("../credentials/CredentialReadiness.js").CredentialReadinessResult;
   warnings: string[];
 }
 

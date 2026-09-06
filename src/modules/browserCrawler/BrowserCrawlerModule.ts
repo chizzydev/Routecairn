@@ -9,7 +9,7 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
   public readonly name = "browser-crawler";
   public readonly description = "Renders the target with Playwright, supports isolated authenticated bootstrap, and captures redacted traffic without submitting application forms.";
   public readonly phase = "intelligence";
-  private readonly crawler = new PlaywrightCrawler();
+  public constructor(private readonly crawler: Pick<PlaywrightCrawler, "crawl"> = new PlaywrightCrawler()) {}
 
   public async run(context: ScanContext): Promise<ModuleResult> {
     if (context.options.plan.authentication.required && !context.options.authProfile) {
@@ -44,6 +44,9 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
           sameOriginOnly: context.options.scope.sameOriginOnly,
           policy,
           requestBroker: context.httpClient,
+          onNetworkBoundaryStatus: (diagnostics: import("./BrowserNetworkBoundary.js").BrowserNetworkBoundaryDiagnostics) => {
+            void context.eventSink.emit({ type: "OBSERVATION_RECORDED", moduleId: this.name, message: `Browser network boundary ${diagnostics.state.toLowerCase()}.`, metadata: { kind: "BROWSER_NETWORK_BOUNDARY", ...diagnostics } });
+          },
           ...(context.options.authProfile ? { authProfile: context.options.authProfile } : {}),
           ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
         };

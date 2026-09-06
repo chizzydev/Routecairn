@@ -15,6 +15,8 @@ let thirdPartyServer: Server | undefined;
 const directories: string[] = [];
 
 afterEach(async () => {
+  server?.closeAllConnections();
+  thirdPartyServer?.closeAllConnections();
   await new Promise<void>((resolve) => server?.close(() => resolve()) ?? resolve());
   await new Promise<void>((resolve) => thirdPartyServer?.close(() => resolve()) ?? resolve());
   server = undefined;

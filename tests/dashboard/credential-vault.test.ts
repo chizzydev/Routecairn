@@ -160,8 +160,18 @@ describe("dashboard credential vault", () => {
         expect(created.profileId).toMatch(/[0-9a-f-]{36}/);
         const listed = await apiGet<any>(handle.url, "/api/credential-profiles", owner.cookie);
         expect(JSON.stringify(listed)).not.toContain(secretValue);
+        const detail = await apiGet<any>(handle.url, `/api/credential-profiles/${created.profileId}`, owner.cookie);
+        expect(detail.healthTimeline).toContainEqual(expect.objectContaining({ classification: "UNVERIFIED", reasonCode: "CREDENTIAL_NOT_YET_TESTED" }));
+        const renewed = await apiMutation<any>(handle.url, `/api/credential-profiles/${created.profileId}/renew`, owner, {
+          secret: { authorizationHeader: "Bearer renewed-secret" },
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          impactDigest: detail.dependencies.impactDigest
+        });
+        expect(renewed.profile).toMatchObject({ secretVersion: 2, health: { classification: "UNVERIFIED", reasonCode: "RENEWED_RETEST_REQUIRED" } });
+        expect(JSON.stringify(renewed)).not.toContain("renewed-secret");
         const audit = await apiGet<any>(handle.url, "/api/audit-events", owner.cookie);
         expect(JSON.stringify(audit)).not.toContain(secretValue);
+        expect(JSON.stringify(audit)).not.toContain("renewed-secret");
         const viewer = await login(handle.url, "viewer@example.com", "viewer password value");
         const denied = await fetch(`${handle.url}/api/credential-profiles`, { headers: { cookie: viewer.cookie } });
         expect(denied.status).toBe(403);

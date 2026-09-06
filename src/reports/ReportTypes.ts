@@ -1322,6 +1322,19 @@ export interface BrowserCrawlReport {
   formsDetected: number;
   formsSubmitted: number;
   authentication?: BrowserAuthenticationReport;
+  networkIsolation?: {
+    state: "STARTING" | "HEALTHY" | "DEGRADED" | "STOPPED";
+    generation: number;
+    connectionsAttempted: number;
+    connectionsAllowed: number;
+    connectionsBlocked: number;
+    activeConnections: number;
+    pinnedDestinationCount: number;
+    lastFailureCode?: string;
+    startedAt: string;
+    stoppedAt?: string;
+    coverage: readonly ["pages", "frames", "workers", "downloads", "websockets", "browser-api"];
+  };
   notes: string[];
 }
 

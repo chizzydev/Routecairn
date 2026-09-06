@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 20;
+export const dashboardSchemaVersion = 21;
 
 export const dashboardMigrations: readonly { version: number; sql: string }[] = [
   {
@@ -880,6 +880,70 @@ CREATE TABLE scan_executable_plans (
   worker_verified_binding TEXT
 );
 CREATE INDEX idx_scan_executable_plan_binding ON scan_executable_plans(plan_binding);
+`
+  },
+  {
+    version: 21,
+    sql: `
+ALTER TABLE scan_workers ADD COLUMN heartbeat_sequence INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN memory_rss_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN heap_used_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN cpu_user_micros INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN cpu_system_micros INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN output_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN temp_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scan_workers ADD COLUMN current_module TEXT;
+ALTER TABLE scan_workers ADD COLUMN cleanup_state TEXT NOT NULL DEFAULT 'UNKNOWN' CHECK(cleanup_state IN ('CLEAR','PENDING','RUNNING','REQUIRED','UNKNOWN'));
+ALTER TABLE scan_workers ADD COLUMN child_processes_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE scan_workers ADD COLUMN governance_policy_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE scan_workers ADD COLUMN failure_category TEXT;
+ALTER TABLE scan_workers ADD COLUMN termination_reason TEXT;
+ALTER TABLE scan_workers ADD COLUMN exit_code INTEGER;
+ALTER TABLE scan_workers ADD COLUMN exit_signal TEXT;
+ALTER TABLE scan_workers ADD COLUMN graceful_stop_requested_at TEXT;
+ALTER TABLE scan_workers ADD COLUMN forced_termination_at TEXT;
+ALTER TABLE scan_workers ADD COLUMN quarantined_at TEXT;
+ALTER TABLE scan_workers ADD COLUMN quarantine_reason TEXT;
+ALTER TABLE scan_workers ADD COLUMN updated_at TEXT;
+
+CREATE TABLE worker_governance_state (
+  id TEXT PRIMARY KEY CHECK(id = 'singleton'),
+  dispatch_state TEXT NOT NULL CHECK(dispatch_state IN ('NORMAL','QUARANTINED')),
+  crash_count INTEGER NOT NULL,
+  crash_window_started_at TEXT,
+  quarantine_reason TEXT,
+  quarantined_at TEXT,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO worker_governance_state (id, dispatch_state, crash_count, updated_at)
+VALUES ('singleton', 'NORMAL', 0, datetime('now'));
+CREATE INDEX idx_workers_diagnostics ON scan_workers(state, started_at DESC);
+`
+  },
+  {
+    version: 22,
+    sql: `
+ALTER TABLE credential_profiles ADD COLUMN secret_version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE credential_profiles ADD COLUMN secret_replaced_at TEXT;
+ALTER TABLE credential_profiles ADD COLUMN last_health_status TEXT NOT NULL DEFAULT 'UNVERIFIED'
+  CHECK(last_health_status IN ('HEALTHY','NEAR_EXPIRY','EXPIRED','DISABLED','INVALID','IDENTITY_MISMATCH','UNVERIFIED'));
+ALTER TABLE credential_profiles ADD COLUMN last_health_checked_at TEXT;
+ALTER TABLE credential_profiles ADD COLUMN last_health_reason_code TEXT;
+ALTER TABLE credential_profiles ADD COLUMN last_principal_fingerprint TEXT;
+
+CREATE TABLE credential_health_events (
+  id TEXT PRIMARY KEY,
+  credential_profile_id TEXT NOT NULL REFERENCES credential_profiles(id) ON DELETE CASCADE,
+  classification TEXT NOT NULL
+    CHECK(classification IN ('HEALTHY','NEAR_EXPIRY','EXPIRED','DISABLED','INVALID','IDENTITY_MISMATCH','UNVERIFIED')),
+  source TEXT NOT NULL,
+  reason_code TEXT NOT NULL,
+  safe_summary TEXT NOT NULL,
+  principal_fingerprint TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_credential_health_profile_time
+  ON credential_health_events(credential_profile_id, created_at DESC);
 `
   }
 ];

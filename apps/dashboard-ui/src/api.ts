@@ -80,6 +80,14 @@ export interface PlanPreview {
     exactRequests: number;
   }>;
   planSnapshot: Record<string, unknown>;
+  credentialReadiness: {
+    ready: boolean;
+    checkedAt: string;
+    requiredValidThrough: string;
+    blockers: Array<{ code: string; role: string; profileId: string; message: string }>;
+    warnings: Array<{ code: string; role?: string; profileId?: string; message: string }>;
+    profiles: Array<{ id: string; role: string; safeAlias: string; classification: string; reasonCode: string; secretVersion: number; expiresAt?: string }>;
+  };
   warnings: string[];
 }
 
@@ -115,6 +123,7 @@ export interface TargetSummary {
   defaultCredentialProfileId?: string;
   defaultEvidenceLevel?: string;
   defaultAuthTemplate: Record<string, unknown>;
+  productionEnabled: boolean;
   archived: boolean;
   rowVersion: number;
 }

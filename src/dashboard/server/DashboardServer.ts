@@ -11,7 +11,7 @@ import { LocalSessionManager, SessionError } from "../auth/LocalSession.js";
 import { PermissionError, ServerSessionManager, type ServerRuntimeSecurity } from "../auth/ServerSession.js";
 import type { DashboardPermission, DashboardPrincipal } from "../auth/Permissions.js";
 import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
-import { credentialMetadataSchema, credentialProfileSchema, credentialSecretSchema, dashboardScanCreateSchema, compareRequestSchema, dashboardSettingsUpdateSchema, importReportSchema, loginSchema, projectSchema, proofPackCreateSchema, savedConfigurationSchema, targetSchema, userCreateSchema, userUpdateSchema } from "../contracts/DashboardSchemas.js";
+import { credentialDependencyAcknowledgementSchema, credentialHealthTestSchema, credentialMetadataSchema, credentialProfileSchema, credentialRenewalSchema, credentialReplacementSchema, dashboardScanCreateSchema, compareRequestSchema, dashboardSettingsUpdateSchema, importReportSchema, loginSchema, projectSchema, proofPackCreateSchema, savedConfigurationSchema, targetSchema, userCreateSchema, userUpdateSchema } from "../contracts/DashboardSchemas.js";
 import { ScanExecutionService } from "../execution/ScanExecutionService.js";
 import { ComparisonService } from "../services/ComparisonService.js";
 import { HistoricalReportImporter } from "../import/HistoricalReportImporter.js";
@@ -50,6 +50,7 @@ import { WorkflowRecoveryService, workflowRecoveryRequestSchema } from "../execu
 import { productionMutationApprovalSchema } from "../contracts/ProductionMutationApprovalSchemas.js";
 import { productionMutationCaseSchema } from "../contracts/ProductionMutationCaseSchemas.js";
 import { compileProductionMutationCase, productionMutationPlanIdentity } from "../execution/ProductionMutationCaseCompiler.js";
+import { advancedEngineCatalog, advancedEngineValidationRequestSchema, loadAdvancedEngineCatalog, validateAdvancedEngineInput } from "../contracts/AdvancedEngineSchemas.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -84,6 +85,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   mkdirSync(paths.artifactsDir, { recursive: true });
   mkdirSync(paths.proofPacksDir, { recursive: true });
   mkdirSync(paths.mutationJournalDir, { recursive: true });
+  mkdirSync(paths.workersDir, { recursive: true });
   const database = new DashboardDatabase(paths.databasePath);
   database.migrate();
   database.recoverInterruptedScans();
@@ -315,8 +317,21 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     const registry = routeCairnCapabilityRegistry();
     sendJson(response, 200, {
       ...registry,
-      modules: Object.values(registry.modules)
+      modules: Object.values(registry.modules),
+      advancedEngineDashboard: advancedEngineCatalog.map(({ templateFile: _templateFile, ...engine }) => ({ ...engine, dashboardOperation: "GUIDED_BUILDER" as const }))
     });
+    return;
+  }
+  if (url.pathname === "/api/advanced-engines/catalog") {
+    requirePermission(context, "scans.create");
+    const target = url.searchParams.get("target") ?? undefined;
+    if (target) {
+      let parsed: URL;
+      try { parsed = new URL(target); }
+      catch { throw new HttpError(400, "Invalid advanced-engine template target."); }
+      if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new HttpError(400, "Invalid advanced-engine template target.");
+    }
+    sendJson(response, 200, { engines: await loadAdvancedEngineCatalog(target) });
     return;
   }
   if (url.pathname === "/api/admin/capability-parity") {
@@ -365,7 +380,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     requirePermission(context, "credentials.readSummary");
     const profile = context.vault.getSummary(credentialDetail.groups.id);
     if (!profile) throw new HttpError(404, "Credential profile not found.");
-    sendJson(response, 200, { profile, dependencies: context.vault.dependencies(credentialDetail.groups.id) });
+    sendJson(response, 200, { profile, dependencies: context.vault.dependencies(credentialDetail.groups.id), healthTimeline: context.vault.healthTimeline(credentialDetail.groups.id) });
     return;
   }
   if (url.pathname === "/api/projects") {
@@ -485,6 +500,11 @@ async function handleApiGet(context: ApiContext): Promise<void> {
       environment: environmentSettings(context),
       restartRequired: ["serverMode", "publicOrigin", "trustProxy", "masterKeyVersion"]
     });
+    return;
+  }
+  if (url.pathname === "/api/workers/diagnostics") {
+    requirePermission(context, "workers.read");
+    sendJson(response, 200, context.execution.workerDiagnostics());
     return;
   }
   if (url.pathname === "/api/configurations") {
@@ -716,25 +736,37 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const credentialSecret = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)\/replace-secret$/.exec(url.pathname);
   if (request.method === "POST" && credentialSecret?.groups?.id) {
     requirePermission(context, "credentials.update");
-    const parsed = credentialSecretSchema.parse(await readJson(request));
-    context.vault.replaceSecret(credentialSecret.groups.id, parsed);
-    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_SECRET_REPLACED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialSecret.groups.id, summary: "Credential secret material replaced; no secret value was retained in audit output." });
-    sendJson(response, 200, { ok: true });
+    const parsed = credentialReplacementSchema.parse(await readJson(request));
+    context.vault.assertImpactDigest(credentialSecret.groups.id, parsed.impactDigest);
+    context.vault.replaceSecret(credentialSecret.groups.id, parsed.secret);
+    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_SECRET_REPLACED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialSecret.groups.id, summary: "Credential secret material replaced after dependency-impact review; no secret value was retained in audit output.", metadata: { dependencyImpactDigest: parsed.impactDigest } });
+    sendJson(response, 200, { ok: true, profile: context.vault.getSummary(credentialSecret.groups.id) });
+    return;
+  }
+  const credentialRenew = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)\/renew$/.exec(url.pathname);
+  if (request.method === "POST" && credentialRenew?.groups?.id) {
+    requirePermission(context, "credentials.update");
+    const parsed = credentialRenewalSchema.parse(await readJson(request));
+    const profile = context.vault.renew(credentialRenew.groups.id, parsed);
+    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_RENEWED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialRenew.groups.id, summary: "Credential renewed after dependency-impact review; a fresh health test is required.", metadata: { dependencyImpactDigest: parsed.impactDigest, expiresAt: parsed.expiresAt, secretVersion: profile.secretVersion } });
+    sendJson(response, 200, { ok: true, profile });
     return;
   }
   const credentialEnable = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)\/enable$/.exec(url.pathname);
   if (request.method === "POST" && credentialEnable?.groups?.id) {
     requirePermission(context, "credentials.update");
-    context.vault.setEnabled(credentialEnable.groups.id, true);
-    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_PROFILE_ENABLED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialEnable.groups.id, summary: "Credential profile enabled." });
+    const parsed = credentialDependencyAcknowledgementSchema.parse(await readJson(request));
+    context.vault.setEnabled(credentialEnable.groups.id, true, parsed.impactDigest);
+    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_PROFILE_ENABLED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialEnable.groups.id, summary: "Credential profile enabled after dependency-impact review; a fresh health test is required.", metadata: { dependencyImpactDigest: parsed.impactDigest } });
     sendJson(response, 200, { ok: true });
     return;
   }
   const credentialDisable = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)\/disable$/.exec(url.pathname);
   if (request.method === "POST" && credentialDisable?.groups?.id) {
     requirePermission(context, "credentials.update");
-    context.vault.setEnabled(credentialDisable.groups.id, false);
-    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_PROFILE_DISABLED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialDisable.groups.id, summary: "Credential profile disabled." });
+    const parsed = credentialDependencyAcknowledgementSchema.parse(await readJson(request));
+    context.vault.setEnabled(credentialDisable.groups.id, false, parsed.impactDigest);
+    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_PROFILE_DISABLED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialDisable.groups.id, summary: "Credential profile disabled after dependency-impact review.", metadata: { dependencyImpactDigest: parsed.impactDigest } });
     sendJson(response, 200, { ok: true });
     return;
   }
@@ -749,9 +781,10 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const credentialTest = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)\/test$/.exec(url.pathname);
   if (request.method === "POST" && credentialTest?.groups?.id) {
     requirePermission(context, "credentials.test");
-    const secret = context.vault.decryptForUse(credentialTest.groups.id);
-    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_TEST_EXECUTED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialTest.groups.id, summary: "Credential profile decrypted for bounded local validation." });
-    sendJson(response, 200, { ok: true, hasAuthorizationHeader: Boolean(secret.authorizationHeader), cookieCount: Object.keys(secret.cookies ?? {}).length, headerCount: Object.keys(secret.headers ?? {}).length, hasIdentityVerification: Boolean(secret.identityVerification), hasBrowserBootstrap: Boolean(secret.browserBootstrap), lifecycleSecretCount: Object.keys(secret.lifecycleSecrets ?? {}).length });
+    const parsed = credentialHealthTestSchema.parse(await readJson(request));
+    const result = await context.execution.testCredentialProfile(credentialTest.groups.id, parsed.targetId);
+    audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_TEST_EXECUTED", resourceType: "CREDENTIAL_PROFILE", resourceId: credentialTest.groups.id, summary: "Bounded credential identity and structure validation completed; no secret value was retained.", metadata: { classification: (result.health as { classification?: unknown } | undefined)?.classification, targetId: parsed.targetId } });
+    sendJson(response, 200, result);
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/users") {
@@ -797,6 +830,13 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     const preview = await execution.preview(parsed);
     audit.append({ actorLabel: context.principal?.userId, action: "SCAN_STUDIO_PLAN_PREVIEW", resourceType: "TARGET", resourceId: parsed.targetId, summary: `Plan preview resolved for ${new URL(parsed.target).origin}.`, metadata: { projectId: parsed.projectId, profile: parsed.profile, moduleCount: preview.modules.length, studioVersion: parsed.studio?.version } });
     sendJson(response, 200, preview);
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/advanced-engines/validate") {
+    requirePermission(context, "scans.create");
+    const parsed = advancedEngineValidationRequestSchema.parse(await readJson(request));
+    const result = validateAdvancedEngineInput(parsed.engineId, parsed.value);
+    sendJson(response, 200, result);
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/scans/identity-test") {
@@ -1137,6 +1177,48 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     sendJson(response, 200, { mutable: mutableSettings(context) });
     return;
   }
+  const workerRestart = /^\/api\/workers\/(?<id>[0-9a-f-]+)\/restart$/.exec(url.pathname);
+  if (request.method === "POST" && workerRestart?.groups?.id) {
+    requirePermission(context, "workers.manage");
+    context.execution.restartWorker(workerRestart.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKER_RESTART_REQUESTED", resourceType: "WORKER", resourceId: workerRestart.groups.id, summary: "Operator requested graceful restart of a job-scoped worker." });
+    sendJson(response, 202, { ok: true });
+    return;
+  }
+  const workerQuarantine = /^\/api\/workers\/(?<id>[0-9a-f-]+)\/quarantine$/.exec(url.pathname);
+  if (request.method === "POST" && workerQuarantine?.groups?.id) {
+    requirePermission(context, "workers.manage");
+    const body = await readJson(request) as { reason?: unknown };
+    const reason = typeof body.reason === "string" && body.reason.trim().length >= 8 ? body.reason.trim().slice(0, 500) : "Manual operator quarantine";
+    context.execution.quarantineWorker(workerQuarantine.groups.id, reason);
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKER_QUARANTINED", resourceType: "WORKER", resourceId: workerQuarantine.groups.id, summary: "Operator quarantined a worker.", metadata: { reason } });
+    sendJson(response, 202, { ok: true });
+    return;
+  }
+  const workerRelease = /^\/api\/workers\/(?<id>[0-9a-f-]+)\/release$/.exec(url.pathname);
+  if (request.method === "POST" && workerRelease?.groups?.id) {
+    requirePermission(context, "workers.manage");
+    context.execution.releaseWorker(workerRelease.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKER_QUARANTINE_RELEASED", resourceType: "WORKER", resourceId: workerRelease.groups.id, summary: "Operator released an individual worker quarantine record." });
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/workers/fleet/quarantine") {
+    requirePermission(context, "workers.manage");
+    const body = await readJson(request) as { reason?: unknown };
+    const reason = typeof body.reason === "string" && body.reason.trim().length >= 8 ? body.reason.trim().slice(0, 500) : "Manual operator quarantine";
+    context.execution.quarantineWorkerFleet(reason);
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKER_FLEET_QUARANTINED", resourceType: "WORKER_FLEET", summary: "Operator blocked new worker dispatch.", metadata: { reason } });
+    sendJson(response, 200, { ok: true });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/workers/fleet/release") {
+    requirePermission(context, "workers.manage");
+    context.execution.releaseWorkerFleet();
+    audit.append({ actorLabel: context.principal?.userId, action: "WORKER_FLEET_RELEASED", resourceType: "WORKER_FLEET", summary: "Operator released worker dispatch and reset crash-loop state." });
+    sendJson(response, 200, { ok: true });
+    return;
+  }
   throw new HttpError(404, "API route not found.");
 }
 
@@ -1161,7 +1243,7 @@ function validateTargetDefaults(context: ApiContext, request: { projectId?: stri
   if (request.defaultConfigurationId && !context.configurations.get(request.defaultConfigurationId)) throw new HttpError(400, "Default configuration is unavailable or archived.");
   if (request.defaultCredentialProfileId) {
     const credential = context.vault.getSummary(request.defaultCredentialProfileId);
-    if (!credential || !credential.enabled) throw new HttpError(400, "Default credential profile is unavailable or disabled.");
+    if (!credential || !credential.enabled || ["EXPIRED", "INVALID", "IDENTITY_MISMATCH", "DISABLED"].includes(credential.health.classification)) throw new HttpError(400, "Default credential profile is unavailable or not scan-eligible.");
     if (credential.projectId && request.projectId && credential.projectId !== request.projectId) throw new HttpError(400, "Default credential profile is not assigned to the selected project.");
   }
 }
@@ -1228,7 +1310,17 @@ const mutableSettingDefaults = {
   defaultRateLimitPerSecond: 4,
   defaultConcurrency: 3,
   retentionDays: 90,
-  queueCapacity: 20
+  queueCapacity: 20,
+  workerMemoryMb: 768,
+  workerCpuTimeMs: 900_000,
+  workerWallClockMs: 1_200_000,
+  workerOutputQuotaMb: 512,
+  workerTempQuotaMb: 256,
+  workerHeartbeatTimeoutMs: 15_000,
+  workerCleanupGraceMs: 135_000,
+  workerForceKillGraceMs: 5_000,
+  workerCrashLoopLimit: 3,
+  workerCrashLoopWindowMs: 300_000
 } as const;
 
 function mutableSettings(context: ApiContext): Record<string, { value: unknown; defaultValue: unknown; rowVersion: number; source: "database" | "default"; updatedAt?: string }> {
@@ -1294,7 +1386,7 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
 
 function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
-  const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
+  const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
   const statusCode = conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError ? 403 : error instanceof SessionError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
