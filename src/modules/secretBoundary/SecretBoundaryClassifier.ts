@@ -12,12 +12,13 @@ const clientSafeName = /^(?:NEXT_PUBLIC_|VITE_|PUBLIC_)|(?:SUPABASE_ANON_KEY|SUP
 const serverName = /(?:SERVICE[_-]?ROLE|ADMIN[_-]?(?:KEY|TOKEN)|MASTER[_-]?(?:KEY|TOKEN)|ROOT[_-]?(?:KEY|TOKEN)|CLIENT[_-]?SECRET|API[_-]?SECRET|SIGNING[_-]?SECRET|WEBHOOK[_-]?SECRET|JWT[_-]?SECRET|SESSION[_-]?SECRET|ENCRYPTION[_-]?KEY|DATABASE_URL|DB_PASSWORD|PRIVATE[_-]?KEY|SECRET[_-]?KEY)/i;
 const sessionName = /(?:ACCESS[_-]?TOKEN|REFRESH[_-]?TOKEN|ID[_-]?TOKEN|SESSION|AUTH[_-]?TOKEN|BEARER|JWT|SID)(?:$|[_-])/i;
 const oneTimeName = /(?:RESET|RECOVERY|VERIFY|VERIFICATION|INVITE|MAGIC[_-]?LINK|OTP|ONE[_-]?TIME).*(?:TOKEN|CODE)|(?:TOKEN|CODE).*(?:RESET|RECOVERY|VERIFY|INVITE|OTP)/i;
-const personalHighName = /(?:PASSWORD(?:[_-]?HASH)?|SSN|SOCIAL[_-]?SECURITY|TAX[_-]?ID|NATIONAL[_-]?ID|PASSPORT|CARD[_-]?NUMBER|PAN|CVV|CVC|BANK[_-]?ACCOUNT|ROUTING[_-]?NUMBER|IBAN|PRIVATE[_-]?(?:EMAIL|PHONE|ADDRESS))/i;
-const personalReviewName = /(?:EMAIL|PHONE|ADDRESS|DATE_OF_BIRTH|DOB)/i;
+const personalHighName = /(?:^|_)(?:password(?:_hash)?|ssn|social_security(?:_number)?|tax_id|national_id|passport(?:_number)?|card_number|pan|cvv|cvc|bank_account(?:_number)?|routing_number|iban|private_(?:email|phone|address))(?:_|$)/;
+const personalReviewName = /(?:^|_)(?:email|phone|address|date_of_birth|dob)(?:_|$)/;
 const metadataName = /(?:BUILD_ID|BUILD_NUMBER|COMMIT_SHA|GIT_SHA|RELEASE|VERSION|SOURCE_ROOT|DEPLOYMENT_ID)/i;
 
 export function classifyTransientSecret(input: SecretClassificationInput): SecretClassification {
   const name = input.name.trim();
+  const semanticName = normalizeFieldName(name);
   const value = input.value.trim();
   const clientNamed = clientSafeName.test(name);
   const jwt = decodeJwt(value);
@@ -45,8 +46,8 @@ export function classifyTransientSecret(input: SecretClassificationInput): Secre
   if (/^(?:pk_(?:live|test)_|pub_)[A-Za-z0-9_-]{8,}$/.test(value) || /^AIza[A-Za-z0-9_-]{20,}$/.test(value) || /^https:\/\/[A-Za-z0-9.-]+\/[0-9]+:[A-Za-z0-9]+@/.test(value)) return result("PUBLISHABLE_CLIENT_KEY", "CLIENT_SAFE", "NONE", "EXPECTED_PUBLIC_CLIENT_MATERIAL", "HIGH", "KNOWN_PUBLISHABLE_CLIENT_FORMAT", false, false, "PUBLISHABLE_KEY");
   if (clientNamed) return result("PUBLIC_CLIENT_CONFIG", "CLIENT_SAFE", "NONE", "EXPECTED_PUBLIC_CLIENT_MATERIAL", "HIGH", "EXPLICIT_CLIENT_SAFE_NAME", false, false, looksLikeUrl(value) ? "URL" : "CONFIG");
 
-  if (personalHighName.test(name) && value.length > 0 && !placeholder(value)) return result("PERSONAL_DATA", "PERSONAL_DATA", input.publicExposure ? "HIGH" : "MEDIUM", input.publicExposure ? "SENSITIVE_FIELD_EXPOSURE" : "NEEDS_REVIEW", "HIGH", "HIGH_SENSITIVITY_FIELD_NAME", input.publicExposure, false, "FIELD_VALUE");
-  if (personalReviewName.test(name) && value.length > 0 && !placeholder(value)) return result("PERSONAL_DATA", "PERSONAL_DATA", input.publicExposure ? "MEDIUM" : "LOW", "NEEDS_REVIEW", "MEDIUM", "PERSONAL_DATA_FIELD_NAME", false, false, "FIELD_VALUE");
+  if (personalHighName.test(semanticName) && value.length > 0 && !placeholder(value)) return result("PERSONAL_DATA", "PERSONAL_DATA", input.publicExposure ? "HIGH" : "MEDIUM", input.publicExposure ? "SENSITIVE_FIELD_EXPOSURE" : "NEEDS_REVIEW", "HIGH", "HIGH_SENSITIVITY_FIELD_NAME", input.publicExposure, false, "FIELD_VALUE");
+  if (personalReviewName.test(semanticName) && value.length > 0 && !placeholder(value)) return result("PERSONAL_DATA", "PERSONAL_DATA", input.publicExposure ? "MEDIUM" : "LOW", "NEEDS_REVIEW", "MEDIUM", "PERSONAL_DATA_FIELD_NAME", false, false, "FIELD_VALUE");
   if (metadataName.test(name)) return result("INTERNAL_METADATA", "INTERNAL", "INFORMATIONAL", "METADATA_EXPOSURE", "HIGH", "BUILD_OR_RELEASE_METADATA", false, false, "METADATA");
   if (/(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API[_-]?KEY|AUTH)/i.test(name) && value.length >= 8 && !placeholder(value)) return result("UNKNOWN_SECRET_LIKE", "UNKNOWN", "MEDIUM", "NEEDS_REVIEW", "MEDIUM", "GENERIC_SECRET_LIKE_NAME", false, clientNamed, jwt ? "JWT" : "OPAQUE", supabaseRole);
   return result("NON_SENSITIVE", "NONE", "NONE", "NOT_SENSITIVE", "HIGH", "NO_SENSITIVE_SEMANTICS", false, false, looksLikeUrl(value) ? "URL" : "PLAIN");
@@ -86,4 +87,11 @@ function supabaseJwtRole(jwt: Record<string, unknown> | undefined): SecretClassi
 }
 
 function placeholder(value: string): boolean { return /^(?:example|sample|placeholder|changeme|replace[_-]?me|your[_-].*|xxx+|test|undefined|null)$/i.test(value) || /^<[^>]+>$/.test(value); }
+function normalizeFieldName(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+}
 function looksLikeUrl(value: string): boolean { try { const url = new URL(value); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; } }

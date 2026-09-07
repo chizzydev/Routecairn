@@ -22,11 +22,15 @@ export class DashboardDatabase {
     for (const migration of dashboardMigrations) {
       const existing = this.db.prepare("SELECT version FROM dashboard_migrations WHERE version = ?").get(migration.version);
       if (existing) continue;
-      const apply = this.db.transaction(() => {
-        this.db.exec(migration.sql);
-        this.db.prepare("INSERT INTO dashboard_migrations (version, applied_at) VALUES (?, ?)").run(migration.version, nowIso());
-      });
-      apply();
+      if (migration.requiresForeignKeysDisabled) {
+        this.applyForeignKeyRebuildMigration(migration);
+      } else {
+        const apply = this.db.transaction(() => {
+          this.db.exec(migration.sql);
+          this.db.prepare("INSERT INTO dashboard_migrations (version, applied_at) VALUES (?, ?)").run(migration.version, nowIso());
+        });
+        apply();
+      }
     }
 
     const metaUpsert = this.db.prepare(
@@ -38,6 +42,26 @@ export class DashboardDatabase {
     }
     metaUpsert.run("schema_version", String(dashboardSchemaVersion), nowIso());
     metaUpsert.run("last_migration_at", nowIso(), nowIso());
+  }
+
+  private applyForeignKeyRebuildMigration(migration: { version: number; sql: string }): void {
+    this.db.pragma("foreign_keys = OFF");
+    this.db.pragma("legacy_alter_table = ON");
+    try {
+      const apply = this.db.transaction(() => {
+        this.db.exec(migration.sql);
+        this.db.prepare("INSERT INTO dashboard_migrations (version, applied_at) VALUES (?, ?)").run(migration.version, nowIso());
+      });
+      apply();
+    } finally {
+      this.db.pragma("legacy_alter_table = OFF");
+      this.db.pragma("foreign_keys = ON");
+    }
+
+    const violations = this.db.pragma("foreign_key_check") as unknown[];
+    if (violations.length > 0) {
+      throw new Error(`Dashboard migration ${migration.version} left ${violations.length} foreign-key violation(s).`);
+    }
   }
 
   public recoverInterruptedScans(): void {

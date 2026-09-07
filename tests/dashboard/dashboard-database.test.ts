@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DashboardDatabase } from "../../src/dashboard/db/DashboardDatabase.js";
 import { ScanRepository } from "../../src/dashboard/db/DashboardRepositories.js";
@@ -19,6 +20,34 @@ describe("dashboard database", () => {
       database.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts production targets after rebuilding the legacy classification constraint", () => {
+    const directory = mkdtempSync(join(tmpdir(), "routecairn-dashboard-production-target-"));
+    const database = new DashboardDatabase(join(directory, "dashboard.sqlite"));
+    try {
+      database.migrate();
+      const projectId = randomUUID();
+      const targetId = randomUUID();
+      const now = new Date().toISOString();
+      database.db.prepare(
+        "INSERT INTO projects (id, name, tags_json, default_scope_json, created_at, updated_at) VALUES (?, ?, '[]', '{}', ?, ?)"
+      ).run(projectId, "Production acceptance", now, now);
+      database.db.prepare(
+        `INSERT INTO targets (
+          id, project_id, display_name, base_origin, tags_json, classification,
+          authorization_type, authorization_summary, approved_scope_json,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, '[]', 'PRODUCTION', 'OWNED', ?, '{}', ?, ?)`
+      ).run(targetId, projectId, "Owned production", "https://example.test", "Explicitly authorized owned target", now, now);
+
+      const stored = database.db.prepare("SELECT classification FROM targets WHERE id = ?").get(targetId) as { classification: string };
+      expect(stored.classification).toBe("PRODUCTION");
+      expect(database.db.pragma("foreign_key_check")).toEqual([]);
+    } finally {
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 

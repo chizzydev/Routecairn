@@ -1,6 +1,10 @@
-export const dashboardSchemaVersion = 21;
+export const dashboardSchemaVersion = 23;
 
-export const dashboardMigrations: readonly { version: number; sql: string }[] = [
+export const dashboardMigrations: readonly {
+  version: number;
+  sql: string;
+  requiresForeignKeysDisabled?: boolean;
+}[] = [
   {
     version: 1,
     sql: `
@@ -944,6 +948,60 @@ CREATE TABLE credential_health_events (
 );
 CREATE INDEX idx_credential_health_profile_time
   ON credential_health_events(credential_profile_id, created_at DESC);
+`
+  },
+  {
+    version: 23,
+    requiresForeignKeysDisabled: true,
+    sql: `
+ALTER TABLE targets RENAME TO targets_v22;
+
+CREATE TABLE targets (
+  id TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  display_name TEXT NOT NULL,
+  base_origin TEXT NOT NULL,
+  description TEXT,
+  tags_json TEXT NOT NULL,
+  classification TEXT NOT NULL CHECK (classification IN ('PUBLIC','PRIVATE','LOCAL','PRODUCTION','UNKNOWN')),
+  authorization_type TEXT NOT NULL CHECK (authorization_type IN ('OWNED','CLIENT_AUTHORIZED','BUG_BOUNTY','CONTROLLED_LAB','OTHER_AUTHORIZED')),
+  authorization_summary TEXT NOT NULL,
+  approved_scope_json TEXT NOT NULL,
+  default_profile TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  row_version INTEGER NOT NULL DEFAULT 1,
+  default_configuration_id TEXT,
+  default_credential_profile_id TEXT,
+  default_evidence_level TEXT,
+  default_auth_template_json TEXT NOT NULL DEFAULT '{}',
+  production_mutation_enabled INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(project_id, base_origin, display_name)
+);
+
+INSERT INTO targets (
+  id, project_id, display_name, base_origin, description, tags_json,
+  classification, authorization_type, authorization_summary,
+  approved_scope_json, default_profile, created_by, created_at, updated_at,
+  archived_at, row_version, default_configuration_id,
+  default_credential_profile_id, default_evidence_level,
+  default_auth_template_json, production_mutation_enabled
+)
+SELECT
+  id, project_id, display_name, base_origin, description, tags_json,
+  classification, authorization_type, authorization_summary,
+  approved_scope_json, default_profile, created_by, created_at, updated_at,
+  archived_at, row_version, default_configuration_id,
+  default_credential_profile_id, default_evidence_level,
+  default_auth_template_json, production_mutation_enabled
+FROM targets_v22;
+
+DROP TABLE targets_v22;
+
+CREATE INDEX idx_targets_project ON targets(project_id);
+CREATE INDEX idx_targets_origin ON targets(base_origin);
 `
   }
 ];

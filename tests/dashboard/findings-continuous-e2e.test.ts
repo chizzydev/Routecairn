@@ -25,7 +25,7 @@ describe("continuous findings lifecycle", () => {
     try {
       const analyst = await login(handle.url, publicOrigin, "analyst@routecairn.test", "Analyst continuous fixture password!");
       const project = await mutation<any>(handle.url, publicOrigin, "/api/projects", "POST", analyst, { name: "Continuous Fixture", tags: [], defaultProfile: "full", defaultScope: {} });
-      const target = await mutation<any>(handle.url, publicOrigin, "/api/targets", "POST", analyst, { projectId: project.projectId, displayName: "Controlled headers fixture", baseOrigin: fixture.url, authorizationType: "CONTROLLED_LAB", authorizationSummary: "Local fixture owned by the test operator.", classification: "LOCAL", defaultProfile: "full", tags: [], approvedScope: { origins: [fixture.url] } });
+      const target = await mutation<any>(handle.url, publicOrigin, "/api/targets", "POST", analyst, { projectId: project.projectId, displayName: "Controlled headers fixture", baseOrigin: fixture.url, authorizationType: "CONTROLLED_LAB", authorizationSummary: "Local fixture owned by the test operator.", classification: "LOCAL", defaultProfile: "full", tags: [], approvedScope: fixtureScope(fixture.url) });
       const request = studioRequest(fixture.url, project.projectId, target.targetId);
       const initialScanId = await launch(handle.url, publicOrigin, analyst, request);
       expect((await waitForScan(handle.url, publicOrigin, analyst.cookie, initialScanId)).status).toBe("COMPLETED");
@@ -80,8 +80,11 @@ describe("continuous findings lifecycle", () => {
 });
 
 function studioRequest(target: string, projectId: string, targetId: string, retestContext?: Record<string, unknown>) {
-  const host = new URL(target).hostname;
-  return { target, projectId, targetId, profile: "full", includeModules: ["baseline", "header-review"], authorizationDeclaration: "CONTROLLED_LAB: Local fixture owned by the test operator.", studio: { version: 1, scanName: retestContext ? "Controlled remediation retest" : "Controlled initial scan", authorization: { category: "CONTROLLED_LAB", confirmed: true }, scope: { program: "Continuous findings fixture", allowedDomains: [host], disallowedPaths: ["/delete"], allowedMethods: ["GET", "HEAD", "OPTIONS"], rateLimitPerSecond: 20, concurrency: 2, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn-Findings-E2E/1.0" }, authentication: { mode: "public" }, evidenceLevel: "normal", outputs: { json: true, markdown: true, html: true }, workflows: [], workflowSummary: [], ...(retestContext ? { retestContext } : {}) } };
+  return { target, projectId, targetId, profile: "full", includeModules: ["baseline", "header-review"], authorizationDeclaration: "CONTROLLED_LAB: Local fixture owned by the test operator.", studio: { version: 1, scanName: retestContext ? "Controlled remediation retest" : "Controlled initial scan", authorization: { category: "CONTROLLED_LAB", confirmed: true }, scope: fixtureScope(target), authentication: { mode: "public" }, evidenceLevel: "normal", outputs: { json: true, markdown: true, html: true }, workflows: [], workflowSummary: [], ...(retestContext ? { retestContext } : {}) } };
+}
+
+function fixtureScope(target: string) {
+  return { program: "Continuous findings fixture", allowedDomains: [new URL(target).hostname], disallowedPaths: ["/delete"], allowedMethods: ["GET", "HEAD", "OPTIONS"], rateLimitPerSecond: 20, concurrency: 2, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn-Findings-E2E/1.0" };
 }
 
 async function launch(baseUrl: string, origin: string, auth: Auth, request: any): Promise<string> {

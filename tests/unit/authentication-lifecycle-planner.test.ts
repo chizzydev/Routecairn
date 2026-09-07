@@ -36,6 +36,7 @@ describe("authentication lifecycle planner", () => {
       authorization: { mode: "CONTROLLED_LIFECYCLE", environment: "TEST", confirmation: "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING", authorizedBy: "security-operator", changeTicket: "AUTH-42", authorizedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2099-01-01T00:00:00.000Z", disposableAccounts: true }, cleanupRequired: true,
       steps: [
         { id: "login", phase: "ACTION", actorId: "member", request: { method: "POST", url: new URL("/login", target).toString(), stateChanging: true, fields: { username: "{{SECRET:username}}", password: "{{SECRET:password}}" } }, captures: [{ name: "session", source: "COOKIE", cookie: "session" }], assertions: [{ kind: "STATUS_IN", values: [200] }] },
+        { id: "verify", phase: "VERIFY", actorId: "member", request: { method: "GET", url: new URL("/session", target).toString(), stateChanging: false, headers: { Authorization: "Bearer {{CAPTURE:session}}" } }, assertions: [{ kind: "STATUS_IN", values: [200] }] },
         { id: "logout", phase: "CLEANUP", actorId: "member", request: { method: "POST", url: new URL("/logout", target).toString(), stateChanging: true, headers: { Cookie: "session={{CAPTURE:session}}" } }, assertions: [{ kind: "STATUS_IN", values: [204] }] }
       ]
     }] });

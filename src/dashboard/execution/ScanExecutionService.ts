@@ -31,6 +31,7 @@ import { scopeSchema } from "../../config/ConfigSchema.js";
 import { defaultConfig } from "../../config/defaults.js";
 import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
+import { assertRegisteredTargetScope } from "./RegisteredTargetScope.js";
 
 const maxQueuedScans = 20;
 
@@ -81,6 +82,7 @@ export class ScanExecutionService {
   public async preview(request: DashboardScanCreateRequest): Promise<PlanPreviewResponse> {
     const credentialAuth = this.resolveCredentialAuth(request);
     const { plan, scope } = await resolveDashboardScanPlan(request, credentialAuth);
+    this.assertTargetBinding(request, scope, plan.limits);
     const previewIdentity = safePlanIdentity(request, plan);
     const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
     return {
@@ -123,6 +125,7 @@ export class ScanExecutionService {
   public async testIdentity(request: DashboardScanCreateRequest): Promise<Record<string, unknown>> {
     const credentialAuth = this.resolveCredentialAuth(request);
     const resolved = await resolveDashboardScanPlan(request, credentialAuth);
+    this.assertTargetBinding(request, resolved.scope, resolved.plan.limits);
     const boundedPlan = {
       ...resolved.plan,
       limits: {
@@ -191,6 +194,7 @@ export class ScanExecutionService {
     const sourceBindings = await captureExecutablePlanSources(request);
     const credentialAuth = this.resolveCredentialAuth(request);
     const resolved = await resolveDashboardScanPlan(request, credentialAuth, mutationContracts);
+    this.assertTargetBinding(request, resolved.scope, resolved.plan.limits);
     await assertExecutablePlanSourcesUnchanged(sourceBindings);
     const { plan } = resolved;
     const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
@@ -237,6 +241,20 @@ export class ScanExecutionService {
     if (!request.credentialProfileId && !request.credentialProfileAId && !request.credentialProfileBId && (!request.studio || request.studio.authentication.mode === "public")) return undefined;
     if (!this.vault) throw new Error("Credential vault is unavailable for this dashboard scan.");
     return resolveCredentialAuthForDashboardScan(this.vault, request);
+  }
+
+  private assertTargetBinding(request: DashboardScanCreateRequest, requestedScope: Parameters<typeof assertRegisteredTargetScope>[0], limits: Parameters<typeof assertRegisteredTargetScope>[2]): void {
+    if (!request.targetId) return;
+    const target = new TargetRepository(this.database).get(request.targetId);
+    if (!target) throw new Error("TARGET_NOT_FOUND: The selected registered target is unavailable or archived.");
+    if (new URL(target.baseOrigin).origin !== new URL(request.target).origin) throw new Error("TARGET_INVALID: The scan target origin does not match the selected registered target.");
+    let approvedScope: ReturnType<typeof scopeSchema.parse>;
+    try {
+      approvedScope = scopeSchema.parse(target.approvedScope);
+    } catch {
+      throw new Error("REGISTERED_TARGET_SCOPE_INVALID: The selected target does not contain a complete approved scope.");
+    }
+    assertRegisteredTargetScope(requestedScope, approvedScope, limits);
   }
 
   private evaluateCredentialReadiness(request: DashboardScanCreateRequest, maximumExecutionMs: number): CredentialReadinessResult {

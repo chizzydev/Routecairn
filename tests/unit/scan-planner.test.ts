@@ -207,6 +207,18 @@ describe("ScanPlanner", () => {
     expect(plan.limits.retry.maxAttempts).toBe(1);
   });
 
+  it("treats scope depth, rate, and concurrency as hard execution ceilings", () => {
+    const scope = { ...exampleScope, maxDepth: 0, rateLimitPerSecond: 1, concurrency: 1 };
+    const plan = new ScanPlanner(createDefaultPluginRegistry()).resolve({
+      requestedProfile: "full",
+      scope,
+      config: defaultConfig,
+      overrides: { rateLimitPerSecond: 20, concurrency: 20 }
+    });
+
+    expect(plan.limits).toMatchObject({ maxDepth: 0, rateLimitPerSecond: 1, concurrency: 1 });
+  });
+
   it("applies module-specific overrides", () => {
     const plan = resolve("quick");
     const apiProbe = plan.modules.find((modulePlan) => modulePlan.id === "api-probe");

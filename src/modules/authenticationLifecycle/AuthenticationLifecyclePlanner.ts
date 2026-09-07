@@ -241,7 +241,7 @@ function validateLeaf(value: unknown, key: string, label: string): void {
   const sensitiveKey = /(password|token|secret|cookie|authorization|email|username|code|session|credential|user|account|tenant|principal|identity|invite|verification|recovery)/i.test(key);
   const safeCredentialTemplate = placeholder.test(value) || (/authorization/i.test(key) && /^Bearer \{\{(?:SECRET|CAPTURE):[A-Za-z0-9._-]+\}\}$/.test(value)) || (/cookie/i.test(key) && /^(?:[A-Za-z0-9._-]+=\{\{(?:SECRET|CAPTURE):[A-Za-z0-9._-]+\}\})(?:; [A-Za-z0-9._-]+=\{\{(?:SECRET|CAPTURE):[A-Za-z0-9._-]+\}\})*$/.test(value));
   if (sensitiveKey && !safeCredentialTemplate) throw new AppError(`Sensitive field ${key} in ${label} must use a SECRET or CAPTURE reference.`, "AUTH_LIFECYCLE_LITERAL_SECRET_REJECTED");
-  if (/^Bearer\s+/i.test(value) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) throw new AppError(`Credential-like literal in ${label} was rejected.`, "AUTH_LIFECYCLE_LITERAL_SECRET_REJECTED");
+  if ((/^Bearer\s+/i.test(value) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) && !safeCredentialTemplate) throw new AppError(`Credential-like literal in ${label} was rejected.`, "AUTH_LIFECYCLE_LITERAL_SECRET_REJECTED");
 }
 
 function validateUrlTemplate(value: string, label: string): void {

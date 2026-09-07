@@ -436,6 +436,13 @@ function resolveLimits(definition: ScanProfileDefinition, input: ScanPlannerInpu
     ...(input.overrides?.maxRequests ? { maxRequests: input.overrides.maxRequests } : {})
   };
 
+  // The declared scope is an authorization boundary, not a set of soft profile
+  // defaults. A profile or per-run override may make execution more restrictive,
+  // but must never increase network pressure or crawl reach beyond that boundary.
+  merged.maxDepth = Math.min(merged.maxDepth, input.scope.maxDepth);
+  merged.rateLimitPerSecond = Math.min(merged.rateLimitPerSecond, input.scope.rateLimitPerSecond);
+  merged.concurrency = Math.min(merged.concurrency, input.scope.concurrency);
+
   const minimumCleanup = minimumCleanupRequests(input);
   const cleanupReservedRequests = input.overrides?.cleanupReservedRequests
     ?? definition.limits.cleanupReservedRequests

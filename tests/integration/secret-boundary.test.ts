@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runScanCommand } from "../../src/cli/commands/scan.js";
 import { exampleScope } from "../../src/config/defaults.js";
 import type { SecretBoundaryReport } from "../../src/reports/SecretBoundaryReport.js";
+import { classifyTransientSecret } from "../../src/modules/secretBoundary/SecretBoundaryClassifier.js";
 
 let server: Server | undefined;
 const directories: string[] = [];
@@ -18,6 +19,26 @@ afterEach(async () => {
 });
 
 describe("secret-boundary integration", () => {
+  it("uses field-token boundaries when classifying personal data", () => {
+    expect(classifyTransientSecret({
+      name: "className",
+      value: "rounded-lg border border-slate-200",
+      surface: "JAVASCRIPT_BUNDLE",
+      publicExposure: true
+    })).toMatchObject({ materialClass: "NON_SENSITIVE", findingEligible: false });
+
+    expect(classifyTransientSecret({
+      name: "socialSecurityNumber",
+      value: "000-00-0000",
+      surface: "API_RESPONSE",
+      publicExposure: true
+    })).toMatchObject({
+      materialClass: "PERSONAL_DATA",
+      findingEligible: true,
+      reasonCode: "HIGH_SENSITIVITY_FIELD_NAME"
+    });
+  });
+
   it("correlates every server/client exposure surface without retaining values or misclassifying public keys", async () => {
     const secrets = {
       service: jwt({ role: "service_role", ref: "project-ref" }),

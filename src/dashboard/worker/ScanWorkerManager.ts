@@ -2,7 +2,8 @@ import { fork, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
@@ -385,10 +386,11 @@ function processAlive(pid: number): boolean {
   catch (error) { return !(error && typeof error === "object" && "code" in error && error.code === "ESRCH"); }
 }
 
-function workerEntryPath(): string {
-  const built = resolve("dist", "dashboard", "worker", "ScanWorkerMain.js");
-  if (existsSync(built)) return built;
-  return resolve("src", "dashboard", "worker", "ScanWorkerMain.ts");
+export function workerEntryPath(): string {
+  const managerPath = fileURLToPath(import.meta.url);
+  const adjacent = resolve(dirname(managerPath), managerPath.endsWith(".ts") ? "ScanWorkerMain.ts" : "ScanWorkerMain.js");
+  if (existsSync(adjacent)) return adjacent;
+  throw new WorkerGovernanceError("STARTUP_FAILURE", "Worker entry module is unavailable beside the worker manager runtime.");
 }
 
 function secretEnvelopePayload(request: DashboardScanCreateRequest, vault: CredentialVault | undefined, resolvedAuth?: DashboardResolvedAuth): Record<string, unknown> {

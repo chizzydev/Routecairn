@@ -93,7 +93,7 @@ describe("dashboard product workflows", () => {
     try {
       const paths = resolveDashboardPaths(dir);
       const scopePath = resolve(dir, "scope.json");
-      writeFileSync(scopePath, JSON.stringify({
+      const approvedScope = {
         program: "dashboard metadata fixture",
         allowedDomains: ["127.0.0.1"],
         disallowedPaths: [],
@@ -105,7 +105,8 @@ describe("dashboard product workflows", () => {
         includeSubdomains: false,
         respectRobotsTxt: false,
         userAgent: "RouteCairn-Test/1.0"
-      }), "utf8");
+      };
+      writeFileSync(scopePath, JSON.stringify(approvedScope), "utf8");
       const handle = await startDashboardServer({ dataDir: dir, uiDistDir: resolve("apps", "dashboard-ui", "dist") });
       try {
         const auth = await authenticate(handle.url, handle.bootstrapUrl);
@@ -118,7 +119,7 @@ describe("dashboard product workflows", () => {
           authorizationSummary: "Owned target used for metadata persistence verification.",
           classification: "PUBLIC",
           tags: [],
-          approvedScope: {},
+          approvedScope,
           defaultProfile: "quick"
         });
         const queued = await apiMutation<any>(handle.url, "/api/scans", auth, {

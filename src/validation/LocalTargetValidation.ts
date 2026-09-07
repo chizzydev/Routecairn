@@ -90,7 +90,7 @@ export async function runLocalTargetValidation(outputParent?: string) {
       approvals.approve(id, "fixture-acceptance");
       return { id, contract: { ...contract, approvalBinding: binding } };
     };
-    const mutationRequest: DashboardScanCreateRequest = { target: `${origin}/app`, targetId, profile: "quick", studio, credentialProfileId: credentials[0]!, includeModules: ["baseline", "browser-crawler", "privilege-mutation-testing"], rateLimitPerSecond: 20, targetAuthorization: { schemaVersion: 1, mode: "INTERNAL_STAGING", targetOrigin: origin, proof: { reference: "Generated owned fixture", sha256: hash("local-fixture") } } };
+    const mutationRequest: DashboardScanCreateRequest = { target: `${origin}/app`, targetId, profile: "quick", studio, credentialProfileId: credentials[0]!, includeModules: ["baseline", "browser-crawler", "privilege-mutation-testing"], rateLimitPerSecond: 20, concurrency: 2, targetAuthorization: { schemaVersion: 1, mode: "INTERNAL_STAGING", targetOrigin: origin, proof: { reference: "Generated owned fixture", sha256: hash("local-fixture") } } };
     const approved = approve(localRoleContract(origin, "fixture_session=expired-not-a-credential"));
     const proofScan = await executeScan(execution, database, mutationRequest, [approved.contract], approved.id);
     const proofReport = JSON.parse(await readFile(join(paths.reportsDir, proofScan, "report.json"), "utf8")) as RouteCairnReport;
@@ -116,7 +116,7 @@ export async function runLocalTargetValidation(outputParent?: string) {
     requireCheck(sealed.targetAuthorization?.proof.sha256 === mutationRequest.targetAuthorization?.proof.sha256, "RECOVERY_TARGET_POLICY_NOT_BOUND");
     const freshCookie = await fixture.login(0);
     const recoveryCredential = vault.create({ name: "Fresh recovery session", safeAlias: "fixture-recovery", safeIdentitySummary: { principalId: fixture.users[0]!.id }, secret: { cookies: { fixture_session: freshCookie.slice("fixture_session=".length) } } });
-    const recoveryRequest: DashboardScanCreateRequest = { target: origin, profile: "quick", studio, credentialProfileId: recoveryCredential, includeModules: ["baseline"], rateLimitPerSecond: 20 };
+    const recoveryRequest: DashboardScanCreateRequest = { target: origin, profile: "quick", studio, credentialProfileId: recoveryCredential, includeModules: ["baseline"], rateLimitPerSecond: 20, concurrency: 2 };
     const recovery = await new ControlledMutationRecoveryService(database, paths, targets, vault).queueRecovery({ recoveryJobId: randomUUID(), approvalId: recoveryApproval.id, bundlePath: join(paths.mutationJournalDir, bundle!), caseId: "local-recovery", targetId, credentialProfileId: recoveryCredential, workerRequest: recoveryRequest });
     requireCheck(recovery.cleanupOutcome === "ROLLBACK_VERIFIED", "WORKER_RECOVERY_FAILED");
     requireCheck(fixture.snapshot().users.every((user) => user.role === "member" && user.balance === 100), "FIXTURE_NOT_RESTORED");
