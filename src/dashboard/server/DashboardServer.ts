@@ -215,6 +215,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     close: async () => {
       continuousAssurance.shutdown();
       await execution.shutdown();
+      await mutationRecovery.shutdown();
       await workflowRecovery.shutdown();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
       database.close();

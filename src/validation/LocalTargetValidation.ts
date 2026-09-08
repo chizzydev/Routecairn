@@ -33,6 +33,8 @@ export async function runLocalTargetValidation(outputParent?: string) {
   const database = new DashboardDatabase(paths.databasePath); database.migrate();
   const vault = new CredentialVault(database, { bytes: randomBytes(32), version: "disposable-validation" });
   const execution = new ScanExecutionService(database, paths, vault);
+  const targets = new TargetRepository(database);
+  const mutationRecovery = new ControlledMutationRecoveryService(database, paths, targets, vault);
   try {
     const origin = fixture.origin;
     const cookies = await Promise.all([fixture.login(0), fixture.login(1)]);
@@ -80,7 +82,6 @@ export async function runLocalTargetValidation(outputParent?: string) {
     requireCheck(comparison.summary.resolved >= 1, "REGRESSION_COMPARISON_NOT_RESOLVED");
 
     // Exact operator contracts travel through authenticated worker IPC; credentials come from the vault.
-    const targets = new TargetRepository(database);
     const targetId = targets.create({ displayName: "Generated loopback fixture", baseOrigin: origin, tags: ["fixture-only"], classification: "LOCAL", authorizationType: "OWNED", authorizationSummary: "Owned disposable acceptance fixture", approvedScope: scope });
     const target = targets.get(targetId)!;
     const approvals = new ControlledMutationApprovalRepository(database);
@@ -117,7 +118,7 @@ export async function runLocalTargetValidation(outputParent?: string) {
     const freshCookie = await fixture.login(0);
     const recoveryCredential = vault.create({ name: "Fresh recovery session", safeAlias: "fixture-recovery", safeIdentitySummary: { principalId: fixture.users[0]!.id }, secret: { cookies: { fixture_session: freshCookie.slice("fixture_session=".length) } } });
     const recoveryRequest: DashboardScanCreateRequest = { target: origin, profile: "quick", studio, credentialProfileId: recoveryCredential, includeModules: ["baseline"], rateLimitPerSecond: 20, concurrency: 2 };
-    const recovery = await new ControlledMutationRecoveryService(database, paths, targets, vault).queueRecovery({ recoveryJobId: randomUUID(), approvalId: recoveryApproval.id, bundlePath: join(paths.mutationJournalDir, bundle!), caseId: "local-recovery", targetId, credentialProfileId: recoveryCredential, workerRequest: recoveryRequest });
+    const recovery = await mutationRecovery.queueRecovery({ recoveryJobId: randomUUID(), approvalId: recoveryApproval.id, bundlePath: join(paths.mutationJournalDir, bundle!), caseId: "local-recovery", targetId, credentialProfileId: recoveryCredential, workerRequest: recoveryRequest });
     requireCheck(recovery.cleanupOutcome === "ROLLBACK_VERIFIED", "WORKER_RECOVERY_FAILED");
     requireCheck(fixture.snapshot().users.every((user) => user.role === "member" && user.balance === 100), "FIXTURE_NOT_RESTORED");
     requireCheck(fixture.snapshot().staleReads > 0 && !fixture.calls.some((call) => call.path === "/unsafe"), "EVENTUAL_CONSISTENCY_OR_BROWSER_WRITE_BOUNDARY_FAILED");
@@ -143,7 +144,7 @@ export async function runLocalTargetValidation(outputParent?: string) {
     };
     await writeFile(join(directory, "validation-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
     return summary;
-  } finally { try { await execution.shutdown(); } finally { try { database.close(); } finally { await fixture.close(); } } }
+  } finally { try { await execution.shutdown(); } finally { try { await mutationRecovery.shutdown(); } finally { try { database.close(); } finally { await fixture.close(); } } } }
 }
 
 async function executeScan(execution: ScanExecutionService, database: DashboardDatabase, request: DashboardScanCreateRequest, contracts?: readonly ControlledMutationContract[], approvalId?: string): Promise<string> {

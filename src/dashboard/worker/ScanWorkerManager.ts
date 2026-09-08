@@ -64,7 +64,9 @@ interface ActiveWorker {
 
 export class ScanWorkerManager {
   private readonly active = new Map<string, ActiveWorker>();
+  private readonly pendingWorkerCleanup = new Set<Promise<void>>();
   private readonly governance: WorkerGovernanceRepository;
+  private shuttingDown = false;
 
   public constructor(private readonly database: DashboardDatabase, private readonly paths: DashboardPaths, private readonly vault?: CredentialVault) {
     this.governance = new WorkerGovernanceRepository(database);
@@ -90,6 +92,7 @@ export class ScanWorkerManager {
   }
 
   public run(jobId: string, request: DashboardScanCreateRequest, handlers: WorkerRunHandlers, options: WorkerExecutionOptions): Promise<WorkerRunResult> {
+    if (this.shuttingDown) throw new WorkerGovernanceError("STARTUP_FAILURE", "Worker manager shutdown has started; new jobs are not accepted.");
     this.verifyExecutionAuthentication(request, options);
     this.governance.assertDispatchAllowed();
     const workerId = randomUUID();
@@ -204,6 +207,7 @@ export class ScanWorkerManager {
   }
 
   public runRecovery(jobId: string, request: DashboardScanCreateRequest, caseId: string, bundlePath: string): Promise<WorkerRecoveryResult> {
+    if (this.shuttingDown) throw new WorkerGovernanceError("STARTUP_FAILURE", "Worker manager shutdown has started; new recovery jobs are not accepted.");
     const workerId = randomUUID();
     const workerGeneration = randomUUID();
     const workerSecret = randomBytes(32).toString("base64url");
@@ -255,9 +259,15 @@ export class ScanWorkerManager {
   }
 
   public async shutdown(): Promise<void> {
+    this.shuttingDown = true;
     const activeRuns = [...this.active.values()];
     for (const jobId of this.active.keys()) this.cancel(jobId);
     await Promise.all(activeRuns.map((active) => active.settled));
+    await this.drainCompletedWorkers();
+  }
+
+  public async drainCompletedWorkers(): Promise<void> {
+    while (this.pendingWorkerCleanup.size > 0) await Promise.all([...this.pendingWorkerCleanup]);
   }
 
   public diagnostics() { return this.governance.fleet(); }
@@ -336,7 +346,16 @@ export class ScanWorkerManager {
     const candidate = resolve(tempDir);
     const childPath = relative(workersRoot, candidate);
     if (!childPath || childPath.startsWith("..") || isAbsolute(childPath)) throw new Error("Refusing worker temp cleanup outside the worker root.");
-    child.once("exit", () => { void rm(candidate, { recursive: true, force: true }).catch(() => { /* Quota data remains in durable diagnostics; stale temp cleanup can be retried operationally. */ }); });
+    const cleanup = new Promise<void>((resolveCleanup) => {
+      const remove = () => {
+        void rm(candidate, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 })
+          .catch(() => { /* Quota data remains in durable diagnostics; stale temp cleanup can be retried operationally. */ })
+          .finally(resolveCleanup);
+      };
+      if (child.exitCode !== null || child.signalCode !== null) remove(); else child.once("exit", remove);
+    });
+    this.pendingWorkerCleanup.add(cleanup);
+    void cleanup.finally(() => this.pendingWorkerCleanup.delete(cleanup));
   }
 
 private acquireRecoveryLease(jobId: string, workerId: string): void { const now = Date.now(); this.database.db.prepare("INSERT INTO controlled_mutation_recovery_leases (job_id, worker_id, acquired_at, expires_at, last_renewed_at) VALUES (?, ?, ?, ?, ?)").run(jobId, workerId, new Date(now).toISOString(), new Date(now + leaseTtlMs).toISOString(), new Date(now).toISOString()); }

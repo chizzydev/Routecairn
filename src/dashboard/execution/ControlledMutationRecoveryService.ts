@@ -41,8 +41,11 @@ export class ControlledMutationRecoveryService {
       const code = safeRecoveryErrorCode(error);
       this.approvals.updateStatus(input.approvalId, "CLEANUP_FAILED", code);
       throw new Error(code);
+    } finally {
+      await this.workers.drainCompletedWorkers();
     }
   }
+  public async shutdown(): Promise<void> { await this.workers.shutdown(); }
 }
 
 function safeRecoveryErrorCode(error: unknown): string {
