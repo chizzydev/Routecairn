@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
@@ -75,7 +75,7 @@ function safeContainedPath(input: string, roots: readonly string[]): string {
   const link = lstatSync(candidate);
   if (link.isSymbolicLink()) throw new Error("Symlink imports are rejected.");
   const real = realpathSync(candidate);
-  const allowed = roots.map((root) => realpathSync(resolve(root))).some((root) => real === root || real.startsWith(`${root}\\`) || real.startsWith(`${root}/`));
+  const allowed = roots.filter((root) => existsSync(resolve(root))).map((root) => realpathSync(resolve(root))).some((root) => real === root || real.startsWith(`${root}\\`) || real.startsWith(`${root}/`));
   if (!allowed) throw new Error("Report import path is outside approved RouteCairn output roots.");
   if (dirname(real) === real) throw new Error("Import path must be a file.");
   return real;

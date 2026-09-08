@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const allowedPlaywrightFiles = new Set([
@@ -13,9 +12,7 @@ const allowedPlaywrightFiles = new Set([
 
 describe("browser architecture invariants", () => {
   it("keeps Playwright construction inside the hardened browser layer", () => {
-    const files = execFileSync("rg", ["--files", "src"], { cwd: repoRoot, encoding: "utf8" })
-      .split(/\r?\n/)
-      .filter((file) => file.endsWith(".ts"));
+    const files = sourceFiles(join(repoRoot, "src")).map((file) => relative(repoRoot, file));
 
     const offenders = files.flatMap((file) => {
       const content = readFileSync(join(repoRoot, file), "utf8");
@@ -28,3 +25,10 @@ describe("browser architecture invariants", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    return entry.isDirectory() ? sourceFiles(path) : entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
+  });
+}

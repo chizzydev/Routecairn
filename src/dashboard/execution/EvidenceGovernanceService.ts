@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { clamp, nowIso } from "../db/DashboardDatabase.js";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
@@ -164,7 +164,7 @@ export class EvidenceGovernanceService {
     for(const row of artifacts){let present=true;try{present=existsSync(this.safeArtifactPath(row.canonical_path));}catch{present=true;}this.database.db.prepare("UPDATE artifacts SET retention_state=?,missing_file_flag=? WHERE id=? AND retention_state='PURGING'").run(present?"RETAIN":"PURGED",present?0:1,row.id);}
   }
   private hasUnreviewedFinding(scanId:string):boolean { return Boolean(this.database.db.prepare("SELECT 1 FROM finding_occurrences o JOIN findings f ON f.id=o.finding_id WHERE o.scan_id=? AND f.human_review_status='UNREVIEWED' LIMIT 1").get(scanId)); }
-  private safeArtifactPath(value:string):string { const candidate=existsSync(resolve(value))?realpathSync(resolve(value)):resolve(value); const roots=[this.paths.reportsDir,this.paths.proofPacksDir,this.paths.artifactsDir].map((root)=>existsSync(root)?realpathSync(root):resolve(root)); if(!roots.some((root)=>candidate===root||candidate.startsWith(`${root}\\`)||candidate.startsWith(`${root}/`))) throw new Error("EVIDENCE_PATH_OUTSIDE_DASHBOARD_ROOTS"); return candidate; }
+  private safeArtifactPath(value:string):string { const candidate=canonicalPath(value); const roots=[this.paths.reportsDir,this.paths.proofPacksDir,this.paths.artifactsDir].map(canonicalPath); if(!roots.some((root)=>candidate===root||candidate.startsWith(`${root}\\`)||candidate.startsWith(`${root}/`))) throw new Error("EVIDENCE_PATH_OUTSIDE_DASHBOARD_ROOTS"); return candidate; }
   private installationId():string { return (this.database.db.prepare("SELECT value FROM dashboard_meta WHERE key='installation_id'").get() as {value:string}).value; }
   private aad(id:string,keyVersion:string):Buffer { return Buffer.from(JSON.stringify({purpose:"routecairn-evidence-export",installationId:this.installationId(),exportId:id,keyVersion})); }
   private sign(id:string,keyVersion:string,manifestDigest:string,nonce:Buffer,tag:Buffer,ciphertext:Buffer):string { return createHmac("sha256",evidenceSigningKey(this.key!)).update("routecairn-evidence-signature-v1\0").update(id).update("\0").update(keyVersion).update("\0").update(manifestDigest).update(nonce).update(tag).update(ciphertext).digest("hex"); }
@@ -192,6 +192,7 @@ export function rotateEvidenceExportKey(database: DashboardDatabase, paths: Dash
 }
 
 function evidenceSigningKey(key:CredentialVaultKey):Buffer{return createHmac("sha256",key.bytes).update("routecairn-evidence-signing-key-v1").digest();} function flag(value:boolean):number{return value?1:0;} function sha256(value:Buffer|string):string{return createHash("sha256").update(value).digest("hex");} function digest(value:unknown):string{return sha256(JSON.stringify(sort(value)));} function sort(value:unknown):unknown{if(Array.isArray(value))return value.map(sort);if(!value||typeof value!=="object")return value;return Object.fromEntries(Object.entries(value as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,sort(v)]));} function safeName(value:string):string{return value.replace(/[\r\n\0"\\/]/g,"-").slice(0,200);} function safeError(error:unknown):string{return clamp(error instanceof Error?error.message:"Evidence operation failed.",800);} function constantEqual(a:string,b:string):boolean{const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
+function canonicalPath(value:string):string{const suffix:string[]=[];let cursor=resolve(value);while(!existsSync(cursor)){const parent=dirname(cursor);if(parent===cursor)return resolve(value);suffix.unshift(basename(cursor));cursor=parent;}return resolve(realpathSync(cursor),...suffix);}
 interface GovernanceRow{retention_days:number;preserve_failed_scans:number;preserve_unresolved_cleanup:number;preserve_unreviewed_findings:number;maximum_export_bytes:number;updated_at:string;row_version:number}
 interface ScanRow{id:string;target_id:string|null;target_origin:string;profile:string;status:string;created_at:string;completed_at:string|null}
 interface ArtifactRow{id:string;scan_id:string;artifact_type:string;safe_display_name:string;canonical_path:string;size:number;content_type:string;scoped_or_full_safe_hash:string;created_at:string}

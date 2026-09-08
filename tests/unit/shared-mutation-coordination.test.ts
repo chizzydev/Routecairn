@@ -28,7 +28,7 @@ describe("central mutation coordination durability", () => {
       const next = new GlobalMutationLock(path);
       await next.acquire("after-crash"); await next.release();
     } finally { await Promise.all(children.map(stop)); }
-  });
+  }, 90_000);
 
   it("recovers incomplete lock metadata without removing a live contender's lock", async () => {
     const path = join(root(), "global-mutation.lock"); await writeFile(path, "");

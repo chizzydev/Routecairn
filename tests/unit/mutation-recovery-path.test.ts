@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ describe("canonical recovery bundle containment", () => {
       const root = join(directory, "journal"); mkdirSync(root);
       const path = join(root, "case-1.recovery.enc"); writeFileSync(path, "fixture");
       const outside = join(directory, "case-1.recovery.enc"); writeFileSync(outside, "fixture");
-      expect(resolveRecoveryBundlePath(root, path, "case-1")).toBe(path);
+      expect(resolveRecoveryBundlePath(root, path, "case-1")).toBe(realpathSync(path));
       expect(() => resolveRecoveryBundlePath(root, outside, "case-1")).toThrow("RECOVERY_PATH_INVALID");
       expect(() => resolveRecoveryBundlePath(root, path, "wrong-case")).toThrow("RECOVERY_PATH_INVALID");
       expect(() => resolveRecoveryBundlePath(root, `${root}/../case-1.recovery.enc`, "case-1")).toThrow("RECOVERY_PATH_INVALID");
