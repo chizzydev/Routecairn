@@ -42,7 +42,9 @@ describe("dashboard credential vault", () => {
       expect(vault.list()[0]).not.toHaveProperty("ciphertext");
       expect(vault.decryptForUse(first).authorizationHeader).toBe(secretValue);
       expect(() => new CredentialVault(database, parseVaultKey(keyB, "1")).decryptForUse(first)).toThrow();
-      database.db.prepare("UPDATE credential_profiles SET ciphertext = ? WHERE id = ?").run(`${rows[0]!.ciphertext.slice(0, -2)}AA`, first);
+      const ciphertext = rows[0]!.ciphertext;
+      const tamperedCiphertext = `${ciphertext.startsWith("A") ? "B" : "A"}${ciphertext.slice(1)}`;
+      database.db.prepare("UPDATE credential_profiles SET ciphertext = ? WHERE id = ?").run(tamperedCiphertext, first);
       expect(() => vault.decryptForUse(first)).toThrow();
       database.close();
     } finally {
