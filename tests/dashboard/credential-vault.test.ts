@@ -366,7 +366,7 @@ function tempDir(prefix: string): string {
 }
 
 function cleanup(path: string): void {
-  rmSync(path, { recursive: true, force: true });
+  rmSync(path, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
 }
 
 async function login(baseUrl: string, loginName: string, password: string): Promise<{ cookie: string; csrf: string }> {

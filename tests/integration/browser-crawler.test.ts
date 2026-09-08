@@ -649,7 +649,7 @@ describe("PlaywrightCrawler", () => {
     tempDirs.push(outputDir);
     const target = `http://127.0.0.1:${port}/`;
     const scope = { ...exampleScope, allowedDomains: ["127.0.0.1"], disallowedPaths: [], userAgent: "RouteCairn/Test" };
-    const plan = testPlan("full", { scope });
+    const plan = testPlan("full", { scope, overrides: { maxRequests: 1 } });
     const context = new ScanContext({ target, scope, config: defaultConfig, plan, outputDir });
 
     const report = await new PlaywrightCrawler().crawl({
@@ -674,9 +674,10 @@ describe("PlaywrightCrawler", () => {
 
     expect(report.policyEventCount).toBe(6);
     expect((report.policyEvents?.length ?? 0)).toBeLessThanOrEqual(6);
-    expect(report.transmittedRequestCount).toBeLessThanOrEqual(1);
+    expect(report.transmittedRequestCount).toBe(1);
     expect(report.notes).toContain("Browser crawl stopped because the browser attempt budget was exhausted.");
-    expect(context.httpClient.budgetSnapshot()).toMatchObject({ browserPolicyEvents: 6 });
+    expect(context.httpClient.budgetSnapshot()).toMatchObject({ transmittedRequests: 1, maxRequests: 1, browserPolicyEvents: 6 });
+    expect(context.httpClient.sharedBudgetSnapshot()).toMatchObject({ maxRequests: 1, scanTransmitted: 1, totalTransmitted: 1, scanRemaining: 0 });
   });
 });
 

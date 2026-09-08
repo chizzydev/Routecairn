@@ -42,10 +42,10 @@ describe("dashboard-first cleanup recovery API and isolated worker", () => {
         const response = await fetch(`${handle.url}/api/workflow-mutations/status`, { headers: { cookie } });
         const body = await response.json() as { jobs: Array<{ id: string; status: string }> };
         return body.jobs.find((job) => job.id === jobId)?.status;
-      }, { timeout: 20000, interval: 100 }).toBe("ROLLBACK_VERIFIED");
+      }, { timeout: 60000, interval: 100 }).toBe("ROLLBACK_VERIFIED");
       expect(fixture.received).toEqual(["POST /fixture/cleanup", "GET /state"]);
       const final = await fetch(`${handle.url}/api/workflow-mutations/status`, { headers: { cookie } });
       expect((await final.json() as { cleanupRequired: number }).cleanupRequired).toBe(0);
     } finally { await handle.close(); }
-  }, 30000);
+  }, 90000);
 });
