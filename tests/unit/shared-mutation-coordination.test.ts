@@ -9,12 +9,34 @@ import { MutationRecoveryVault } from "../../src/core/offensive/MutationRecovery
 
 const root = () => process.env.ROUTECAIRN_MUTATION_DIR!;
 async function worker(path: string): Promise<ChildProcess> {
-  const child = fork(resolve("tests/helpers/mutation-lock-worker.ts"), [path], { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "ignore", "ipc"] });
-  expect((await once(child, "message"))[0]).toBe("READY");
-  return child;
+  const child = fork(resolve("tests/helpers/mutation-lock-worker.ts"), [path], { execArgv: ["--import", "tsx"], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  try {
+    expect(await childMessage(child, "startup")).toBe("READY");
+    return child;
+  } catch (error) {
+    await stop(child);
+    throw error;
+  }
 }
-async function command(child: ChildProcess, value: string) { const result = once(child, "message"); child.send(value); return (await result)[0]; }
+async function command(child: ChildProcess, value: string) { const result = childMessage(child, value); child.send(value); return result; }
 async function stop(child: ChildProcess) { if (child.exitCode !== null || child.signalCode !== null) return; const exited = once(child, "exit"); child.kill("SIGKILL"); await exited; }
+
+async function childMessage(child: ChildProcess, operation: string): Promise<unknown> {
+  return new Promise((resolveMessage, rejectMessage) => {
+    let stderr = "";
+    const timer = setTimeout(() => finish(new Error(`Mutation lock worker ${operation} timed out.${stderr ? ` ${stderr}` : ""}`)), 10_000);
+    const onMessage = (message: unknown) => finish(undefined, message);
+    const onError = (error: Error) => finish(error);
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => finish(new Error(`Mutation lock worker exited during ${operation} (${code ?? signal ?? "unknown"}).${stderr ? ` ${stderr}` : ""}`));
+    const onStderr = (chunk: Buffer) => { stderr = `${stderr}${chunk.toString("utf8")}`.slice(-2_000); };
+    const finish = (error?: Error, message?: unknown) => {
+      clearTimeout(timer);
+      child.off("message", onMessage); child.off("error", onError); child.off("exit", onExit); child.stderr?.off("data", onStderr);
+      if (error) rejectMessage(error); else resolveMessage(message);
+    };
+    child.once("message", onMessage); child.once("error", onError); child.once("exit", onExit); child.stderr?.on("data", onStderr);
+  });
+}
 
 describe("central mutation coordination durability", () => {
   it("allows one process at a time and recovers after an actual worker crash", async () => {
@@ -28,7 +50,7 @@ describe("central mutation coordination durability", () => {
       const next = new GlobalMutationLock(path);
       await next.acquire("after-crash"); await next.release();
     } finally { await Promise.all(children.map(stop)); }
-  }, 90_000);
+  }, 45_000);
 
   it("recovers incomplete lock metadata without removing a live contender's lock", async () => {
     const path = join(root(), "global-mutation.lock"); await writeFile(path, "");

@@ -30,7 +30,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.5",
     "argon2": "^0.45.1",
-    "better-sqlite3": "^13.0.2",
+    "better-sqlite3": "^12.6.2",
     "chalk": "^5.4.1",
     "cheerio": "^1.2.0",
     "commander": "^12.1.0",

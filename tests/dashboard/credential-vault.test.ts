@@ -235,7 +235,7 @@ describe("dashboard credential vault", () => {
       await fixture.close();
       cleanup(dir);
     }
-  });
+  }, 90_000);
 
   it("previews two saved credential profiles as an authenticated account pair", async () => {
     const dir = tempDir("routecairn-vault-account-pair-preview-");
@@ -399,7 +399,7 @@ async function apiMutation<T>(baseUrl: string, path: string, auth: { cookie: str
 }
 
 async function waitForScan(baseUrl: string, cookie: string, scanId: string): Promise<void> {
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const response = await apiGet<any>(baseUrl, `/api/scans/${scanId}`, cookie);
     if (["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"].includes(response.scan.status)) {

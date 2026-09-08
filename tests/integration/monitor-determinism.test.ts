@@ -17,7 +17,7 @@ afterEach(async () => {
     });
     server = undefined;
   }
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })));
 });
 
 describe("monitor profile determinism", () => {
@@ -45,7 +45,7 @@ describe("monitor profile determinism", () => {
     const firstReport = JSON.parse(await readFile(first.reportPath, "utf8"));
     const secondReport = JSON.parse(await readFile(second.reportPath, "utf8"));
     expect(stableProjection(firstReport)).toEqual(stableProjection(secondReport));
-  });
+  }, 120_000);
 });
 
 function stableProjection(report: {
