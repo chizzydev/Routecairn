@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileProductionMutationCase } from "../../../src/dashboard/execution/ProductionMutationCaseCompiler.js";
+import { compileProductionMutationCase, productionMutationPlanIdentity } from "../../../src/dashboard/execution/ProductionMutationCaseCompiler.js";
 import { productionMutationCaseSchema } from "../../../src/dashboard/contracts/ProductionMutationCaseSchemas.js";
 import { approvedMutationPlan } from "../../../src/dashboard/execution/ApprovedMutationPlan.js";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -11,6 +11,7 @@ import type { MutationTransport } from "../../../src/core/offensive/ControlledMu
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PrivilegeMutationModule } from "../../../src/modules/privilegeMutation/PrivilegeMutationModule.js";
 
 const input = productionMutationCaseSchema.parse({ schemaVersion: 1, caseId: "prod-role-001", targetId: "00000000-0000-4000-8000-000000000001", environment: "PRODUCTION", productionAcknowledged: true, actorCredentialProfileId: "00000000-0000-4000-8000-000000000002", disposableTargetAlias: "test-user-001", authorityField: "role", mutationValue: "admin", allowedValues: ["admin"], identity: { method: "GET", path: "/api/session/me", assertions: [{ path: "actor.id", operator: "EQUALS", expectedValue: "actor-001" }, { path: "actor.enabled", operator: "EQUALS", expectedValue: true }] }, actorIdentityAssertionPath: "actor.id", precondition: { method: "GET", path: "/api/users/test-user-001", assertions: [{ path: "object.id", operator: "EQUALS", expectedValue: "test-user-001" }, { path: "state.role", operator: "EQUALS", expectedValue: "user" }] }, disposableObjectIdentityAssertionPath: "object.id", mutation: { method: "PATCH", path: "/api/users/test-user-001", body: { role: "admin" } }, impactVerification: { method: "GET", path: "/api/users/test-user-001", assertions: [{ path: "state.role", operator: "EQUALS", expectedValue: "admin" }] }, rollback: { method: "PATCH", path: "/api/users/test-user-001", body: { role: "user" } }, restorationVerification: { method: "GET", path: "/api/users/test-user-001", assertions: [{ path: "state.role", operator: "EQUALS", expectedValue: "user" }] }, authorizationExpiresAt: "2099-01-01T00:00:00.000Z" });
 const target = { id: input.targetId, displayName: "Production", baseOrigin: "https://app.example.com", productionEnabled: true, approvedScope: { program: "https://app.example.com", allowedDomains: ["app.example.com"], disallowedPaths: [], allowedMethods: ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"], sameOriginOnly: true, includeSubdomains: false, rateLimitPerSecond: 1, concurrency: 1, maxRequests: 100, userAgent: "RouteCairn", bodyPreviewBytes: 1024, maxResponseBytes: 1024 } } as any;
@@ -57,6 +58,26 @@ describe("production mutation compiler", () => {
     if (parsed.type !== "PROVIDE_MUTATION_CONTRACTS") throw new Error("Wrong message");
     const { hmac, ...payload } = parsed;
     expect(hmac).toBe(createHmac("sha256", "fixture-secret").update(JSON.stringify(payload)).digest("hex"));
+  });
+  it("binds intent into approvals and never reports an authorized acceptance transition as a vulnerability", async () => {
+    const acceptanceInput = productionMutationCaseSchema.parse({ ...input, intent: "ROLLBACK_ACCEPTANCE" });
+    const security = compileProductionMutationCase(input, target, "2026-01-01T00:00:00.000Z", "owner");
+    const acceptance = compileProductionMutationCase(acceptanceInput, target, "2026-01-01T00:00:00.000Z", "owner");
+    expect(productionMutationPlanIdentity(input, target)).not.toBe(productionMutationPlanIdentity(acceptanceInput, target));
+    expect(acceptance.preview).toMatchObject({ intent: "ROLLBACK_ACCEPTANCE", expectedOutcome: "MUST_SUCCEED_AND_RESTORE" });
+    const plan = approvedMutationPlan([acceptance.contract]);
+    const result = await new PrivilegeMutationModule().run({
+      options: { plan: { privilegeMutationTesting: plan }, controlledMutationContracts: [acceptance.contract] },
+      runControlledMutation: async () => ({ caseId: acceptance.contract.caseId, outcome: "EXPECTED_MUTATION_VERIFIED", securityOutcome: "EXPECTED_MUTATION_VERIFIED", cleanupOutcome: "ROLLBACK_VERIFIED", preStateHash: "a".repeat(64), targetIdentityResponseHash: "b".repeat(64), verificationResponseHash: "c".repeat(64), attackResponseHash: "d".repeat(64), journalPath: "redacted", comparisonIdentity: "e".repeat(64), notes: [] })
+    } as any);
+    expect(result.findings).toHaveLength(0);
+    expect(result.privilegeMutation?.observations[0]).toMatchObject({ intent: "ROLLBACK_ACCEPTANCE", securityOutcome: "MUTATION_ACCEPTED_WITHOUT_SECURITY_IMPACT", authorityChangeVerified: true, cleanupOutcome: "ROLLBACK_VERIFIED" });
+    const securityExecution = await new ControlledMutationExecutor(new ProductionTransport(), { journalDirectory: await mkdtemp(join(tmpdir(), "routecairn-security-intent-")), sleep: async () => undefined }).execute(security.contract);
+    const acceptanceExecution = await new ControlledMutationExecutor(new ProductionTransport(), { journalDirectory: await mkdtemp(join(tmpdir(), "routecairn-acceptance-intent-")), sleep: async () => undefined }).execute(acceptance.contract);
+    expect(securityExecution.comparisonIdentity).not.toBe(acceptanceExecution.comparisonIdentity);
+    expect(securityExecution.securityOutcome).toBe("EXPLOIT_PROVEN");
+    expect(acceptanceExecution.securityOutcome).toBe("EXPECTED_MUTATION_VERIFIED");
+    expect(security.contract.intent).toBe("SECURITY_NEGATIVE");
   });
 });
 

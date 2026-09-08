@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 23;
+export const dashboardSchemaVersion = 28;
 
 export const dashboardMigrations: readonly {
   version: number;
@@ -1002,6 +1002,368 @@ DROP TABLE targets_v22;
 
 CREATE INDEX idx_targets_project ON targets(project_id);
 CREATE INDEX idx_targets_origin ON targets(base_origin);
+`
+  },
+  {
+    version: 24,
+    sql: `
+CREATE TABLE live_acceptance_plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE RESTRICT,
+  environment TEXT NOT NULL CHECK(environment IN ('STAGING','PRODUCTION')),
+  status TEXT NOT NULL CHECK(status IN ('DRAFT','REVIEWED','ARCHIVED')),
+  plan_digest TEXT NOT NULL CHECK(length(plan_digest) = 64),
+  target_row_version INTEGER NOT NULL,
+  scope_digest TEXT NOT NULL CHECK(length(scope_digest) = 64),
+  authorization_mode TEXT NOT NULL,
+  authorization_expires_at TEXT NOT NULL,
+  lane_count INTEGER NOT NULL,
+  algorithm TEXT NOT NULL,
+  key_version TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  auth_tag TEXT NOT NULL,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX idx_live_acceptance_plans_target ON live_acceptance_plans(target_id, updated_at DESC);
+
+CREATE TABLE live_acceptance_runs (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES live_acceptance_plans(id) ON DELETE RESTRICT,
+  plan_digest TEXT NOT NULL CHECK(length(plan_digest) = 64),
+  status TEXT NOT NULL CHECK(status IN ('RUNNING','COMPLETED','COMPLETED_WITH_GAPS','CANCELLED','FAILED')),
+  requested_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  safe_error_summary TEXT
+);
+CREATE INDEX idx_live_acceptance_runs_plan ON live_acceptance_runs(plan_id, created_at DESC);
+
+CREATE TABLE live_acceptance_run_lanes (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES live_acceptance_runs(id) ON DELETE CASCADE,
+  lane_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  required INTEGER NOT NULL,
+  disposition TEXT NOT NULL,
+  scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT,
+  configured_outcome TEXT,
+  safe_reason TEXT,
+  ordinal INTEGER NOT NULL,
+  UNIQUE(run_id, lane_id)
+);
+CREATE INDEX idx_live_acceptance_lanes_scan ON live_acceptance_run_lanes(scan_id);
+`
+  },
+  {
+    version: 25,
+    sql: `
+CREATE TABLE adaptive_target_policies (
+  target_id TEXT PRIMARY KEY REFERENCES targets(id) ON DELETE CASCADE,
+  required_lanes_json TEXT NOT NULL,
+  require_na_evidence INTEGER NOT NULL CHECK(require_na_evidence IN (0,1)),
+  detect_removed_surfaces INTEGER NOT NULL CHECK(detect_removed_surfaces IN (0,1)),
+  updated_by TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE adaptive_security_snapshots (
+  id TEXT PRIMARY KEY,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  source_scan_id TEXT NOT NULL UNIQUE REFERENCES scans(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK(status IN ('CANDIDATE','BASELINE','SUPERSEDED')),
+  model_digest TEXT NOT NULL CHECK(length(model_digest) = 64),
+  target_row_version INTEGER NOT NULL,
+  build_fingerprint TEXT NOT NULL CHECK(length(build_fingerprint) = 64),
+  inventory_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  accepted_by TEXT,
+  accepted_at TEXT
+);
+CREATE INDEX idx_adaptive_snapshots_target ON adaptive_security_snapshots(target_id, created_at DESC);
+CREATE UNIQUE INDEX idx_adaptive_one_baseline ON adaptive_security_snapshots(target_id) WHERE status='BASELINE';
+
+CREATE TABLE adaptive_security_drifts (
+  id TEXT PRIMARY KEY,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  snapshot_id TEXT NOT NULL REFERENCES adaptive_security_snapshots(id) ON DELETE CASCADE,
+  baseline_snapshot_id TEXT REFERENCES adaptive_security_snapshots(id) ON DELETE SET NULL,
+  drift_type TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK(severity IN ('INFO','LOW','MEDIUM','HIGH')),
+  semantic_key TEXT NOT NULL,
+  semantic_fingerprint TEXT NOT NULL CHECK(length(semantic_fingerprint) = 64),
+  safe_summary TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('OPEN','ACKNOWLEDGED','RESOLVED')),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_adaptive_drifts_target ON adaptive_security_drifts(target_id, created_at DESC);
+
+CREATE TABLE adaptive_security_recommendations (
+  id TEXT PRIMARY KEY,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
+  snapshot_id TEXT NOT NULL REFERENCES adaptive_security_snapshots(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  engine_id TEXT NOT NULL,
+  lane_kind TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL CHECK(length(source_fingerprint) = 64),
+  status TEXT NOT NULL CHECK(status IN ('PROPOSED','APPROVED','DISMISSED','EXECUTION_LINKED','VERIFIED','INCONCLUSIVE')),
+  mutation_hypothesis INTEGER NOT NULL CHECK(mutation_hypothesis IN (0,1)),
+  operator_approval_required INTEGER NOT NULL CHECK(operator_approval_required IN (0,1)),
+  safe_draft_json TEXT NOT NULL,
+  required_bindings_json TEXT NOT NULL,
+  operator_rationale TEXT,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  linked_scan_id TEXT REFERENCES scans(id) ON DELETE SET NULL,
+  linked_case_fingerprint TEXT CHECK(linked_case_fingerprint IS NULL OR length(linked_case_fingerprint) = 64),
+  execution_outcome TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(snapshot_id, category, source_fingerprint)
+);
+CREATE INDEX idx_adaptive_recommendations_target ON adaptive_security_recommendations(target_id, created_at DESC);
+CREATE INDEX idx_adaptive_recommendations_scan ON adaptive_security_recommendations(linked_scan_id);
+`
+  },
+  {
+    version: 26,
+    sql: `
+ALTER TABLE live_acceptance_run_lanes
+  ADD COLUMN evidence_scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT;
+
+UPDATE live_acceptance_run_lanes
+SET evidence_scan_id=scan_id, scan_id=NULL
+WHERE disposition='NOT_APPLICABLE'
+  AND configured_outcome='NOT_APPLICABLE'
+  AND scan_id IS NOT NULL;
+
+CREATE INDEX idx_live_acceptance_lanes_evidence_scan
+  ON live_acceptance_run_lanes(evidence_scan_id);
+`
+  },
+  {
+    version: 27,
+    sql: `
+CREATE TABLE provider_adapters (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE RESTRICT,
+  provider TEXT NOT NULL,
+  engine_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+  active_version_id TEXT,
+  pending_version_id TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1,
+  deleted_at TEXT
+);
+CREATE INDEX idx_provider_adapters_target ON provider_adapters(target_id,updated_at DESC);
+
+CREATE TABLE provider_adapter_versions (
+  id TEXT PRIMARY KEY,
+  profile_id TEXT NOT NULL REFERENCES provider_adapters(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('DRAFT','REVIEWED','SUPERSEDED')),
+  adapter_digest TEXT NOT NULL CHECK(length(adapter_digest)=64),
+  target_row_version INTEGER NOT NULL,
+  credential_binding_json TEXT NOT NULL,
+  algorithm TEXT NOT NULL,
+  key_version TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  ciphertext TEXT NOT NULL,
+  auth_tag TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  UNIQUE(profile_id,revision)
+);
+CREATE INDEX idx_provider_adapter_versions_profile ON provider_adapter_versions(profile_id,revision DESC);
+
+CREATE TABLE provider_adapter_recommendation_bindings (
+  recommendation_id TEXT PRIMARY KEY REFERENCES adaptive_security_recommendations(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES provider_adapters(id) ON DELETE CASCADE,
+  version_id TEXT NOT NULL REFERENCES provider_adapter_versions(id) ON DELETE RESTRICT,
+  source_fingerprint TEXT NOT NULL CHECK(length(source_fingerprint)=64),
+  bound_by TEXT NOT NULL,
+  bound_at TEXT NOT NULL
+);
+CREATE INDEX idx_provider_adapter_recommendation_profile ON provider_adapter_recommendation_bindings(profile_id);
+
+CREATE TABLE scan_provider_adapter_bindings (
+  scan_id TEXT PRIMARY KEY REFERENCES scans(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES provider_adapters(id) ON DELETE RESTRICT,
+  version_id TEXT NOT NULL REFERENCES provider_adapter_versions(id) ON DELETE RESTRICT,
+  adapter_digest TEXT NOT NULL CHECK(length(adapter_digest)=64),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_scan_provider_adapter_profile ON scan_provider_adapter_bindings(profile_id,created_at DESC);
+`
+  },
+  {
+    version: 28,
+    sql: `
+CREATE TABLE continuous_assurance_policies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK(status IN ('DRAFT','ACTIVE','DISABLED','ARCHIVED')),
+  active_version_id TEXT,
+  pending_version_id TEXT,
+  trigger_token_hash TEXT NOT NULL CHECK(length(trigger_token_hash)=64),
+  trigger_token_rotated_at TEXT NOT NULL,
+  next_due_at TEXT,
+  last_run_at TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1,
+  deleted_at TEXT
+);
+CREATE INDEX idx_continuous_assurance_due ON continuous_assurance_policies(status,next_due_at);
+CREATE INDEX idx_continuous_assurance_target ON continuous_assurance_policies(target_id,updated_at DESC);
+
+CREATE TABLE continuous_assurance_policy_versions (
+  id TEXT PRIMARY KEY,
+  policy_id TEXT NOT NULL REFERENCES continuous_assurance_policies(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('DRAFT','REVIEWED','SUPERSEDED')),
+  policy_digest TEXT NOT NULL CHECK(length(policy_digest)=64),
+  target_row_version INTEGER NOT NULL,
+  policy_json TEXT NOT NULL,
+  adapter_bindings_json TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  UNIQUE(policy_id,revision)
+);
+CREATE INDEX idx_continuous_assurance_versions ON continuous_assurance_policy_versions(policy_id,revision DESC);
+
+CREATE TABLE continuous_assurance_runs (
+  id TEXT PRIMARY KEY,
+  policy_id TEXT NOT NULL REFERENCES continuous_assurance_policies(id) ON DELETE RESTRICT,
+  version_id TEXT NOT NULL REFERENCES continuous_assurance_policy_versions(id) ON DELETE RESTRICT,
+  policy_digest TEXT NOT NULL CHECK(length(policy_digest)=64),
+  trigger_type TEXT NOT NULL CHECK(trigger_type IN ('MANUAL','SCHEDULE','DEPLOYMENT')),
+  trigger_reference TEXT,
+  build_fingerprint TEXT,
+  status TEXT NOT NULL CHECK(status IN ('LAUNCHING','RUNNING','COMPLETED','FAILED','BLOCKED','CANCELLED')),
+  gate_status TEXT NOT NULL CHECK(gate_status IN ('PENDING','PASSED','REGRESSION','INCONCLUSIVE','BLOCKED')),
+  requested_by TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  safe_summary_json TEXT NOT NULL DEFAULT '{}',
+  comparison_ids_json TEXT NOT NULL DEFAULT '[]',
+  notification_required INTEGER NOT NULL DEFAULT 0 CHECK(notification_required IN (0,1)),
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT
+);
+CREATE INDEX idx_continuous_assurance_runs_policy ON continuous_assurance_runs(policy_id,created_at DESC);
+
+CREATE TABLE continuous_assurance_run_scans (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES continuous_assurance_runs(id) ON DELETE CASCADE,
+  adapter_profile_id TEXT NOT NULL REFERENCES provider_adapters(id) ON DELETE RESTRICT,
+  adapter_version_id TEXT NOT NULL REFERENCES provider_adapter_versions(id) ON DELETE RESTRICT,
+  adapter_digest TEXT NOT NULL CHECK(length(adapter_digest)=64),
+  scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL CHECK(status IN ('PENDING','QUEUED','COMPLETED','FAILED','BLOCKED','CANCELLED')),
+  safe_error_summary TEXT,
+  ordinal INTEGER NOT NULL,
+  UNIQUE(run_id,adapter_profile_id)
+);
+CREATE INDEX idx_continuous_assurance_run_scan ON continuous_assurance_run_scans(scan_id);
+
+CREATE TABLE continuous_assurance_leases (
+  policy_id TEXT PRIMARY KEY REFERENCES continuous_assurance_policies(id) ON DELETE CASCADE,
+  owner_installation_id TEXT NOT NULL,
+  lease_token TEXT NOT NULL,
+  lease_expires_at TEXT NOT NULL,
+  heartbeat_at TEXT NOT NULL
+);
+
+CREATE TABLE continuous_assurance_deployments (
+  policy_id TEXT NOT NULL REFERENCES continuous_assurance_policies(id) ON DELETE CASCADE,
+  deployment_id TEXT NOT NULL,
+  build_fingerprint TEXT NOT NULL CHECK(length(build_fingerprint)=64),
+  run_id TEXT REFERENCES continuous_assurance_runs(id) ON DELETE SET NULL,
+  received_at TEXT NOT NULL,
+  PRIMARY KEY(policy_id,deployment_id)
+);
+
+CREATE TABLE continuous_assurance_notifications (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES continuous_assurance_runs(id) ON DELETE CASCADE,
+  category TEXT NOT NULL CHECK(category IN ('REGRESSION','FAILED','CLEANUP_REQUIRED','APPROVAL_REQUIRED')),
+  severity TEXT NOT NULL CHECK(severity IN ('INFO','WARNING','CRITICAL')),
+  safe_summary TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  acknowledged_by TEXT,
+  acknowledged_at TEXT
+);
+CREATE INDEX idx_continuous_assurance_notifications ON continuous_assurance_notifications(acknowledged_at,created_at DESC);
+
+CREATE TABLE evidence_governance_policy (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  retention_days INTEGER NOT NULL,
+  preserve_failed_scans INTEGER NOT NULL CHECK(preserve_failed_scans IN (0,1)),
+  preserve_unresolved_cleanup INTEGER NOT NULL CHECK(preserve_unresolved_cleanup IN (0,1)),
+  preserve_unreviewed_findings INTEGER NOT NULL CHECK(preserve_unreviewed_findings IN (0,1)),
+  maximum_export_bytes INTEGER NOT NULL,
+  updated_by TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE evidence_exports (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK(status IN ('CREATING','READY','FAILED','PURGING','DELETED')),
+  scan_count INTEGER NOT NULL,
+  artifact_count INTEGER NOT NULL DEFAULT 0,
+  plaintext_bytes INTEGER NOT NULL DEFAULT 0,
+  ciphertext_bytes INTEGER NOT NULL DEFAULT 0,
+  manifest_digest TEXT,
+  signature TEXT,
+  algorithm TEXT NOT NULL,
+  key_version TEXT NOT NULL,
+  canonical_path TEXT,
+  safe_error_summary TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  verified_at TEXT,
+  deleted_at TEXT
+);
+
+CREATE TABLE evidence_export_scans (
+  export_id TEXT NOT NULL REFERENCES evidence_exports(id) ON DELETE CASCADE,
+  scan_id TEXT NOT NULL REFERENCES scans(id) ON DELETE RESTRICT,
+  PRIMARY KEY(export_id,scan_id)
+);
+
+CREATE TABLE evidence_purge_actions (
+  id TEXT PRIMARY KEY,
+  preview_digest TEXT NOT NULL CHECK(length(preview_digest)=64),
+  candidate_count INTEGER NOT NULL,
+  purged_count INTEGER NOT NULL,
+  failed_count INTEGER NOT NULL,
+  reclaimed_bytes INTEGER NOT NULL,
+  safe_failures_json TEXT NOT NULL,
+  executed_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `
   }
 ];

@@ -115,7 +115,7 @@ export interface AuthenticationLifecyclePlan {
 }
 
 export interface BrowserLearnedLifecycleAutomationPlan {
-  categories: readonly ("LOGIN_ENUMERATION_RESISTANCE" | "SESSION_ROTATION_AFTER_LOGIN" | "SESSION_FIXATION")[];
+  categories: readonly AuthenticationLifecycleCategory[];
   actor: LifecycleActorPlan;
   authorization: LifecycleAuthorizationPlan;
   login: {
@@ -137,4 +137,9 @@ export interface BrowserLearnedLifecycleAutomationPlan {
     fields?: Readonly<Record<string, unknown>>;
     successStatusCodes: readonly number[];
   };
+  recipes: readonly {
+    category: AuthenticationLifecycleCategory;
+    candidateId: string;
+    testCase: import("./AuthenticationLifecyclePlanner.js").AuthenticationLifecycleInput["cases"][number];
+  }[];
 }

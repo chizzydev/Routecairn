@@ -1149,7 +1149,7 @@ function privilegeMutationLines(report: RouteCairnReport): string[] {
     `- Cleanup required: ${mutation.cleanupRequired}`,
     ...mutation.notes.map((note) => `- ${escapeText(note)}`),
     "",
-    ...mutation.observations.map((item) => `- ${escapeText(item.caseId)}: ${item.securityOutcome}; cleanup=${item.cleanupOutcome}; transmitted=${item.requestTransmitted ? "yes" : "no"}; authority-change-verified=${item.authorityChangeVerified ? "yes" : "no"}; browser-protected-action=${item.result.browserProtectedActionVerified === undefined ? "not-configured" : item.result.browserProtectedActionVerified ? "verified" : "failed"}; browser-rollback=${item.result.browserRollbackVerified === undefined ? "not-configured" : item.result.browserRollbackVerified ? "verified" : "failed"}`)
+    ...mutation.observations.map((item) => `- ${escapeText(item.caseId)}: intent=${item.intent}; ${item.securityOutcome}; cleanup=${item.cleanupOutcome}; transmitted=${item.requestTransmitted ? "yes" : "no"}; authority-change-verified=${item.authorityChangeVerified ? "yes" : "no"}; browser-protected-action=${item.result.browserProtectedActionVerified === undefined ? "not-configured" : item.result.browserProtectedActionVerified ? "verified" : "failed"}; browser-rollback=${item.result.browserRollbackVerified === undefined ? "not-configured" : item.result.browserRollbackVerified ? "verified" : "failed"}`)
   ];
 }
 

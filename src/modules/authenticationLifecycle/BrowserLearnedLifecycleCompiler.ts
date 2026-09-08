@@ -5,11 +5,11 @@ import { authenticationLifecycleSecrets, type AuthProfile } from "../../core/aut
 import type { AuthProfileSet } from "../../core/auth/AuthProfileSet.js";
 import { AppError } from "../../core/errors/AppError.js";
 import type { BrowserAuthenticationReport, BrowserLearnedTestCase } from "../../reports/ReportTypes.js";
-import { authenticationLifecycleInputSchema, planAuthenticationLifecycle, type AuthenticationLifecycleInput } from "./AuthenticationLifecyclePlanner.js";
-import type { AuthenticationLifecycleCategory, AuthenticationLifecyclePlan, BrowserLearnedLifecycleAutomationPlan, LifecycleAuthorizationPlan } from "./AuthenticationLifecycleTypes.js";
+import { authenticationLifecycleCaseInputSchema, authenticationLifecycleInputSchema, planAuthenticationLifecycle, type AuthenticationLifecycleInput } from "./AuthenticationLifecyclePlanner.js";
+import { authenticationLifecycleCategories, type AuthenticationLifecycleCategory, type AuthenticationLifecyclePlan, type BrowserLearnedLifecycleAutomationPlan, type LifecycleAuthorizationPlan } from "./AuthenticationLifecycleTypes.js";
 
 const identifier = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/);
-const supportedCategories = ["LOGIN_ENUMERATION_RESISTANCE", "SESSION_ROTATION_AFTER_LOGIN", "SESSION_FIXATION"] as const;
+const automaticLoginCategories = new Set<AuthenticationLifecycleCategory>(["LOGIN_ENUMERATION_RESISTANCE", "SESSION_ROTATION_AFTER_LOGIN", "SESSION_FIXATION"]);
 const authorizationSchema = z.object({
   mode: z.literal("CONTROLLED_LIFECYCLE"),
   environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]),
@@ -32,7 +32,7 @@ const requestSchema = z.object({
 
 export const browserLearnedLifecycleAutomationInputSchema = z.object({
   schemaVersion: z.literal(1).default(1),
-  categories: z.array(z.enum(supportedCategories)).min(1).max(3).default([...supportedCategories]),
+  categories: z.array(z.enum(authenticationLifecycleCategories)).min(1).max(authenticationLifecycleCategories.length).default(["LOGIN_ENUMERATION_RESISTANCE", "SESSION_ROTATION_AFTER_LOGIN", "SESSION_FIXATION"]),
   actor: z.object({
     id: identifier.default("member"),
     safeAlias: z.string().min(1).max(80).default("disposable-member"),
@@ -54,8 +54,19 @@ export const browserLearnedLifecycleAutomationInputSchema = z.object({
     failureStatusCodes: z.array(z.number().int().min(100).max(599)).min(1).max(20).default([400, 401, 403, 422])
   }).strict(),
   cleanup: requestSchema,
+  recipes: z.array(z.object({ category: z.enum(authenticationLifecycleCategories), candidateId: identifier, testCase: authenticationLifecycleCaseInputSchema }).strict()).max(authenticationLifecycleCategories.length).default([]),
   maxResponseBytes: z.number().int().min(256).max(262144).default(32768)
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (new Set(value.categories).size !== value.categories.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["categories"], message: "Learned lifecycle categories must be unique." });
+  const recipeKeys = new Set<string>();
+  for (const [index, recipe] of value.recipes.entries()) {
+    if (!value.categories.includes(recipe.category)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recipes", index, "category"], message: "Recipe category must be selected for compilation." });
+    if (recipe.testCase.category !== recipe.category) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recipes", index, "testCase", "category"], message: "Recipe and lifecycle case categories must match." });
+    const key = `${recipe.category}:${recipe.candidateId}`;
+    if (recipeKeys.has(key)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recipes", index], message: "Only one recipe may bind a category and learned candidate." });
+    recipeKeys.add(key);
+  }
+});
 
 export type BrowserLearnedLifecycleAutomationInput = z.infer<typeof browserLearnedLifecycleAutomationInputSchema>;
 
@@ -89,14 +100,17 @@ export function planBrowserLearnedLifecycleAutomation(input: BrowserLearnedLifec
     productionAcknowledged: parsed.authorization.productionAcknowledged,
     confirmationAccepted: true
   };
+  const recipeSteps = new Map(parsed.recipes.map((recipe) => [recipe.category, recipe.testCase.steps.length]));
+  const maxStepsPerCase = Math.max(4, ...parsed.recipes.map((recipe) => recipe.testCase.steps.length));
+  const maxRequests = parsed.categories.reduce((total, category) => total + (automaticLoginCategories.has(category) ? 4 : recipeSteps.get(category) ?? 0), 0);
   return {
     schemaVersion: 1,
     enabled: true,
     source: "BROWSER_LEARNED",
     targetOrigin: new URL(target).origin,
     maxCases: parsed.categories.length,
-    maxStepsPerCase: 4,
-    maxRequests: parsed.categories.length * 4,
+    maxStepsPerCase,
+    maxRequests,
     maxResponseBytes: parsed.maxResponseBytes,
     cases: [],
     automation: {
@@ -104,7 +118,8 @@ export function planBrowserLearnedLifecycleAutomation(input: BrowserLearnedLifec
       actor: { id: parsed.actor.id, safeAlias: parsed.actor.safeAlias, authSlot: parsed.actor.authSlot, requestAuthentication: "NONE", relationship: parsed.actor.relationship, declaredState: parsed.actor.declaredState, ...(parsed.actor.tenantAlias ? { tenantAlias: parsed.actor.tenantAlias } : {}) },
       authorization,
       login: { fieldSecretRefs: parsed.login.fieldSecretRefs, successStatusCodes: parsed.login.successStatusCodes, failureStatusCodes: parsed.login.failureStatusCodes, ...(parsed.login.accountField ? { accountField: parsed.login.accountField } : {}), ...(parsed.login.passwordField ? { passwordField: parsed.login.passwordField } : {}), ...(parsed.login.unknownAccountSecretRef ? { unknownAccountSecretRef: parsed.login.unknownAccountSecretRef } : {}), ...(parsed.login.invalidPasswordSecretRef ? { invalidPasswordSecretRef: parsed.login.invalidPasswordSecretRef } : {}), ...(parsed.login.fixedSessionSecretRef ? { fixedSessionSecretRef: parsed.login.fixedSessionSecretRef } : {}), ...(parsed.login.sessionCookieName ? { sessionCookieName: parsed.login.sessionCookieName } : {}) },
-      cleanup: { method: parsed.cleanup.method, url: parsed.cleanup.url, headers: parsed.cleanup.headers, successStatusCodes: parsed.cleanup.successStatusCodes, ...(parsed.cleanup.bodyFormat ? { bodyFormat: parsed.cleanup.bodyFormat } : {}), ...(parsed.cleanup.fields ? { fields: parsed.cleanup.fields } : {}) }
+      cleanup: { method: parsed.cleanup.method, url: parsed.cleanup.url, headers: parsed.cleanup.headers, successStatusCodes: parsed.cleanup.successStatusCodes, ...(parsed.cleanup.bodyFormat ? { bodyFormat: parsed.cleanup.bodyFormat } : {}), ...(parsed.cleanup.fields ? { fields: parsed.cleanup.fields } : {}) },
+      recipes: parsed.recipes
     },
     notes: ["Lifecycle cases will be compiled at runtime from the authenticated browser learning bundle.", "Learning selects request structure; the expiring operator authorization remains the mutation authority."]
   };
@@ -117,33 +132,47 @@ export function compileBrowserLearnedLifecycle(
 ): BrowserLearnedLifecycleCompilation {
   const automation = automationPlan.automation;
   if (!automation) return { generatedCategories: [], blockers: [] };
-  const selectedLoginCandidate = selectLoginCandidate(browser?.learnedTestCases ?? [], automationPlan.targetOrigin);
-  if (!selectedLoginCandidate) return {
-    generatedCategories: [],
-    blockers: automation.categories.map((category) => ({ category, reasons: ["NO_UNAMBIGUOUS_EXPLICIT_LOGIN_CANDIDATE"] }))
-  };
+  const learnedCandidates = browser?.learnedTestCases ?? [];
+  const selectedLoginCandidate = selectLoginCandidate(learnedCandidates, automationPlan.targetOrigin);
   const learnedCookieNames = [...new Set((browser?.storage ?? []).filter((item) => item.storage === "cookie" && item.classification === "authentication").map((item) => item.name))];
-  const loginCandidate = selectedLoginCandidate.responseCookieNames.length === 0 && learnedCookieNames.length === 1 ? { ...selectedLoginCandidate, responseCookieNames: learnedCookieNames } : selectedLoginCandidate;
+  const loginCandidate = selectedLoginCandidate && selectedLoginCandidate.responseCookieNames.length === 0 && learnedCookieNames.length === 1 ? { ...selectedLoginCandidate, responseCookieNames: learnedCookieNames } : selectedLoginCandidate;
   const cases: AuthenticationLifecycleInput["cases"] = [];
   const blockers: BrowserLearnedLifecycleCompilation["blockers"] = [];
   const availableSecretNames = new Set(Object.keys(context.authProfile ? authenticationLifecycleSecrets(context.authProfile) : {}));
   for (const category of automation.categories) {
-    const result = compileCategory(category, loginCandidate, automation);
+    const result = automaticLoginCategories.has(category)
+      ? loginCandidate ? compileCategory(category, loginCandidate, automation) : { reasons: ["NO_UNAMBIGUOUS_EXPLICIT_LOGIN_CANDIDATE"] }
+      : compileRecipeCategory(category, learnedCandidates, automation);
     const missingSecrets = result.testCase ? secretReferences(result.testCase).filter((name) => !availableSecretNames.has(name)).map((name) => `SECRET_REF_UNAVAILABLE:${name}`) : [];
     if (result.reasons.length > 0 || missingSecrets.length > 0 || !result.testCase) blockers.push({ category, reasons: [...new Set([...result.reasons, ...missingSecrets])] });
     else cases.push(result.testCase);
   }
-  if (cases.length === 0) return { generatedCategories: [], blockers, sourceCandidateId: loginCandidate.id };
+  if (cases.length === 0) return { generatedCategories: [], blockers, ...(loginCandidate ? { sourceCandidateId: loginCandidate.id } : {}) };
+  const maxSteps = Math.max(4, ...cases.map((item) => item.steps.length));
+  const requestCount = cases.reduce((sum, item) => sum + item.steps.length, 0);
   const input = authenticationLifecycleInputSchema.parse({
     schemaVersion: 1,
     maxCases: cases.length,
-    maxStepsPerCase: 4,
-    maxRequests: cases.length * 4,
+    maxStepsPerCase: maxSteps,
+    maxRequests: requestCount,
     maxResponseBytes: automationPlan.maxResponseBytes,
     cases
   });
   const plan = planAuthenticationLifecycle(input, context);
-  return { plan: { ...plan, source: "BROWSER_LEARNED", notes: [...automationPlan.notes, ...plan.notes] }, generatedCategories: cases.map((item) => item.category), blockers, sourceCandidateId: loginCandidate.id };
+  return { plan: { ...plan, source: "BROWSER_LEARNED", notes: [...automationPlan.notes, ...plan.notes] }, generatedCategories: cases.map((item) => item.category), blockers, ...(loginCandidate ? { sourceCandidateId: loginCandidate.id } : {}) };
+}
+
+function compileRecipeCategory(category: AuthenticationLifecycleCategory, candidates: readonly BrowserLearnedTestCase[], automation: BrowserLearnedLifecycleAutomationPlan): { testCase?: AuthenticationLifecycleInput["cases"][number]; reasons: string[] } {
+  const matching = candidates.filter((item) => item.suggestedLifecycleCategories.includes(category) && (item.transmitted || (item.classification === "MUTATION_HYPOTHESIS" && item.operatorApprovalRequired)));
+  if (matching.length !== 1) return { reasons: [matching.length === 0 ? "NO_LEARNED_CATEGORY_CANDIDATE" : "AMBIGUOUS_LEARNED_CATEGORY_CANDIDATE"] };
+  const candidate = matching[0]!;
+  const recipes = automation.recipes.filter((item) => item.category === category && item.candidateId === candidate.id);
+  if (recipes.length !== 1) return { reasons: [recipes.length === 0 ? "OPERATOR_RECIPE_REQUIRED" : "DUPLICATE_OPERATOR_RECIPE"] };
+  const recipe = recipes[0]!;
+  if (recipe.testCase.category !== category) return { reasons: ["RECIPE_CATEGORY_MISMATCH"] };
+  const learnedRequestBound = recipe.testCase.steps.some((step) => step.phase !== "CLEANUP" && step.request.method === candidate.method && withoutQuery(step.request.url) === withoutQuery(candidate.endpoint));
+  if (!learnedRequestBound) return { reasons: ["RECIPE_LEARNED_REQUEST_BINDING_MISMATCH"] };
+  return { reasons: [], testCase: { ...recipe.testCase, authorization: authorizationInput(automation.authorization) } };
 }
 
 function compileCategory(category: BrowserLearnedLifecycleAutomationPlan["categories"][number], candidate: BrowserLearnedTestCase, automation: BrowserLearnedLifecycleAutomationPlan): { testCase?: AuthenticationLifecycleInput["cases"][number]; reasons: string[] } {
@@ -205,6 +234,7 @@ function selectLoginCandidate(candidates: readonly BrowserLearnedTestCase[], ori
 }
 
 function findField(fields: readonly string[], pattern: RegExp): string | undefined { return fields.find((field) => pattern.test(field)); }
+function withoutQuery(value: string): string { const url = new URL(value); return `${url.origin}${url.pathname}`; }
 function secretReferences(value: unknown): string[] { return [...new Set([...JSON.stringify(value).matchAll(/\{\{SECRET:([A-Za-z0-9._-]+)\}\}/g)].map((match) => match[1]!))]; }
 function safeFieldPath(value: string): boolean { return value.length <= 200 && value.split(".").every((part) => /^[A-Za-z_$][A-Za-z0-9_$]{0,99}$/.test(part) && !["__proto__", "prototype", "constructor"].includes(part)); }
 function requestFields(bindings: Record<string, string>, overrides: Record<string, string>, format: "JSON" | "FORM"): Record<string, unknown> {

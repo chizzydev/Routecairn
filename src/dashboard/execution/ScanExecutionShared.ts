@@ -176,6 +176,7 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     maxRequests: request.maxRequests,
     cleanupReservedRequests: request.cleanupReservedRequests,
     includeModules: request.includeModules ?? [],
+    providerAdapterBinding: request.providerAdapterBinding,
     supabaseAuthorization: inlineWorkflowSummary("supabase-authorization", request.supabaseAuthorization),
     supabaseAuthorizationFileLabel: request.supabaseAuthorizationFile ? safePathLabel(request.supabaseAuthorizationFile) : undefined,
     authenticationLifecycle: inlineWorkflowSummary("authentication-lifecycle", request.authenticationLifecycle),

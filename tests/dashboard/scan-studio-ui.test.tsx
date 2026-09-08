@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ScanStudio } from "../../apps/dashboard-ui/src/ScanStudio";
 
@@ -189,6 +189,41 @@ describe("Scan Studio UI", () => {
     expect(screen.getByText(/Fresh credentials required/i)).toBeTruthy();
     expect((screen.getByLabelText("Target base URL") as HTMLInputElement).value).toBe("https://app.example.test");
     expect(document.body.textContent).not.toContain("historical-token");
+  });
+
+  it("opens an approved adaptive recommendation directly in its target-bound dashboard builder", async () => {
+    const target = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", displayName: "Adaptive target", baseOrigin: "https://app.example.test", authorizationType: "OWNED", authorizationSummary: "Owned fixture", classification: "PRIVATE", scanCount: 1, openFindingCount: 0, tags: [], approvedScope: { program: "Adaptive fixture", allowedDomains: ["app.example.test"], disallowedPaths: ["/delete"], allowedMethods: ["GET", "POST"], rateLimitPerSecond: 2, concurrency: 2, maxDepth: 2, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" }, defaultAuthTemplate: {}, productionEnabled: false, archived: false, rowVersion: 1 } as any;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("advanced-engines/catalog")) return response({ engines: [{ id: "business-invariant", displayName: "Business invariant testing", description: "Bounded invariant cases", moduleId: "business-invariant", requestField: "businessInvariant", safety: "Explicit cleanup required.", requiresApproval: true, template: { schemaVersion: 1, cases: [] } }] });
+      if (path.includes("capabilities")) return response({ profiles: [{ name: "quick", displayName: "Quick", description: "Quick", modules: ["baseline"], limits: { maxRequests: 80 }, browserUse: "off", authComparisonDepth: "none", proofMode: false, reportFocus: [] }], modules: [{ id: "baseline", displayName: "Baseline", description: "Baseline", phase: "discovery", capabilities: [], requiresAuthentication: "none", dependencies: [], cost: "low", supportedSettings: [] }, { id: "business-invariant", displayName: "Business invariant", description: "Invariant", phase: "testing", capabilities: [], requiresAuthentication: "optional", dependencies: [], cost: "medium", supportedSettings: [] }], controlledWorkflows: [], evidenceLevels: [{ id: "strong", retention: "Strong" }] });
+      if (path.includes("projects")) return response({ projects: [] }); if (path.includes("targets")) return response({ targets: [target] }); return response({ profiles: [] });
+    }));
+    render(<ScanStudio initialAdaptiveDraft={{ target, engineId: "business-invariant" }} onLaunched={() => undefined} />);
+    expect(await screen.findByRole("heading", { name: "Controlled Workflows" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Business invariant testing" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Close" })).toBeTruthy();
+    expect(document.body.textContent).toContain("https://app.example.test");
+    expect(document.body.textContent).toContain("Scope1 domain rule");
+  });
+
+  it("materializes a reviewed provider adapter with its exact engine, actors, limits, and binding", async () => {
+    const target = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", displayName: "Adapter target", baseOrigin: "https://app.example.test", authorizationType: "OWNED", authorizationSummary: "Owned fixture", classification: "PRIVATE", scanCount: 1, openFindingCount: 0, tags: [], approvedScope: { program: "Adapter fixture", allowedDomains: ["app.example.test"], disallowedPaths: ["/delete"], allowedMethods: ["GET", "POST"], rateLimitPerSecond: 2, concurrency: 2, maxDepth: 2, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" }, defaultAuthTemplate: {}, productionEnabled: false, archived: false, rowVersion: 1 } as any;
+    let previewRequest: any;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.includes("scans/plan-preview")) { previewRequest = JSON.parse(String(init?.body)); return response({ previewIdentity: "f".repeat(64), profile: "full", modules: [], limits: {}, evidence: {}, skippedModules: [], controlledWorkflowRequests: [], planSnapshot: {}, credentialReadiness: { ready: true, checkedAt: new Date().toISOString(), requiredValidThrough: new Date().toISOString(), blockers: [], warnings: [], profiles: [] }, warnings: [] }); }
+      if (path.includes("advanced-engines/catalog")) return response({ engines: [{ id: "business-invariant", displayName: "Business invariant testing", description: "Bounded invariant cases", moduleId: "business-invariant", requestField: "businessInvariant", safety: "Explicit cleanup required.", requiresApproval: true, template: { schemaVersion: 1, cases: [] } }] });
+      if (path.includes("capabilities")) return response({ profiles: [{ name: "full", displayName: "Full", description: "Full", modules: [], limits: { maxRequests: 200 }, browserUse: "optional", authComparisonDepth: "optional", proofMode: false, reportFocus: [] }], modules: [{ id: "business-invariant", displayName: "Business invariant", description: "Invariant", phase: "testing", capabilities: [], requiresAuthentication: "optional", dependencies: [], cost: "medium", supportedSettings: [] }], controlledWorkflows: [], evidenceLevels: [{ id: "strong", retention: "Strong" }] });
+      if (path.includes("projects")) return response({ projects: [] }); if (path.includes("targets")) return response({ targets: [target] }); return response({ profiles: [] });
+    }));
+    const engineConfiguration = { schemaVersion: 1, cases: [{ id: "adapter-case", label: "Adapter exact case" }] };
+    render(<ScanStudio initialAdapterDraft={{ target, engineId: "business-invariant", engineConfiguration, authentication: { mode: "public" }, binding: { profileId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", versionId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", adapterDigest: "d".repeat(64) }, limits: { maxRequests: 73, cleanupReservedRequests: 11, rateLimitPerSecond: 1, concurrency: 1, evidenceLevel: "strong" } }} onLaunched={() => undefined} />);
+    expect(await screen.findByRole("heading", { name: "Business invariant testing" })).toBeTruthy();
+    expect(await screen.findByDisplayValue("Adapter exact case")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Preview complete plan" }));
+    await waitFor(() => expect(previewRequest).toBeTruthy());
+    expect(previewRequest).toMatchObject({ targetId: target.id, profile: "full", maxRequests: 73, cleanupReservedRequests: 11, providerAdapterBinding: { adapterDigest: "d".repeat(64) }, businessInvariant: engineConfiguration, studio: { authentication: { mode: "public" }, scope: { rateLimitPerSecond: 1, concurrency: 1 } } });
   });
 });
 

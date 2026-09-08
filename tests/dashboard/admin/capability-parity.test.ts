@@ -13,5 +13,11 @@ describe("administration capability parity manifest", () => {
     }
     const withoutBrowserDiagnostics = capabilityParityManifest.filter((entry) => entry.id !== "browser.connection-boundary");
     expect(validateCapabilityParityManifest(withoutBrowserDiagnostics)).toContain("browser.connection-boundary is missing from capability parity.");
+    const withoutAdaptiveWorkspace = capabilityParityManifest.filter((entry) => entry.id !== "adaptive-security.intelligence-and-drift");
+    expect(validateCapabilityParityManifest(withoutAdaptiveWorkspace)).toContain("adaptive-security.intelligence-and-drift is missing from capability parity.");
+    const withoutProviderAdapters = capabilityParityManifest.filter((entry) => entry.id !== "fixture-provider-adapters.versioned-execution");
+    expect(validateCapabilityParityManifest(withoutProviderAdapters)).toContain("fixture-provider-adapters.versioned-execution is missing from capability parity.");
+    const withoutContinuousAssurance = capabilityParityManifest.filter((entry) => entry.id !== "continuous-assurance.scheduling-and-evidence");
+    expect(validateCapabilityParityManifest(withoutContinuousAssurance)).toContain("continuous-assurance.scheduling-and-evidence is missing from capability parity.");
   });
 });

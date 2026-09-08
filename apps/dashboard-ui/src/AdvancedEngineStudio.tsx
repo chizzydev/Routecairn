@@ -41,6 +41,8 @@ interface Diagnostic { path: string[]; message: string }
 
 interface Props {
   target: string;
+  initialEngineId?: AdvancedEngineId;
+  initialEngineValue?: JsonObject;
   drafts: AdvancedEngineDraft[];
   selectedModules: string[];
   onChange(drafts: AdvancedEngineDraft[]): void;
@@ -55,6 +57,7 @@ export function AdvancedEngineStudio(props: Props) {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [openId, setOpenId] = useState<AdvancedEngineId>();
   const [loadError, setLoadError] = useState("");
+  const initialEngineApplied = useRef(false);
   useEffect(() => {
     let active = true;
     const query = props.target ? `?target=${encodeURIComponent(props.target)}` : "";
@@ -75,6 +78,19 @@ export function AdvancedEngineStudio(props: Props) {
     if (entry.moduleId && !props.selectedModules.includes(entry.moduleId)) props.onEnableModule(entry.moduleId);
     setOpenId(entry.id);
   };
+  useEffect(() => {
+    if (initialEngineApplied.current || !props.initialEngineId || catalog.length === 0) return;
+    const entry = catalog.find((item) => item.id === props.initialEngineId);
+    if (!entry) return;
+    initialEngineApplied.current = true;
+    if (props.initialEngineValue) {
+      const existing = props.drafts.find((item) => item.id === entry.id);
+      const next = { id: entry.id, enabled: true, editorMode: "guided" as const, value: structuredClone(props.initialEngineValue) };
+      props.onChange(existing ? props.drafts.map((item) => item.id === entry.id ? next : item) : [...props.drafts, next]);
+      if (entry.moduleId && !props.selectedModules.includes(entry.moduleId)) props.onEnableModule(entry.moduleId);
+      setOpenId(entry.id);
+    } else enable(entry);
+  }, [catalog, props.initialEngineId, props.initialEngineValue]);
   return (
     <section className="advanced-engine-studio" aria-label="Advanced security engines">
       <header>

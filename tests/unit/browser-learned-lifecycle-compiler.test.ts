@@ -70,4 +70,31 @@ describe("browser-learned lifecycle compiler", () => {
     const missing = compileBrowserLearnedLifecycle(configured, browser, { target: origin, scope: { ...exampleScope, allowedDomains: ["app.example.test"], disallowedPaths: [] }, authProfile: missingProfile });
     expect(missing.blockers.flatMap((item) => item.reasons)).toEqual(expect.arrayContaining(["SECRET_REF_UNAVAILABLE:unknown_username", "SECRET_REF_UNAVAILABLE:fixed_session"]));
   });
+
+  it("compiles a non-login lifecycle category only from an exact operator recipe bound to learned traffic", () => {
+    const logoutCandidate: BrowserLearnedTestCase = { ...candidate, id: "browser-logout-12345678", endpoint: `${origin}/api/logout`, observedFieldNames: [], requestSecretBindings: {}, responseCookieNames: [], authorizationContext: "BLOCKED_MUTATION_HYPOTHESIS", transmitted: false, suggestedLifecycleCategories: ["LOGOUT_INVALIDATION"] };
+    const recipeCase = {
+      id: "learned-logout-invalidation",
+      label: "Logout invalidates the current disposable session",
+      category: "LOGOUT_INVALIDATION",
+      actors: [{ id: "member", safeAlias: "disposable member", authSlot: "primary", requestAuthentication: "PROFILE", relationship: "self", declaredState: "active" }],
+      authorization: { mode: "CONTROLLED_LIFECYCLE", environment: "TEST", confirmation: "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING", authorizedBy: "operator-ref", changeTicket: "AUTH-100", authorizedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2099-01-01T00:00:00.000Z", disposableAccounts: true },
+      cleanupRequired: true,
+      steps: [
+        { id: "logout", phase: "ACTION", actorId: "member", request: { method: "POST", url: `${origin}/api/logout`, stateChanging: true, headers: {} }, captures: [], assertions: [{ kind: "STATUS_IN", values: [204] }] },
+        { id: "session-check", phase: "VERIFY", actorId: "member", request: { method: "GET", url: `${origin}/api/me`, stateChanging: false, headers: {} }, captures: [], assertions: [{ kind: "STATUS_IN", values: [401] }] },
+        { id: "restore-session", phase: "CLEANUP", actorId: "member", request: { method: "POST", url: `${origin}/api/session/restore`, stateChanging: true, headers: {} }, captures: [], assertions: [{ kind: "STATUS_IN", values: [204] }] }
+      ]
+    };
+    const configured = planBrowserLearnedLifecycleAutomation({ ...input, categories: ["LOGOUT_INVALIDATION"], recipes: [{ category: "LOGOUT_INVALIDATION", candidateId: logoutCandidate.id, testCase: recipeCase }] }, origin);
+    const scope = { ...exampleScope, allowedDomains: ["app.example.test"], disallowedPaths: [], allowedMethods: ["GET", "HEAD", "OPTIONS", "POST"] as const };
+    const compiled = compileBrowserLearnedLifecycle(configured, { ...browser, learnedTestCases: [candidate, logoutCandidate] }, { target: origin, scope, authProfile });
+    expect(compiled.generatedCategories).toEqual(["LOGOUT_INVALIDATION"]);
+    expect(compiled.blockers).toEqual([]);
+    expect(compiled.plan?.cases[0]?.steps.map((step) => step.id)).toEqual(["logout", "session-check", "restore-session"]);
+
+    const blocked = compileBrowserLearnedLifecycle(planBrowserLearnedLifecycleAutomation({ ...input, categories: ["LOGOUT_INVALIDATION"] }, origin), { ...browser, learnedTestCases: [logoutCandidate] }, { target: origin, scope, authProfile });
+    expect(blocked.plan).toBeUndefined();
+    expect(blocked.blockers[0]?.reasons).toContain("OPERATOR_RECIPE_REQUIRED");
+  });
 });

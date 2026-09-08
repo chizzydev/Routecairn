@@ -68,7 +68,7 @@ const stepSchema = z.object({
   captures: z.array(captureSchema).max(12).default([]),
   assertions: z.array(assertionSchema).max(20).default([])
 }).strict();
-const caseSchema = z.object({
+export const authenticationLifecycleCaseInputSchema = z.object({
   id: identifier,
   label: z.string().min(1).max(160),
   category: z.enum(authenticationLifecycleCategories),
@@ -84,7 +84,7 @@ export const authenticationLifecycleInputSchema = z.object({
   maxStepsPerCase: z.number().int().min(1).max(40).default(20),
   maxRequests: z.number().int().min(1).max(500).default(100),
   maxResponseBytes: z.number().int().min(256).max(262144).default(32768),
-  cases: z.array(caseSchema).min(1).max(50)
+  cases: z.array(authenticationLifecycleCaseInputSchema).min(1).max(50)
 }).strict();
 
 export type AuthenticationLifecycleInput = z.infer<typeof authenticationLifecycleInputSchema>;
@@ -148,7 +148,7 @@ export function planAuthenticationLifecycle(input: AuthenticationLifecycleInput,
   };
 }
 
-function validateCase(testCase: z.infer<typeof caseSchema>, matcher: ScopeMatcher, targetOrigin: string, context: { authProfile?: AuthProfile; authProfileSet?: AuthProfileSet }, now: Date): void {
+function validateCase(testCase: z.infer<typeof authenticationLifecycleCaseInputSchema>, matcher: ScopeMatcher, targetOrigin: string, context: { authProfile?: AuthProfile; authProfileSet?: AuthProfileSet }, now: Date): void {
   const actorIds = new Set<string>();
   for (const actor of testCase.actors) {
     if (actorIds.has(actor.id)) throw new AppError(`Duplicate actor ${actor.id} in lifecycle case ${testCase.id}.`, "AUTH_LIFECYCLE_DUPLICATE_ID");
@@ -274,7 +274,7 @@ function walk(value: unknown, path: string[], fn: (value: unknown, path: string[
   fn(value, path);
 }
 
-function comparisonFingerprint(testCase: z.infer<typeof caseSchema>): string {
+function comparisonFingerprint(testCase: z.infer<typeof authenticationLifecycleCaseInputSchema>): string {
   return securityContractFingerprint("authentication-lifecycle", {
     schemaVersion: 1,
     category: testCase.category,

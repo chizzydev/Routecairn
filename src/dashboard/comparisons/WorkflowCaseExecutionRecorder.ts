@@ -4,7 +4,7 @@ import type { RouteCairnReport } from "../../reports/ReportTypes.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import { redactDashboardValue, safeJson } from "../security/Redaction.js";
 
-interface CaseFact { workflowId: string; moduleId: string; alias: string; semantics: Record<string, unknown>; result: Record<string, unknown>; executed: boolean; blocked: boolean; failed: boolean; budgetExhausted: boolean; matchedExpectation?: boolean; evidenceStrength: string; }
+interface CaseFact { workflowId: string; moduleId: string; alias: string; semantics: Record<string, unknown>; result: Record<string, unknown>; executed: boolean; blocked: boolean; failed: boolean; budgetExhausted: boolean; matchedExpectation?: boolean; evidenceStrength: string; contractFingerprint?: string; }
 
 /** Persists only scanner-semantic, redacted case facts. Raw credentials and object references never enter this table. */
 export function recordWorkflowCaseExecutions(db: Database, scanId: string, report: Partial<RouteCairnReport>): void {
@@ -15,7 +15,7 @@ export function recordWorkflowCaseExecutions(db: Database, scanId: string, repor
   for (const item of workflowFacts(report)) {
     const semantics = redactDashboardValue(item.semantics) as Record<string, unknown>;
     const state = item.budgetExhausted ? "BUDGET_EXHAUSTED" : item.blocked ? "BLOCKED" : item.failed ? "FAILED" : item.executed ? "COMPLETED" : "INCOMPARABLE";
-    insert.run(randomUUID(), scanId, item.workflowId, item.moduleId, safeAlias(item.alias), fingerprint(item.workflowId, semantics), state,
+    insert.run(randomUUID(), scanId, item.workflowId, item.moduleId, safeAlias(item.alias), item.contractFingerprint && /^[a-f0-9]{64}$/i.test(item.contractFingerprint) ? item.contractFingerprint.toLowerCase() : fingerprint(item.workflowId, semantics), state,
       item.executed ? 1 : 0, item.matchedExpectation === undefined ? null : item.matchedExpectation ? 1 : 0,
       item.evidenceStrength, safeJson(semantics), safeJson(item.result), nowIso());
   }
@@ -35,8 +35,35 @@ function workflowFacts(report: Partial<RouteCairnReport>): CaseFact[] {
   for (const item of report.collectionAuthorization?.observations ?? []) facts.push(observation("collection-authorization", "collection-authorization-testing", `${item.collectionId}/${item.caseId}`, item, { collectionId: item.collectionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, referenceCaseId: item.referenceCaseId, category: item.category, completeness: item.completeness, method: item.method, endpoint: safeEndpoint(item.url), expectedMembership: item.expectedMembership }, { observedDecision: item.observedDecision, observedMembership: item.observedMembership, objectMetadataConfirmed: item.objectMetadataConfirmed, statusCode: item.statusCode }, `COLLECTION_${item.completeness}`));
   for (const item of report.bulkAuthorization?.observations ?? []) facts.push(observation("bulk-authorization", "bulk-authorization-testing", `${item.definitionId}/${item.caseId}`, item, { definitionId: item.definitionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, operationType: item.operationType, requestStyle: item.requestStyle, method: item.method, endpoint: safeEndpoint(item.url), expectedBatchPolicy: item.expectedBatchPolicy, postSafetyMode: item.postSafetyMode }, { observedDecision: item.observedDecision, postconditionStatus: item.postconditionStatus, singleObjectComparison: item.singleObjectComparison, safetyContractSatisfied: item.safetyContractSatisfied, statusCode: item.statusCode }, `BULK_${item.postSafetyMode}_${item.postconditionStatus}`));
   for (const item of report.fileAuthorization?.observations ?? []) facts.push(observation("file-authorization", "file-authorization-testing", `${item.definitionId}/${item.caseId}`, item, { definitionId: item.definitionId, caseId: item.caseId, actorId: item.actorId, actorRelationship: item.actorRelationship, category: item.category, method: item.method, endpoint: safeEndpoint(item.url), expectedDecision: item.expectedDecision, identityStrategy: item.identityStrategy, contentProofMode: item.contentProofMode }, { observedDecision: item.observedDecision, identityConfirmed: item.identityConfirmed, bytesObserved: item.bytesObserved, streamTruncated: item.streamTruncated, signedUrlObserved: item.signedUrlObserved, signedUrlFollowed: item.signedUrlFollowed, statusCode: item.statusCode }, `FILE_${item.contentProofMode}`));
-  for (const item of report.privilegeMutation?.observations ?? []) facts.push(make("privilege-mutation", "privilege-mutation-testing", item.caseId, { category: item.category, actorRelationship: item.actorLabel, targetType: item.targetAlias, endpoint: item.attackEndpoint, method: item.attackMethod, authorityField: item.authorityField, expectedSecurityOutcome: item.securityOutcome }, { securityOutcome: item.securityOutcome, cleanupOutcome: item.cleanupOutcome, requestTransmitted: item.requestTransmitted, actorIdentityVerified: item.actorIdentityVerified, targetIdentityVerified: item.targetIdentityVerified, originalAuthorityVerified: item.originalAuthorityVerified, authorityChangeVerified: item.authorityChangeVerified, comparisonIdentity: item.comparisonIdentity }, item.requestTransmitted, item.securityOutcome === "INCONCLUSIVE", item.cleanupOutcome === "CLEANUP_FAILED", item.cleanupOutcome === "CLEANUP_REQUIRED" || item.cleanupOutcome === "MUTATION_STATE_UNCERTAIN", item.securityOutcome.endsWith("PROVEN"), item.cleanupOutcome));
+  for (const item of report.privilegeMutation?.observations ?? []) {
+    const expectedSecurityOutcome = item.intent === "SECURITY_NEGATIVE" ? "MUTATION_REJECTED" : "MUTATION_ACCEPTED_WITHOUT_SECURITY_IMPACT";
+    const cleanupExpected = item.intent === "SECURITY_NEGATIVE" && item.securityOutcome === "MUTATION_REJECTED" ? ["NOT_REQUIRED", "ROLLBACK_VERIFIED"].includes(item.cleanupOutcome) : item.cleanupOutcome === "ROLLBACK_VERIFIED";
+    const matched = item.securityOutcome === expectedSecurityOutcome && cleanupExpected;
+    const blocked = item.securityOutcome === "BLOCKED_BY_SAFETY";
+    const failed = ["INCONCLUSIVE", "AUTHORITY_CHANGE_NOT_VERIFIED"].includes(item.securityOutcome) || ["CLEANUP_REQUIRED", "CLEANUP_FAILED", "MUTATION_STATE_UNCERTAIN"].includes(item.cleanupOutcome);
+    facts.push(make("privilege-mutation", "privilege-mutation-testing", item.caseId, { category: item.category, intent: item.intent, actorRelationship: item.actorLabel, targetType: item.targetAlias, endpoint: item.attackEndpoint, method: item.attackMethod, authorityField: item.authorityField, expectedSecurityOutcome, cleanupExpected: item.intent === "SECURITY_NEGATIVE" ? "NO_MUTATION_OR_RESTORED" : "ROLLBACK_VERIFIED" }, { securityOutcome: item.securityOutcome, cleanupOutcome: item.cleanupOutcome, requestTransmitted: item.requestTransmitted, actorIdentityVerified: item.actorIdentityVerified, targetIdentityVerified: item.targetIdentityVerified, originalAuthorityVerified: item.originalAuthorityVerified, authorityChangeVerified: item.authorityChangeVerified, comparisonIdentity: item.comparisonIdentity }, item.requestTransmitted, blocked, failed, false, matched, item.cleanupOutcome));
+  }
+  for (const item of report.supabaseAuthorization?.observations ?? []) facts.push(contractObservation("supabase-authorization", "supabase-authorization", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.authenticationLifecycle?.observations ?? []) facts.push(contractObservation("authentication-lifecycle", "authentication-lifecycle", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.businessInvariant?.observations ?? []) facts.push(contractObservation("business-invariant", "business-invariant", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.controlledRace?.observations ?? []) facts.push(contractObservation("controlled-race", "controlled-race", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.apiGraphql?.checks ?? []) facts.push(contractObservation("api-graphql-authorization", "api-graphql-authorization", item.checkId, item, item.comparisonFingerprint));
+  for (const item of report.linkPortalSecurity?.observations ?? []) facts.push(contractObservation("link-portal-export-security", "link-portal-export-security", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.operationalEndpointSecurity?.observations ?? []) facts.push(contractObservation("operational-endpoint-security", "operational-endpoint-security", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.billingEntitlement?.observations ?? []) facts.push(contractObservation("billing-entitlement-security", "billing-entitlement-security", item.caseId, item, item.comparisonFingerprint));
   return facts;
+}
+
+function contractObservation(workflowId: string, moduleId: string, alias: string, input: unknown, contractFingerprint: string): CaseFact {
+  const item = input as Record<string, unknown>;
+  const outcome = String(item.outcome ?? item.observedDecision ?? "INCONCLUSIVE");
+  const blocked = /BLOCKED|IDENTITY_UNVERIFIED|CREDENTIAL_UNAVAILABLE/.test(outcome);
+  const cleanupOutcome = String(item.cleanupOutcome ?? "");
+  const failed = /INCONCLUSIVE|ERROR|UNPARSEABLE|RATE_LIMITED/.test(outcome) || /FAILED|NOT_REACHED|REQUIRED|UNKNOWN/.test(cleanupOutcome);
+  const matched = typeof item.matchedExpectation === "boolean" ? item.matchedExpectation : outcome === "PASS" ? true : outcome === "FAIL" ? false : undefined;
+  const semantics = Object.fromEntries(["category", "surface", "resource", "operation", "actor", "boundary", "kind", "routeAliases", "protocols", "actorModel", "actorAliases", "resourceAliases", "targetType"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));
+  const result = Object.fromEntries(["outcome", "observedDecision", "cleanupOutcome", "reasonCode", "identityConfirmed", "preStateVerified", "postStateVerified"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));
+  return { workflowId, moduleId, alias, semantics, result, executed: !blocked && !failed, blocked, failed, budgetExhausted: /BUDGET/.test(outcome), ...(matched === undefined ? {} : { matchedExpectation: matched }), evidenceStrength: typeof item.cleanupOutcome === "string" ? item.cleanupOutcome : "CONTRACT_FINGERPRINT", contractFingerprint };
 }
 
 function observation(workflowId: string, moduleId: string, alias: string, input: unknown, semantics: Record<string, unknown>, result: Record<string, unknown>, strength: string): CaseFact {

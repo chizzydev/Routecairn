@@ -9,6 +9,9 @@ import { startDashboardServer } from "../../dashboard/server/DashboardServer.js"
 import { createLogger } from "../../core/logging/Logger.js";
 import { DemoSeedService } from "../../dashboard/demo/DemoSeedService.js";
 import { RetestTemplateVault } from "../../dashboard/retests/RetestTemplateVault.js";
+import { rotateLiveAcceptancePlanKey } from "../../dashboard/execution/LiveAcceptanceService.js";
+import { rotateProviderAdapterKey } from "../../dashboard/execution/ProviderAdapterService.js";
+import { rotateEvidenceExportKey } from "../../dashboard/execution/EvidenceGovernanceService.js";
 
 const logger = createLogger();
 
@@ -175,11 +178,18 @@ export function registerDashboardCommand(program: Command): void {
       try {
         let rotatedCredentials = 0;
         let rotatedTemplates = 0;
+        let rotatedAcceptancePlans = 0;
+        let rotatedProviderAdapters = 0;
+        let rotatedEvidenceExports = 0;
+        const dashboardPaths = resolveDashboardPaths(dataDir);
         database.transaction(() => {
           rotatedCredentials = new CredentialVault(database, current).rotateKey(next);
           rotatedTemplates = new RetestTemplateVault(database.db, current).rotateKey(next);
+          rotatedAcceptancePlans = rotateLiveAcceptancePlanKey(database, current, next);
+          rotatedProviderAdapters = rotateProviderAdapterKey(database, current, next);
+          rotatedEvidenceExports = rotateEvidenceExportKey(database, dashboardPaths, current, next);
         });
-        logger.success(`Rotated ${rotatedCredentials} credential profile(s) and ${rotatedTemplates} retest template(s) to key version ${next.version}. Back up the database and new key material together.`);
+        logger.success(`Rotated ${rotatedCredentials} credential profile(s), ${rotatedTemplates} retest template(s), ${rotatedAcceptancePlans} live acceptance plan(s), ${rotatedProviderAdapters} provider-adapter version(s), and ${rotatedEvidenceExports} encrypted evidence export(s) to key version ${next.version}. Back up the database and new key material together.`);
       } finally {
         database.close();
       }

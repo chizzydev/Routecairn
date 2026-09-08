@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DashboardDatabase } from "../../src/dashboard/db/DashboardDatabase.js";
-import { ArtifactRepository, FindingRepository, ScanRepository } from "../../src/dashboard/db/DashboardRepositories.js";
+import { ArtifactRepository, FindingRepository, ScanRepository, TargetRepository } from "../../src/dashboard/db/DashboardRepositories.js";
 import { FindingFingerprintService } from "../../src/dashboard/findings/FindingFingerprintService.js";
 import { FindingNormalizer } from "../../src/dashboard/findings/FindingNormalizer.js";
 import { ProofPackService } from "../../src/dashboard/proofPacks/ProofPackService.js";
@@ -65,8 +65,11 @@ describe("dashboard closure workflows", () => {
         const auth = await authenticate(handle.url, handle.bootstrapUrl);
         const capabilities = await apiGet<any>(handle.url, "/api/capabilities", auth.cookie);
         expect(capabilities.modules.some((module: any) => module.id === "object-pair-testing")).toBe(true);
-        expect(capabilities.advancedEngineDashboard).toHaveLength(12);
-        expect(capabilities.advancedEngineDashboard.every((engine: any) => engine.dashboardOperation === "GUIDED_BUILDER")).toBe(true);
+        expect(capabilities.advancedEngineDashboard).toHaveLength(15);
+        expect(capabilities.advancedEngineDashboard.filter((engine: any) => !["live-target-acceptance", "fixture-provider-adapters", "continuous-assurance"].includes(engine.id)).every((engine: any) => engine.dashboardOperation === "GUIDED_BUILDER")).toBe(true);
+        expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "live-target-acceptance")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
+        expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "fixture-provider-adapters")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
+        expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "continuous-assurance")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
         const advanced = await apiGet<any>(handle.url, "/api/advanced-engines/catalog?target=https%3A%2F%2Fapp.example.test", auth.cookie);
         expect(advanced.engines).toHaveLength(12);
         expect(advanced.engines.find((engine: any) => engine.id === "supabase-authorization")?.template.projectUrl).toBe("https://app.example.test");
@@ -98,6 +101,78 @@ describe("dashboard closure workflows", () => {
     } finally {
       cleanup(dir);
     }
+  });
+
+  it("operates encrypted live acceptance preview, review, execution, and coverage through the dashboard API", async () => {
+    const dir = tempDir("routecairn-live-acceptance-api-");
+    try {
+      const database = new DashboardDatabase(resolveDashboardPaths(dir).databasePath); database.migrate();
+      const targetId = new TargetRepository(database).create({ displayName: "Acceptance API fixture", baseOrigin: "https://acceptance.example.test", tags: [], classification: "PRODUCTION", authorizationType: "OWNED", authorizationSummary: "Owned disposable external acceptance fixture", productionEnabled: true, approvedScope: { program: "Acceptance", allowedDomains: ["acceptance.example.test"], disallowedPaths: ["/delete"], allowedMethods: ["GET", "HEAD", "OPTIONS"], rateLimitPerSecond: 2, concurrency: 2, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" } });
+      database.close();
+      const handle = await startDashboardServer({ dataDir: dir, uiDistDir: resolve("apps", "dashboard-ui", "dist"), masterKey: "11".repeat(32), masterKeyVersion: "acceptance-test" });
+      try {
+        const auth = await authenticate(handle.url, handle.bootstrapUrl); const now = Date.now();
+        const input = { schemaVersion: 1, name: "API live acceptance", targetId, environment: "PRODUCTION", authorization: { mode: "OWNED_PRODUCTION", proofReference: "OWNER-TEST-APPROVAL", proofSha256: "a".repeat(64), authorizedBy: "owner", startsAt: new Date(now - 60_000).toISOString(), expiresAt: new Date(now + 60_000).toISOString(), neverTestPaths: ["/billing"], authenticationPermitted: false, mutationPermitted: false, disposableAccountsOnly: true, realPaymentsAllowed: false, destructiveAdministrationAllowed: false }, lanes: [{ id: "tenant", label: "Tenant isolation", kind: "DATA_AUTHORIZATION", required: true, execution: { disposition: "NOT_APPLICABLE", reason: "The fixture has no tenant or organization data model." } }, { id: "billing", label: "Synthetic billing", kind: "BILLING_ENTITLEMENTS", required: false, execution: { disposition: "NOT_ASSESSED", reason: "No synthetic payment provider is configured for this fixture." } }] };
+        const preview = await apiMutation<any>(handle.url, "/api/live-acceptance/preview", auth, input);
+        expect(preview.preview).toMatchObject({ blockers: [], totalRequestBudget: 0 });
+        const created = await apiMutation<any>(handle.url, "/api/live-acceptance/plans", auth, input);
+        const reviewed = await apiMutation<any>(handle.url, `/api/live-acceptance/plans/${created.plan.id}/review`, auth, { planDigest: created.preview.planDigest, confirmation: "I_CONFIRM_REVIEWED_LIVE_ACCEPTANCE_PLAN" });
+        expect(reviewed.plan.status).toBe("REVIEWED");
+        const executed = await apiMutation<any>(handle.url, `/api/live-acceptance/plans/${created.plan.id}/execute`, auth, { planDigest: created.preview.planDigest, confirmation: "I_CONFIRM_EXECUTE_REVIEWED_LIVE_ACCEPTANCE_PLAN" });
+        expect(executed.run).toMatchObject({ status: "COMPLETED", coverage: { notApplicable: 1, notAssessed: 1, requiredGaps: 0 } });
+        const listed = await apiGet<any>(handle.url, "/api/live-acceptance/plans", auth.cookie);
+        expect(listed.plans[0]).toMatchObject({ id: created.plan.id, status: "REVIEWED" });
+      } finally { await handle.close(); }
+    } finally { cleanup(dir); }
+  });
+
+  it("operates encrypted versioned provider adapters through dashboard APIs", async () => {
+    const dir = tempDir("routecairn-provider-adapter-api-");
+    try {
+      const database = new DashboardDatabase(resolveDashboardPaths(dir).databasePath); database.migrate();
+      const targetId = new TargetRepository(database).create({ displayName: "Adapter API fixture", baseOrigin: "https://adapter.example.test", tags: [], classification: "PRODUCTION", authorizationType: "OWNED", authorizationSummary: "Owned disposable provider fixture", productionEnabled: true, approvedScope: { program: "Adapter", allowedDomains: ["adapter.example.test"], disallowedPaths: ["/delete"], allowedMethods: ["GET", "HEAD", "OPTIONS"], rateLimitPerSecond: 2, concurrency: 2, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" } });
+      database.close();
+      const handle = await startDashboardServer({ dataDir: dir, uiDistDir: resolve("apps", "dashboard-ui", "dist"), masterKey: "22".repeat(32), masterKeyVersion: "adapter-test" });
+      try {
+        const auth = await authenticate(handle.url, handle.bootstrapUrl);
+        const configuration = { schemaVersion: 1, maxRequests: 10, maxResponseBytes: 4096, maxJsonDepth: 8, maxGraphqlDocumentBytes: 4096, maxGraphqlAliases: 3, maxGraphqlBatchOperations: 2, actors: [{ id: "anonymous", safeAlias: "anonymous", authSlot: "anonymous", relationship: "PUBLIC" }], routes: [{ id: "health", safeAlias: "public-health", protocol: "REST", kind: "FUNCTION", url: "https://adapter.example.test/api/health", functionName: "health.read", documented: true, documentedMethods: ["GET"], documentedResponseFields: [] }], checks: [{ id: "health-read", matrixId: "health-access", label: "Public health behavior", kind: "FUNCTION_AUTHORIZATION", routeId: "health", actorId: "anonymous", requireVerifiedIdentity: false, request: { method: "GET", headers: {}, operatorConfirmedNonMutating: false }, response: { expectedDecision: "OBSERVE", allowedStatuses: [200], deniedStatuses: [401,403,404], fieldRules: [] } }] };
+        const input = { schemaVersion: 1, name: "Reusable API review fixture", description: "Target-bound reusable public API inventory", targetId, environment: "PRODUCTION", provider: "GENERIC_HTTP", engineId: "api-graphql-authorization", capabilities: ["API_GRAPHQL_AUTHORIZATION"], authentication: { mode: "public" }, engineConfiguration: configuration, fixture: { disposableOnly: true, realPaymentExecution: "FORBIDDEN", allowedPathPrefixes: ["/api/"], cleanupRequired: false, cleanupEvidenceRequired: false, operatorNotes: "Read-only API fixture" }, limits: { maxRequests: 100, cleanupReservedRequests: 0, rateLimitPerSecond: 2, concurrency: 2, evidenceLevel: "strong" } };
+        const previewed = await apiMutation<any>(handle.url,"/api/provider-adapters/preview",auth,input); expect(previewed.preview.blockers).toEqual([]);
+        const created = await apiMutation<any>(handle.url,"/api/provider-adapters",auth,input); expect(created.adapter.pendingVersionId).toMatch(/[0-9a-f-]{36}/);
+        const reviewed = await apiMutation<any>(handle.url,`/api/provider-adapters/${created.adapter.id}/review`,auth,{ versionId: created.adapter.pendingVersionId, adapterDigest: previewed.preview.adapterDigest, confirmation: "I_CONFIRM_REVIEWED_PROVIDER_ADAPTER" }); expect(reviewed.adapter.activeVersionId).toBe(created.adapter.pendingVersionId);
+        const materialized = await apiMutation<any>(handle.url,`/api/provider-adapters/${created.adapter.id}/materialize`,auth,{}); expect(materialized.materialized).toMatchObject({ target: { id: targetId }, input: { engineId: "api-graphql-authorization" }, binding: { adapterDigest: previewed.preview.adapterDigest } });
+        const scanRequest = { target: "https://adapter.example.test", targetId, profile: "full", authorizationDeclaration: "Reviewed reusable provider adapter", rateLimitPerSecond: 2, concurrency: 2, maxRequests: 100, cleanupReservedRequests: 0, includeModules: ["api-graphql-authorization"], providerAdapterBinding: materialized.materialized.binding, apiGraphql: configuration, studio: { version: 1, scanName: "Reusable API review fixture", authorization: { category: "OWNED", confirmed: true }, scope: { program: "Adapter", allowedDomains: ["adapter.example.test"], disallowedPaths: ["/delete"], allowedMethods: ["GET","HEAD","OPTIONS"], rateLimitPerSecond: 2, concurrency: 2, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" }, authentication: { mode: "public" }, evidenceLevel: "strong", outputs: { json: true, markdown: true, html: true }, moduleSettings: {}, workflows: [], workflowSummary: [] } };
+        const exactPlan = await apiMutation<any>(handle.url,"/api/scans/plan-preview",auth,scanRequest); expect(exactPlan.previewIdentity).toMatch(/[a-f0-9]{64}/);
+        const tampered = await rawMutation(handle.url,"/api/scans/plan-preview",auth,{ ...scanRequest, maxRequests: 101 }); expect(tampered.status).toBe(409); expect(await tampered.text()).toContain("PROVIDER_ADAPTER_EXECUTION_CONTRACT_MISMATCH");
+        const listed = await apiGet<any>(handle.url,"/api/provider-adapters",auth.cookie); expect(listed.adapters[0]).toMatchObject({ id: created.adapter.id, enabled: true });
+      } finally { await handle.close(); }
+    } finally { cleanup(dir); }
+  });
+
+  it("operates adaptive model analysis, policy, and baseline binding through the dashboard API", async () => {
+    const dir = tempDir("routecairn-adaptive-security-api-");
+    try {
+      const paths = resolveDashboardPaths(dir); mkdirSync(paths.reportsDir, { recursive: true });
+      const database = new DashboardDatabase(paths.databasePath); database.migrate();
+      const targetId = new TargetRepository(database).create({ displayName: "Adaptive API fixture", baseOrigin: "https://app.test", tags: [], classification: "PRIVATE", authorizationType: "OWNED", authorizationSummary: "Owned disposable adaptive fixture", productionEnabled: false, approvedScope: { program: "Adaptive", allowedDomains: ["app.test"], disallowedPaths: [], allowedMethods: ["GET"], rateLimitPerSecond: 1, concurrency: 1, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" } });
+      const scanId = "91919191-9191-4191-8191-919191919191";
+      new ScanRepository(database).create({ id: scanId, source: "DASHBOARD", status: "COMPLETED", targetOrigin: "https://app.test", safeTargetLabel: "adaptive", profile: "full", evidenceLevel: "strong", safeConfigurationSummary: {}, targetId });
+      const reportPath = resolve(paths.reportsDir, "adaptive-report.json"); writeFileSync(reportPath, JSON.stringify(fixtureReport()), "utf8");
+      const artifactId = new ArtifactRepository(database).create({ scanId, type: "JSON_REPORT", name: "adaptive-report.json", path: reportPath, size: Buffer.byteLength(JSON.stringify(fixtureReport())), contentType: "application/json", hash: "a".repeat(64) });
+      new ScanRepository(database).attachArtifacts(scanId, { json: artifactId }); database.close();
+      const handle = await startDashboardServer({ dataDir: dir, uiDistDir: resolve("apps", "dashboard-ui", "dist") });
+      try {
+        const auth = await authenticate(handle.url, handle.bootstrapUrl);
+        const analyzed = await apiMutation<any>(handle.url, "/api/adaptive-security/analyze", auth, { targetId, scanId });
+        expect(analyzed.snapshot).toMatchObject({ sourceScanId: scanId, status: "CANDIDATE" });
+        const policy = await apiMutation<any>(handle.url, "/api/adaptive-security/policy", auth, { targetId, requiredLanes: ["PUBLIC_BASELINE"], requireEvidenceForNotApplicable: true, detectRemovedSurfaces: true, confirmation: "I_CONFIRM_TARGET_SECURITY_MODEL_POLICY" }, "PUT");
+        expect(policy.adaptiveSecurity.coverage).toMatchObject({ complete: false, gaps: 1 });
+        const accepted = await apiMutation<any>(handle.url, `/api/adaptive-security/snapshots/${analyzed.snapshot.id}/accept`, auth, { modelDigest: analyzed.snapshot.modelDigest, confirmation: "I_CONFIRM_EXPECTED_SECURITY_MODEL_BASELINE" });
+        expect(accepted.adaptiveSecurity.snapshots[0]).toMatchObject({ status: "BASELINE" });
+        const state = await apiGet<any>(handle.url, `/api/adaptive-security/targets/${targetId}`, auth.cookie);
+        expect(state.adaptiveSecurity.policy.requiredLanes).toEqual(["PUBLIC_BASELINE"]);
+      } finally { await handle.close(); }
+    } finally { cleanup(dir); }
   });
 
   it("rejects expired bootstrap credentials, wrong origins, oversized bodies, and outside-root artifacts", async () => {
@@ -341,14 +416,14 @@ async function apiGet<T>(baseUrl: string, path: string, cookie: string): Promise
   return await response.json() as T;
 }
 
-async function apiMutation<T>(baseUrl: string, path: string, auth: { cookie: string; csrf: string }, body: unknown): Promise<T> {
-  const response = await rawMutation(baseUrl, path, auth, body);
+async function apiMutation<T>(baseUrl: string, path: string, auth: { cookie: string; csrf: string }, body: unknown, method = "POST"): Promise<T> {
+  const response = await rawMutation(baseUrl, path, auth, body, method);
   if (!response.ok) throw new Error(await response.text());
   return await response.json() as T;
 }
 
-async function rawMutation(baseUrl: string, path: string, auth: { cookie: string; csrf: string }, body: unknown): Promise<Response> {
-  return await fetch(`${baseUrl}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-csrf-token": auth.csrf, cookie: auth.cookie, origin: baseUrl }, body: JSON.stringify(body) });
+async function rawMutation(baseUrl: string, path: string, auth: { cookie: string; csrf: string }, body: unknown, method = "POST"): Promise<Response> {
+  return await fetch(`${baseUrl}${path}`, { method, headers: { "content-type": "application/json", "x-csrf-token": auth.csrf, cookie: auth.cookie, origin: baseUrl }, body: JSON.stringify(body) });
 }
 
 async function waitForScan(baseUrl: string, cookie: string, scanId: string): Promise<any> {

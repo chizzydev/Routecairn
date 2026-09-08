@@ -14,13 +14,17 @@ export interface CapabilityParityEntry {
 
 export const dashboardRequiredAdvancedCapabilities = [
   ...advancedEngineCatalog.map((engine) => `advanced.${engine.id}`),
-  "advanced.production-mutation"
+  "advanced.production-mutation",
+  "advanced.live-target-acceptance"
 ] as const;
 
 export const dashboardRequiredOperationalCapabilities = [
   "workers.resource-governance-and-operations",
   "browser.connection-boundary",
-  "credentials.lifecycle"
+  "credentials.lifecycle",
+  "adaptive-security.intelligence-and-drift",
+  "fixture-provider-adapters.versioned-execution"
+  ,"continuous-assurance.scheduling-and-evidence"
 ] as const;
 
 export const capabilityParityManifest: readonly CapabilityParityEntry[] = [
@@ -34,7 +38,10 @@ export const capabilityParityManifest: readonly CapabilityParityEntry[] = [
   { id: "scan-studio", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"] },
   { id: "workers.resource-governance-and-operations", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], dashboardOperation: "MANAGED_WORKSPACE", safety: "Immutable per-worker ceilings, cleanup-first termination, process-tree containment, durable diagnostics, crash-loop quarantine, and audited owner controls." },
   { id: "browser.connection-boundary", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], dashboardOperation: "MANAGED_WORKSPACE", safety: "Per-crawl authenticated loopback proxy, connection-time all-answer DNS validation, IP-literal socket pinning, redirect/origin enforcement, safe diagnostics, and one bounded fresh-generation restart." },
-  ...dashboardRequiredAdvancedCapabilities.map((id) => ({ id, status: "FULL" as const, surfaces: ["API", "DASHBOARD"] as const, dashboardOperation: id === "advanced.production-mutation" ? "MANAGED_WORKSPACE" as const : "GUIDED_BUILDER" as const })),
+  { id: "adaptive-security.intelligence-and-drift", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], dashboardOperation: "MANAGED_WORKSPACE", safety: "Completed evidence is reduced to safe canonical models; drift and learned traffic create reviewable proposals only, exact operator approval remains mandatory, and NOT_APPLICABLE requires evidence when configured." },
+  { id: "fixture-provider-adapters.versioned-execution", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], dashboardOperation: "MANAGED_WORKSPACE", safety: "Provider fixtures are target-bound, encrypted, immutable after review, credential-version-aware, recommendation-linked, revalidated at preview and launch, and cannot enable real payment execution." },
+  { id: "continuous-assurance.scheduling-and-evidence", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], dashboardOperation: "MANAGED_WORKSPACE", safety: "Scheduled and deployment-triggered runs execute only immutable reviewed adapter versions under unexpired authorization, global cleanup gates, installation leases, exact-case regression gates, quiet-success notifications, and encrypted evidence retention." },
+  ...dashboardRequiredAdvancedCapabilities.map((id) => ({ id, status: "FULL" as const, surfaces: ["API", "DASHBOARD"] as const, dashboardOperation: id === "advanced.production-mutation" || id === "advanced.live-target-acceptance" ? "MANAGED_WORKSPACE" as const : "GUIDED_BUILDER" as const })),
   { id: "controlled-mutation.execution-and-recovery", status: "FULL", surfaces: ["CLI", "API", "DASHBOARD"], safety: "Dashboard approval and recovery require disposable targets, exact contracts, encrypted checkpoints, fresh credentials, and independent rollback verification." },
   { id: "workflow-mutation.cleanup-recovery", status: "FULL", surfaces: ["API", "DASHBOARD", "INTERNAL"], safety: "Shared coordination and encrypted crash recovery across dedicated engines. Explicit cleanup-only approval never authorizes replaying original attack steps." },
   { id: "controlled-mutation.cleanup-visibility", status: "FULL", surfaces: ["API", "DASHBOARD"], safety: "Read-only, redacted mutation stages and cleanup obligations; recovery payloads remain encrypted and are never returned." },

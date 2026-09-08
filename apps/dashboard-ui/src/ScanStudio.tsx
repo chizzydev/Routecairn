@@ -105,6 +105,7 @@ type StudioState = {
   outputs: { json: boolean; markdown: boolean; html: boolean };
   workflows: WorkflowDraft[];
   advancedEngines: AdvancedEngineDraft[];
+  providerAdapterBinding?: { profileId: string; versionId: string; adapterDigest: string };
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;
@@ -201,12 +202,17 @@ const emptyActor = (alias: string): ActorState => ({
 export function ScanStudio({
   onLaunched,
   initialDraft,
+  initialAdaptiveDraft,
+  initialAdapterDraft,
 }: {
   onLaunched: (scanId: string) => void;
   initialDraft?: RetestDraft;
+  initialAdaptiveDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"] };
+  initialAdapterDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration: Record<string, unknown>; authentication: { mode: "public" } | { mode: "primary"; credentialProfileId: string } | { mode: "account-pair"; accountAProfileId: string; accountBProfileId: string }; binding: { profileId: string; versionId: string; adapterDigest: string }; limits: { maxRequests: number; cleanupReservedRequests: number; rateLimitPerSecond: number; concurrency: number; evidenceLevel: "minimal" | "normal" | "strong" } };
 }) {
-  const savedConfiguration = initialDraft ? undefined : readPendingConfiguration();
+  const savedConfiguration = initialDraft || initialAdaptiveDraft || initialAdapterDraft ? undefined : readPendingConfiguration();
   const retestScope = initialDraft?.scope as Partial<ScopeState> | undefined;
+  const adaptiveTargetScope = readTargetScope(initialAdaptiveDraft?.target ?? initialAdapterDraft?.target);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [targets, setTargets] = useState<TargetSummary[]>([]);
   const [credentials, setCredentials] = useState<CredentialSummary[]>([]);
@@ -223,29 +229,29 @@ export function ScanStudio({
   const [dirty, setDirty] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [state, setState] = useState<StudioState>(() => ({
-    currentStep: 0,
-    scanName: initialDraft?.context.purpose ?? "Authorized assessment",
+    currentStep: initialAdaptiveDraft || initialAdapterDraft ? 7 : 0,
+    scanName: initialDraft?.context.purpose ?? (initialAdapterDraft ? `Reusable ${initialAdapterDraft.engineId} fixture` : initialAdaptiveDraft ? `Adaptive ${initialAdaptiveDraft.engineId} assessment` : "Authorized assessment"),
     operatorNote: "",
-    projectId: initialDraft?.projectId ?? "",
-    targetId: initialDraft?.targetId ?? "",
-    target: initialDraft?.target ?? "",
-    authorizationCategory: "OWNED",
+    projectId: initialDraft?.projectId ?? initialAdapterDraft?.target.projectId ?? initialAdaptiveDraft?.target.projectId ?? "",
+    targetId: initialDraft?.targetId ?? initialAdapterDraft?.target.id ?? initialAdaptiveDraft?.target.id ?? "",
+    target: initialDraft?.target ?? initialAdapterDraft?.target.baseOrigin ?? initialAdaptiveDraft?.target.baseOrigin ?? "",
+    authorizationCategory: (initialAdapterDraft?.target ?? initialAdaptiveDraft?.target)?.authorizationType === "BUG_BOUNTY" ? "BUG_BOUNTY" : "OWNED",
     authorizationConfirmed: false,
     authorizationNote: "",
     scope: {
-      program: retestScope?.program ?? "Authorized Security Test",
-      allowedDomains: retestScope?.allowedDomains ?? (initialDraft?.target ? [new URL(initialDraft.target).hostname] : []),
-      disallowedPaths: retestScope?.disallowedPaths ?? ["/logout", "/delete", "/checkout", "/payment"],
-      allowedMethods: retestScope?.allowedMethods ?? ["GET", "HEAD", "OPTIONS"],
-      rateLimitPerSecond: retestScope?.rateLimitPerSecond ?? 3,
-      concurrency: retestScope?.concurrency ?? 3,
-      maxDepth: retestScope?.maxDepth ?? 2,
-      sameOriginOnly: retestScope?.sameOriginOnly ?? true,
-      includeSubdomains: retestScope?.includeSubdomains ?? false,
-      respectRobotsTxt: retestScope?.respectRobotsTxt ?? false,
-      userAgent: retestScope?.userAgent ?? "RouteCairn/0.1",
+      program: retestScope?.program ?? adaptiveTargetScope?.program ?? "Authorized Security Test",
+      allowedDomains: retestScope?.allowedDomains ?? adaptiveTargetScope?.allowedDomains ?? (initialDraft?.target ? [new URL(initialDraft.target).hostname] : initialAdapterDraft ? [new URL(initialAdapterDraft.target.baseOrigin).hostname] : initialAdaptiveDraft ? [new URL(initialAdaptiveDraft.target.baseOrigin).hostname] : []),
+      disallowedPaths: retestScope?.disallowedPaths ?? adaptiveTargetScope?.disallowedPaths ?? ["/logout", "/delete", "/checkout", "/payment"],
+      allowedMethods: retestScope?.allowedMethods ?? adaptiveTargetScope?.allowedMethods ?? ["GET", "HEAD", "OPTIONS"],
+      rateLimitPerSecond: initialAdapterDraft?.limits.rateLimitPerSecond ?? retestScope?.rateLimitPerSecond ?? adaptiveTargetScope?.rateLimitPerSecond ?? 3,
+      concurrency: initialAdapterDraft?.limits.concurrency ?? retestScope?.concurrency ?? adaptiveTargetScope?.concurrency ?? 3,
+      maxDepth: retestScope?.maxDepth ?? adaptiveTargetScope?.maxDepth ?? 2,
+      sameOriginOnly: retestScope?.sameOriginOnly ?? adaptiveTargetScope?.sameOriginOnly ?? true,
+      includeSubdomains: retestScope?.includeSubdomains ?? adaptiveTargetScope?.includeSubdomains ?? false,
+      respectRobotsTxt: retestScope?.respectRobotsTxt ?? adaptiveTargetScope?.respectRobotsTxt ?? false,
+      userAgent: retestScope?.userAgent ?? adaptiveTargetScope?.userAgent ?? "RouteCairn/0.1",
     },
-    profile: initialDraft?.profile ?? savedConfiguration?.profile ?? "quick",
+    profile: initialDraft?.profile ?? (initialAdapterDraft ? initialAdapterDraft.authentication.mode === "public" ? "full" : "authenticated" : savedConfiguration?.profile ?? "quick"),
     selectedModules: initialDraft?.selectedModules ?? savedConfiguration?.modules ?? [],
     nextJsReview: {
       inspectNextJsSourceMaps: true,
@@ -258,16 +264,17 @@ export function ScanStudio({
       maxNextJsAssetsInspected: 50,
       maxNextJsRoutesProcessed: 200,
     },
-    authMode: initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public",
-    primary: initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
-    accountA: initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
-    accountB: initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
-    evidenceLevel: (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
-    maxRequestsOverride: "",
-    cleanupReservedRequestsOverride: "",
+    authMode: initialAdapterDraft?.authentication.mode ?? (initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public"),
+    primary: initialAdapterDraft?.authentication.mode === "primary" ? { ...emptyActor("primary"), source: "saved", savedId: initialAdapterDraft.authentication.credentialProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
+    accountA: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account A"), source: "saved", savedId: initialAdapterDraft.authentication.accountAProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
+    accountB: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account B"), source: "saved", savedId: initialAdapterDraft.authentication.accountBProfileId } : initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
+    evidenceLevel: initialAdapterDraft?.limits.evidenceLevel ?? (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
+    maxRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.maxRequests) : "",
+    cleanupReservedRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.cleanupReservedRequests) : "",
     outputs: initialDraft?.outputs && initialDraft.outputs.json && initialDraft.outputs.markdown && initialDraft.outputs.html ? { json: true, markdown: true, html: true } : { json: true, markdown: true, html: true },
     workflows: (initialDraft?.reusableWorkflows ?? []) as WorkflowDraft[],
     advancedEngines: [],
+    ...(initialAdapterDraft ? { providerAdapterBinding: initialAdapterDraft.binding } : {}),
     authenticationLifecycleFile: "",
     authenticationLifecycleAutoFile: "",
     businessInvariantFile: "",
@@ -551,6 +558,8 @@ export function ScanStudio({
             <div className="studio-panel">
               <AdvancedEngineStudio
                 target={state.target}
+                initialEngineId={initialAdapterDraft?.engineId ?? initialAdaptiveDraft?.engineId}
+                initialEngineValue={initialAdapterDraft?.engineConfiguration as never}
                 drafts={state.advancedEngines}
                 selectedModules={state.selectedModules}
                 onChange={(advancedEngines) => {
@@ -700,6 +709,25 @@ export function ScanStudio({
       </div>
     </section>
   );
+}
+
+function readTargetScope(target: TargetSummary | undefined): Partial<ScopeState> | undefined {
+  if (!target) return undefined;
+  const value = target.approvedScope;
+  const methods = Array.isArray(value.allowedMethods) ? value.allowedMethods.filter((item): item is ScopeState["allowedMethods"][number] => typeof item === "string" && ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"].includes(item)) : undefined;
+  return {
+    ...(typeof value.program === "string" ? { program: value.program } : {}),
+    ...(Array.isArray(value.allowedDomains) ? { allowedDomains: value.allowedDomains.filter((item): item is string => typeof item === "string") } : {}),
+    ...(Array.isArray(value.disallowedPaths) ? { disallowedPaths: value.disallowedPaths.filter((item): item is string => typeof item === "string") } : {}),
+    ...(methods?.length ? { allowedMethods: methods } : {}),
+    ...(typeof value.rateLimitPerSecond === "number" ? { rateLimitPerSecond: value.rateLimitPerSecond } : {}),
+    ...(typeof value.concurrency === "number" ? { concurrency: value.concurrency } : {}),
+    ...(typeof value.maxDepth === "number" ? { maxDepth: value.maxDepth } : {}),
+    ...(typeof value.sameOriginOnly === "boolean" ? { sameOriginOnly: value.sameOriginOnly } : {}),
+    ...(typeof value.includeSubdomains === "boolean" ? { includeSubdomains: value.includeSubdomains } : {}),
+    ...(typeof value.respectRobotsTxt === "boolean" ? { respectRobotsTxt: value.respectRobotsTxt } : {}),
+    ...(typeof value.userAgent === "string" ? { userAgent: value.userAgent } : {})
+  };
 }
 
 function readPendingConfiguration(): { profile?: string; modules?: string[]; evidenceLevel?: "minimal" | "normal" | "strong" } | undefined {
@@ -2246,6 +2274,7 @@ function buildRequest(state: StudioState): Record<string, unknown> {
     ...(state.selectedModules.length
       ? { includeModules: state.selectedModules }
       : {}),
+    ...(state.providerAdapterBinding ? { providerAdapterBinding: state.providerAdapterBinding } : {}),
     ...advancedEngineRequestValues(state.advancedEngines),
     ...(state.authenticationLifecycleFile ? { authenticationLifecycleFile: state.authenticationLifecycleFile } : {}),
     ...(state.authenticationLifecycleAutoFile ? { authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile } : {}),

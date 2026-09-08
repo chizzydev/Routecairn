@@ -11,9 +11,14 @@ import { WorkerDiagnostics } from "./WorkerDiagnostics";
 import { BrowserNetworkDiagnostics } from "./BrowserNetworkDiagnostics";
 import { CredentialHealthBadge, CredentialHealthTimeline, CredentialImpactPanel, credentialExpiryLabel, credentialUsable, type CredentialDetailResponse, type CredentialSummary } from "./CredentialLifecycle";
 import { ProductionMutationWorkspace } from "./ProductionMutationWorkspace";
+import { LiveAcceptanceWorkspace } from "./LiveAcceptanceWorkspace";
+import { AdaptiveSecurityWorkspace } from "./AdaptiveSecurityWorkspace";
+import type { AdvancedEngineId } from "./AdvancedEngineStudio";
+import { ProviderAdapterWorkspace } from "./ProviderAdapterWorkspace";
+import { ContinuousAssuranceWorkspace } from "./ContinuousAssuranceWorkspace";
 const ScanStudio = React.lazy(async () => ({ default: (await import("./ScanStudio")).ScanStudio }));
 
-type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "configurations" | "credentials" | "workers" | "users" | "audit" | "settings";
+type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "users" | "audit" | "settings";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -23,6 +28,8 @@ export function App() {
   const [selectedId, setSelectedId] = useState("");
   const [findingFilters, setFindingFilters] = useState<Record<string, string>>({});
   const [retestDraft, setRetestDraft] = useState<RetestDraft>();
+  const [adaptiveDraft, setAdaptiveDraft] = useState<{ target: TargetSummary; engineId: AdvancedEngineId }>();
+  const [adapterDraft, setAdapterDraft] = useState<any>();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -63,13 +70,17 @@ export function App() {
         <button className={view === "projects" ? "active" : ""} onClick={() => setView("projects")}>Projects</button>
         <button className={view === "targets" ? "active" : ""} onClick={() => setView("targets")}>Targets</button>
         <button className={view === "scans" ? "active" : ""} onClick={() => setView("scans")}>Scans</button>
-        <button className={view === "new-scan" ? "active" : ""} onClick={() => { setRetestDraft(undefined); setView("new-scan"); }}>New Scan</button>
+        <button className={view === "new-scan" ? "active" : ""} onClick={() => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft(undefined); setView("new-scan"); }}>New Scan</button>
         <button className={view === "findings" ? "active" : ""} onClick={() => { setFindingFilters({}); setView("findings"); }}>Findings</button>
         <button className={view === "compare" ? "active" : ""} onClick={() => setView("compare")}>Compare</button>
         <button className={view === "proof" ? "active" : ""} onClick={() => setView("proof")}>Proof Packs</button>
         <button className={view === "offensive" ? "active" : ""} onClick={() => setView("offensive")}>Offensive Safety</button>
         <button className={view === "mutation" ? "active" : ""} onClick={() => setView("mutation")}>Mutation Approval</button>
         <button className={view === "production-mutation" ? "active" : ""} onClick={() => setView("production-mutation")}>Production Mutation</button>
+        <button className={view === "live-acceptance" ? "active" : ""} onClick={() => setView("live-acceptance")}>Live Acceptance</button>
+        <button className={view === "adaptive-security" ? "active" : ""} onClick={() => setView("adaptive-security")}>Adaptive Security</button>
+        <button className={view === "provider-adapters" ? "active" : ""} onClick={() => setView("provider-adapters")}>Fixture Adapters</button>
+        <button className={view === "continuous-assurance" ? "active" : ""} onClick={() => setView("continuous-assurance")}>Continuous Assurance</button>
         <button className={view === "configurations" ? "active" : ""} onClick={() => setView("configurations")}>Configurations</button>
         <button className={view === "credentials" ? "active" : ""} onClick={() => setView("credentials")}>Credentials</button>
         <button className={view === "workers" ? "active" : ""} onClick={() => setView("workers")}>Workers</button>
@@ -84,17 +95,21 @@ export function App() {
         {view === "projects" && <Projects onOpen={(id) => { setSelectedId(id); setView("project-detail"); }} />}
         {view === "project-detail" && <ProjectDetail projectId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onTarget={(id) => { setSelectedId(id); setView("target-detail"); }} />}
         {view === "targets" && <Targets onOpen={(id) => { setSelectedId(id); setView("target-detail"); }} />}
-        {view === "target-detail" && <TargetDetail targetId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onScan={() => { setRetestDraft(undefined); setView("new-scan"); }} />}
+        {view === "target-detail" && <TargetDetail targetId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onScan={() => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setView("new-scan"); }} />}
         {view === "scans" && <ScanOverview onOpenScan={(id) => { setSelectedId(id); setView("scan-detail"); }} />}
-        {view === "new-scan" && <ScanStudio {...(retestDraft ? { initialDraft: retestDraft } : {})} onLaunched={(id) => { setRetestDraft(undefined); setSelectedId(id); setView("scan-detail"); }} />}
+        {view === "new-scan" && <ScanStudio {...(retestDraft ? { initialDraft: retestDraft } : {})} {...(adaptiveDraft ? { initialAdaptiveDraft: adaptiveDraft } : {})} {...(adapterDraft ? { initialAdapterDraft: adapterDraft } : {})} onLaunched={(id) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft(undefined); setSelectedId(id); setView("scan-detail"); }} />}
         {view === "scan-detail" && <ScanDetail scanId={selectedId} onRecovery={() => setView("offensive")} onReviewFindings={() => { setFindingFilters({ scanId: selectedId }); setView("findings"); }} />}
-        {view === "findings" && <FindingsCommandCenter initialFilters={findingFilters} principal={principal} onRetest={(draft) => { setRetestDraft(draft); setView("new-scan"); }} />}
+        {view === "findings" && <FindingsCommandCenter initialFilters={findingFilters} principal={principal} onRetest={(draft) => { setAdaptiveDraft(undefined); setRetestDraft(draft); setView("new-scan"); }} />}
         {view === "compare" && <Compare />}
         {view === "proof" && <ProofPacks />}
         {view === "offensive" && <OffensiveSafety />}
         {view === "mutation" && <ControlledMutationWorkspace />}
         {view === "production-mutation" && <ProductionMutationWorkspace />}
-        {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setView("new-scan"); }} />}
+        {view === "live-acceptance" && <LiveAcceptanceWorkspace />}
+        {view === "adaptive-security" && <AdaptiveSecurityWorkspace canApprove={principal?.role === "OWNER"} onOpenBuilder={(draft) => { setRetestDraft(undefined); setAdaptiveDraft({ target: draft.target, engineId: draft.engineId as AdvancedEngineId }); setView("new-scan"); }} />}
+        {view === "provider-adapters" && <ProviderAdapterWorkspace canManage={principal?.role === "OWNER"} onUse={({ target, input, binding }) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft({ target, engineId: input.engineId, engineConfiguration: input.engineConfiguration, authentication: input.authentication, binding, limits: input.limits }); setView("new-scan"); }} />}
+        {view === "continuous-assurance" && <ContinuousAssuranceWorkspace canManage={principal?.role === "OWNER"} />}
+        {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setAdaptiveDraft(undefined); setView("new-scan"); }} />}
         {view === "credentials" && <Credentials />}
         {view === "workers" && <WorkerDiagnostics canManage={principal?.role === "OWNER"} />}
         {view === "users" && <Users />}

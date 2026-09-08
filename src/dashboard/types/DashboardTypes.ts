@@ -31,6 +31,7 @@ export interface DashboardScanCreateRequest {
   maxRequests?: number | undefined;
   cleanupReservedRequests?: number | undefined;
   includeModules?: string[] | undefined;
+  providerAdapterBinding?: import("../contracts/ProviderAdapterSchemas.js").ProviderAdapterBinding | undefined;
   supabaseAuthorization?: import("zod").input<typeof import("../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js").supabaseAuthorizationInputSchema> | undefined;
   supabaseAuthorizationFile?: string | undefined;
   authenticationLifecycle?: import("zod").input<typeof import("../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js").authenticationLifecycleInputSchema> | undefined;

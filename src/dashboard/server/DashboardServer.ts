@@ -50,7 +50,17 @@ import { WorkflowRecoveryService, workflowRecoveryRequestSchema } from "../execu
 import { productionMutationApprovalSchema } from "../contracts/ProductionMutationApprovalSchemas.js";
 import { productionMutationCaseSchema } from "../contracts/ProductionMutationCaseSchemas.js";
 import { compileProductionMutationCase, productionMutationPlanIdentity } from "../execution/ProductionMutationCaseCompiler.js";
+import { LiveAcceptanceService } from "../execution/LiveAcceptanceService.js";
+import { liveAcceptanceExecuteSchema, liveAcceptancePlanInputSchema, liveAcceptanceReviewSchema } from "../contracts/LiveAcceptanceSchemas.js";
 import { advancedEngineCatalog, advancedEngineValidationRequestSchema, loadAdvancedEngineCatalog, validateAdvancedEngineInput } from "../contracts/AdvancedEngineSchemas.js";
+import { AdaptiveSecurityService } from "../execution/AdaptiveSecurityService.js";
+import { adaptiveAnalyzeSchema, adaptiveBaselineSchema, adaptivePolicyInputSchema, adaptiveRecommendationDecisionSchema, adaptiveRecommendationLinkSchema } from "../contracts/AdaptiveSecuritySchemas.js";
+import { providerAdapterInputSchema, providerAdapterReviewSchema, providerAdapterStateSchema } from "../contracts/ProviderAdapterSchemas.js";
+import { ProviderAdapterService } from "../execution/ProviderAdapterService.js";
+import { ContinuousAssuranceService } from "../execution/ContinuousAssuranceService.js";
+import { EvidenceGovernanceService } from "../execution/EvidenceGovernanceService.js";
+import { ScanComparisonService } from "../comparisons/ScanComparisonService.js";
+import { continuousAssuranceNotificationAckSchema, continuousAssurancePolicyInputSchema, continuousAssuranceReviewSchema, continuousAssuranceRunSchema, continuousAssuranceStateSchema, continuousAssuranceTokenRotationSchema, deploymentTriggerSchema, evidenceGovernancePolicySchema, evidenceExportSchema, evidencePurgeSchema } from "../contracts/ContinuousAssuranceSchemas.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -111,7 +121,12 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const retestTemplates = new RetestTemplateVault(database.db, vaultKey);
   const findingCommandCenter = new FindingCommandCenterService(database, retestTemplates);
   const execution = new ScanExecutionService(database, paths, vault, retestTemplates);
+  const liveAcceptance = new LiveAcceptanceService(database, execution, vaultKey);
+  const adaptiveSecurity = new AdaptiveSecurityService(database);
+  const providerAdapters = new ProviderAdapterService(database, execution, vault, vaultKey);
   const comparison = new ComparisonService(database);
+  const evidenceGovernance = new EvidenceGovernanceService(database, paths, vaultKey);
+  const continuousAssurance = new ContinuousAssuranceService(database, paths, execution, providerAdapters, new ScanComparisonService(database), evidenceGovernance);
   const proofPacks = new ProofPackService(database, paths);
   const importer = new HistoricalReportImporter(database, paths);
   const uiDistDir = options.uiDistDir ?? resolve("apps", "dashboard-ui", "dist");
@@ -135,6 +150,16 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
         const session = await serverSessions.login({ ...parsed, request, response });
         audit.append({ actorLabel: session.user.id, action: "LOGIN_SUCCESS", resourceType: "SESSION", summary: "Server dashboard login succeeded." });
         sendJson(response, 200, session);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/continuous-assurance/deployments") {
+        const parsed = deploymentTriggerSchema.parse(await readJson(request));
+        const authorization = request.headers.authorization;
+        const headerToken = request.headers["x-routecairn-trigger-token"];
+        const token = typeof authorization === "string" && authorization.startsWith("Bearer ") ? authorization.slice(7) : typeof headerToken === "string" ? headerToken : "";
+        if (token.length < 32) throw new HttpError(401, "Invalid continuous assurance trigger.");
+        try { const result=await continuousAssurance.deployment(parsed.policyId, token, parsed.deploymentId, parsed.buildFingerprint); audit.append({action:"CONTINUOUS_ASSURANCE_DEPLOYMENT_ACCEPTED",resourceType:"CONTINUOUS_ASSURANCE_POLICY",resourceId:parsed.policyId,summary:"Authenticated deployment trigger accepted.",metadata:{deploymentId:parsed.deploymentId,buildFingerprint:parsed.buildFingerprint,idempotentReplay:result.idempotentReplay}}); sendJson(response, 202, result); }
+        catch (error) { if (error instanceof Error && ["CONTINUOUS_ASSURANCE_TRIGGER_REJECTED","CONTINUOUS_ASSURANCE_POLICY_NOT_FOUND"].includes(error.message)) throw new HttpError(401, "Invalid continuous assurance trigger."); throw error; }
         return;
       }
 
@@ -165,6 +190,11 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,mutationApprovals
           ,mutationRecovery
           ,workflowRecovery
+          ,liveAcceptance
+          ,adaptiveSecurity
+          ,providerAdapters
+          ,continuousAssurance
+          ,evidenceGovernance
         });
         return;
       }
@@ -183,6 +213,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     url,
     ...(localSessions ? { bootstrapUrl: localSessions.bootstrapUrl(url) } : {}),
     close: async () => {
+      continuousAssurance.shutdown();
       await execution.shutdown();
       await workflowRecovery.shutdown();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
@@ -239,6 +270,11 @@ interface ApiContext {
   mutationApprovals: ControlledMutationApprovalRepository;
   mutationRecovery: ControlledMutationRecoveryService;
   workflowRecovery: WorkflowRecoveryService;
+  liveAcceptance: LiveAcceptanceService;
+  adaptiveSecurity: AdaptiveSecurityService;
+  providerAdapters: ProviderAdapterService;
+  continuousAssurance: ContinuousAssuranceService;
+  evidenceGovernance: EvidenceGovernanceService;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -318,7 +354,12 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     sendJson(response, 200, {
       ...registry,
       modules: Object.values(registry.modules),
-      advancedEngineDashboard: advancedEngineCatalog.map(({ templateFile: _templateFile, ...engine }) => ({ ...engine, dashboardOperation: "GUIDED_BUILDER" as const }))
+      advancedEngineDashboard: [
+        ...advancedEngineCatalog.map(({ templateFile: _templateFile, ...engine }) => ({ ...engine, dashboardOperation: "GUIDED_BUILDER" as const })),
+        { id: "live-target-acceptance", displayName: "Live Target Acceptance", description: "Encrypted, reviewed multi-lane staging and production acceptance orchestration.", dashboardOperation: "MANAGED_WORKSPACE" as const, safety: "Mutation and recovery evidence must originate from separately approved controlled-mutation scans." },
+        { id: "fixture-provider-adapters", displayName: "Fixture & Provider Adapters", description: "Encrypted reusable provider fixtures and exact advanced-engine contracts.", dashboardOperation: "MANAGED_WORKSPACE" as const, safety: "Every reviewed adapter is target-, credential-version-, configuration-, budget-, and cleanup-bound; real payments remain forbidden." }
+        ,{ id: "continuous-assurance", displayName: "Continuous Assurance & Evidence Governance", description: "Reviewed scheduled and deployment-triggered reassessment with exact remediation gates and encrypted retention controls.", dashboardOperation: "MANAGED_WORKSPACE" as const, safety: "Automation cannot add mutation authority; expired authorization, changed adapters, credentials, target scope, unresolved cleanup, or incomparable cases block a passing gate." }
+      ]
     });
     return;
   }
@@ -332,6 +373,78 @@ async function handleApiGet(context: ApiContext): Promise<void> {
       if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new HttpError(400, "Invalid advanced-engine template target.");
     }
     sendJson(response, 200, { engines: await loadAdvancedEngineCatalog(target) });
+    return;
+  }
+  if (url.pathname === "/api/live-acceptance/plans") {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { available: context.liveAcceptance.available(), plans: context.liveAcceptance.listPlans() });
+    return;
+  }
+  if (url.pathname === "/api/live-acceptance/runs") {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { runs: context.liveAcceptance.listRuns() });
+    return;
+  }
+  if (url.pathname === "/api/provider-adapters") {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { available: context.providerAdapters.available(), adapters: context.providerAdapters.list(url.searchParams.get("targetId") ?? undefined) });
+    return;
+  }
+  if (url.pathname === "/api/continuous-assurance") {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { policies: context.continuousAssurance.list(), notifications: context.continuousAssurance.notifications() });
+    return;
+  }
+  const baselineCases = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/workflow-cases$/.exec(url.pathname);
+  if (baselineCases?.groups?.id) {
+    requirePermission(context, "scans.read");
+    const cases=context.database.db.prepare("SELECT workflow_id workflowId,safe_case_alias safeCaseAlias,safe_case_fingerprint caseFingerprint,execution_state executionState,request_transmitted requestTransmitted,matched_expectation matchedExpectation,evidence_strength evidenceStrength FROM scan_workflow_case_executions WHERE scan_id=? ORDER BY workflow_id,safe_case_alias LIMIT 500").all(baselineCases.groups.id) as Array<Record<string,unknown>&{requestTransmitted:number;matchedExpectation:number|null}>;
+    sendJson(response,200,{cases:cases.map(item=>({...item,requestTransmitted:Boolean(item.requestTransmitted),matchedExpectation:item.matchedExpectation===null?null:Boolean(item.matchedExpectation)}))});return;
+  }
+  const continuousPolicy = /^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (continuousPolicy?.groups?.id) {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { policy: context.continuousAssurance.get(continuousPolicy.groups.id) });
+    return;
+  }
+  if (url.pathname === "/api/evidence-governance") {
+    requirePermission(context, "artifacts.download");
+    sendJson(response, 200, { available: context.evidenceGovernance.available(), policy: context.evidenceGovernance.policy(), exports: context.evidenceGovernance.listExports(), purgePreview: context.evidenceGovernance.purgePreview() });
+    return;
+  }
+  const evidenceDownload = /^\/api\/evidence-governance\/exports\/(?<id>[0-9a-f-]+)\/download$/.exec(url.pathname);
+  if (evidenceDownload?.groups?.id) {
+    requirePermission(context, "artifacts.download");
+    const item = context.evidenceGovernance.downloadableExport(evidenceDownload.groups.id);
+    response.statusCode = 200;
+    response.setHeader("Content-Type", item.contentType);
+    response.setHeader("Content-Disposition", `attachment; filename="${item.name}"`);
+    response.setHeader("Cache-Control", "no-store");
+    createReadStream(item.path).pipe(response);
+    return;
+  }
+  const providerAdapter = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (providerAdapter?.groups?.id) {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { adapter: context.providerAdapters.get(providerAdapter.groups.id) });
+    return;
+  }
+  const adaptiveTarget = /^\/api\/adaptive-security\/targets\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (adaptiveTarget?.groups?.id) {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { adaptiveSecurity: context.adaptiveSecurity.state(adaptiveTarget.groups.id) });
+    return;
+  }
+  const liveAcceptancePlan = /^\/api\/live-acceptance\/plans\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (liveAcceptancePlan?.groups?.id) {
+    requirePermission(context, "scans.create");
+    sendJson(response, 200, { plan: context.liveAcceptance.getPlan(liveAcceptancePlan.groups.id) });
+    return;
+  }
+  const liveAcceptanceRun = /^\/api\/live-acceptance\/runs\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (liveAcceptanceRun?.groups?.id) {
+    requirePermission(context, "scans.read");
+    sendJson(response, 200, { run: context.liveAcceptance.getRun(liveAcceptanceRun.groups.id) });
     return;
   }
   if (url.pathname === "/api/admin/capability-parity") {
@@ -593,6 +706,212 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
   const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
+  if (request.method === "POST" && url.pathname === "/api/provider-adapters/preview") {
+    requirePermission(context, "scans.create");
+    const parsed = providerAdapterInputSchema.parse(await readJson(request));
+    const preview = await context.providerAdapters.preview(parsed);
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_PREVIEWED", resourceType: "TARGET", resourceId: parsed.targetId, summary: "Reusable fixture/provider adapter previewed without executing requests.", metadata: { engineId: parsed.engineId, provider: parsed.provider, adapterDigest: preview.adapterDigest, blockerCount: preview.blockers.length } });
+    sendJson(response, 200, { preview });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/provider-adapters") {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = providerAdapterInputSchema.parse(await readJson(request));
+    const adapter = await context.providerAdapters.create(parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_CREATED", resourceType: "PROVIDER_ADAPTER", resourceId: String(adapter.id), summary: "Encrypted reusable fixture/provider adapter draft created.", metadata: { targetId: parsed.targetId, engineId: parsed.engineId, provider: parsed.provider } });
+    sendJson(response, 201, { adapter });
+    return;
+  }
+  const providerAdapterUpdate = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (request.method === "PATCH" && providerAdapterUpdate?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = providerAdapterInputSchema.parse(await readJson(request));
+    const adapter = await context.providerAdapters.update(providerAdapterUpdate.groups.id, parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_VERSION_CREATED", resourceType: "PROVIDER_ADAPTER", resourceId: providerAdapterUpdate.groups.id, summary: "A new immutable provider-adapter draft version was created; the reviewed version remains unchanged until review.", metadata: { engineId: parsed.engineId, provider: parsed.provider } });
+    sendJson(response, 200, { adapter });
+    return;
+  }
+  const providerAdapterReview = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)\/review$/.exec(url.pathname);
+  if (request.method === "POST" && providerAdapterReview?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = providerAdapterReviewSchema.parse(await readJson(request));
+    const adapter = await context.providerAdapters.review(providerAdapterReview.groups.id, parsed.versionId, parsed.adapterDigest, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_REVIEWED", resourceType: "PROVIDER_ADAPTER", resourceId: providerAdapterReview.groups.id, summary: "Exact encrypted provider-adapter version reviewed and activated.", metadata: { versionId: parsed.versionId, adapterDigest: parsed.adapterDigest } });
+    sendJson(response, 200, { adapter });
+    return;
+  }
+  const providerAdapterState = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)\/state$/.exec(url.pathname);
+  if (request.method === "POST" && providerAdapterState?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = providerAdapterStateSchema.parse(await readJson(request));
+    const adapter = context.providerAdapters.setEnabled(providerAdapterState.groups.id, parsed.enabled, parsed.impactDigest);
+    audit.append({ actorLabel: context.principal?.userId, action: parsed.enabled ? "PROVIDER_ADAPTER_ENABLED" : "PROVIDER_ADAPTER_DISABLED", resourceType: "PROVIDER_ADAPTER", resourceId: providerAdapterState.groups.id, summary: `Provider adapter ${parsed.enabled ? "enabled" : "disabled"} after dependency-impact verification.`, metadata: { impactDigest: parsed.impactDigest } });
+    sendJson(response, 200, { adapter });
+    return;
+  }
+  const providerAdapterMaterialize = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)\/materialize$/.exec(url.pathname);
+  if (request.method === "POST" && providerAdapterMaterialize?.groups?.id) {
+    requirePermission(context, "scans.create");
+    const materialized = context.providerAdapters.materialize(providerAdapterMaterialize.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_MATERIALIZED", resourceType: "PROVIDER_ADAPTER", resourceId: providerAdapterMaterialize.groups.id, summary: "Reviewed adapter materialized into a dashboard Scan Studio draft; execution remains separately previewed and authorized." });
+    sendJson(response, 200, { materialized });
+    return;
+  }
+  const providerAdapterRecommendation = /^\/api\/provider-adapters\/(?<id>[0-9a-f-]+)\/recommendation$/.exec(url.pathname);
+  if (request.method === "POST" && providerAdapterRecommendation?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const body = await readJson(request) as { recommendationId?: unknown };
+    if (typeof body.recommendationId !== "string") throw new HttpError(400, "recommendationId is required.");
+    context.providerAdapters.bindRecommendation(providerAdapterRecommendation.groups.id, body.recommendationId, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "PROVIDER_ADAPTER_RECOMMENDATION_BOUND", resourceType: "PROVIDER_ADAPTER", resourceId: providerAdapterRecommendation.groups.id, summary: "Reviewed adapter bound to an exact approved adaptive recommendation.", metadata: { recommendationId: body.recommendationId } });
+    sendJson(response, 200, { adapter: context.providerAdapters.get(providerAdapterRecommendation.groups.id) });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/continuous-assurance/preview") {
+    requirePermission(context, "scans.create");
+    const parsed = continuousAssurancePolicyInputSchema.parse(await readJson(request));
+    const preview = await context.continuousAssurance.preview(parsed);
+    audit.append({ actorLabel: context.principal?.userId, action: "CONTINUOUS_ASSURANCE_PREVIEWED", resourceType: "TARGET", resourceId: parsed.targetId, summary: "Continuous assurance policy previewed without execution.", metadata: { policyDigest: preview.policyDigest, blockers: preview.blockers.length, adapters: preview.adapterBindings.length } });
+    sendJson(response, 200, { preview }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/continuous-assurance/policies") {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = continuousAssurancePolicyInputSchema.parse(await readJson(request));
+    const result = await context.continuousAssurance.create(parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "CONTINUOUS_ASSURANCE_POLICY_CREATED", resourceType: "CONTINUOUS_ASSURANCE_POLICY", resourceId: String((result.policy as {id?:unknown}).id), summary: "Continuous assurance draft created; deployment token issued once.", metadata: { targetId: parsed.targetId } });
+    sendJson(response, 201, result); return;
+  }
+  const assurancePolicyUpdate = /^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (request.method === "PATCH" && assurancePolicyUpdate?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = continuousAssurancePolicyInputSchema.parse(await readJson(request));
+    const policy = await context.continuousAssurance.update(assurancePolicyUpdate.groups.id, parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "CONTINUOUS_ASSURANCE_POLICY_UPDATED", resourceType: "CONTINUOUS_ASSURANCE_POLICY", resourceId: assurancePolicyUpdate.groups.id, summary: "Policy updated as a new immutable draft; execution paused pending review." });
+    sendJson(response, 200, { policy }); return;
+  }
+  const assuranceReview = /^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)\/review$/.exec(url.pathname);
+  if (request.method === "POST" && assuranceReview?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve"); const parsed=continuousAssuranceReviewSchema.parse(await readJson(request));
+    const policy=await context.continuousAssurance.review(assuranceReview.groups.id,parsed.versionId,parsed.policyDigest,context.principal?.userId??"local-operator");
+    audit.append({actorLabel:context.principal?.userId,action:"CONTINUOUS_ASSURANCE_POLICY_REVIEWED",resourceType:"CONTINUOUS_ASSURANCE_POLICY",resourceId:assuranceReview.groups.id,summary:"Exact policy, target revision, adapters, actors, budgets, authorization, baselines, and gates reviewed and activated.",metadata:{versionId:parsed.versionId,policyDigest:parsed.policyDigest}}); sendJson(response,200,{policy});return;
+  }
+  const assuranceState=/^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)\/state$/.exec(url.pathname);
+  if(request.method==="POST"&&assuranceState?.groups?.id){requirePermission(context,"controlledMutation.approve");const parsed=continuousAssuranceStateSchema.parse(await readJson(request));const policy=context.continuousAssurance.setEnabled(assuranceState.groups.id,parsed.enabled,parsed.impactDigest);audit.append({actorLabel:context.principal?.userId,action:parsed.enabled?"CONTINUOUS_ASSURANCE_ENABLED":"CONTINUOUS_ASSURANCE_DISABLED",resourceType:"CONTINUOUS_ASSURANCE_POLICY",resourceId:assuranceState.groups.id,summary:`Continuous assurance ${parsed.enabled?"enabled":"disabled"} after dependency-impact verification.`});sendJson(response,200,{policy});return;}
+  const assuranceRun=/^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)\/run$/.exec(url.pathname);
+  if(request.method==="POST"&&assuranceRun?.groups?.id){requirePermission(context,"controlledMutation.approve");continuousAssuranceRunSchema.parse(await readJson(request));const run=await context.continuousAssurance.runNow(assuranceRun.groups.id,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"CONTINUOUS_ASSURANCE_RUN_STARTED",resourceType:"CONTINUOUS_ASSURANCE_RUN",resourceId:String(run.id),summary:"Reviewed continuous assurance run queued."});sendJson(response,202,{run});return;}
+  const assuranceToken=/^\/api\/continuous-assurance\/policies\/(?<id>[0-9a-f-]+)\/rotate-token$/.exec(url.pathname);
+  if(request.method==="POST"&&assuranceToken?.groups?.id){requirePermission(context,"settings.manage");continuousAssuranceTokenRotationSchema.parse(await readJson(request));const result=context.continuousAssurance.rotateTriggerToken(assuranceToken.groups.id,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"CONTINUOUS_ASSURANCE_TOKEN_ROTATED",resourceType:"CONTINUOUS_ASSURANCE_POLICY",resourceId:assuranceToken.groups.id,summary:"Deployment trigger token rotated; prior token invalidated."});sendJson(response,200,result);return;}
+  const assuranceAck=/^\/api\/continuous-assurance\/notifications\/(?<id>[0-9a-f-]+)\/acknowledge$/.exec(url.pathname);
+  if(request.method==="POST"&&assuranceAck?.groups?.id){requirePermission(context,"controlledMutation.approve");continuousAssuranceNotificationAckSchema.parse(await readJson(request));context.continuousAssurance.acknowledge(assuranceAck.groups.id,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"CONTINUOUS_ASSURANCE_NOTIFICATION_ACKNOWLEDGED",resourceType:"CONTINUOUS_ASSURANCE_NOTIFICATION",resourceId:assuranceAck.groups.id,summary:"Continuous assurance operator notification acknowledged."});sendJson(response,200,{ok:true});return;}
+  if(request.method==="PUT"&&url.pathname==="/api/evidence-governance/policy"){requirePermission(context,"settings.manage");const parsed=evidenceGovernancePolicySchema.parse(await readJson(request));const policy=context.evidenceGovernance.updatePolicy(parsed,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"EVIDENCE_GOVERNANCE_POLICY_UPDATED",resourceType:"EVIDENCE_GOVERNANCE_POLICY",summary:"Retention policy updated; failed, cleanup, and unreviewed evidence remain protected."});sendJson(response,200,{policy});return;}
+  if(request.method==="POST"&&url.pathname==="/api/evidence-governance/exports"){requirePermission(context,"proofPacks.create");const parsed=evidenceExportSchema.parse(await readJson(request));const exported=context.evidenceGovernance.createExport(parsed.scanIds,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"EVIDENCE_EXPORT_CREATED",resourceType:"EVIDENCE_EXPORT",resourceId:String(exported.id),summary:"Encrypted, integrity-signed evidence export created.",metadata:{scanCount:parsed.scanIds.length}});sendJson(response,201,{export:exported});return;}
+  const evidenceVerify=/^\/api\/evidence-governance\/exports\/(?<id>[0-9a-f-]+)\/verify$/.exec(url.pathname);
+  if(request.method==="POST"&&evidenceVerify?.groups?.id){requirePermission(context,"artifacts.download");const value=context.evidenceGovernance.verifyExport(evidenceVerify.groups.id);audit.append({actorLabel:context.principal?.userId,action:"EVIDENCE_EXPORT_VERIFIED",resourceType:"EVIDENCE_EXPORT",resourceId:evidenceVerify.groups.id,summary:"Evidence export authenticity, installation binding, decryption, manifest, and embedded artifact digests verified."});sendJson(response,200,{export:value});return;}
+  if(request.method==="POST"&&url.pathname==="/api/evidence-governance/purge-preview"){requirePermission(context,"settings.manage");sendJson(response,200,context.evidenceGovernance.purgePreview());return;}
+  if(request.method==="POST"&&url.pathname==="/api/evidence-governance/purge"){requirePermission(context,"settings.manage");const parsed=evidencePurgeSchema.parse(await readJson(request));const result=context.evidenceGovernance.purge(parsed.previewDigest,context.principal?.userId??"local-operator");audit.append({actorLabel:context.principal?.userId,action:"EVIDENCE_RETENTION_PURGE_EXECUTED",resourceType:"EVIDENCE_GOVERNANCE_POLICY",summary:`Purged ${result.purgedCount} eligible artifact(s); ${result.failedCount} failed.`,metadata:result});sendJson(response,200,result);return;}
+  if (request.method === "POST" && url.pathname === "/api/adaptive-security/analyze") {
+    requirePermission(context, "scans.create");
+    const parsed = adaptiveAnalyzeSchema.parse(await readJson(request));
+    const snapshot = await context.adaptiveSecurity.analyze(parsed.targetId, parsed.scanId);
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_SECURITY_MODEL_ANALYZED", resourceType: "SCAN", resourceId: parsed.scanId, summary: "Completed scan evidence analyzed into an adaptive security model.", metadata: { targetId: parsed.targetId, snapshotId: snapshot.id, modelDigest: snapshot.modelDigest } });
+    sendJson(response, 201, { snapshot });
+    return;
+  }
+  if (request.method === "PUT" && url.pathname === "/api/adaptive-security/policy") {
+    requirePermission(context, "settings.manage");
+    const parsed = adaptivePolicyInputSchema.parse(await readJson(request));
+    const adaptiveSecurity = context.adaptiveSecurity.setPolicy(parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_SECURITY_POLICY_UPDATED", resourceType: "TARGET", resourceId: parsed.targetId, summary: "Adaptive coverage and drift policy updated.", metadata: { requiredLanes: parsed.requiredLanes, requireEvidenceForNotApplicable: parsed.requireEvidenceForNotApplicable, detectRemovedSurfaces: parsed.detectRemovedSurfaces } });
+    sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  const adaptiveBaseline = /^\/api\/adaptive-security\/snapshots\/(?<id>[0-9a-f-]+)\/accept$/.exec(url.pathname);
+  if (request.method === "POST" && adaptiveBaseline?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = adaptiveBaselineSchema.parse(await readJson(request));
+    const adaptiveSecurity = context.adaptiveSecurity.acceptBaseline(adaptiveBaseline.groups.id, parsed.modelDigest, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_SECURITY_BASELINE_ACCEPTED", resourceType: "ADAPTIVE_SECURITY_SNAPSHOT", resourceId: adaptiveBaseline.groups.id, summary: "Exact observed target security model accepted as the expected baseline.", metadata: { modelDigest: parsed.modelDigest } });
+    sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  const adaptiveRecommendation = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/decision$/.exec(url.pathname);
+  if (request.method === "POST" && adaptiveRecommendation?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = adaptiveRecommendationDecisionSchema.parse(await readJson(request));
+    const adaptiveSecurity = context.adaptiveSecurity.decideRecommendation(adaptiveRecommendation.groups.id, parsed.decision, parsed.rationale, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: `ADAPTIVE_RECOMMENDATION_${parsed.decision}`, resourceType: "ADAPTIVE_SECURITY_RECOMMENDATION", resourceId: adaptiveRecommendation.groups.id, summary: `Adaptive test recommendation ${parsed.decision.toLowerCase()}; no execution was implied.`, metadata: { rationale: parsed.rationale } });
+    sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  const adaptiveLink = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/link$/.exec(url.pathname);
+  if (request.method === "POST" && adaptiveLink?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = adaptiveRecommendationLinkSchema.parse(await readJson(request));
+    const adaptiveSecurity = context.adaptiveSecurity.linkRecommendation(adaptiveLink.groups.id, parsed.scanId, parsed.caseFingerprint, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_RECOMMENDATION_EXECUTION_LINKED", resourceType: "ADAPTIVE_SECURITY_RECOMMENDATION", resourceId: adaptiveLink.groups.id, summary: "An explicitly approved recommendation was linked to an exact same-target workflow case for verification.", metadata: { scanId: parsed.scanId, caseFingerprint: parsed.caseFingerprint } });
+    sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  const adaptiveRefresh = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/refresh$/.exec(url.pathname);
+  if (request.method === "POST" && adaptiveRefresh?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const adaptiveSecurity = context.adaptiveSecurity.refreshRecommendation(adaptiveRefresh.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_RECOMMENDATION_VERIFICATION_REFRESHED", resourceType: "ADAPTIVE_SECURITY_RECOMMENDATION", resourceId: adaptiveRefresh.groups.id, summary: "Linked recommendation verification refreshed from durable scan evidence." });
+    sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/live-acceptance/preview") {
+    requirePermission(context, "scans.create");
+    const parsed = liveAcceptancePlanInputSchema.parse(await readJson(request));
+    const preview = await context.liveAcceptance.preview(parsed);
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_PLAN_PREVIEWED", resourceType: "TARGET", resourceId: parsed.targetId, summary: `Live acceptance plan previewed with ${parsed.lanes.length} lane(s).`, metadata: { planDigest: preview.planDigest, laneCount: parsed.lanes.length, blockerCount: preview.blockers.length } });
+    sendJson(response, 200, { preview });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/live-acceptance/plans") {
+    requirePermission(context, "scans.create");
+    const parsed = liveAcceptancePlanInputSchema.parse(await readJson(request));
+    const result = await context.liveAcceptance.create(parsed, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_PLAN_CREATED", resourceType: "LIVE_ACCEPTANCE_PLAN", resourceId: String(result.plan.id), summary: `Encrypted live acceptance plan created with ${parsed.lanes.length} lane(s).`, metadata: { targetId: parsed.targetId, planDigest: result.preview.planDigest } });
+    sendJson(response, 201, result);
+    return;
+  }
+  const liveAcceptancePlanUpdate = /^\/api\/live-acceptance\/plans\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (request.method === "PATCH" && liveAcceptancePlanUpdate?.groups?.id) {
+    requirePermission(context, "scans.create");
+    const body = await readJson(request) as { input?: unknown; expectedVersion?: unknown };
+    if (!Number.isInteger(body.expectedVersion)) throw new HttpError(400, "Live acceptance update requires expectedVersion.");
+    const result = await context.liveAcceptance.update(liveAcceptancePlanUpdate.groups.id, body.input, Number(body.expectedVersion));
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_PLAN_UPDATED", resourceType: "LIVE_ACCEPTANCE_PLAN", resourceId: liveAcceptancePlanUpdate.groups.id, summary: "Live acceptance plan updated; prior review was invalidated.", metadata: { planDigest: result.preview.planDigest } });
+    sendJson(response, 200, result);
+    return;
+  }
+  const liveAcceptanceReview = /^\/api\/live-acceptance\/plans\/(?<id>[0-9a-f-]+)\/review$/.exec(url.pathname);
+  if (request.method === "POST" && liveAcceptanceReview?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = liveAcceptanceReviewSchema.parse(await readJson(request));
+    const plan = await context.liveAcceptance.review(liveAcceptanceReview.groups.id, parsed.planDigest, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_PLAN_REVIEWED", resourceType: "LIVE_ACCEPTANCE_PLAN", resourceId: liveAcceptanceReview.groups.id, summary: "Exact live acceptance plan reviewed and bound.", metadata: { planDigest: parsed.planDigest } });
+    sendJson(response, 200, { plan });
+    return;
+  }
+  const liveAcceptanceExecute = /^\/api\/live-acceptance\/plans\/(?<id>[0-9a-f-]+)\/execute$/.exec(url.pathname);
+  if (request.method === "POST" && liveAcceptanceExecute?.groups?.id) {
+    requirePermission(context, "controlledMutation.approve");
+    const parsed = liveAcceptanceExecuteSchema.parse(await readJson(request));
+    const run = await context.liveAcceptance.execute(liveAcceptanceExecute.groups.id, parsed.planDigest, context.principal?.userId ?? "local-operator");
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_RUN_STARTED", resourceType: "LIVE_ACCEPTANCE_RUN", resourceId: String(run.id), summary: "Reviewed live acceptance run started.", metadata: { planId: liveAcceptanceExecute.groups.id, planDigest: parsed.planDigest } });
+    sendJson(response, 202, { run });
+    return;
+  }
+  const liveAcceptanceCancel = /^\/api\/live-acceptance\/runs\/(?<id>[0-9a-f-]+)\/cancel$/.exec(url.pathname);
+  if (request.method === "POST" && liveAcceptanceCancel?.groups?.id) {
+    requirePermission(context, "scans.cancel");
+    const run = context.liveAcceptance.cancelRun(liveAcceptanceCancel.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "LIVE_ACCEPTANCE_RUN_CANCELLED", resourceType: "LIVE_ACCEPTANCE_RUN", resourceId: liveAcceptanceCancel.groups.id, summary: "Live acceptance run cancellation requested." });
+    sendJson(response, 202, { run });
+    return;
+  }
   const assistedPublication = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/assisted-review\/publish$/.exec(url.pathname);
   if (request.method === "POST" && assistedPublication?.groups?.id) {
     requirePermission(context, "proofPacks.create");
@@ -827,6 +1146,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     const parsed = dashboardScanCreateSchema.parse(await readJson(request));
     validateScanReferences(context, parsed);
     requireCredentialUsePermission(context, parsed);
+    await assertProviderAdapterExecution(context, parsed);
     const preview = await execution.preview(parsed);
     audit.append({ actorLabel: context.principal?.userId, action: "SCAN_STUDIO_PLAN_PREVIEW", resourceType: "TARGET", resourceId: parsed.targetId, summary: `Plan preview resolved for ${new URL(parsed.target).origin}.`, metadata: { projectId: parsed.projectId, profile: parsed.profile, moduleCount: preview.modules.length, studioVersion: parsed.studio?.version } });
     sendJson(response, 200, preview);
@@ -862,7 +1182,9 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     validateScanReferences(context, parsed);
     requireCredentialUsePermission(context, parsed);
     if (parsed.studio?.retestContext) findingCommandCenter.validateRetestContext(parsed.studio.retestContext);
+    await assertProviderAdapterExecution(context, parsed);
     const scanId = await execution.enqueue(parsed);
+    if (parsed.providerAdapterBinding) context.providerAdapters.bindScan(scanId, parsed.providerAdapterBinding);
     if (parsed.studio?.retestContext) {
       findingCommandCenter.recordRetestLaunch({ context: parsed.studio.retestContext, newScanId: scanId, principal: context.principal! });
     }
@@ -1220,6 +1542,11 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     return;
   }
   throw new HttpError(404, "API route not found.");
+}
+
+async function assertProviderAdapterExecution(context: ApiContext, request: DashboardScanCreateRequest): Promise<void> {
+  try { await context.providerAdapters.assertExecutionBinding(request); }
+  catch (error) { throw new HttpError(409, error instanceof Error ? error.message : "PROVIDER_ADAPTER_EXECUTION_REJECTED"); }
 }
 
 function requireCredentialUsePermission(context: ApiContext, request: { credentialProfileId?: string | undefined; credentialProfileAId?: string | undefined; credentialProfileBId?: string | undefined; studio?: { authentication: { mode: string; primary?: { source: string }; accountA?: { source: string }; accountB?: { source: string } } } | undefined }): void {

@@ -22,8 +22,77 @@ describe("RouteCairn dashboard UI", () => {
     expect(await screen.findByRole("button", { name: "Scans" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New Scan" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Workers" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Live Acceptance" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Adaptive Security" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fixture Adapters" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continuous Assurance" })).toBeTruthy();
     rendered.unmount();
     vi.unstubAllGlobals();
+  });
+
+  it("opens continuous assurance and evidence governance as a managed dashboard workspace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url=String(input); const body=url.includes("/api/auth/session")?{principal:{login:"owner",role:"OWNER"}}:url.includes("/api/provider-adapters")?{adapters:[]}:url.includes("/api/continuous-assurance")?{policies:[],notifications:[]}:url.includes("/api/evidence-governance")?{available:true,policy:{retentionDays:90,maximumExportBytes:52428800,rowVersion:1},exports:[],purgePreview:{previewDigest:"a".repeat(64),cutoff:"2026-01-01T00:00:00.000Z",candidates:[],protectedCounts:{failed:0,cleanup:0,review:0}}}:url.includes("/api/targets")?{targets:[]}:url.includes("/api/scans")?{scans:[]}:{scans:{total:0,queued:0,running:0,completed:0,failed:0,interrupted:0},findings:{open:0,unreviewed:0,confirmed:0,falsePositive:0,acceptedRisk:0,resolved:0,reopened:0},recentScans:[]};return{ok:true,status:200,json:async()=>body} as Response;
+    }));
+    const rendered=render(<App/>),user=userEvent.setup();await user.click(await screen.findByRole("button",{name:"Continuous Assurance"}));
+    expect(await screen.findByRole("heading",{name:"Continuous Assurance & Evidence Governance"})).toBeTruthy();
+    expect(screen.getByText("Automation never creates authorization")).toBeTruthy();
+    expect(screen.getByRole("button",{name:"Preview policy and budgets"})).toBeTruthy();
+    expect(screen.getByRole("heading",{name:"Evidence governance"})).toBeTruthy();
+    rendered.unmount();vi.unstubAllGlobals();
+  });
+
+  it("opens the versioned fixture and provider adapter workspace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/api/auth/session") ? { principal: { login: "owner", role: "OWNER" } }
+        : url.includes("/api/credential-profiles") ? { profiles: [] }
+        : url.includes("/api/provider-adapters") ? { available: true, adapters: [] }
+        : url.includes("/api/targets") ? { targets: [] }
+        : { scans: { total: 0, queued: 0, running: 0, completed: 0, failed: 0, interrupted: 0 }, findings: { open: 0, unreviewed: 0, confirmed: 0, falsePositive: 0, acceptedRisk: 0, resolved: 0, reopened: 0 }, recentScans: [] };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+    const rendered = render(<App />); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Fixture Adapters" }));
+    expect(await screen.findByRole("heading", { name: "Fixture & Provider Adapters" })).toBeTruthy();
+    expect(screen.getByText("Reusable does not mean pre-authorized")).toBeTruthy();
+    rendered.unmount(); vi.unstubAllGlobals();
+  });
+
+  it("opens the dashboard-native adaptive security workspace", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/api/auth/session") ? { principal: { login: "owner", role: "OWNER" } }
+        : url.includes("/api/targets") ? { targets: [] }
+        : url.includes("/api/scans") ? { scans: [] }
+        : { scans: { total: 0, queued: 0, running: 0, completed: 0, failed: 0, interrupted: 0 }, findings: { open: 0, unreviewed: 0, confirmed: 0, falsePositive: 0, acceptedRisk: 0, resolved: 0, reopened: 0 }, recentScans: [] };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+    const rendered = render(<App />); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Adaptive Security" }));
+    expect(await screen.findByRole("heading", { name: "Adaptive Security" })).toBeTruthy();
+    expect(screen.getByText("Learning never authorizes mutation")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Analyze evidence" })).toBeTruthy();
+    rendered.unmount(); vi.unstubAllGlobals();
+  });
+
+  it("opens the dashboard-native live acceptance builder", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.includes("/api/auth/session") ? { principal: { login: "owner", role: "OWNER" } }
+        : url.includes("/api/credential-profiles") ? { profiles: [] }
+        : url.includes("/api/live-acceptance/plans") ? { available: true, plans: [] }
+        : url.includes("/api/targets") ? { targets: [] }
+        : url.includes("/api/scans") ? { scans: [] }
+        : { scans: { total: 0, queued: 0, running: 0, completed: 0, failed: 0, interrupted: 0 }, findings: { open: 0, unreviewed: 0, confirmed: 0, falsePositive: 0, acceptedRisk: 0, resolved: 0, reopened: 0 }, recentScans: [] };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    }));
+    const rendered = render(<App />); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Live Acceptance" }));
+    expect(await screen.findByRole("heading", { name: "Live Target Acceptance" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Guided builder" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Preview all lanes" })).toBeTruthy();
+    rendered.unmount(); vi.unstubAllGlobals();
   });
 
   it("renders a persistent emergency alert for unresolved controlled-mutation cleanup", async () => {

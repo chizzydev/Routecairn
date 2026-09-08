@@ -32,6 +32,7 @@ import { defaultConfig } from "../../config/defaults.js";
 import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
 import { assertRegisteredTargetScope } from "./RegisteredTargetScope.js";
+import { AdaptiveSecurityService } from "./AdaptiveSecurityService.js";
 
 const maxQueuedScans = 20;
 
@@ -467,7 +468,10 @@ export class ScanExecutionService {
         this.events.append(scanId, result.status === "COMPLETED" ? "SCAN_COMPLETED" : result.status === "CANCELLED" ? "SCAN_CANCELLED" : result.status === "INTERRUPTED" ? "SCAN_INTERRUPTED" : "SCAN_FAILED", result.status === "COMPLETED" ? "Scan completed in isolated worker." : "Partial evidence ingested; incomplete coverage is not a security pass.", { findingCount, workerId: result.workerId, partial: result.status !== "COMPLETED", cleanupUnresolved });
         if (cleanupUnresolved) this.events.append(scanId, "MUTATION_CLEANUP_REQUIRED", "Cleanup remains unresolved or unknown. Use Offensive Safety recovery before further mutation.", { cleanup: report.execution?.cleanup });
       });
-      if (result.status === "COMPLETED") this.createAutomaticComparison(scanId);
+      if (result.status === "COMPLETED") {
+        this.captureAdaptiveSecurityModel(scanId, report);
+        this.createAutomaticComparison(scanId);
+      }
   }
 
   private reconcileInterruptedReports(): Promise<void> {
@@ -502,6 +506,19 @@ export class ScanExecutionService {
       this.audit.append({ action: "comparison.automatic_created", resourceType: "SCAN_COMPARISON", resourceId: result.comparisonId, summary: "Automatic comparison created after scan completion.", metadata: { comparisonId: result.comparisonId, olderScanId: previous.id, newerScanId: scanId, targetId: scan.target_id, timestamp: nowIso() } });
     } catch (error) {
       this.events.append(scanId, "OBSERVATION_RECORDED", "Automatic comparison could not be completed; scan completion was unaffected.", { category: error instanceof Error ? error.name : "COMPARISON_FAILED" });
+    }
+  }
+
+  private captureAdaptiveSecurityModel(scanId: string, report: import("../../reports/ReportTypes.js").RouteCairnReport): void {
+    try {
+      const binding = this.database.db.prepare("SELECT target_id FROM scans WHERE id=?").get(scanId) as { target_id: string | null } | undefined;
+      if (!binding?.target_id) return;
+      const snapshot = new AdaptiveSecurityService(this.database).observeCompletedScan(scanId, report);
+      this.events.append(scanId, "OBSERVATION_RECORDED", "Adaptive target security model captured from completed scan evidence.", { snapshotId: snapshot.id, modelDigest: snapshot.modelDigest });
+      this.audit.append({ action: "ADAPTIVE_SECURITY_MODEL_CAPTURED", resourceType: "SCAN", resourceId: scanId, summary: "Completed scan evidence was converted into a safe target security model snapshot.", metadata: { snapshotId: snapshot.id, modelDigest: snapshot.modelDigest } });
+    } catch (error) {
+      this.events.append(scanId, "OBSERVATION_RECORDED", "Adaptive model capture was unavailable; scan completion was unaffected.", { category: safeErrorMessage(error) });
+      this.audit.append({ action: "ADAPTIVE_SECURITY_MODEL_CAPTURE_FAILED", resourceType: "SCAN", resourceId: scanId, summary: "Adaptive model capture requires operator review; completed scan evidence remains available.", metadata: { category: safeErrorMessage(error) } });
     }
   }
 

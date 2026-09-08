@@ -90,6 +90,8 @@ export class ControlledMutationExecutor {
       await this.journal.append({ ...base(contract, "PRE_STATE_CAPTURED"), responseStatus: preState.response.statusCode, responseHash: preStateHash });
       const recovery: MutationRecoveryBundle = {
         caseId: contract.caseId,
+        intent: contract.intent,
+        securityCategory: contract.securityCategory,
         targetOrigin: contract.targetOrigin,
         targetIdentityFingerprint: contract.target.identityFingerprint,
         authorizationExpiresAt: contract.authorization.expiresAt,
@@ -114,7 +116,11 @@ export class ControlledMutationExecutor {
 
       const impact = await this.verify(contract.impact);
       notes.push(...impact.notes);
-      securityOutcome = impact.matched ? "EXPLOIT_PROVEN" : rejected(attack) ? "SECURE_FOR_CASE" : "INCONCLUSIVE";
+      securityOutcome = impact.matched
+        ? contract.intent === "SECURITY_NEGATIVE" ? "EXPLOIT_PROVEN" : "EXPECTED_MUTATION_VERIFIED"
+        : rejected(attack)
+          ? contract.intent === "SECURITY_NEGATIVE" ? "SECURE_FOR_CASE" : "EXPECTED_MUTATION_REJECTED"
+          : "INCONCLUSIVE";
       await this.journal.append({ ...base(contract, "IMPACT_VERIFIED"), responseStatus: impact.response.statusCode, responseHash: impact.response.bodyHash, outcome: securityOutcome });
       if (contract.protectedAction) {
         const protectedAction = await this.verify(contract.protectedAction);
@@ -257,8 +263,8 @@ function valueAt(value: unknown, path: string): { found: boolean; value?: unknow
 }
 
 function rejected(response: HttpResponse): boolean { return typeof response.statusCode === "number" && [400, 401, 403, 404, 405, 409, 422].includes(response.statusCode); }
-function base(contract: ControlledMutationContract, stage: MutationJournalStage) { return { caseId: contract.caseId, stage, mode: contract.mode, targetOrigin: contract.targetOrigin, targetIdentityFingerprint: contract.target.identityFingerprint }; }
-function recoveryBase(bundle: MutationRecoveryBundle, stage: MutationJournalStage) { return { caseId: bundle.caseId, stage, mode: "CONTROLLED_MUTATION" as OffensiveExecutionMode, targetOrigin: bundle.targetOrigin, targetIdentityFingerprint: bundle.targetIdentityFingerprint ?? "recovery" }; }
+function base(contract: ControlledMutationContract, stage: MutationJournalStage) { return { caseId: contract.caseId, stage, mode: contract.mode, intent: contract.intent, securityCategory: contract.securityCategory, targetOrigin: contract.targetOrigin, targetIdentityFingerprint: contract.target.identityFingerprint }; }
+function recoveryBase(bundle: MutationRecoveryBundle, stage: MutationJournalStage) { return { caseId: bundle.caseId, stage, mode: "CONTROLLED_MUTATION" as OffensiveExecutionMode, ...(bundle.intent ? { intent: bundle.intent } : {}), ...(bundle.securityCategory ? { securityCategory: bundle.securityCategory } : {}), targetOrigin: bundle.targetOrigin, targetIdentityFingerprint: bundle.targetIdentityFingerprint ?? "recovery" }; }
 function simpleResult(caseId: string, outcome: ControlledMutationResult["outcome"], securityOutcome: ControlledMutationResult["securityOutcome"], cleanupOutcome: ControlledMutationResult["cleanupOutcome"], journalPath: string, notes: string[], identity?: string): ControlledMutationResult { return { caseId, outcome, securityOutcome, cleanupOutcome, journalPath, comparisonIdentity: identity ?? createHash("sha256").update(`blocked:${caseId}`).digest("hex"), notes }; }
 function comparisonIdentity(contract: ControlledMutationContract): string {
   const verification = (value: MutationVerification) => ({ ...value, request: semanticRequest(value.request) });
@@ -267,6 +273,8 @@ function comparisonIdentity(contract: ControlledMutationContract): string {
     caseId: contract.caseId,
     targetOrigin: contract.targetOrigin,
     mode: contract.mode,
+    intent: contract.intent,
+    securityCategory: contract.securityCategory,
     environment: contract.environment,
     actor: contract.actor,
     identity: contract.identity ? verification(contract.identity) : undefined,

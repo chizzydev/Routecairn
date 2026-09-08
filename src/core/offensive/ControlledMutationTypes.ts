@@ -3,7 +3,9 @@ import type { HttpRequest, HttpResponse } from "../http/HttpTypes.js";
 import type { TargetAuthorization } from "../authorization/TargetAuthorization.js";
 
 export const offensiveExecutionModeSchema = z.enum(["OBSERVE", "SAFE_ACTIVE", "CONTROLLED_MUTATION", "CONTROLLED_DELETION", "LAB_DESTRUCTIVE"]);
-export const mutationOutcomeSchema = z.enum(["EXPLOIT_PROVEN", "SECURE_FOR_CASE", "INCONCLUSIVE", "BLOCKED_BY_SAFETY", "ROLLBACK_VERIFIED", "CLEANUP_REQUIRED", "CLEANUP_FAILED"]);
+export const mutationOutcomeSchema = z.enum(["EXPLOIT_PROVEN", "SECURE_FOR_CASE", "EXPECTED_MUTATION_VERIFIED", "EXPECTED_MUTATION_REJECTED", "INCONCLUSIVE", "BLOCKED_BY_SAFETY", "ROLLBACK_VERIFIED", "CLEANUP_REQUIRED", "CLEANUP_FAILED"]);
+export const controlledMutationIntentSchema = z.enum(["SECURITY_NEGATIVE", "AUTHORIZED_ACCEPTANCE", "ROLLBACK_ACCEPTANCE", "RECOVERY_ACCEPTANCE"]);
+export const controlledMutationSecurityCategorySchema = z.enum(["PRIVILEGE_ESCALATION", "MASS_ASSIGNMENT", "CROSS_TENANT_REASSIGNMENT", "OWNERSHIP_TAKEOVER", "ADMINISTRATIVE_BOUNDARY"]);
 
 const requestSchema = z.object({
   url: z.string().url(),
@@ -32,6 +34,8 @@ export const controlledMutationContractSchema = z.object({
   caseId: z.string().regex(/^[a-zA-Z0-9._-]+$/).max(120),
   targetOrigin: z.string().url(),
   mode: offensiveExecutionModeSchema,
+  intent: controlledMutationIntentSchema.default("SECURITY_NEGATIVE"),
+  securityCategory: controlledMutationSecurityCategorySchema.default("MASS_ASSIGNMENT"),
   environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]),
   productionAcknowledged: z.boolean().default(false),
   approvalBinding: z.object({
@@ -73,6 +77,7 @@ export const controlledMutationContractSchema = z.object({
 
 export type OffensiveExecutionMode = z.infer<typeof offensiveExecutionModeSchema>;
 export type MutationOutcome = z.infer<typeof mutationOutcomeSchema>;
+export type ControlledMutationIntent = z.infer<typeof controlledMutationIntentSchema>;
 export type ControlledMutationContract = z.infer<typeof controlledMutationContractSchema>;
 export type MutationAssertion = z.infer<typeof assertionSchema>;
 export type MutationVerification = z.infer<typeof verificationSchema>;
@@ -87,6 +92,8 @@ export interface MutationJournalEntry {
   stage: MutationJournalStage;
   timestamp: string;
   mode: OffensiveExecutionMode;
+  intent?: ControlledMutationIntent;
+  securityCategory?: z.infer<typeof controlledMutationSecurityCategorySchema>;
   targetOrigin: string;
   targetIdentityFingerprint: string;
   requestMethod?: string | undefined;
@@ -102,7 +109,7 @@ export interface MutationJournalEntry {
 export interface ControlledMutationResult {
   caseId: string;
   outcome: MutationOutcome;
-  securityOutcome: "EXPLOIT_PROVEN" | "SECURE_FOR_CASE" | "INCONCLUSIVE" | "BLOCKED_BY_SAFETY";
+  securityOutcome: "EXPLOIT_PROVEN" | "SECURE_FOR_CASE" | "EXPECTED_MUTATION_VERIFIED" | "EXPECTED_MUTATION_REJECTED" | "INCONCLUSIVE" | "BLOCKED_BY_SAFETY";
   cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_REQUIRED" | "CLEANUP_FAILED" | "NOT_REQUIRED";
   actorIdentityResponseHash?: string;
   targetIdentityResponseHash?: string;
@@ -128,6 +135,8 @@ export interface MutationRecoveryBundle {
   targetAuthorization?: TargetAuthorization;
   approvalBinding?: ControlledMutationContract["approvalBinding"];
   caseId: string;
+  intent?: ControlledMutationIntent;
+  securityCategory?: z.infer<typeof controlledMutationSecurityCategorySchema>;
   targetOrigin: string;
   targetIdentityFingerprint?: string;
   authorizationExpiresAt?: string;

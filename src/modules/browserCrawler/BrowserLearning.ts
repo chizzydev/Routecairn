@@ -356,14 +356,19 @@ function suggestedCategories(entry: BrowserTrafficEntry, path: string): string[]
   const signal = `${path} ${entry.requestFieldNames.join(" ")}`.toLowerCase();
   const suggestions: string[] = [];
   if (/logout|signout|revoke/.test(signal)) suggestions.push("LOGOUT_INVALIDATION", "SESSION_REVOCATION");
+  if (/(?:change|update|rotate).*(?:password|credential)|(?:password|credential).*(?:change|update|rotate)/.test(signal)) suggestions.push("PASSWORD_CHANGE_SESSION_INVALIDATION");
   if (/refresh/.test(signal)) suggestions.push("REFRESH_TOKEN_ROTATION");
   if (/reset|forgot/.test(signal)) suggestions.push("PASSWORD_RESET_TOKEN_BINDING", "PASSWORD_RESET_TOKEN_REPLAY", "PASSWORD_RESET_ACCOUNT_CONFUSION");
   if (/verify.*email|email.*verify/.test(signal)) suggestions.push("EMAIL_VERIFICATION_BYPASS");
   if (/oauth|oidc|callback/.test(signal)) suggestions.push("OAUTH_OIDC_STATE_REDIRECT_VALIDATION", "ACCOUNT_LINKING_CONFUSION");
+  if (/(?:link|connect|merge).*(?:account|identity|profile)|(?:account|identity).*(?:link|connect|merge)/.test(signal)) suggestions.push("ACCOUNT_LINKING_CONFUSION");
   if (/mfa|totp|2fa/.test(signal)) suggestions.push("MFA_ENROLLMENT_REMOVAL");
   if (/passkey|webauthn/.test(signal)) suggestions.push("PASSKEY_ENROLLMENT_REMOVAL");
   if (/recovery/.test(signal)) suggestions.push("RECOVERY_CODE_LIFECYCLE");
   if (/invite/.test(signal)) suggestions.push(/tenant|organization|workspace/.test(signal) ? "TENANT_INVITATION_LIFECYCLE" : "ADMIN_INVITATION_LIFECYCLE");
+  if (/(?:idle|inactivity).*(?:timeout|expire|session)|(?:session).*(?:idle|inactivity)/.test(signal)) suggestions.push("IDLE_EXPIRATION");
+  if (/(?:absolute|max).*(?:age|lifetime|expiry|expiration)|(?:session).*(?:ttl|expires)/.test(signal)) suggestions.push("ABSOLUTE_EXPIRATION");
+  if (/(?:disable|suspend|deactivate|blocked).*(?:user|account)|(?:user|account).*(?:disable|suspend|deactivate|blocked)/.test(signal)) suggestions.push("DISABLED_USER_SESSION_BEHAVIOR");
   return [...new Set(suggestions)];
 }
 

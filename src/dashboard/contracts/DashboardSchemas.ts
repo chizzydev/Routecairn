@@ -15,6 +15,7 @@ import { apiGraphqlInputSchema } from "../../modules/apiGraphql/ApiGraphqlPlanne
 import { linkPortalSecurityInputSchema } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
 import { operationalEndpointSecurityInputSchema } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
 import { billingEntitlementInputSchema } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
+import { providerAdapterBindingSchema } from "./ProviderAdapterSchemas.js";
 
 export const dashboardScanCreateSchema = z.object({
   target: z.string().url(),
@@ -37,6 +38,7 @@ export const dashboardScanCreateSchema = z.object({
   maxRequests: z.number().int().positive().max(10000).optional(),
   cleanupReservedRequests: z.number().int().min(0).max(5000).optional(),
   includeModules: z.array(z.string().min(1).max(120)).max(40).optional(),
+  providerAdapterBinding: providerAdapterBindingSchema.optional(),
   supabaseAuthorization: supabaseAuthorizationInputSchema.optional(),
   supabaseAuthorizationFile: z.string().min(1).max(1000).optional(),
   authenticationLifecycle: authenticationLifecycleInputSchema.optional(),

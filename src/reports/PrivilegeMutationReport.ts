@@ -7,6 +7,7 @@ export type PrivilegeMutationCleanupOutcome = "ROLLBACK_VERIFIED" | "CLEANUP_REQ
 export interface PrivilegeMutationObservation {
   caseId: string;
   category: PrivilegeMutationCasePlan["category"];
+  intent: PrivilegeMutationCasePlan["intent"];
   actorLabel: string;
   targetAlias: string;
   attackMethod: string;
