@@ -1,0 +1,8 @@
+{
+  "runtimeMs": 12450.5,
+  "peakRssBytes": 268435456,
+  "requestCount": 42,
+  "transmittedRequestCount": 40,
+  "cpuUserMicros": 810000,
+  "cpuSystemMicros": 120000
+}

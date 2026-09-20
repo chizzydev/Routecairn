@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "kind": "ROUTECAIRN_BENCHMARK_RESULT",
+  "benchmarkId": "routecairn-read-only-detection-lab",
+  "label": "RouteCairn read-only detection benchmark",
+  "generatedAt": "2026-09-19T23:28:05.202Z",
+  "release": { "label": "0.1.0-semantic-baseline", "build": "semantic-baseline", "routeCairnVersion": "0.1.0" },
+  "manifestDigest": "a53cda66e2f7b1f168b467434cfe6474b728a736219cffcf793ec0c973fa5ec1",
+  "reportDigests": ["bc5cc8e6d81eb341ff34dfda9910f866aa6806590cf4e599aa960a9e2abf0841"],
+  "repetitions": 1,
+  "runTelemetry": [{ "runtimeMs": 4362.7404, "peakRssBytes": 212590592, "requestCount": 17, "transmittedRequestCount": 17 }],
+  "confusion": { "truePositive": 4, "falseNegative": 0, "falsePositive": 0, "trueNegative": 4, "inconclusive": 0, "uncovered": 0, "unexpectedFindings": 0 },
+  "metrics": { "recall": 1, "precision": 1, "falsePositiveRate": 0, "inconclusiveRate": 0, "coverageCompleteness": 1, "conclusiveCoverage": 1, "stabilityRate": 1 },
+  "efficiency": {
+    "runtimeMs": { "min": 4362.7404, "median": 4362.7404, "p95": 4362.7404, "max": 4362.7404, "mean": 4362.7404 },
+    "peakRssBytes": { "min": 212590592, "median": 212590592, "p95": 212590592, "max": 212590592, "mean": 212590592 },
+    "requestCount": { "min": 17, "median": 17, "p95": 17, "max": 17, "mean": 17 },
+    "transmittedRequestCount": { "min": 17, "median": 17, "p95": 17, "max": 17, "mean": 17 },
+    "requestsPerAssessedCase": { "min": 2.125, "median": 2.125, "p95": 2.125, "max": 2.125, "mean": 2.125 },
+    "runtimePerRequestMs": { "min": 256.6317882352941, "median": 256.6317882352941, "p95": 256.6317882352941, "max": 256.6317882352941, "mean": 256.6317882352941 }
+  },
+  "cases": [
+    { "id": "object-vulnerable", "label": "Detect cross-tenant object authorization bypass", "expected": "FINDING", "category": "OBJECT_AUTHORIZATION", "tags": ["rest", "positive"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_POSITIVE", "observed": "FINDING", "matchedFindingIds": ["api-graphql-c9594bf10a68"] }], "aggregate": "TRUE_POSITIVE", "stable": true },
+    { "id": "object-secure", "label": "Accept correctly denied cross-tenant object access", "expected": "NO_FINDING", "category": "OBJECT_AUTHORIZATION", "tags": ["rest", "negative-control"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_NEGATIVE", "observed": "NO_FINDING", "matchedFindingIds": [] }], "aggregate": "TRUE_NEGATIVE", "stable": true },
+    { "id": "admin-vulnerable", "label": "Detect privileged function authorization bypass", "expected": "FINDING", "category": "FUNCTION_AUTHORIZATION", "tags": ["rest", "positive"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_POSITIVE", "observed": "FINDING", "matchedFindingIds": ["api-graphql-c3cdd50803a0"] }], "aggregate": "TRUE_POSITIVE", "stable": true },
+    { "id": "admin-secure", "label": "Accept correctly denied privileged function access", "expected": "NO_FINDING", "category": "FUNCTION_AUTHORIZATION", "tags": ["rest", "negative-control"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_NEGATIVE", "observed": "NO_FINDING", "matchedFindingIds": [] }], "aggregate": "TRUE_NEGATIVE", "stable": true },
+    { "id": "sql-vulnerable", "label": "Detect database error differential", "expected": "FINDING", "category": "SQL_INJECTION", "tags": ["active", "positive"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_POSITIVE", "observed": "FINDING", "matchedFindingIds": ["active-e8843bc3671b4f94"] }], "aggregate": "TRUE_POSITIVE", "stable": true },
+    { "id": "sql-secure", "label": "Accept neutralized SQL canary", "expected": "NO_FINDING", "category": "SQL_INJECTION", "tags": ["active", "negative-control"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_NEGATIVE", "observed": "NO_FINDING", "matchedFindingIds": [] }], "aggregate": "TRUE_NEGATIVE", "stable": true },
+    { "id": "redirect-vulnerable", "label": "Detect an untrusted external redirect", "expected": "FINDING", "category": "OPEN_REDIRECT", "tags": ["active", "positive"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_POSITIVE", "observed": "FINDING", "matchedFindingIds": ["active-0eb2c4428779e30d"] }], "aggregate": "TRUE_POSITIVE", "stable": true },
+    { "id": "redirect-secure", "label": "Accept a same-origin redirect boundary", "expected": "NO_FINDING", "category": "OPEN_REDIRECT", "tags": ["active", "negative-control"], "required": true, "runs": [{ "run": 1, "classification": "TRUE_NEGATIVE", "observed": "NO_FINDING", "matchedFindingIds": [] }], "aggregate": "TRUE_NEGATIVE", "stable": true }
+  ],
+  "unexpectedFindings": [],
+  "gates": [
+    { "id": "recall", "passed": true, "actual": 1, "expected": ">= 1" },
+    { "id": "false-positive-rate", "passed": true, "actual": 0, "expected": "<= 0" },
+    { "id": "inconclusive-rate", "passed": true, "actual": 0, "expected": "<= 0" },
+    { "id": "coverage-completeness", "passed": true, "actual": 1, "expected": ">= 1" },
+    { "id": "p95-runtime", "passed": true, "actual": 4362.7404, "expected": "<= 60000 ms" },
+    { "id": "peak-rss", "passed": true, "actual": 212590592, "expected": "<= 2000000000 bytes" },
+    { "id": "request-efficiency", "passed": true, "actual": 2.125, "expected": "<= 10 requests/assessed case" },
+    { "id": "required-case/object-vulnerable", "passed": true, "actual": true, "expected": "TRUE_POSITIVE" },
+    { "id": "required-case/object-secure", "passed": true, "actual": true, "expected": "TRUE_NEGATIVE" },
+    { "id": "required-case/admin-vulnerable", "passed": true, "actual": true, "expected": "TRUE_POSITIVE" },
+    { "id": "required-case/admin-secure", "passed": true, "actual": true, "expected": "TRUE_NEGATIVE" },
+    { "id": "required-case/sql-vulnerable", "passed": true, "actual": true, "expected": "TRUE_POSITIVE" },
+    { "id": "required-case/sql-secure", "passed": true, "actual": true, "expected": "TRUE_NEGATIVE" },
+    { "id": "required-case/redirect-vulnerable", "passed": true, "actual": true, "expected": "TRUE_POSITIVE" },
+    { "id": "required-case/redirect-secure", "passed": true, "actual": true, "expected": "TRUE_NEGATIVE" }
+  ],
+  "regressions": [],
+  "status": "PASSED"
+}

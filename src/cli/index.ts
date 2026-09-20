@@ -10,6 +10,8 @@ import { registerShowCommand } from "./commands/show.js";
 import { registerTriageCommand } from "./commands/triage.js";
 import { registerOffensiveCommand } from "./commands/offensive.js";
 import { registerValidateLocalCommand } from "./commands/validateLocal.js";
+import { registerBenchmarkCommand } from "./commands/benchmark.js";
+import { registerAgentCommand } from "./commands/agent.js";
 import { AppError } from "../core/errors/AppError.js";
 import { createLogger } from "../core/logging/Logger.js";
 
@@ -33,6 +35,8 @@ export function createCli(): Command {
   registerTriageCommand(program);
   registerOffensiveCommand(program);
   registerValidateLocalCommand(program);
+  registerBenchmarkCommand(program);
+  registerAgentCommand(program);
 
   return program;
 }

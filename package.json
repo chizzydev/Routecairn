@@ -6,8 +6,18 @@
   "bin": {
     "routecairn": "./dist/cli/index.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.mjs",
+    "apps/dashboard-ui/dist/**",
+    "examples/**/*.json",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/copy-runtime-assets.mjs",
+    "build:release": "tsc -p tsconfig.release.json && node scripts/copy-runtime-assets.mjs && npm run dashboard:build",
     "dashboard": "tsx src/cli/index.ts dashboard",
     "dashboard:dev": "vite --config apps/dashboard-ui/vite.config.ts --host 127.0.0.1",
     "dashboard:build": "vite build --config apps/dashboard-ui/vite.config.ts",
@@ -16,6 +26,13 @@
     "db:migrate": "tsx src/dashboard/server/migrate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "benchmark:local": "tsx src/cli/index.ts benchmark local",
+    "security:audit": "node scripts/dependency-security.mjs audit",
+    "security:sbom": "node scripts/dependency-security.mjs sbom",
+    "security:dependencies": "npm run security:audit -- --level moderate && npm run security:sbom -- --output-dir .routecairn-security",
+    "package:verify": "node scripts/verify-release-inputs.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs",
+    "prepack": "npm run build:release && npm run package:verify",
     "dev": "tsx src/cli/index.ts"
   },
   "keywords": [
@@ -28,7 +45,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@vitejs/plugin-react": "^6.0.5",
     "argon2": "^0.45.1",
     "better-sqlite3": "^12.6.2",
     "chalk": "^5.4.1",
@@ -38,10 +54,10 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "undici": "^7.29.1",
-    "vite": "^8.2.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/better-sqlite3": "^9.6.0",
@@ -52,7 +68,8 @@
     "node-gyp": "^12.1.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.9"
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": "^20.19.0 || ^22.19.0 || >=24.0.0"

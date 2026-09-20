@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:20"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    versioning-strategy: increase-if-necessary
+    groups:
+      vite-and-test-toolchain:
+        dependency-type: development
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
+          - "postcss"
+          - "nanoid"
+      production-runtime:
+        dependency-type: production
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5

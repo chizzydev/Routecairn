@@ -1,0 +1,128 @@
+name: RouteCairn dependency security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+  schedule:
+    - cron: "41 4 * * 2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: routecairn-dependencies-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reject newly introduced vulnerable dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          vulnerability-check: true
+          license-check: false
+          comment-summary-in-pr: always
+
+  dependency-security:
+    name: Audit and SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Reproduce the locked dependency graph
+        run: npm ci --ignore-scripts
+      - name: Reject moderate, high, and critical advisories
+        run: npm run security:audit -- --level moderate --output dependency-security-artifacts/npm-audit.json
+      - name: Generate and validate full and runtime CycloneDX SBOMs
+        if: always()
+        run: npm run security:sbom -- --output-dir dependency-security-artifacts
+      - name: Verify dependency manifests remained unchanged
+        if: always()
+        run: git diff --exit-code -- package.json package-lock.json
+      - name: Preserve dependency-security evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dependency-security-artifacts/
+          if-no-files-found: error
+          retention-days: 30
+
+  dependency-security-gate:
+    name: Required dependency security gate
+    if: always()
+    needs: [dependency-review, dependency-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject incomplete dependency assurance
+        env:
+          AUDIT_AND_SBOM: ${{ needs.dependency-security.result }}
+          DEPENDENCY_REVIEW: ${{ needs.dependency-review.result }}
+        run: |
+          test "$AUDIT_AND_SBOM" = success
+          test "$DEPENDENCY_REVIEW" = success || test "$DEPENDENCY_REVIEW" = skipped
+
+  release-provenance:
+    name: Attested release package
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [dependency-security, dependency-security-gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build release inputs
+        run: npm run build:release
+      - name: Verify release tests
+        run: npm test
+      - name: Create, install, and verify the exact release package
+        run: |
+          node -e "require('node:fs').mkdirSync('release', { recursive: true })"
+          npm run package:smoke -- --pack-destination release
+      - name: Create release SBOMs
+        run: |
+          npm run security:sbom -- --output-dir release/dependency-security
+      - name: Attest SLSA build provenance
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*.tgz
+      - name: Attest the runtime SBOM
+        id: sbom-attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: release/*.tgz
+          sbom-path: release/dependency-security/*-runtime.cdx.json
+      - name: Preserve attested release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: routecairn-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            release/
+            ${{ steps.provenance.outputs.bundle-path }}
+            ${{ steps.sbom-attestation.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 90

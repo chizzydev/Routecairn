@@ -42,6 +42,16 @@ jobs:
         run: npm run build && npm run dashboard:build
       - name: Full unit and integration suite
         run: npm test
+      - name: Measured effectiveness gate
+        run: node dist/cli/index.js benchmark local --repetitions 1 --baseline benchmarks/routecairn-read-only-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
+      - name: Preserve measured-effectiveness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: effectiveness-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-benchmarks/
+          if-no-files-found: error
+          retention-days: 30
       - name: Capability, migration, worker-fault, and browser-boundary gates
         run: npx vitest run tests/dashboard/admin/capability-parity.test.ts tests/dashboard/worker-governance.test.ts tests/dashboard/worker-governance-api.test.ts tests/unit/browser-network-boundary.test.ts tests/dashboard/dashboard-closure-workflows.test.ts
 
@@ -59,14 +69,29 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx vitest run tests/unit/browser-crawler.test.ts tests/integration/browser-crawler.test.ts tests/unit/browser-network-boundary.test.ts
 
+  release-package:
+    name: Published package acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build, pack, install, and exercise the published artifact
+        run: npm run package:smoke
+
   assurance-gate:
     name: Required assurance gate
     if: always()
-    needs: [cross-platform, browser-chromium]
+    needs: [cross-platform, browser-chromium, release-package]
     runs-on: ubuntu-latest
     steps:
       - name: Reject incomplete assurance
         env:
           CROSS_PLATFORM: ${{ needs.cross-platform.result }}
           BROWSER: ${{ needs.browser-chromium.result }}
-        run: test "$CROSS_PLATFORM" = success && test "$BROWSER" = success
+          RELEASE_PACKAGE: ${{ needs.release-package.result }}
+        run: test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success

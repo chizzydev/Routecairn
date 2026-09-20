@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "authorization-regression-suite",
+  "label": "Authorization detection benchmark",
+  "description": "Ground truth for read-only positive fixtures and secure negative controls.",
+  "cases": [
+    {
+      "id": "cross-tenant-positive",
+      "label": "Cross-tenant object bypass is detected",
+      "expected": "FINDING",
+      "selectors": [{ "workflowId": "api-graphql-authorization", "caseId": "cross-tenant-positive" }],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": ["rest", "positive"],
+      "required": true
+    },
+    {
+      "id": "cross-tenant-negative-control",
+      "label": "Correct denial does not generate a finding",
+      "expected": "NO_FINDING",
+      "selectors": [{ "workflowId": "api-graphql-authorization", "caseId": "cross-tenant-negative-control" }],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": ["rest", "negative-control"],
+      "required": true
+    }
+  ],
+  "thresholds": {
+    "minRecall": 0.95,
+    "maxFalsePositiveRate": 0.02,
+    "maxInconclusiveRate": 0.05,
+    "minCoverageCompleteness": 0.98,
+    "maxP95RuntimeMs": 60000,
+    "maxPeakRssBytes": 1073741824,
+    "maxRequestsPerAssessedCase": 10
+  },
+  "regression": {
+    "maxRecallDrop": 0,
+    "maxFalsePositiveRateIncrease": 0,
+    "maxInconclusiveRateIncrease": 0,
+    "maxCoverageDrop": 0,
+    "maxRuntimeIncreaseRatio": 0.25,
+    "maxMemoryIncreaseRatio": 0.25,
+    "maxRequestIncreaseRatio": 0.25,
+    "failOnCaseRegression": true
+  },
+  "metadata": { "owner": "security-engineering" }
+}

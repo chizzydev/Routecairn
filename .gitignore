@@ -14,3 +14,5 @@ data/dashboard*/
 .qa/
 .routecairn-validation/
 .hermes/
+.routecairn-security/
+.routecairn-benchmarks/
