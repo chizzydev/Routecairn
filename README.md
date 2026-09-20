@@ -146,10 +146,10 @@ Batch 34 adds controlled equivalent-route authorization testing:
 Batch 35 adds controlled collection authorization testing:
 
 - operators can supply exact collection/list/search/summary endpoints, explicit actors, exact known object IDs, membership expectations, completeness semantics, and safe response paths
-- the planner resolves a fixed `GET` request matrix and rejects pagination, generators, unsafe methods, discovery, auth material in templates, unknown references, duplicate object IDs, and out-of-scope URLs
+- the planner resolves a bounded `GET` request matrix and accepts only explicit `LINK_HEADER`, `JSON_URL`, or `JSON_CURSOR` pagination contracts with a two-to-ten-page cap
 - every request uses the shared `RequestSafetyBroker`; public cases carry no auth material
 - findings require a prohibited supplied object to appear in the configured bounded response with matching metadata where configured
-- unknown returned IDs, pagination links, cursors, unmatched objects, full response bodies, auth material, and raw object IDs are not persisted
+- response-provided next values cannot change origin/path or introduce undeclared query keys; unknown returned IDs, cursors, unmatched objects, full response bodies, auth material, and raw object IDs are not persisted
 
 Batch 36 adds controlled bulk authorization testing:
 
@@ -648,9 +648,9 @@ Each collection definition declares one exact `GET` URL, fixed query parameters,
 
 Supported membership expectations are `MUST_CONTAIN`, `MUST_NOT_CONTAIN`, `MAY_CONTAIN`, `MUST_MATCH_PUBLIC_MEMBERSHIP`, `MUST_MATCH_REFERENCE_CASE`, `MUST_NOT_EXCEED_REFERENCE_MEMBERSHIP`, and `OBSERVE_ONLY`. A confirmed collection authorization finding requires the supplied actor, supplied endpoint/query, supplied object ID, explicit denial expectation, verified identity where required, matching object metadata, and the protected object appearing in the configured JSON response. Absence is interpreted according to `COMPLETE_COLLECTION`, `FIXED_RESULT_WINDOW`, `SEARCH_RESULT_SET`, `SUMMARY_ONLY`, or `UNKNOWN_COMPLETENESS`; fixed-window and unknown absence are not generalized to the whole collection, and `SUMMARY_ONLY` never produces object-membership conclusions.
 
-Even when the operator declares `COMPLETE_COLLECTION`, RouteCairn downgrades absence to incomplete/inconclusive when the response contains common partial-result signals such as `next`, cursors, `hasMore`, pagination links, HTTP `Link: rel=next`, total counts exceeding returned entries, server-side caps, or truncation markers. RouteCairn records the signal but does not follow it or request another page.
+Without a pagination contract, RouteCairn downgrades absence to incomplete/inconclusive when a response contains common partial-result signals such as `next`, cursors, `hasMore`, pagination links, HTTP `Link: rel=next`, totals exceeding returned entries, server-side caps, or truncation markers. With a contract, it follows at most `maxPages` and reports whether traversal was exhausted, found the supplied object, reached the page cap, failed, or rejected an invalid next destination.
 
-Only HTTP JSON `GET` is supported. `HEAD`, `OPTIONS`, mutating methods, request bodies, GraphQL/RPC bodies, pagination configuration, wildcard/range/query generators, search dictionaries, filter discovery, sort discovery, endpoint discovery, identifier harvesting, and runtime response-driven cases are rejected or unsupported. The executor makes only the resolved requests and ignores `next`, cursor, offset, link, suggestion, and pagination fields.
+Only HTTP JSON `GET` is supported. `HEAD`, `OPTIONS`, mutating methods, request bodies, GraphQL/RPC bodies, wildcard/range/query generators, search dictionaries, filter discovery, sort discovery, endpoint discovery, identifier harvesting, and runtime response-driven cases are rejected or unsupported. Pagination can only supply the next bounded URL or opaque cursor to the already resolved case; it never adds actors, cases, object IDs, headers, methods, origins, or paths. Link/URL modes accept only the original query keys plus an explicit allowlist. Cursor mode inserts one declared parameter. Every possible page is reserved in `maxRequests` before execution.
 
 Collection parsing uses the shared safe field-path parser. RouteCairn inspects only the bounded result array until `maxInspectedEntries`, compares each entry's configured object-ID path to the exact supplied string object ID with case-sensitive exact matching, records only found/not-found, first matched index, duplicate count, and configured metadata confirmation, then discards unmatched IDs. Numeric IDs, booleans, nulls, objects, arrays, encoded/decoded variants, and case variants are not silently equated with supplied string IDs. Public collection cases send no auth headers, cookies, CSRF tokens, or tenant headers and use the anonymous broker cache partition.
 
@@ -784,7 +784,7 @@ Each case names one exact surface, resource, actor, operation, method, URL/filte
 
 `INSERT`, `UPDATE`, `DELETE`, and mutating RPC cases require `mutationContractCaseId` and an exact expiring controlled-mutation contract. Updates use `CONTROLLED_MUTATION`. Disposable inserts may use a verified DELETE cleanup. Deletes require `CONTROLLED_DELETION`, are limited to `LOCAL`, `TEST`, or `STAGING`, require an explicit reconstructive rollback body, and must prove that the rollback response hash exactly matches the captured pre-state. All mutation intent and encrypted recovery material are durably flushed before transmission; unresolved cleanup blocks later mutations.
 
-The optional `catalog` snapshot records exposed schemas, table RLS/force-RLS state, role grants, sensitive-column exposure, storage bucket ownership policy, PostgREST relationships, RPC execute grants, `SECURITY DEFINER`, `search_path`, and dynamic-SQL declarations. Catalog risks and runtime behavior are reported separately. The report includes per-resource actor/operation coverage, an allowed/denied/inconclusive access matrix, anon-key JWT role classification, and paired service-role boundary verification. No tables, rows, buckets, objects, functions, relationships, or filters are enumerated at runtime.
+The optional `catalog` snapshot records exposed schemas, table RLS/force-RLS state, role grants, sensitive-column exposure, storage bucket ownership policy, PostgREST relationships, RPC execute grants, `SECURITY DEFINER`, `search_path`, and dynamic-SQL declarations. Catalog risks and runtime behavior are reported separately. The report includes per-resource actor/operation coverage, an allowed/denied/inconclusive access matrix, anon-key JWT role classification, and paired service-role boundary verification. RouteCairn does not query administrative catalog endpoints at runtime; a supplied safe inventory import can normalize a catalog export and compile anonymous table `SELECT` observations while leaving RPCs and writes unexecuted.
 
 Credential headers (`apikey`, `Authorization`, cookies, and related auth headers), query values, asserted identifiers, storage path identifiers, signed URL boundaries, response values, and signed query tokens are redacted or omitted from JSON, Markdown, HTML, request audit, scan-plan, and finding evidence. Signed URLs are followed only when `followOnce` is explicitly enabled, the exact origin and configured object path match, and the shared scope/budget/stream limits allow the request; application credentials are never forwarded to the signed destination.
 
@@ -832,6 +832,14 @@ node dist/cli/index.js scan https://app.example.com \
 ```
 
 This one run performs the isolated login, writes the redacted learning bundle, compiles supported cases in memory, executes only fully resolved cases, and writes `authentication-lifecycle.automation.json` with generated categories and readiness blockers. The policy supplies mutation authority, disposable-account confirmation, cleanup, and variant secret references; learning supplies the observed endpoint, method, body format, credential-field bindings, success response, and session-cookie name. Browser `loginSecrets` and `lifecycleSecrets` share a worker-only reference namespace; duplicate names with different values are rejected.
+
+Authentication manifests may also declare native `fixtures`. `LOCAL_HTTP` provides a loopback email/SMS webhook sink, while `MAILPIT` and `MAILHOG` poll their test-only APIs. Step-level `INBOX_START`, `INBOX_WAIT`, and `INBOX_CLEAR` actions expose only transient captures; message bodies, verification codes, links, recipients, and adapter responses are never serialized. The local sink accepts `POST /messages` with `{channel, recipient, text, subject?, html?, sender?}` and is closed at the end of each case.
+
+TOTP profiles support base32, hexadecimal, and UTF-8 seeds, SHA-1/SHA-256/SHA-512, 6–8 digits, and bounded periods. `TOTP_GENERATE` resolves the seed from the selected actor's worker-only secret namespace and makes the current code available as a case-local capture. Virtual WebAuthn fixtures use Chromium's CDP authenticator implementation; lifecycle actions can create, seed, clear, and remove CTAP2/U2F authenticators with configurable transport, resident-key, presence, and user-verification behavior. The isolated browser and every virtual credential are destroyed when the case ends.
+
+The loopback OIDC harness implements discovery, JWKS, authorization-code issuance, PKCE S256, one-use token exchange, RS256 ID tokens, and an optional callback receiver. `OIDC_START` captures its ephemeral issuer/endpoints and `OIDC_WAIT_CALLBACK` captures a named callback parameter. Redirects are restricted to configured HTTPS URIs or loopback HTTP. Auth0, Cognito Hosted UI and public User Pools JSON APIs, Clerk, Firebase Authentication, and Supabase Auth provider adapters compile `providerCall` steps into their documented REST/OAuth endpoints and recommended response captures. Provider origins must be explicitly configured and in scan scope; credentials remain `{{SECRET:...}}` references. Cognito administrative operations that require an AWS-signed service client fail closed instead of pretending a Hosted UI or public User Pools call can perform them.
+
+Fixture actions run inside the lifecycle case boundary before their step request. A fixture failure is `INCONCLUSIVE`, not a finding. Provider mutations are normal lifecycle mutations: they require the same expiring authorization, disposable-account declaration, durable journal, cleanup steps, and cleanup verification as any other state-changing request. See `examples/authentication-fixtures.example.json`.
 
 Cases declare a bounded actor model, category, exact requests, transient captures, assertions, and cleanup. Actor slots are `anonymous`, `primary`, `account_a`, and `account_b`; `requestAuthentication` independently controls whether the selected profile's ambient headers/cookies are sent, so login cases can draw secrets from a profile while remaining unauthenticated on the wire. Request values use `{{SECRET:name}}` references resolved from the selected actor's encrypted or worker-held browser/lifecycle secret namespace; response-derived values use `{{CAPTURE:name}}`. Captures can read a bounded JSON path, response header, or named cookie. Raw usernames, email addresses, passwords, tokens, cookies, recovery codes, invitation codes, OAuth state, and session identifiers are never written into the manifest, plan, report, finding, Markdown, HTML, or request audit.
 
@@ -896,13 +904,46 @@ routecairn scan https://app.example.com `
 
 The route inventory records a safe alias, protocol, security kind, exact in-scope URL, version, documented methods and fields, and optional OpenAPI schema source/path. Every object route also requires a safe `pathTemplate`, so reports retain the route shape without persisting the supplied object identifier. Authorization cells bind one explicit actor to one fixed request and expected decision; a shared `matrixId` forms an explicit object-, function-, field-, or tenant-authorization matrix and cannot mix routes or check kinds. Response contracts can verify object identity, tenant identity, item bounds, and field rules such as `MUST_BE_PRESENT`, `MUST_BE_ABSENT`, or `MUST_BE_REDACTED`. Authorization decisions and response-field assertions are evaluated separately.
 
-GraphQL support includes fixed named query operations, field-level checks, tenant checks, an explicit minimal introspection query, bounded alias documents, and bounded JSON batches. Alias groups are capped at 10 and batch groups at 5, with lower per-manifest limits supported. Mutations and subscriptions are rejected during planning, response-driven operation generation is forbidden, and documents are depth/byte bounded.
+GraphQL support in this read-only engine includes fixed named query operations, field-level checks, tenant checks, an explicit minimal introspection query, bounded alias documents, and bounded JSON batches. Alias groups are capped at 10 and batch groups at 5, with lower per-manifest limits supported. Mutations and subscriptions are rejected here and routed through the protocol-security engine, where mutations require expiring approval and verified cleanup and subscriptions are message- and duration-bounded. Response-driven operation generation remains forbidden, and documents are depth/byte bounded.
 
-Method-confusion cases directly compare only `GET`, `HEAD`, `OPTIONS`, and explicitly attested non-mutating `POST`. A REST POST requires both route-level and request-level non-mutating confirmation plus an exact marker in the fixed body. `PUT`, `PATCH`, `DELETE`, GraphQL mutations, and any real state change must use RouteCairn's controlled mutation, invariant, lifecycle, or race engines with their cleanup contracts.
+Method-confusion cases directly compare only `GET`, `HEAD`, `OPTIONS`, and explicitly attested non-mutating `POST`. A REST POST requires both route-level and request-level non-mutating confirmation plus an exact marker in the fixed body. `PUT`, `PATCH`, `DELETE`, GraphQL mutations, and any real state change must use RouteCairn's protocol-security, controlled mutation, invariant, lifecycle, or race engines with their approval and cleanup contracts.
 
-OpenAPI comparison fetches only explicit schema/documentation routes and compares configured route paths and methods. Response observations record documented-field present/missing counts and undocumented-field counts without retaining response values. Version checks compare two explicit declared versions for authorization equivalence, identical field sets, or absence of additional candidate fields. The engine never discovers new executable routes from schema or runtime responses.
+OpenAPI comparison inside a hand-authored API manifest still fetches only explicit schema/documentation routes. Separately, the safe inventory importer can normalize same-origin, parameter-free, anonymous `GET`/`HEAD`/`OPTIONS` OpenAPI operations into executable observation cases. Response observations record documented-field present/missing counts and undocumented-field counts without retaining response values. Version checks compare two explicit declared versions for authorization equivalence, identical field sets, or absence of additional candidate fields.
 
 All requests use the ordinary scope, DNS, pacing, concurrency, response-size, and request-budget broker controls with retries and redirects disabled. Reports retain route aliases, paths, status classes, counts, and structural fingerprints. Authentication material, request bodies, GraphQL variables, response values, object identities, and tenant identities are omitted from JSON, Markdown, HTML, request-audit, and embedded scan-plan output.
+
+### Protocol-Level Security
+
+`--protocol-security` accepts an explicit bounded manifest for WebSocket messages, Server-Sent Events, GraphQL mutations and subscriptions, gRPC unary and server-streaming calls, multipart uploads, HTTP/2 authorization/desynchronization checks, and HTTP/3 capability checks.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.example.json `
+  --auth ./examples/auth.lifecycle.example.json `
+  --protocol-security ./examples/protocol-security.example.json `
+  --output ./reports/protocol-security
+```
+
+WebSocket handshakes and HTTP/2 sessions resolve and pin the complete destination before opening a socket, preserve the original authority and TLS SNI, enforce live scope plus the shared target-authorization/rate/concurrency/request budgets, cap bytes/messages/duration, and omit payloads from all evidence. GraphQL-over-WebSocket supports `graphql-transport-ws` and the legacy `graphql-ws` subprotocol. GraphQL-over-SSE and ordinary SSE are bounded by response bytes and duration, retain completed events when the duration bound closes an otherwise-open stream, and are parsed only into event counts and configured structural assertions. gRPC uses HTTP/2 framing with payloads supplied from worker-only secret references and records only status and message counts.
+
+GraphQL mutations plus state-changing WebSocket messages, gRPC calls, and multipart uploads require active authorization limited to local, test, or staging, disposable resources, a durable global mutation lock, an encrypted recovery checkpoint, and an exact cleanup request whose status must verify restoration. HTTP/2 and HTTP/3 desynchronization cases require separate expiring non-production authorization and use one malformed length case plus one fixed same-origin, in-scope same-session/process sentinel. Desynchronization probes are blocked in bug-bounty mode because the target-authorization schema does not grant that protocol-level capability. HTTP/3 uses an installed curl runtime only when it advertises native HTTP/3, pins curl to RouteCairn's approved DNS address, verifies the negotiated version and remote address, and never silently downgrades; otherwise the case is reported as blocked rather than claiming coverage.
+
+Use `base64:` secret values for raw protobuf or binary upload fixtures. Static manifests contain only secret reference names. Request headers cannot embed credentials; actor profiles supply authentication at execution time. See `examples/protocol-security.example.json` for read-only cases; mutation approvals should be generated for the active test window rather than stored as long-lived examples.
+
+### Safe inventory import
+
+`--inventory-import` accepts one bounded JSON bundle containing OpenAPI JSON, Postman collections, HAR, GraphQL introspection JSON plus an exact endpoint, and a Supabase catalog export. The same bundle can be supplied inline or by file through dashboard scan planning. The importer is local and deterministic: it does not fetch schemas, resolve collection variables, enumerate a service, or use credentials from imported documents.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.inventory-import.example.json `
+  --inventory-import ./examples/inventory-import.example.json `
+  --output ./reports/imported-inventory
+```
+
+OpenAPI and Postman contribute exact same-origin parameter-free read routes. HAR contributes only successful credential-free reads; file-like entries become `OBSERVE_ONLY` bounded-prefix or headers-only file cases, and explicit next-link/cursor evidence can become a capped collection pagination contract. GraphQL introspection contributes a fixed introspection check and argument-free query-root operations; required-argument fields are skipped. Supabase catalog tables and exposed relationships contribute anonymous PostgREST `SELECT ... limit=1` observations, public buckets contribute exact bucket-metadata reads, and table, column, function, bucket, and relationship metadata is retained for reporting. Explicit catalog `storageObjects` from public buckets become exact bounded file observations; private/unlabelled objects and bucket keys are not inferred. Catalog functions remain inventory-only because invocation safety cannot be inferred from metadata.
+
+Imports reject cross-origin URLs, URL credentials, secret-like query names, auth/cookie/API-key headers, unresolved variables, path parameters, required OpenAPI parameters, and malformed structures. They do not synthesize traversal payloads, filenames, bucket keys, object IDs, or path variants; traversal validation remains an explicitly approved active-validation case. `POST`, `PUT`, `PATCH`, `DELETE`, GraphQL mutations/subscriptions, Supabase writes, RPC calls, and other unverified operations are counted as withheld mutations and never compiled into executable cases. GraphQL query execution still requires `POST` in the operator's scope; allowing that method does not authorize GraphQL mutations because the planner parses and rejects mutation/subscription documents.
 
 ### Signed Links, Portals, Invites, and Export Security
 
@@ -999,6 +1040,19 @@ Confirmed findings are deliberately narrower than observations: demonstrable ser
 
 Secrets and dynamic target values use worker-only `{{SECRET:name}}` and temporally ordered `{{CAPTURE:name}}` references. Raw target state, request and response bodies, credentials, tokens, operator identities, and change tickets are absent from race evidence, findings, JSON summaries, Markdown, HTML, request audit, and the mutation journal.
 
+### Native Active Vulnerability Validation
+
+The active-validation engine executes bounded, class-aware differential cases for SQL/NoSQL injection, reflected XSS, SSRF, command/template injection, path traversal, CSRF, redirects, cache behavior, unsafe deserialization, XXE, and HTTP desynchronization. It accepts explicit immutable cases and can compile only same-origin `GET` query parameters already observed by parameter analysis; it never expands discovery into new paths, methods, origins, actors, or callbacks.
+
+```powershell
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.example.json `
+  --active-vulnerability ./examples/active-vulnerability-validation.example.json `
+  --output ./reports/active-vulnerability
+```
+
+Each case sends a bounded baseline, control, and generated probe. Findings require a class-specific proof signal such as a database error differential, offline browser execution, callback confirmation, a non-sensitive fixture marker/hash, an exact redirect/cache contract, or an ambiguous-framing sentinel observed over the dedicated raw HTTP/1 lane. Stateful and raw-protocol classes require the appropriate local/test/staging authorization. Payloads, original values, callback tokens, credentials, and response bodies stay transient; reports retain only redacted observations, hashes, statuses, proof signals, and immutable comparison fingerprints.
+
 ### Batch 50A–50B: Assisted Findings and Trust Review
 
 All seventeen assisted security modules now pass through a shared finding-acceptance boundary before scan persistence. Each accepted finding has an explicit workflow/case identity, normalized severity/confidence, existing-factory evidence, a comparison fingerprint, and an independent cleanup outcome. Missing case links fail acceptance without discarding the module's cleanup results. Evidence omits raw bodies and replayable mutation commands. Proof-pack references start empty and resolve to actual retained dashboard packs, not placeholder IDs.
@@ -1071,15 +1125,61 @@ Controlled mutation and restart-recovery lanes cannot execute directly from the 
 
 Production mutation cases additionally bind an explicit intent: `SECURITY_NEGATIVE`, `AUTHORIZED_ACCEPTANCE`, `ROLLBACK_ACCEPTANCE`, or `RECOVERY_ACCEPTANCE`. Only a verified forbidden transition from a `SECURITY_NEGATIVE` case is eligible for a privilege-mutation finding. Expected authorized acceptance and restoration activity is reported as operational evidence, never as mass assignment merely because the mutation succeeded.
 
+### Broader real-target proof grid
+
+Live Target Acceptance exposes the `BROADER_REAL_TARGET_V1` standard as an immutable eight-lane grid: genuine multi-tenant authorization; Supabase table RLS, storage and RPC; OAuth/OIDC, MFA and passkeys; GraphQL authorization; signed links, portals and protected exports; synthetic payment-provider fixtures; webhooks and cron; and exact remediation reruns. The guided dashboard links completed same-target scans and persisted comparisons. The JSON editor can add stricter proof requirements without weakening the standard defaults.
+
+A completed scan is not sufficient by itself. Each lane evaluates retained module executions and case-level semantic evidence. Required cases must have completed, transmitted their bounded request, retained strong evidence, and expose the exact feature required by that lane. Supabase coverage requires independent TABLE, STORAGE and RPC cases. Authentication coverage requires independent OAuth/OIDC, MFA and passkey lifecycle cases. Signed-capability coverage requires signed-link, portal-tenant and export/artifact cases. Operational coverage requires both webhook and cron cases. The multi-tenant lane requires an executed cross-tenant or tenant-isolation contract rather than an account-pair label.
+
+Synthetic payment evidence additionally requires a durable binding to a reviewed provider-adapter version. Real payment execution remains forbidden. Cleanup and restoration are evaluated independently; an unresolved obligation makes the lane inconclusive. A remediation lane uses `LINK_REMEDIATION` to bind one exact baseline scan, one different rerun scan and one persisted comparison. The comparison must be complete and fully compatible, with no unmatched case coverage and no `NOT_RETESTED` or `INCOMPARABLE` finding evidence.
+
+The proof contract is persisted on every run lane, so editing or replacing the encrypted plan cannot reinterpret historical acceptance. Run responses include completed modules, completed workflows, feature evidence, transmitted-case counts, provider binding, comparison identity and explicit missing-proof reasons. `NOT_ASSESSED` remains visible. Under the broader standard, `NOT_APPLICABLE` is also a required gap: the grid is complete only when all eight lanes are materially assessed. This records evidence quality; it does not turn a run into a general certification of the target.
+
+### Measured effectiveness benchmark laboratory
+
+RouteCairn includes a mutation-free benchmark laboratory that executes balanced vulnerable fixtures and secure negative controls against a process-owned loopback target. It measures true-positive recall, precision, false-positive rate, inconclusive rate, coverage completeness, conclusive coverage, result stability, runtime, peak resident memory, physical requests, transmitted requests, requests per assessed case, and runtime per request.
+
+```powershell
+npm run build
+node dist/cli/index.js benchmark local `
+  --repetitions 3 `
+  --release 0.1.0 `
+  --build $env:GITHUB_SHA `
+  --output .routecairn-benchmarks
+```
+
+Every invocation creates a fresh directory and writes `benchmark-result.json`, `benchmark-report.md`, `benchmark-junit.xml`, the exact ground-truth manifest, and the underlying scanner reports. The built-in lab accepts no target URL, uses only read-only requests, marks itself `INTENTIONALLY_VULNERABLE_LOOPBACK`, and fails with exit code 2 when a quality, resource, required-case, or release-regression gate fails. Its balanced suite covers REST object/function authorization plus native SQL-injection and open-redirect validation, with a vulnerable fixture and secure negative control for each behavior.
+
+CI runs the gate on every supported operating-system and Node.js combination against the committed `benchmarks/routecairn-read-only-detection-baseline.json`. A recall, false-positive, inconclusive, coverage, case-level, runtime, memory, or request-efficiency regression fails the job. The JSON, Markdown, JUnit, manifest, telemetry and scanner evidence are retained as workflow artifacts for 30 days. Refresh the committed baseline only after reviewing a successful candidate result and intentionally accepting the changed detector contract or resource envelope.
+
+For external intentionally vulnerable suites, declare exact expected findings and negative controls with `examples/benchmark.manifest.example.json`, then evaluate one or more repetitions:
+
+```powershell
+routecairn benchmark evaluate `
+  --manifest ./benchmark.manifest.json `
+  --reports ./run-1/report.json ./run-2/report.json ./run-3/report.json `
+  --telemetry ./run-1/telemetry.json ./run-2/telemetry.json ./run-3/telemetry.json `
+  --baseline ./previous-release/benchmark-result.json `
+  --release 0.2.0 `
+  --build abc123 `
+  --output ./benchmarks/0.2.0
+```
+
+Ground truth selects stable workflow/case identities and may additionally constrain source modules or finding types. A positive case is a false negative when RouteCairn conclusively reports no finding; missing or blocked evidence stays uncovered or inconclusive and reduces strict recall rather than being counted as a pass. A negative control becomes a false positive when a finding is emitted. Findings in the declared workflow/module/type domain that match no expected case are counted as unexpected false positives. Required cases also receive individual gates, so aggregate thresholds cannot hide a critical miss.
+
+Telemetry files contain `runtimeMs`, `peakRssBytes`, `requestCount`, optional `transmittedRequestCount`, and optional user/system CPU microseconds. When telemetry is omitted, duration and request counts are recovered from the report, while peak RSS remains unavailable as zero; supply telemetry whenever enforcing memory regressions. Baselines must have the same benchmark ID and exact manifest digest. Comparisons gate recall, false-positive and inconclusive increases, coverage drops, per-case regressions, and configurable runtime, memory, and request-growth ratios. This laboratory measures the declared corpus and does not claim general vulnerability-detection effectiveness beyond it.
+
 ### Adaptive security model and test recommendations
 
-The **Adaptive Security** workspace implements an evidence-bound loop: observe a completed registered-target scan, reduce it to a canonical secret-free model, recommend explicit tests, require operator approval, link a same-target execution, verify completion of the relevant engine, and learn from the next scan. Completed dashboard scans create candidate model snapshots automatically; historical completed/imported reports can be analyzed explicitly. An operator accepts the exact SHA-256-bound model as the expected baseline, and later snapshots expose route, origin, administrative path, API version, GraphQL contract, API-field, browser-field, cookie, actor/role, Supabase resource, lifecycle-category, build, and full workflow-contract drift.
+The **Adaptive Security** workspace implements an evidence-bound loop: observe a completed registered-target scan, reduce it to a canonical secret-free model, compile sufficiently proven read-only observations into complete tests, retain underspecified or mutating discoveries as reviewable proposals, link a same-target execution, verify completion of the relevant engine, and learn from the next scan. Completed dashboard scans create candidate model snapshots automatically; historical completed/imported reports can be analyzed explicitly. An operator accepts the exact SHA-256-bound model as the expected baseline, and later snapshots expose route, origin, administrative path, API version, GraphQL contract, API-field, browser-field, cookie, actor/role, Supabase resource, lifecycle-category, build, and full workflow-contract drift.
 
 Learned request values, response bodies, cookie values, tokens, credentials, raw identifiers, and sensitive query values are never stored in the adaptive tables. Paths and names are normalized, while security semantics use complete existing comparison fingerprints. A changed or removed assertion therefore becomes a changed contract instead of silently proving remediation. Removed-surface drift is emitted only when the newer scan contains equivalent producer coverage, avoiding false removals caused by a narrower scan profile.
 
 Browser learning can recommend every authentication lifecycle category. Login enumeration, rotation, and fixation retain their deterministic compiler; logout, revocation, password-change, refresh/reset, verification, account-linking, OAuth/OIDC, MFA, passkey, recovery-code, invitation, expiry, and disabled-user cases require a single exact operator recipe bound to the learned candidate. A blocked browser mutation hypothesis may supply structure, but never authority: the compiled lifecycle case must independently pass current authorization, actor, assertion, scope, request-budget, and cleanup validation.
 
-REST, GraphQL, signed-link/export, operational endpoint, business-invariant, synthetic-billing, and Supabase observations produce safe non-executable drafts with their missing actor/object/assertion/fixture/cleanup bindings listed in the dashboard. Approval changes only the recommendation state. It does not launch traffic. Execution still occurs in the dedicated dashboard builder with its normal immutable plan and approval gates, then the operator links the resulting scan for engine-specific verification. Coverage policy is target-specific; required lanes remain incomplete when absent or inconclusive, and `NOT_APPLICABLE` is accepted only with completed same-target evidence when that policy is enabled. Open model drift after an acceptance run makes coverage stale until an exact new baseline is acknowledged or a remediation rerun returns to the expected model.
+Exact credential-free observations can now be promoted without hand-writing a manifest: stable anonymous REST `GET`/`HEAD`/`OPTIONS` responses become status-bound API authorization regressions; observed GraphQL endpoints become generated introspection-classification cases; public JSON health endpoints become status and sensitive-field-absence cases; exact anonymous Supabase `SELECT` evidence becomes decision-bound RLS/PostgREST regression cases; and stable anonymous billing/entitlement and business-state reads become `OBSERVE_ONLY` billing or invariant stability cases. Promotion requires an exact same-origin request audit and response or a complete engine observation, rejects unstable identifiers and sensitive query material, and stores only structural evidence fingerprints. The dashboard labels these cases `READY_READ_ONLY`, materializes them directly into Scan Studio, fixes the public actor and zero-cleanup contract, includes the entire configuration in an immutable execution fingerprint, and revalidates the source scan, target row, schema, and read-only semantics at preview and launch. Configuration edits, additional advanced engines, credential substitution, target drift, or fingerprint changes fail closed.
+
+Signed-link/export, mutating operational flows, state-changing business invariants, state-changing billing/entitlements, authenticated or object-specific API cases, and any discovery without complete evidence remain `REQUIRES_BINDINGS`; the dashboard lists the exact missing actors, objects, assertions, fixtures, and cleanup contracts. Approval changes only a proposal state and never launches traffic. Every write, GraphQL mutation, replay, race, webhook, billing event, or other state-changing hypothesis still uses the dedicated builder, explicit current authorization, immutable reviewed contract, request budget, cleanup/recovery plan, and mutation approval gate. Coverage policy is target-specific; required lanes remain incomplete when absent or inconclusive, and `NOT_APPLICABLE` is accepted only with completed same-target evidence when that policy is enabled. Open model drift after an acceptance run makes coverage stale until an exact new baseline is acknowledged or a remediation rerun returns to the expected model.
 
 ### Reusable fixture and provider adapters
 
@@ -1103,7 +1203,33 @@ For each connection, RouteCairn canonicalizes the HTTP or HTTPS destination, rej
 
 The connector opens the socket directly to the selected IP, not the original hostname, which prevents an uncontrolled second DNS lookup by the HTTP library. HTTP keeps the original `Host` authority. HTTPS keeps SNI and certificate hostname verification on the original hostname with normal chain validation enabled. After connect or secure connect, RouteCairn compares the socket remote address to the selected IP, accounting for IPv4-mapped IPv6 equivalence. A mismatch destroys the socket and blocks the request before transmission.
 
-Pinned HTTP v1 disables keep-alive in the connector and disables HTTP/2 ALPN to avoid cross-origin or cross-IP socket coalescing. Implicit environment proxies are not used by the pinned transport because RouteCairn supplies its own Undici dispatcher; future explicit proxy support would need its own destination enforcement. DNS lookups and connection attempts are bounded by timeouts and answer-count limits, while transmitted HTTP requests continue to consume the global request budget through the broker. Cache keys do not include raw selected IPs, and file/signed URL no-cache policies remain unchanged.
+Pinned HTTP now uses an IP-bound, origin-isolated connection pool. Every pool is constructed for one canonical scheme, hostname and port plus one validated selected IP. Its connector rejects any cross-origin dispatch, opens the socket directly to that IP, verifies the connected peer, and retains the original hostname for HTTP authority, TLS SNI and certificate verification. A DNS change to a different selected address rotates and gracefully drains the old pool. A prohibited, mixed-class, metadata, internal or otherwise invalid answer set blocks the request before an existing connection can be reused. This preserves retry and redirect rebinding checks while allowing verified connections to serve multiple requests.
+
+HTTP/2 is opt-in and HTTPS-only. When enabled, ALPN may negotiate `h2` only inside the exact-origin pool; pools, connectors and TLS session caches are never shared across origins, so a certificate valid for multiple hosts cannot cause socket coalescing. Cleartext requests remain HTTP/1.1. Concurrent streams, connections per origin, retained origins, keep-alive timeouts, connection lifetime and requests per connection all have hard schema bounds. HTTP/1 pipelining remains disabled. Closing a scan gracefully drains all pools.
+
+Configure the transport in `routecairn.config.json`:
+
+```json
+{
+  "transport": {
+    "poolingEnabled": true,
+    "http2Enabled": false,
+    "maxOrigins": 64,
+    "maxConnectionsPerOrigin": 4,
+    "maxConcurrentHttp2Streams": 32,
+    "maxHeaderSizeBytes": 16384,
+    "keepAliveTimeoutMs": 10000,
+    "keepAliveMaxTimeoutMs": 30000,
+    "maxConnectionLifetimeMs": 120000,
+    "maxRequestsPerConnection": 1000,
+    "dnsCacheTtlMs": 0
+  }
+}
+```
+
+`dnsCacheTtlMs: 0` re-resolves before every dispatch and is the default. A nonzero value, bounded to 60 seconds, caches only the already validated IP pin: it never follows a changed DNS answer without validating it, and a connection attempt continues to target the cached safe IP until the lease expires. `poolingEnabled: false` provides bounded single-use compatibility behavior. Reports expose pool hits/misses, created and estimated reused connections, HTTP/1.1 and HTTP/2 connections, DNS resolutions/cache hits/blocks, pin rotations and origin evictions without retaining host-to-IP mappings.
+
+Implicit environment proxies are not used because RouteCairn supplies its own dispatcher. Future explicit proxy support would require equivalent destination enforcement. Transmitted requests still consume the global request budget. Cache keys do not include raw selected IPs, and file/signed URL no-cache policies remain unchanged.
 
 Playwright uses a separate per-crawl authenticated loopback proxy because Chromium cannot use the direct Node Undici connector. That proxy applies the same all-answer destination classification and IP-literal socket pinning immediately before connection, verifies the connected address, preserves the original HTTP authority and TLS SNI, and publishes only redacted operational diagnostics. Browser traffic is therefore covered at both policy time and connection time.
 
@@ -1422,7 +1548,7 @@ Current intentional limitations: historical native scans created before schema v
 
 ### Proof Packs
 
-Proof packs include confirmed findings only by default. Ready proof packs are immutable snapshots; editing should create a later version. The generated HTML proof pack contains a restrictive CSP and escapes target-controlled text. Proof-pack downloads resolve by artifact UUID.
+Proof packs include confirmed findings only by default. Ready proof packs are immutable snapshots; editing should create a later version. Every generated pack contains Markdown, restrictive-CSP HTML, and a scriptless text-only PDF 1.7 artifact. Target-controlled text is escaped or normalized, remote assets and fonts are excluded, and proof-pack downloads resolve by artifact UUID.
 
 ### Historical Import
 
@@ -1473,9 +1599,41 @@ Evidence exports contain selected scan metadata and retained artifacts in an ins
 
 `.github/workflows/continuous-assurance.yml` enforces core/dashboard builds and the full suite on Windows, Linux, and macOS with Node 20 and 22, plus Chromium/browser-connection tests and explicit migration, worker-fault, and capability-parity gates. It contains no target credentials and does not run an external security assessment. Product deployment hooks should store the RouteCairn trigger token in their secret manager and POST only the policy UUID, a unique deployment identifier, and the deployed build SHA-256 to `/api/continuous-assurance/deployments`.
 
+### Dependency Security and Release Provenance
+
+The locked dependency graph is audited separately from runtime security claims. Vite, PostCSS, Nano ID, Vitest, and the Vitest mocker resolve to remediated versions, while `.github/workflows/dependency-security.yml` blocks moderate, high, and critical advisories on pull requests, pushes to `main`, weekly schedules, and manual runs. Pull requests also receive GitHub dependency review, and Dependabot proposes grouped npm toolchain/runtime updates plus pinned GitHub Actions updates.
+
+Run the same audit and generate validated evidence locally:
+
+```powershell
+npm run security:dependencies
+```
+
+The command creates separate full-development and runtime-only CycloneDX JSON SBOMs, a manifest, and SHA-256 checksums under `.routecairn-security/`. Tag builds matching `v*` reproduce the lockfile with `npm ci`, build and test the release, package the exact npm tarball, and issue GitHub/Sigstore attestations for both SLSA build provenance and the runtime SBOM. The dependency audit is an advisory gate; it does not by itself establish whether an issue is remotely exploitable. See `SECURITY.md` for verification and reporting instructions.
+
+`npm pack` and `npm publish` run the release build automatically. The package uses an explicit allowlist containing executable JavaScript, the module sandbox runner, built dashboard assets, guided-builder templates, security documentation, and the MIT license; repository sources, tests, workflows, declarations, and source maps are excluded. Dashboard assets resolve relative to the installed package rather than the caller's working directory. Run `npm run package:smoke` to create the tarball, validate its exact contents, install it into a clean consumer project, exercise the installed CLI, load every packaged advanced-engine template, and serve the packaged dashboard UI. Release CI performs this acceptance before attesting the exact retained tarball.
+
+### Operational Scale and Collaboration
+
+The **Operations & Collaboration** workspace adds organization-scoped operational resources and roles (`OWNER`, `ADMIN`, `ANALYST`, and `VIEWER`). Membership checks are enforced by the server rather than the browser. The installation owner can create organizations; organization owners and administrators can manage members, SSO, notification channels, signed workers, and restricted modules, while analysts can create portable scan exports. The default organization is created during migration and existing dashboard users are assigned a compatible role. Organization RBAC currently scopes the operational resources introduced here; existing projects, targets, scans, findings, credentials, and audit history remain installation-scoped.
+
+Server mode supports OIDC authorization-code login with PKCE, one-use hashed state, nonce verification, RS256/JWKS signature validation, exact issuer/audience/expiry validation, and normal RouteCairn session/CSRF issuance. Provider endpoints must use HTTPS and share the issuer hostname. Client secrets are referenced by environment-variable name and never stored in SQLite. A federated identity must already be linked or must present a verified email for an existing enabled user that satisfies the provider's optional domain allowlist; SSO does not silently create privileged users.
+
+Signed remote workers use one-time enrollment tokens and per-worker Ed25519 identities. Every heartbeat, job claim, and result covers the HTTP method, exact path, timestamp, nonce, and canonical body digest; timestamps are bounded and nonces are persisted to reject replay. Jobs are organization- and capability-bound, payloads reject credential-like fields, leases expire and requeue within an attempt budget, and workers can be drained, quarantined, or permanently revoked. `routecairn agent enroll` creates a mode-0600 local identity file, and `routecairn agent run` provides a built-in health job plus a local ESM handler contract for governed `SCAN`, `EXPORT`, and `MODULE` workloads. The control plane never transmits target credentials in a remote-job payload.
+
+Cloud synchronization uses an append-only, organization-scoped safe-event stream populated by operational organization, membership, SSO, channel, worker, job, integration, and module changes. Batches carry per-event SHA-256 digests and a canonical HMAC-SHA256 signature from an environment-backed shared secret; event UUIDs make receive idempotent, cursors are monotonic, and the pinned outbound HTTP client does not follow redirects. Peer names and organization IDs must be configured symmetrically. The stream intentionally transports safe collaboration envelopes rather than credential records, raw request/response bodies, or mutation authority.
+
+External delivery uses a durable idempotent outbox with atomic multi-process claims, interrupted-delivery recovery, and bounded exponential retry. Webhook channels can use an HMAC signature; Slack uses an environment-backed webhook URL; email uses a configured HTTPS mail-provider endpoint and bearer token; GitHub and Jira use their HTTPS issue endpoints and bearer tokens. Stored rows contain only endpoint/configuration metadata and environment-variable references. Operators can queue a bounded safe notification payload through the dashboard API and inspect delivery state without exposing provider responses or secret values. Regression, failure, cleanup-required, and approval-required continuous-assurance notifications are bridged automatically to enabled default-organization channels, subject to each channel's minimum-severity setting.
+
+Backup creation uses SQLite's consistent backup API. Bundles may be AES-256-GCM encrypted with the dashboard master key and contain an authenticated manifest, schema version, installation identity, and digest. Restore requires a fresh verification plus the exact confirmation phrase, is staged for the next restart, runs SQLite integrity validation before replacement, preserves the prior database as a timestamped pre-restore copy, and rolls back the file swap on failure. Backup key availability is fail-closed.
+
+Portable integration artifacts are available as SARIF 2.1.0, JUnit XML, Burp-compatible XML, and bounded JSON. They are generated from normalized finding identities and safe endpoints, stored as ordinary governed artifacts, and downloaded through the existing artifact authorization and root-containment checks. GitHub and Jira issue creation is available through notification channels, preserving explicit operator enqueue and idempotency.
+
+Third-party modules use a manifest-driven SDK with a two-step register/approve lifecycle. The host hashes the complete bounded package, rejects links and dependency directories, validates a safe JSON-schema subset for inputs, and quarantines a package whose bytes change after approval. Execution occurs in a separate Node permission sandbox with package-only read access, no network, no child-process permission, minimal environment inheritance, and bounded input, output, heap, and wall time. Results must pass a strict observation/finding schema before they return to the dashboard.
+
 ### Remaining v1 Limits
 
-Dashboard v1 does not implement organizations, teams beyond local users, cloud sync, billing, distributed workers, remote agents, persistent raw credential storage, PDF proof-pack generation, or WebSocket dashboard updates. Reviewed local scheduling and deployment-triggered continuous assurance are implemented; notification delivery is intentionally dashboard-local and actionable-only rather than email/chat delivery. Authenticated browser bootstrap is available through encrypted credential profiles and the credential API schema; Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
+Dashboard v1 does not provide a hosted RouteCairn control plane, billing, automatic organization tenancy for legacy project/scan/finding rows, persistent raw credential storage, arbitrary remote credential forwarding, or WebSocket dashboard updates. Remote workload execution requires an explicitly installed local agent handler, and cloud synchronization is a signed safe-event transport rather than an automatic multi-writer merge of the legacy dashboard database. Reviewed local scheduling and deployment-triggered continuous assurance, external alert delivery, organization operational RBAC, signed agents, encrypted backup/restore, portable integration exports, PDF proof packs, OIDC login, and the restricted module SDK are implemented. Authenticated browser bootstrap remains available through encrypted credential profiles and the credential API schema; Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
 
 Dashboard guided builders are the primary operating surface for controlled authorization and advanced engines; bounded safe JSON import/export remains an alternative. Capability-parity tests require each declared dashboard capability to expose a guided builder or managed workspace. Versioned configurations, governed isolated workers, worker diagnostics and controls, credential lifecycle, browser connection isolation, controlled mutation/recovery, live acceptance, adaptive security intelligence, provider adapters, continuous assurance, and evidence governance are all dashboard-operated.
 # Controlled Offensive Execution & Recovery
