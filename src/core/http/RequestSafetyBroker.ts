@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { redactBodyPreview, redactHeaders } from "../evidence/EvidenceBuilder.js";
 import { ValuePresenceAttestor, redactSensitiveUrl, scrubObservedValues, type TransientValueObservation, type ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
 import { ScanCancelledError } from "../engine/ScanEvents.js";
@@ -8,6 +8,7 @@ import { RateLimiter } from "./RateLimiter.js";
 import { RequestQueue } from "./RequestQueue.js";
 import { RetryPolicy } from "./RetryPolicy.js";
 import { attachTransientResponseAnalysis, copyTransientResponseAnalysis } from "./TransientResponseAnalysis.js";
+import { sendRawHttp1, type RawHttp1Request, type RawHttp1Response } from "./RawHttp1Transport.js";
 import type { RequestLedgerLane, ScanRequestLedger, ScanRequestLedgerSnapshot } from "./ScanRequestLedger.js";
 import type { BrowserBrokerDecision, BrowserBrokerRequest, HttpRequest, HttpResponse, RedirectHop, RequestAuditEntry, RequestBrokerOptions, SynchronizedMutationBatchResult } from "./HttpTypes.js";
 
@@ -36,6 +37,10 @@ export class RequestSafetyBroker {
   private readonly controlledMutationEnabled: boolean;
   private readonly controlledDeletionEnabled: boolean;
   private readonly controlledRaceEnabled: boolean;
+  private readonly userAgent: string;
+  private readonly timeoutMs: number;
+  private readonly maxResponseBytes: number;
+  private readonly dnsResolver: RequestBrokerOptions["dnsResolver"];
 
   public constructor(
     options: RequestBrokerOptions,
@@ -44,6 +49,10 @@ export class RequestSafetyBroker {
     private readonly coordination?: RequestBrokerCoordination
   ) {
     this.abortSignal = options.abortSignal;
+    this.userAgent = options.userAgent;
+    this.timeoutMs = options.timeoutMs;
+    this.maxResponseBytes = options.maxResponseBytes;
+    this.dnsResolver = options.dnsResolver;
     this.controlledMutationEnabled = options.controlledMutationEnabled === true;
     this.controlledDeletionEnabled = options.controlledDeletionEnabled === true;
     this.controlledRaceEnabled = options.controlledRaceEnabled === true;
@@ -56,6 +65,8 @@ export class RequestSafetyBroker {
       ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}),
       ...(typeof options.dnsTimeoutMs === "number" ? { dnsTimeoutMs: options.dnsTimeoutMs } : {}),
       ...(typeof options.maxDnsAnswers === "number" ? { maxDnsAnswers: options.maxDnsAnswers } : {}),
+      ...(options.transport ? { transport: options.transport } : {}),
+      ...(options.connectionPool ? { connectionPool: options.connectionPool } : {}),
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {})
     });
     this.rateLimiter = new RateLimiter(options.rateLimitPerSecond);
@@ -66,6 +77,12 @@ export class RequestSafetyBroker {
 
   public setBrowserPolicyEventLimit(limit: number): void {
     this.browserPolicyEventLimit = limit;
+  }
+
+  /** Releases a transport pool owned by this broker. Scan-scoped brokers use
+   * the shared pool owned by ScanContext, so closing one cannot disrupt peers. */
+  public async close(): Promise<void> {
+    await this.transport.close();
   }
 
   private authorizeBrowserTransmission(request: BrowserBrokerRequest, login: boolean): string | undefined {
@@ -83,6 +100,33 @@ export class RequestSafetyBroker {
 
   public async send(requestInput: HttpRequest): Promise<HttpResponse> {
     return this.sendRequest(requestInput, false);
+  }
+
+  /** Dedicated raw HTTP/1 lane for proof-gated desynchronization cases. It
+   * keeps the same origin, authorization, rate, concurrency, ledger, and
+   * audit controls as ordinary requests, while allowing the transport to
+   * preserve an explicitly generated ambiguous framing pair. */
+  public async sendRawHttp1(requestInput: Omit<RawHttp1Request, "timeoutMs" | "maxResponseBytes" | "userAgent" | "abortSignal" | "targetOrigin" | "dnsResolver">): Promise<RawHttp1Response> {
+    this.throwIfAborted();
+    const scopeDecision = this.scopeMatcher.decide(requestInput.url, requestInput.method, requestInput.body);
+    const sentinelUrl = new URL(requestInput.sentinelPath, requestInput.url).toString();
+    const sentinelDecision = this.scopeMatcher.decide(sentinelUrl, "GET");
+    if (!scopeDecision.allowed || !scopeDecision.normalizedUrl || !sentinelDecision.allowed) return blockedRawResponse(requestInput.url, "RAW_HTTP1_SCOPE_BLOCKED");
+    if (Object.entries(requestInput.headers).some(([name, value]) => /[\r\n]/.test(name) || /[\r\n]/.test(value) || ["host", "content-length", "transfer-encoding", "connection", "proxy-connection", "expect", "upgrade", "trailer"].includes(name.toLowerCase()))) return blockedRawResponse(requestInput.url, "RAW_HTTP1_FRAMING_HEADER_BLOCKED");
+    const authorizationDenied = this.scopeMatcher.authorization?.reserve(scopeDecision.normalizedUrl, requestInput.method, requestInput.body);
+    if (authorizationDenied) return blockedRawResponse(requestInput.url, authorizationDenied);
+    const operation = () => sendRawHttp1({ ...requestInput, url: scopeDecision.normalizedUrl!, timeoutMs: this.timeoutMs, maxResponseBytes: this.maxResponseBytes, userAgent: this.userAgent, ...(this.abortSignal ? { abortSignal: this.abortSignal } : {}), targetOrigin: this.scopeMatcher.targetOrigin(), ...(this.dnsResolver ? { dnsResolver: this.dnsResolver } : {}) });
+    const response = await this.queue.run(async () => {
+      if (this.coordination) {
+        const dispatched = await this.coordination.ledger.transmit(this.coordination.lane, this.abortSignal, operation, { onReserved: () => { this.sentRequestCount += 1; } });
+        return dispatched.accepted ? dispatched.value : blockedRawResponse(requestInput.url, "RequestBudgetExceeded");
+      }
+      await this.rateLimiter.wait(this.abortSignal);
+      if (!this.consumeBudget()) return blockedRawResponse(requestInput.url, "RequestBudgetExceeded");
+      return operation();
+    });
+    this.recordAudit({ requestedUrl: requestInput.url, finalUrl: requestInput.url, method: requestInput.method, outcome: response.error?.name === "RequestBudgetExceeded" ? "budget-skipped" : response.error ? "scope-skipped" : "sent", requestHeaders: Object.fromEntries(Object.keys(requestInput.headers).map((name) => [name, "<redacted>"])), transmittedRequests: response.transmittedRequests, ...(response.statusCodes[0] !== undefined ? { statusCode: response.statusCodes[0] } : {}), ...(response.error ? { error: response.error.message } : {}), redirectChain: [], source: "http" });
+    return response;
   }
 
   public async sendSynchronizedMutations(requests: readonly HttpRequest[]): Promise<SynchronizedMutationBatchResult> {
@@ -123,7 +167,7 @@ export class RequestSafetyBroker {
       this.recordAudit(auditEntry(requestInput, response, "scope-skipped", [], reason, this.auditFingerprintSalt));
       return response;
     }
-    const scopeDecision = this.scopeMatcher.decide(requestInput.url, requestInput.method);
+    const scopeDecision = this.scopeMatcher.decide(requestInput.url, requestInput.method, requestInput.body);
 
     if (!scopeDecision.allowed || !scopeDecision.normalizedUrl) {
       const baseResponse = sanitizeResponse(
@@ -438,7 +482,7 @@ export class RequestSafetyBroker {
       return response;
     }
 
-    const redirectDecision = this.scopeMatcher.decide(nextUrl, requestInput.method);
+    const redirectDecision = this.scopeMatcher.decide(nextUrl, requestInput.method, requestInput.body);
     const nextHop = { statusCode: response.statusCode as number, location: nextUrl };
     const nextChain = [...redirectChain, nextHop];
 
@@ -574,6 +618,10 @@ function skippedResponse(requestInput: HttpRequest, name: string, message: strin
     redirectChain: [],
     error: { name, message }
   };
+}
+
+function blockedRawResponse(url: string, reason: string): RawHttp1Response {
+  return { requestedUrl: url, statusCodes: [], responseCount: 0, bodyPreview: "", bodyHash: createHash("sha256").update("").digest("hex"), responseTimeMs: 0, transmittedRequests: 0, markerObserved: false, error: { name: reason === "RequestBudgetExceeded" ? "RequestBudgetExceeded" : "RawHttp1PolicyBlocked", message: reason } };
 }
 
 function cloneResponse(response: HttpResponse): HttpResponse {

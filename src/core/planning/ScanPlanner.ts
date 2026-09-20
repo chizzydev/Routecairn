@@ -124,9 +124,11 @@ export class ScanPlanner {
       ...(input.businessInvariant ? { businessInvariant: input.businessInvariant } : {}),
       ...(input.controlledRace ? { controlledRace: input.controlledRace } : {}),
       ...(input.apiGraphql ? { apiGraphql: input.apiGraphql } : {}),
+      ...(input.protocolSecurity ? { protocolSecurity: input.protocolSecurity } : {}),
       ...(input.linkPortalSecurity ? { linkPortalSecurity: input.linkPortalSecurity } : {}),
-      ...(input.operationalEndpointSecurity ? { operationalEndpointSecurity: input.operationalEndpointSecurity } : {})
-      ,...(input.billingEntitlement ? { billingEntitlement: input.billingEntitlement } : {})
+      ...(input.operationalEndpointSecurity ? { operationalEndpointSecurity: input.operationalEndpointSecurity } : {}),
+      ...(input.billingEntitlement ? { billingEntitlement: input.billingEntitlement } : {}),
+      ...(input.activeVulnerability ? { activeVulnerability: input.activeVulnerability } : {})
     });
 
     this.validate(plan);
@@ -161,7 +163,7 @@ export class ScanPlanner {
       if (!registration) {
         throw new AppError(`Profile "${definition.name}" references unknown module "${id}".`, "SCAN_PLAN_UNKNOWN_MODULE");
       }
-      const authSkipReason = authSkipForModule(registration.metadata.requiresAuthentication, authentication);
+      const authSkipReason = authSkipForModule(effectiveAuthenticationRequirement(id, registration.metadata.requiresAuthentication, input), authentication);
       if (authSkipReason) {
         if (explicitIncludes.has(id) || !definition.optionalModulesMayBeSkipped) {
           throw new AppError(`Module "${id}" requires ${authSkipReason}.`, "SCAN_AUTH_MODULE_REQUIRED");
@@ -401,6 +403,9 @@ export class ScanPlanner {
     const hasApiGraphqlModule = plan.modules.some((modulePlan) => modulePlan.id === "api-graphql-authorization");
     if (hasApiGraphqlModule && !plan.apiGraphql) throw new AppError("API/GraphQL authorization requires a resolved explicit review plan.", "API_GRAPHQL_PLAN_REQUIRED");
     if (plan.apiGraphql && !hasApiGraphqlModule) throw new AppError("API/GraphQL input was supplied but the api-graphql-authorization module was not selected.", "API_GRAPHQL_MODULE_REQUIRED");
+    const hasProtocolSecurityModule = plan.modules.some((module) => module.id === "protocol-security");
+    if (hasProtocolSecurityModule && !plan.protocolSecurity) throw new AppError("Protocol security testing requires a resolved explicit protocol plan.", "PROTOCOL_SECURITY_PLAN_REQUIRED");
+    if (plan.protocolSecurity && !hasProtocolSecurityModule) throw new AppError("Protocol security input was supplied but the protocol-security module was not selected.", "PROTOCOL_SECURITY_MODULE_REQUIRED");
     const hasLinkPortalModule = plan.modules.some((modulePlan) => modulePlan.id === "link-portal-export-security");
     if (hasLinkPortalModule && !plan.linkPortalSecurity) throw new AppError("Link/portal/export security requires a resolved explicit plan.", "LINK_PORTAL_PLAN_REQUIRED");
     if (plan.linkPortalSecurity && !hasLinkPortalModule) throw new AppError("Link/portal/export input was supplied but its module was not selected.", "LINK_PORTAL_MODULE_REQUIRED");
@@ -469,6 +474,7 @@ function minimumCleanupRequests(input: ScanPlannerInput): number {
   total += input.authenticationLifecycle?.automation?.categories.length ?? 0;
   total += input.businessInvariant?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
   total += input.controlledRace?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
+  total += input.protocolSecurity?.cases.filter((item) => item.kind === "GRAPHQL_MUTATION" || ((item.kind === "MULTIPART_UPLOAD" || item.kind === "WEBSOCKET" || item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM") && !item.readOnly)).length ?? 0;
   total += input.linkPortalSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
   total += input.operationalEndpointSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
   total += input.billingEntitlement?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").reduce((stepCount, step) => stepCount + step.execution.attempts, 0), 0) ?? 0;
@@ -520,6 +526,16 @@ function authSkipForModule(
   }
 
   return undefined;
+}
+
+function effectiveAuthenticationRequirement(
+  moduleId: ModuleId,
+  declared: "none" | "single-profile" | "account-pair",
+  input: ScanPlannerInput
+): "none" | "single-profile" | "account-pair" {
+  if (moduleId === "collection-authorization-testing" && input.collectionAuthorizationTesting?.requestMatrix.length && input.collectionAuthorizationTesting.requestMatrix.every((testCase) => !testCase.authSlot && testCase.actorRelationship === "PUBLIC")) return "none";
+  if (moduleId === "file-authorization-testing" && input.fileAuthorizationTesting?.requestMatrix.length && input.fileAuthorizationTesting.requestMatrix.every((testCase) => !testCase.authSlot && testCase.actorRelationship === "PUBLIC")) return "none";
+  return declared;
 }
 
 function freezeLimits(limits: ScanLimits): ScanLimits {

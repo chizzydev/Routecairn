@@ -1,6 +1,6 @@
 import type { BusinessInvariantCategory, InvariantOutcome } from "../modules/businessInvariant/BusinessInvariantTypes.js";
 
-export type BusinessInvariantCleanupOutcome = "ROLLBACK_VERIFIED" | "CLEANUP_FAILED" | "CLEANUP_NOT_REACHED";
+export type BusinessInvariantCleanupOutcome = "NOT_REQUIRED" | "ROLLBACK_VERIFIED" | "CLEANUP_FAILED" | "CLEANUP_NOT_REACHED";
 
 export interface BusinessInvariantActionObservation {
   actionId: string;

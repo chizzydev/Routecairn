@@ -215,6 +215,20 @@ export const moduleCatalog = {
     dependencies: ["api-mapper", "auth-surface", "parameter-analysis"],
     cost: "low"
   },
+  "active-vulnerability-validation": {
+    ...defaults,
+    id: "active-vulnerability-validation",
+    displayName: "Active Vulnerability Validation",
+    description: "Executes bounded automated injection, browser, callback, cache, and parser proof cases.",
+    phase: "analysis",
+    capabilities: ["active-vulnerability-validation"],
+    requiresAuthentication: "none",
+    monitoringCompatible: false,
+    supportsEvidence: true,
+    dependencies: ["parameter-analysis"],
+    orderAfter: ["vulnerability-workflows"],
+    cost: "high"
+  },
   "workflow-validation": {
     ...defaults,
     id: "workflow-validation",
@@ -453,6 +467,19 @@ export const moduleCatalog = {
     description: "Verifies explicit REST and GraphQL object, function, field, tenant, method, schema, limit, and version contracts.",
     phase: "analysis",
     capabilities: ["api-graphql-authorization", "api"],
+    requiresAuthentication: "none",
+    monitoringCompatible: false,
+    supportsEvidence: true,
+    dependencies: [],
+    cost: "high"
+  },
+  "protocol-security": {
+    ...defaults,
+    id: "protocol-security",
+    displayName: "Protocol-Level Security",
+    description: "Validates bounded WebSocket, SSE, GraphQL mutation/subscription, gRPC, multipart, HTTP/2, and HTTP/3 contracts.",
+    phase: "analysis",
+    capabilities: ["protocol-security", "api", "controlled-mutation"],
     requiresAuthentication: "none",
     monitoringCompatible: false,
     supportsEvidence: true,

@@ -1,4 +1,5 @@
 import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
+import type { PinnedOriginPool, PinnedTransportSettings } from "./PinnedOriginPool.js";
 
 export type HttpMethod = "GET" | "HEAD" | "OPTIONS" | "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -11,6 +12,8 @@ export interface HttpClientOptions {
   dnsResolver?: DnsResolver;
   dnsTimeoutMs?: number;
   maxDnsAnswers?: number;
+  transport?: Partial<PinnedTransportSettings>;
+  connectionPool?: PinnedOriginPool;
   abortSignal?: AbortSignal;
 }
 

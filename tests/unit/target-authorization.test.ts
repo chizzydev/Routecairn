@@ -31,6 +31,16 @@ describe("bug-bounty target authorization", () => {
     expect(guard.reserve("https://app.test/graphql", "POST", body)).toBeUndefined();
     expect(guard.reserve("https://app.test/graphql", "POST", "mutation { deleteAll }")).toBe("authorization-body-mismatch");
     expect(guard.reserve("https://app.test/graphql", "POST")).toBe("authorization-body-mismatch");
+    const matcher = new ScopeMatcher("https://app.test", { ...exampleScope, allowedDomains: ["app.test"], allowedMethods: ["GET", "POST"], disallowedPaths: [] }, new TargetAuthorizationGuard(parsed));
+    expect(matcher.decide("https://app.test/graphql", "POST", body).allowed).toBe(true);
+    expect(matcher.decide("https://app.test/graphql", "POST", "mutation { deleteAll }").reason).toBe("target-authorization-denied");
+  });
+  it("binds binary protocol requests to their exact on-wire bytes", () => {
+    const input = bountyInput(); const body = Buffer.from([0, 255, 1, 2]);
+    const parsed = targetAuthorizationSchema.parse({ ...input, bugBounty: { ...input.bugBounty, requests: [{ origin: input.targetOrigin, path: "/inspect", method: "POST", effect: "READ", bodySha256: createHash("sha256").update(body).digest("hex") }] } });
+    const guard = new TargetAuthorizationGuard(parsed);
+    expect(guard.reserve("https://app.test/inspect", "POST", body)).toBeUndefined();
+    expect(guard.reserve("https://app.test/inspect", "POST", Buffer.from([0, 255, 1, 3]))).toBe("authorization-body-mismatch");
   });
   it("enforces the same ledger for browser traffic and rejects learned mutations and streams", () => {
     const guard = new TargetAuthorizationGuard(targetAuthorizationSchema.parse(bountyInput()));

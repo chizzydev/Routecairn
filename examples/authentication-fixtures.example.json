@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "maxCases": 10,
+  "maxStepsPerCase": 20,
+  "maxRequests": 40,
+  "maxResponseBytes": 32768,
+  "fixtures": {
+    "inboxes": [{ "id": "local-messages", "kind": "LOCAL_HTTP" }],
+    "totp": [
+      { "id": "primary-totp", "secretRef": "totp_seed", "encoding": "BASE32", "algorithm": "SHA1", "digits": 6, "periodSeconds": 30 }
+    ],
+    "webauthn": [
+      { "id": "platform-passkey", "protocol": "ctap2", "transport": "internal", "hasResidentKey": true, "hasUserVerification": true, "isUserVerified": true, "automaticPresenceSimulation": true }
+    ],
+    "oidc": [
+      { "id": "local-idp", "clientIdSecretRef": "oidc_client_id", "clientSecretRef": "oidc_client_secret", "redirectUris": ["https://app.example.com/auth/callback"], "subjectSecretRef": "oidc_subject", "port": 0, "accessTokenLifetimeSeconds": 300 }
+    ],
+    "providers": [
+      { "id": "supabase", "provider": "SUPABASE_AUTH", "baseUrl": "https://app.example.com", "apiKeySecretRef": "supabase_anon_key", "serviceKeySecretRef": "supabase_service_key" }
+    ]
+  },
+  "cases": [
+    {
+      "id": "totp-verification",
+      "label": "Current TOTP is accepted once",
+      "category": "MFA_ENROLLMENT_REMOVAL",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "MFA_ENROLLED" }],
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        {
+          "id": "verify-totp",
+          "phase": "VERIFY",
+          "actorId": "member",
+          "fixtureActions": [{ "kind": "TOTP_GENERATE", "profileId": "primary-totp", "capture": "current_totp" }],
+          "request": { "method": "GET", "url": "https://app.example.com/api/auth/mfa/status?code={{CAPTURE:current_totp}}", "stateChanging": false },
+          "assertions": [{ "kind": "STATUS_IN", "values": [200] }]
+        }
+      ]
+    },
+    {
+      "id": "supabase-oauth-redirect",
+      "label": "Supabase OAuth state redirect",
+      "category": "OAUTH_OIDC_STATE_REDIRECT_VALIDATION",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        {
+          "id": "authorize",
+          "phase": "VERIFY",
+          "actorId": "member",
+          "providerCall": { "adapterId": "supabase", "operation": "OAUTH_AUTHORIZE", "fields": { "provider": "github", "redirect_to": "{{SECRET:oauth_redirect_uri}}", "state": "{{SECRET:oauth_state}}" } },
+          "assertions": [
+            { "kind": "STATUS_IN", "values": [302] },
+            { "kind": "REDIRECT_QUERY_EQUALS_SECRET", "parameter": "state", "secretRef": "oauth_state" }
+          ]
+        }
+      ]
+    }
+  ]
+}

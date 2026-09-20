@@ -47,13 +47,30 @@ export async function workflowRecoveryFixture(workflow: RecoverableWorkflow, opt
     assertions: [{ id: "restored", scope: "CLEANUP", kind: "VALUE_EQUALS_LITERAL", dimension: "ENTITLEMENT", capture: "restored", expected: true }]
   };
   const endpoint = { id: "fixture", safeAlias: "fixture", kind: "FIXTURE_CONTROL", pathTemplate: "/fixture", allowedOrigins: [origin] };
-  const modulePlan = { schemaVersion: 1, enabled: true, targetOrigin: origin, maxRequests: 20, maxResponseBytes: 8192, maxConcurrency: 2, maxCases: 5, maxStepsPerCase: 10, actors: [actor], resources: [endpoint], endpoints: [endpoint], cases: [testCase], notes: [], provider: { kind: "CUSTOM_SYNTHETIC", mode: "LOCAL_EMULATOR", fixturePathPrefix: "/fixture", realPaymentExecution: "FORBIDDEN" } };
+  const protocolCase = {
+    id: testCase.id,
+    label: testCase.label,
+    kind: "GRAPHQL_MUTATION",
+    actorId: actor.id,
+    requireVerifiedIdentity: false,
+    url: `${origin}/attack`,
+    headers: {},
+    operationName: "NeverReplay",
+    document: "mutation NeverReplay { neverReplay }",
+    variables: { attack: "{{SECRET:missing-attack-secret}}" },
+    expectation: { decision: "ALLOW", allowedStatuses: [200], deniedStatuses: [400, 401, 403], minMessages: 0 },
+    authorization: { environment: "LOCAL", operator: "recovery-test", ticket: "recovery-test", authorizedAt: "2026-01-01T00:00:00.000Z", expiresAt: "2026-01-02T00:00:00.000Z", confirmation: "I_AUTHORIZE_PROTOCOL_STATE_CHANGES", disposableResources: true },
+    cleanup: { url: `${origin}/fixture/cleanup`, method: "POST", headers: {}, body: { restore: "captured-restoration-sentinel" }, statusIn: [204] },
+    comparisonFingerprint: testCase.comparisonFingerprint
+  };
+  const selectedCase = workflow === "protocolSecurity" ? protocolCase : testCase;
+  const modulePlan = { schemaVersion: 1, enabled: true, targetOrigin: origin, maxRequests: 20, maxRequestBytes: 8192, maxResponseBytes: 8192, maxDurationMs: 5000, maxConcurrency: 2, maxCases: 5, maxStepsPerCase: 10, actors: [actor], resources: [endpoint], endpoints: [endpoint], cases: [selectedCase], notes: [], provider: { kind: "CUSTOM_SYNTHETIC", mode: "LOCAL_EMULATOR", fixturePathPrefix: "/fixture", realPaymentExecution: "FORBIDDEN" } };
   const plan = { ...testPlan("quick", { scope }), [workflow]: modulePlan } as unknown as ResolvedScanPlan;
   const context = new ScanContext({ target: origin, scope, config: defaultConfig, plan, outputDir: join(process.env.ROUTECAIRN_MUTATION_DIR!, "scan-one"), ...(options.authProfile ? { authProfile: options.authProfile } : {}) });
-  const prefix = { authenticationLifecycle: "auth-lifecycle", businessInvariant: "business-invariant", controlledRace: "controlled-race", linkPortalSecurity: "link-portal", operationalEndpointSecurity: "operational", billingEntitlement: "billing-entitlement" }[workflow];
-  const caseId = `${prefix}-${testCase.id}`;
+  const prefix = { authenticationLifecycle: "auth-lifecycle", businessInvariant: "business-invariant", controlledRace: "controlled-race", protocolSecurity: "protocol-security", linkPortalSecurity: "link-portal", operationalEndpointSecurity: "operational", billingEntitlement: "billing-entitlement" }[workflow];
+  const caseId = `${prefix}-${selectedCase.id}`;
   const captures = new Map<string, unknown>([["restore", "captured-restoration-sentinel"]]);
-  context.mutations.register(workflow, caseId, testCase, { captures });
+  context.mutations.register(workflow, caseId, selectedCase, workflow === "protocolSecurity" ? { state: captures } : { captures });
   const lock = context.mutations.lock(); await lock.acquire(caseId);
   await context.mutations.journal.append({ caseId, stage: "MUTATION_ARMED", targetOrigin: origin, mode: "CONTROLLED_MUTATION", requestUrl: `${origin}/one-time/captured-restoration-sentinel` });
   await lock.release(); // Simulate a terminated process: no in-memory captures survive.

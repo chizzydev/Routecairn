@@ -53,10 +53,14 @@ export async function runControlledMutation(options: RunOptions): Promise<{ resu
   const audit: RequestAuditEntry[] = [];
   const broker = await createBroker(contract.targetOrigin, resolve(options.scope), audit);
   const executor = new ControlledMutationExecutor(broker, { journalDirectory, globalLockPath: join(dashboardPaths.mutationJournalDir, "global-mutation.lock") });
-  const result = await executor.execute(contract);
-  const report = { result, requestAudit: audit };
-  if (options.output) await writeReport(resolve(options.output), report);
-  return report;
+  try {
+    const result = await executor.execute(contract);
+    const report = { result, requestAudit: audit };
+    if (options.output) await writeReport(resolve(options.output), report);
+    return report;
+  } finally {
+    await broker.close();
+  }
 }
 
 export async function recoverControlledMutation(options: RecoverOptions): Promise<{ result: ControlledMutationResult; requestAudit: RequestAuditEntry[] }> {
@@ -65,10 +69,14 @@ export async function recoverControlledMutation(options: RecoverOptions): Promis
   const dashboardPaths = resolveDashboardPaths();
   const broker = await createBroker(options.target, resolve(options.scope), audit);
   const executor = new ControlledMutationExecutor(broker, { journalDirectory, globalLockPath: join(dashboardPaths.mutationJournalDir, "global-mutation.lock") });
-  const result = await executor.recover(resolve(options.bundle), options.caseId);
-  const report = { result, requestAudit: audit };
-  if (options.output) await writeReport(resolve(options.output), report);
-  return report;
+  try {
+    const result = await executor.recover(resolve(options.bundle), options.caseId);
+    const report = { result, requestAudit: audit };
+    if (options.output) await writeReport(resolve(options.output), report);
+    return report;
+  } finally {
+    await broker.close();
+  }
 }
 
 async function registeredJournalDirectory(explicitDirectory: string | undefined): Promise<string> {

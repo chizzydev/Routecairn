@@ -24,6 +24,37 @@ afterEach(async () => {
 });
 
 describe("authentication lifecycle integration", () => {
+  it("executes native TOTP and local test-inbox fixtures without persisting their values", async () => {
+    let generatedTotp = "";
+    server = createServer(async (request, response) => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      if (url.pathname === "/") return void response.writeHead(200).end("ok");
+      if (url.pathname === "/totp") { generatedTotp = url.searchParams.get("code") ?? ""; return void response.writeHead(/^\d{6}$/.test(generatedTotp) ? 200 : 400).end(); }
+      if (url.pathname === "/trigger") {
+        const endpoint = url.searchParams.get("inbox")!;
+        await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ channel: "EMAIL", recipient: "fixture@example.test", subject: "Verify", text: "Your code is 735560" }) });
+        return void response.writeHead(202).end();
+      }
+      if (url.pathname === "/verify") return void response.writeHead(url.searchParams.get("code") === "735560" ? 200 : 400).end();
+      return void response.writeHead(404).end();
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const target = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const directory = await mkdtemp(join(tmpdir(), "routecairn-auth-fixtures-")); directories.push(directory);
+    const actor = { id: "member", safeAlias: "fixture-member", authSlot: "primary", relationship: "SELF", declaredState: "ACTIVE" };
+    const manifest = { schemaVersion: 1, fixtures: { inboxes: [{ id: "mail", kind: "LOCAL_HTTP" }], totp: [{ id: "mfa", secretRef: "totp_seed" }] }, cases: [{ id: "native-fixtures", label: "Native fixtures", category: "MFA_ENROLLMENT_REMOVAL", actors: [actor], authorization: { mode: "OBSERVE_ONLY", environment: "TEST" }, steps: [
+      { id: "totp", phase: "VERIFY", actorId: "member", fixtureActions: [{ kind: "TOTP_GENERATE", profileId: "mfa", capture: "totp_code" }], request: { method: "GET", url: `${target}totp?code={{CAPTURE:totp_code}}`, stateChanging: false }, assertions: [{ kind: "STATUS_IN", values: [200] }] },
+      { id: "trigger", phase: "ACTION", actorId: "member", fixtureActions: [{ kind: "INBOX_START", adapterId: "mail", captureEndpoint: "inbox_endpoint" }], request: { method: "GET", url: `${target}trigger?inbox={{CAPTURE:inbox_endpoint}}`, stateChanging: false }, assertions: [{ kind: "STATUS_IN", values: [202] }] },
+      { id: "consume", phase: "VERIFY", actorId: "member", fixtureActions: [{ kind: "INBOX_WAIT", adapterId: "mail", channel: "EMAIL", recipientSecretRef: "recipient", capture: "email_code", value: "CODE", timeoutMs: 2000 }], request: { method: "GET", url: `${target}verify?code={{CAPTURE:email_code}}`, stateChanging: false }, assertions: [{ kind: "STATUS_IN", values: [200] }] }
+    ] }] };
+    const result = await runScanCommand(target, { scope: await writeJson(directory, "scope.json", { ...exampleScope, allowedDomains: ["127.0.0.1"], disallowedPaths: [], allowedMethods: ["GET", "HEAD", "OPTIONS"], rateLimitPerSecond: 50 }), output: join(directory, "reports"), auth: await writeJson(directory, "auth.json", { label: "fixture", safeAlias: "fixture-member", headers: {}, lifecycleSecrets: { totp_seed: "JBSWY3DPEHPK3PXP", recipient: "fixture@example.test" } }), authenticationLifecycle: await writeJson(directory, "lifecycle.json", manifest) });
+    const text = await readFile(result.reportPath, "utf8");
+    const report = JSON.parse(text) as { authenticationLifecycle: import("../../src/reports/AuthenticationLifecycleReport.js").AuthenticationLifecycleReport };
+    expect(report.authenticationLifecycle).toMatchObject({ passedCases: 1, failedCases: 0, blockedCases: 0 });
+    expect(generatedTotp).toMatch(/^\d{6}$/);
+    for (const secret of [generatedTotp, "735560", "fixture@example.test", "JBSWY3DPEHPK3PXP"]) expect(text).not.toContain(secret);
+  });
+
   it("learns a browser login and automatically executes compiled lifecycle cases", async () => {
     server = createServer(async (request, response) => {
       if (request.url === "/login") return void response.writeHead(200, { "content-type": "text/html" }).end('<form action="/api/session" method="post"><input name="username"><input name="password" type="password"><button type="submit">Sign in</button></form>');

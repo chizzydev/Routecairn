@@ -42,6 +42,7 @@ interface DashboardData {
   generatedAt: string;
   metadata: RouteCairnReport["metadata"];
   requestBudget?: RouteCairnReport["requestBudget"];
+  transport?: RouteCairnReport["transport"];
   technologies: RouteCairnReport["technologies"];
   severityCounts: Record<string, number>;
   findingTypeCounts: Record<string, number>;
@@ -62,10 +63,12 @@ interface DashboardData {
   businessInvariant: RouteCairnReport["businessInvariant"];
   controlledRace: RouteCairnReport["controlledRace"];
   apiGraphql: RouteCairnReport["apiGraphql"];
+  protocolSecurity: RouteCairnReport["protocolSecurity"];
   linkPortalSecurity: RouteCairnReport["linkPortalSecurity"];
   operationalEndpointSecurity: RouteCairnReport["operationalEndpointSecurity"];
   billingEntitlement: RouteCairnReport["billingEntitlement"];
   secretBoundary: RouteCairnReport["secretBoundary"];
+  activeVulnerability: RouteCairnReport["activeVulnerability"];
   assistedReview: RouteCairnReport["assistedReview"];
   js: {
     scripts: number;
@@ -279,7 +282,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
       const sev = data.severityCounts;
       bySection('overview').innerHTML = sectionTitle('Scan Overview', 'A compact view of scan volume, severity, and high-signal intelligence.') +
       '<div class="grid stats">' +
-        stat('Profile', data.profile ? data.profile.name : data.mode) + stat('Requests', data.requestBudget ? (data.requestBudget.totalTransmitted + '/' + data.requestBudget.maxRequests) : data.metadata.totalRequests) + stat('Cleanup reserve', data.requestBudget ? data.requestBudget.cleanupRemaining + '/' + data.requestBudget.cleanupReservedRequests : 'n/a') + stat('Findings', data.findings.length) + stat('Triaged', data.findings.filter(f => f.triageStatus !== 'unreviewed').length) + stat('Confirmed', data.triageSummary.confirmed || 0) + stat('Critical/High', (sev.Critical || 0) + (sev.High || 0)) + stat('Medium', sev.Medium || 0) +
+        stat('Profile', data.profile ? data.profile.name : data.mode) + stat('Requests', data.requestBudget ? (data.requestBudget.totalTransmitted + '/' + data.requestBudget.maxRequests) : data.metadata.totalRequests) + stat('Connections', data.transport ? data.transport.connectionsCreated : 'n/a') + stat('Pool reuse', data.transport ? data.transport.estimatedConnectionReuses : 'n/a') + stat('HTTP/2', data.transport ? data.transport.http2Connections : 'n/a') + stat('Cleanup reserve', data.requestBudget ? data.requestBudget.cleanupRemaining + '/' + data.requestBudget.cleanupReservedRequests : 'n/a') + stat('Findings', data.findings.length) + stat('Triaged', data.findings.filter(f => f.triageStatus !== 'unreviewed').length) + stat('Confirmed', data.triageSummary.confirmed || 0) + stat('Critical/High', (sev.Critical || 0) + (sev.High || 0)) + stat('Medium', sev.Medium || 0) +
         stat('Proof Blocks', data.proofMode?.blocks?.length || 0) + stat('Workflows', data.workflows.length) + stat('API Endpoints', data.apiEndpoints.length) + stat('API Probe', data.apiProbe?.endpointsReviewed?.length || 0) + stat('Auth-only', data.authenticatedScan?.authOnlySurfaces?.length || 0) + stat('A/B Diffs', (data.roleComparison?.accountAOnly?.length || 0) + (data.roleComparison?.accountBOnly?.length || 0)) + stat('API Reviews', data.stateAwareApi?.reviewedEndpoints?.length || 0) + stat('Params', data.parameterAnalysis?.totalParameters || 0) + stat('Templates', data.workflowValidation?.templates?.length || 0) + stat('Next Data', data.nextJsReview?.dataRoutes?.length || 0) +
       '</div>' +
       '<div class="grid two" style="margin-top:14px">' +
@@ -396,7 +399,19 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
         '<div class="card band" style="margin-top:14px"><h3>Parameter Analysis</h3>' + parameterAnalysisHtml() + '</div>' +
         '<div class="card band" style="margin-top:14px"><h3>Next.js Review</h3>' + nextJsReviewHtml() + '</div>' +
         '<div class="card band" style="margin-top:14px"><h3>Secret Boundary and Sensitive Exposure</h3>' + secretBoundaryHtml() + '</div>' +
+        '<div class="card band" style="margin-top:14px"><h3>Protocol-Level Security</h3>' + protocolSecurityHtml() + '</div>' +
+        '<div class="card band" style="margin-top:14px"><h3>Active Vulnerability Validation</h3>' + activeVulnerabilityHtml() + '</div>' +
         '<div class="card band" style="margin-top:14px"><h3>Assisted Security Review</h3>' + assistedReviewHtml() + '</div>';
+    }
+    function protocolSecurityHtml() {
+      const report = data.protocolSecurity;
+      if (!report || !report.enabled) return '<div class="empty">Protocol-level security testing was not configured.</div>';
+      return '<p>Executed: <strong>' + esc(report.executedCases) + '/' + esc(report.plannedCases) + '</strong>; passed: ' + esc(report.passedCases) + '; failed: ' + esc(report.failedCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.observations.map(v => [v.label, v.kind, v.actorAlias, v.outcome, v.reason, v.statusCode || '-', v.messageCount, v.eventCount, v.negotiatedProtocol || '-', v.cleanupOutcome || '-']), ['Case','Kind','Actor','Outcome','Reason','Status','Messages','Events','Protocol','Cleanup']);
+    }
+    function activeVulnerabilityHtml() {
+      const report = data.activeVulnerability;
+      if (!report || !report.enabled) return '<div class="empty">Active vulnerability validation was not configured.</div>';
+      return '<p>Cases: <strong>' + esc(report.plannedCases) + '</strong> (' + esc(report.explicitCases) + ' explicit; ' + esc(report.discoveredCases) + ' discovery-compiled). Proven: <strong>' + esc(report.provenCases) + '</strong>; secure: ' + esc(report.secureCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.coverage.map(v => [v.vulnerabilityClass, v.planned, v.proven, v.secure, v.inconclusive, v.blocked, v.notAssessed]), ['Class','Planned','Proven','Secure','Inconclusive','Blocked','Not assessed']);
     }
     function assistedReviewHtml() {
       const review = data.assistedReview;
@@ -483,6 +498,7 @@ function dashboardData(outputDir: string, report: RouteCairnReport, triage: Tria
     generatedAt: report.metadata.completedAt,
     metadata: report.metadata,
     ...(report.requestBudget ? { requestBudget: report.requestBudget } : {}),
+    ...(report.transport ? { transport: report.transport } : {}),
     technologies: report.technologies,
     severityCounts: countBy(findings, "severity"),
     findingTypeCounts: countBy(findings, "type"),
@@ -503,10 +519,12 @@ function dashboardData(outputDir: string, report: RouteCairnReport, triage: Tria
     businessInvariant: report.businessInvariant,
     controlledRace: report.controlledRace,
     apiGraphql: report.apiGraphql,
+    protocolSecurity: report.protocolSecurity,
     linkPortalSecurity: report.linkPortalSecurity,
     operationalEndpointSecurity: report.operationalEndpointSecurity,
     billingEntitlement: report.billingEntitlement,
     secretBoundary: report.secretBoundary,
+    activeVulnerability: report.activeVulnerability,
     assistedReview: report.assistedReview,
     js: {
       scripts: report.jsIntelligence?.scripts.length ?? 0,

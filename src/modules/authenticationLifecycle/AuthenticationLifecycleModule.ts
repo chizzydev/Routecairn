@@ -15,6 +15,7 @@ import type { MutationJournalStage, MutationOutcome } from "../../core/offensive
 import type { AuthenticationLifecycleCaseObservation, AuthenticationLifecycleReport, LifecycleAssertionObservation, LifecycleStepObservation } from "../../reports/AuthenticationLifecycleReport.js";
 import { authenticationLifecycleCategories, type AuthenticationLifecycleCasePlan, type AuthenticationLifecycleCategory, type LifecycleActorPlan, type LifecycleAssertionPlan, type LifecycleStepPlan } from "./AuthenticationLifecycleTypes.js";
 import { compileBrowserLearnedLifecycle } from "./BrowserLearnedLifecycleCompiler.js";
+import { AuthenticationFixtureRuntime } from "./AuthenticationFixtureRuntime.js";
 
 interface TransientSnapshot {
   statusCode?: number;
@@ -69,6 +70,7 @@ export async function executeAuthenticationLifecycle(context: ScanContext): Prom
 }
 
 function reportFor(plan: NonNullable<ScanContext["options"]["plan"]["authenticationLifecycle"]>, observations: AuthenticationLifecycleCaseObservation[], automation?: AuthenticationLifecycleReport["learningAutomation"]): AuthenticationLifecycleReport {
+  const fixtures = plan.fixtures ?? emptyFixtures();
   const coverage = Object.fromEntries(authenticationLifecycleCategories.map((category) => {
     const categoryItems = observations.filter((item) => item.category === category);
     return [category, {
@@ -88,10 +90,11 @@ function reportFor(plan: NonNullable<ScanContext["options"]["plan"]["authenticat
     blockedCases: observations.filter((item) => item.outcome === "BLOCKED").length,
     cleanupRequired: plan.cases.filter((item) => item.cleanupRequired).length,
     cleanupFailed: observations.filter((item) => item.cleanupOutcome === "CLEANUP_FAILED").length,
+    fixtures: { inboxAdapters: fixtures.inboxes.length, totpProfiles: fixtures.totp.length, webauthnAuthenticators: fixtures.webauthn.length, oidcHarnesses: fixtures.oidc.length, providerAdapters: fixtures.providers.map((item) => item.provider), secretsStored: false },
     ...(automation ? { learningAutomation: automation } : {}),
     observations,
     coverage,
-    notes: [...plan.notes, "State-changing cases join the durable mutation journal and global lock; unresolved cleanup blocks later state changes.", "A FAIL means a configured security expectation was contradicted. Network errors and unavailable credentials remain inconclusive or blocked, never confirmed findings."]
+    notes: [...plan.notes, "Authentication fixtures are isolated per case; generated codes, inbox contents, WebAuthn credentials, OAuth codes, and tokens are cleared without report persistence.", "State-changing cases join the durable mutation journal and global lock; unresolved cleanup blocks later state changes.", "A FAIL means a configured security expectation was contradicted. Network errors and unavailable credentials remain inconclusive or blocked, never confirmed findings."]
   };
 }
 
@@ -111,9 +114,18 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
   const cleanupSteps = testCase.steps.filter((step) => step.phase === "CLEANUP");
   const journalCaseId = `auth-lifecycle-${testCase.id}`;
   const recovering = context.mutations.register("authenticationLifecycle", journalCaseId, testCase, { captures, snapshots });
-  const cleanupTransport = context.createWorkflowCleanupHttpClient(300, context.options.plan.authenticationLifecycle!.maxResponseBytes);
+  const fixturePlan = context.options.plan.authenticationLifecycle!.fixtures ?? emptyFixtures();
+  const fixtureNetworkOrigins = [...fixturePlan.providers.flatMap((provider) => [new URL(provider.baseUrl).origin, ...(provider.tokenBaseUrl ? [new URL(provider.tokenBaseUrl).origin] : provider.provider === "FIREBASE" && new URL(provider.baseUrl).hostname === "identitytoolkit.googleapis.com" ? ["https://securetoken.googleapis.com"] : [])]), ...fixturePlan.inboxes.flatMap((inbox) => inbox.kind === "LOCAL_HTTP" ? [] : [new URL(inbox.baseUrl).origin])];
+  const cleanupTransport = context.createWorkflowCleanupHttpClient(300, context.options.plan.authenticationLifecycle!.maxResponseBytes, fixtureNetworkOrigins);
   stateChangeTransmitted = recovering;
   const lifecycleNotes: string[] = [];
+  const fixtureRuntime = new AuthenticationFixtureRuntime(fixturePlan, context.options.abortSignal, async (url) => {
+    const response = await transport.send({ url, method: "GET", headers: { Accept: "application/json" }, streamLimitBytes: maxResponseBytes, maxStreamContentLength: maxResponseBytes, retainBodyPreview: true, disableRetries: true, disableRedirects: true, skipCache: true });
+    if (response.error || response.statusCode === undefined || response.statusCode < 200 || response.statusCode >= 300) throw new Error("TEST_INBOX_TRANSPORT_ERROR");
+    const body = bodyPreviewForAnalysis(response);
+    if (body === undefined) throw new Error("TEST_INBOX_BODY_UNAVAILABLE");
+    return JSON.parse(body);
+  });
   let lockHeld = false;
   if (caseChangesState(testCase)) {
     try {
@@ -127,7 +139,7 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
   try {
     for (const step of recovering ? [] : actionSteps) {
       if (mainBlocked || mainInconclusive) break;
-      const result = await executeStep(context, transport, journal, journalCaseId, testCase, step, captures, snapshots, maxResponseBytes, false);
+      const result = await executeStep(context, transport, journal, journalCaseId, testCase, step, captures, snapshots, fixtureRuntime, maxResponseBytes, false);
       observations.push(result);
       if (result.transmitted && step.request.stateChanging) stateChangeTransmitted = true;
       await context.mutations.checkpoint(journalCaseId);
@@ -137,8 +149,9 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
     }
   } finally {
     if ((testCase.cleanupRequired && stateChangeTransmitted) || (!testCase.cleanupRequired && cleanupSteps.length > 0 && stateChangeTransmitted)) {
-      for (const step of cleanupSteps) observations.push(await executeStep(context, cleanupTransport, journal, journalCaseId, testCase, step, captures, snapshots, maxResponseBytes, true));
+      for (const step of cleanupSteps) observations.push(await executeStep(context, cleanupTransport, journal, journalCaseId, testCase, step, captures, snapshots, fixtureRuntime, maxResponseBytes, true));
     }
+    await fixtureRuntime.close();
   }
   const cleanupObservations = observations.filter((step) => step.phase === "CLEANUP");
   let cleanupOutcome = !testCase.cleanupRequired
@@ -176,15 +189,22 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
   };
 }
 
-async function executeStep(context: ScanContext, transport: RequestSafetyBroker, journal: MutationJournal, journalCaseId: string, testCase: AuthenticationLifecycleCasePlan, step: LifecycleStepPlan, captures: Map<string, string>, snapshots: Map<string, TransientSnapshot>, maxResponseBytes: number, cleanupDuty: boolean): Promise<LifecycleStepObservation> {
+async function executeStep(context: ScanContext, transport: RequestSafetyBroker, journal: MutationJournal, journalCaseId: string, testCase: AuthenticationLifecycleCasePlan, step: LifecycleStepPlan, captures: Map<string, string>, snapshots: Map<string, TransientSnapshot>, fixtureRuntime: AuthenticationFixtureRuntime, maxResponseBytes: number, cleanupDuty: boolean): Promise<LifecycleStepObservation> {
   const actor = testCase.actors.find((item) => item.id === step.actorId)!;
   if (step.request.stateChanging && !cleanupDuty && !authorizationValid(testCase)) return stepObservation(step, actor, false, "BLOCKED", "AUTHORIZATION_EXPIRED_AT_EXECUTION");
   const profile = profileForActor(context, actor);
   if (actor.authSlot !== "anonymous" && !profile) return stepObservation(step, actor, false, "BLOCKED", "ACTOR_CREDENTIAL_UNAVAILABLE");
   const secrets = profile ? authenticationLifecycleSecrets(profile) : {};
+  const capturedNames: string[] = [];
   if (step.waitBeforeMs > 0) {
     try { await abortableDelay(step.waitBeforeMs, cleanupDuty ? context.cleanupSignal(transport) : context.options.abortSignal); }
     catch { return stepObservation(step, actor, false, "INCONCLUSIVE", "WAIT_ABORTED"); }
+  }
+  try {
+    for (const action of step.fixtureActions ?? []) capturedNames.push(...await fixtureRuntime.execute(action, captures, secrets));
+  } catch (error) {
+    const reason = error instanceof Error && /TIMEOUT|ABORTED/.test(error.message) ? "AUTH_FIXTURE_TIMEOUT_OR_ABORT" : "AUTH_FIXTURE_EXECUTION_ERROR";
+    return { ...stepObservation(step, actor, false, "INCONCLUSIVE", reason), capturesRecorded: capturedNames };
   }
   let url: string;
   let headers: Record<string, string>;
@@ -206,7 +226,8 @@ async function executeStep(context: ScanContext, transport: RequestSafetyBroker,
     return stepObservation(step, actor, false, "BLOCKED", "SECRET_OR_CAPTURE_REFERENCE_UNAVAILABLE");
   }
   const scope = context.scopeMatcher.decide(url, step.request.method);
-  if (!scope.allowed || new URL(url).origin !== testCaseOrigin(testCase)) return stepObservation(step, actor, false, "BLOCKED", "EXPANDED_REQUEST_OUT_OF_SCOPE");
+  const fixtureOrigins = new Set(context.options.plan.authenticationLifecycle?.fixtures?.providers.flatMap((provider) => [new URL(provider.baseUrl).origin, ...(provider.tokenBaseUrl ? [new URL(provider.tokenBaseUrl).origin] : provider.provider === "FIREBASE" && new URL(provider.baseUrl).hostname === "identitytoolkit.googleapis.com" ? ["https://securetoken.googleapis.com"] : [])]) ?? []);
+  if (!scope.allowed || (new URL(url).origin !== context.options.plan.authenticationLifecycle?.targetOrigin && !fixtureOrigins.has(new URL(url).origin))) return stepObservation(step, actor, false, "BLOCKED", "EXPANDED_REQUEST_OUT_OF_SCOPE");
   if (step.request.stateChanging) {
     try { await journal.append({ ...journalEntry(testCase, journalCaseId, cleanupDuty ? "ROLLBACK_SENT" : "MUTATION_ARMED"), requestMethod: step.request.method, requestUrl: safeRequestUrl(url), ...(body ? { requestBodyAttestation: journal.attestBody(body) } : {}) }); }
     catch { return stepObservation(step, actor, false, "BLOCKED", "MUTATION_INTENT_JOURNAL_FAILED"); }
@@ -226,7 +247,6 @@ async function executeStep(context: ScanContext, transport: RequestSafetyBroker,
   if (response.error) return stepObservation(step, actor, potentiallyTransmitted, potentiallyTransmitted ? "INCONCLUSIVE" : "BLOCKED", transportReason(response));
   const snapshot = snapshotFor(response);
   snapshots.set(step.id, snapshot);
-  const capturedNames: string[] = [];
   for (const capture of step.captures) {
     const value = captureValue(capture, response, snapshot.json);
     if (value !== undefined && value.length > 0) {
@@ -241,7 +261,7 @@ async function executeStep(context: ScanContext, transport: RequestSafetyBroker,
     phase: step.phase,
     actorAlias: actor.safeAlias,
     method: step.request.method,
-    url: redactSensitiveUrl(url),
+    url: redactLifecycleUrl(url, secrets, captures),
     stateChanging: step.request.stateChanging,
     transmitted: potentiallyTransmitted,
     ...(response.statusCode ? { statusCode: response.statusCode } : {}),
@@ -329,6 +349,7 @@ function testCaseOrigin(testCase: AuthenticationLifecycleCasePlan): string { ret
 function expandRecord(record: Readonly<Record<string, string>>, secrets: Record<string, string>, captures: Map<string, string>): Record<string, string> { return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, expandString(value, secrets, captures)])); }
 function expandValue(value: unknown, secrets: Record<string, string>, captures: Map<string, string>): unknown { if (Array.isArray(value)) return value.map((entry) => expandValue(entry, secrets, captures)); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, expandValue(entry, secrets, captures)])); return typeof value === "string" ? expandString(value, secrets, captures) : value; }
 function expandString(value: string, secrets: Record<string, string>, captures: Map<string, string>): string { return value.replace(/\{\{(SECRET|CAPTURE):([A-Za-z0-9._-]+)\}\}/g, (_match, kind: string, name: string) => { const resolved = kind === "SECRET" ? secrets[name] : captures.get(name); if (resolved === undefined) throw new Error("missing reference"); return resolved; }); }
+function redactLifecycleUrl(value: string, secrets: Readonly<Record<string, string>>, captures: ReadonlyMap<string, string>): string { let redacted = redactSensitiveUrl(value); for (const secret of [...Object.values(secrets), ...captures.values()].filter(Boolean).sort((left, right) => right.length - left.length)) { redacted = redacted.split(secret).join("<redacted>").split(encodeURIComponent(secret)).join("%3Credacted%3E"); } return redacted; }
 function header(response: HttpResponse, name: string): string | undefined { const value = Object.entries(headersForAnalysis(response)).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]; return typeof value === "string" ? value : value?.join(", "); }
 function findHeader(headers: Record<string, string>, name: string): string | undefined { return Object.keys(headers).find((key) => key.toLowerCase() === name); }
 function valueAt(value: unknown, path: string): unknown { let current = value; for (const part of path.replace(/\[(\d+)\]/g, ".$1").split(".")) { if (current === null || current === undefined || (typeof current !== "object" && !Array.isArray(current))) return undefined; current = (current as Record<string, unknown>)[part]; } return current; }
@@ -355,4 +376,5 @@ function severityFor(category: AuthenticationLifecycleCategory): "Medium" | "Hig
 function titleFor(category: AuthenticationLifecycleCategory): string { return `Authentication lifecycle expectation failed: ${category.toLowerCase().replace(/_/g, " ")}`; }
 function impactFor(category: AuthenticationLifecycleCategory): string { return `The configured ${category.toLowerCase().replace(/_/g, " ")} boundary did not behave as required, which may permit account discovery, session persistence, token replay, identity confusion, or unauthorized account control.`; }
 function recommendationFor(category: AuthenticationLifecycleCategory): string { return `Enforce the ${category.toLowerCase().replace(/_/g, " ")} lifecycle server-side, invalidate superseded credentials atomically, bind tokens to the intended account and transaction, and add regression coverage for this exact case.`; }
-function disabledReport(): AuthenticationLifecycleReport { return { enabled: false, plannedCases: 0, executedCases: 0, passedCases: 0, failedCases: 0, inconclusiveCases: 0, blockedCases: 0, cleanupRequired: 0, cleanupFailed: 0, observations: [], coverage: Object.fromEntries(authenticationLifecycleCategories.map((category) => [category, { planned: 0, executed: 0, passed: 0, failed: 0 }])) as AuthenticationLifecycleReport["coverage"], notes: ["Authentication lifecycle testing was not configured."] }; }
+function disabledReport(): AuthenticationLifecycleReport { return { enabled: false, plannedCases: 0, executedCases: 0, passedCases: 0, failedCases: 0, inconclusiveCases: 0, blockedCases: 0, cleanupRequired: 0, cleanupFailed: 0, fixtures: { inboxAdapters: 0, totpProfiles: 0, webauthnAuthenticators: 0, oidcHarnesses: 0, providerAdapters: [], secretsStored: false }, observations: [], coverage: Object.fromEntries(authenticationLifecycleCategories.map((category) => [category, { planned: 0, executed: 0, passed: 0, failed: 0 }])) as AuthenticationLifecycleReport["coverage"], notes: ["Authentication lifecycle testing was not configured."] }; }
+function emptyFixtures(): NonNullable<NonNullable<ScanContext["options"]["plan"]["authenticationLifecycle"]>["fixtures"]> { return { inboxes: [], totp: [], webauthn: [], oidc: [], providers: [] }; }

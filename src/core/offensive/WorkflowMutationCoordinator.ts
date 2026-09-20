@@ -6,7 +6,7 @@ import type { AuthProfile } from "../auth/AuthProfile.js";
 import { GlobalMutationLock, MutationJournal } from "./MutationJournal.js";
 import { MutationRecoveryVault } from "./MutationRecoveryVault.js";
 
-export const workflowKeys = ["authenticationLifecycle", "businessInvariant", "controlledRace", "linkPortalSecurity", "operationalEndpointSecurity", "billingEntitlement"] as const;
+export const workflowKeys = ["authenticationLifecycle", "businessInvariant", "controlledRace", "protocolSecurity", "linkPortalSecurity", "operationalEndpointSecurity", "billingEntitlement"] as const;
 export type RecoverableWorkflow = typeof workflowKeys[number];
 export interface WorkflowCheckpoint {
   kind: "WORKFLOW_CLEANUP_V1";
@@ -49,7 +49,7 @@ export class WorkflowMutationCoordinator {
       const current = this.cases.get(entry.caseId);
       if (!current) return safeEntry;
       const configured = current.checkpoint.plan[current.checkpoint.workflow]?.cases[0];
-      const authorizedDisposal = configured?.cleanupRequired === false && entry.outcome === "SECURE_FOR_CASE";
+      const authorizedDisposal = configured && "cleanupRequired" in configured && configured.cleanupRequired === false && entry.outcome === "SECURE_FOR_CASE";
       if (current.armed && entry.stage === "SEALED" && !authorizedDisposal) throw new Error("RECOVERY_REQUIRES_VERIFIED_CLEANUP");
       if (entry.stage === "MUTATION_ARMED" || entry.stage === "ROLLBACK_SENT") current.armed = true;
       if (current.armed && entry.stage !== "ROLLBACK_VERIFIED") await this.checkpoint(entry.caseId);

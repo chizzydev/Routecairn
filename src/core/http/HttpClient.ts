@@ -1,26 +1,27 @@
-import { Agent, request } from "undici";
+import { request } from "undici";
 import { createHash } from "node:crypto";
 import type { HttpClientOptions, HttpRequest, HttpResponse, RedirectHop } from "./HttpTypes.js";
-import { createPinnedConnector } from "./PinnedHttpTransport.js";
+import { connectorOptionsForUrl, resolvePinnedDestination, type DestinationPolicyOptions, type PinnedDestination } from "./PinnedHttpTransport.js";
+import { PinnedOriginPool } from "./PinnedOriginPool.js";
 
 const defaultHeaders = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 };
 
 export class HttpClient {
-  private readonly dispatcher: Agent;
+  private readonly pool: PinnedOriginPool;
+  private readonly ownsPool: boolean;
+  private readonly policy: DestinationPolicyOptions;
+  private readonly dnsCache = new Map<string, { expiresAt: number; value: Promise<PinnedDestination> }>();
 
   public constructor(private readonly options: HttpClientOptions) {
-    this.dispatcher = new Agent({
-      connect: createPinnedConnector({
-        allowedPrivateOrigins: options.allowedPrivateOrigins ?? [],
-        dnsTimeoutMs: options.dnsTimeoutMs ?? Math.min(options.timeoutMs, 3000),
-        maxDnsAnswers: options.maxDnsAnswers ?? 16,
-        ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {})
-      }),
-      keepAliveTimeout: 1,
-      keepAliveMaxTimeout: 1
-    });
+    this.ownsPool = options.connectionPool === undefined;
+    this.pool = options.connectionPool ?? new PinnedOriginPool(options.transport);
+    this.policy = { allowedPrivateOrigins: options.allowedPrivateOrigins ?? [], dnsTimeoutMs: options.dnsTimeoutMs ?? Math.min(options.timeoutMs, 3000), maxDnsAnswers: options.maxDnsAnswers ?? 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) };
+  }
+
+  public async close(): Promise<void> {
+    if (this.ownsPool) await this.pool.close();
   }
 
   public async send(requestInput: HttpRequest, currentUrl = requestInput.url, redirectChain: RedirectHop[] = []): Promise<HttpResponse> {
@@ -28,6 +29,7 @@ export class HttpClient {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
     const abortFromParent = () => controller.abort();
+    let release: (() => Promise<void>) | undefined;
     if (this.options.abortSignal?.aborted) {
       controller.abort();
     } else {
@@ -35,6 +37,8 @@ export class HttpClient {
     }
 
     try {
+      const pin = await this.resolveDestination(new URL(currentUrl));
+      const lease = this.pool.acquire(pin); release = lease.release;
       const response = await request(currentUrl, {
         method: requestInput.method,
         headers: {
@@ -43,7 +47,7 @@ export class HttpClient {
           ...requestInput.headers
         },
         ...(requestInput.body !== undefined ? { body: requestInput.body } : {}),
-        dispatcher: this.dispatcher,
+        dispatcher: lease.dispatcher,
         signal: controller.signal,
         bodyTimeout: this.options.timeoutMs,
         headersTimeout: this.options.timeoutMs
@@ -71,15 +75,13 @@ export class HttpClient {
         };
       }
 
-      const streamed = requestInput.streamLimitBytes !== undefined && requestInput.method !== "HEAD" ? await readBoundedStream(response.body, requestInput.streamLimitBytes, controller, requestInput.retainBodyPreview !== false ? this.options.bodyPreviewBytes : 0) : undefined;
-      const bodyBuffer = streamed
-        ? streamed.body
-        : Buffer.from(new Uint8Array(requestInput.method === "HEAD" ? Buffer.alloc(0) : await response.body.arrayBuffer()));
-      const body = bodyBuffer.subarray(0, streamed ? bodyBuffer.length : this.options.maxResponseBytes);
-      const bodyPreview = streamed ? streamed.bodyPreview : body.subarray(0, this.options.bodyPreviewBytes).toString("utf8");
+      const streamLimit = requestInput.streamLimitBytes ?? this.options.maxResponseBytes;
+      const streamed = requestInput.method !== "HEAD" ? await readBoundedStream(response.body, streamLimit, controller, requestInput.retainBodyPreview !== false ? this.options.bodyPreviewBytes : 0) : undefined;
+      const body = streamed?.body ?? Buffer.alloc(0);
+      const bodyPreview = streamed?.bodyPreview ?? "";
       const responseTimeMs = Math.round(performance.now() - startedAt);
       const contentType = headerValue(headers, "content-type");
-      const contentLength = declaredLength ?? body.length;
+      const contentLength = declaredLength ?? streamed?.bytesRead ?? 0;
       const title = extractTitle(bodyPreview);
 
       return {
@@ -111,7 +113,22 @@ export class HttpClient {
     } finally {
       clearTimeout(timeout);
       this.options.abortSignal?.removeEventListener("abort", abortFromParent);
+      await release?.();
     }
+  }
+
+  private async resolveDestination(url: URL): Promise<PinnedDestination> {
+    const ttl = this.pool.settings.dnsCacheTtlMs; const key = url.origin; const cached = this.dnsCache.get(key);
+    if (ttl > 0 && cached && cached.expiresAt > Date.now()) { this.pool.recordDnsCacheHit(); return cached.value; }
+    this.pool.recordDnsResolution();
+    const value = resolvePinnedDestination(connectorOptionsForUrl(url), this.policy).catch((error) => { this.pool.recordBlockedResolution(); this.dnsCache.delete(key); throw error; });
+    if (ttl > 0) { this.pruneDnsCache(); this.dnsCache.set(key, { expiresAt: Date.now() + ttl, value }); }
+    return value;
+  }
+
+  private pruneDnsCache(): void {
+    const now = Date.now(); for (const [key, entry] of this.dnsCache) if (entry.expiresAt <= now) this.dnsCache.delete(key);
+    while (this.dnsCache.size >= this.pool.settings.maxOrigins) { const oldest = this.dnsCache.keys().next().value as string | undefined; if (!oldest) break; this.dnsCache.delete(oldest); }
   }
 }
 

@@ -10,13 +10,15 @@ export const assistedFindingModules = new Set([
   "file-authorization-testing", "privilege-mutation-testing", "supabase-authorization",
   "authentication-lifecycle", "business-invariant", "controlled-race",
   "api-graphql-authorization", "link-portal-export-security",
-  "operational-endpoint-security", "billing-entitlement-security", "secret-boundary"
+  "operational-endpoint-security", "billing-entitlement-security", "secret-boundary",
+  "active-vulnerability-validation"
 ]);
 
 export const contractBoundAssistedModules = new Set([
   "supabase-authorization", "authentication-lifecycle", "business-invariant",
   "controlled-race", "api-graphql-authorization", "link-portal-export-security",
-  "operational-endpoint-security", "billing-entitlement-security"
+  "operational-endpoint-security", "billing-entitlement-security",
+  "active-vulnerability-validation"
 ]);
 
 /** All assisted findings cross one typed acceptance boundary before storage. */

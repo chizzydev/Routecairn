@@ -754,6 +754,8 @@ export interface CollectionAuthorizationObservation {
   contentLength?: number;
   bodyHash?: string;
   matchedObjectPreview?: string;
+  pagesFetched?: number;
+  paginationTermination?: "NOT_CONFIGURED" | "EXHAUSTED" | "MATCH_FOUND" | "MAX_PAGES" | "INVALID_NEXT" | "REQUEST_FAILED";
   confidence: CollectionAuthorizationConfidence;
   findingCategory?: CollectionAuthorizationFindingCategory;
   error?: string;
@@ -1464,6 +1466,7 @@ export interface RouteCairnReport {
   baseline?: BaselineReport;
   scopeDecisions: ScopeDecision[];
   requestAudit: RequestAuditEntry[];
+  transport?: import("../core/http/PinnedOriginPool.js").PinnedTransportDiagnostics;
   responses: HttpResponse[];
   technologies: DetectedTechnology[];
   jsIntelligence?: JsIntelligenceReport;
@@ -1493,10 +1496,12 @@ export interface RouteCairnReport {
   businessInvariant?: import("./BusinessInvariantReport.js").BusinessInvariantReport;
   controlledRace?: import("./ControlledRaceReport.js").ControlledRaceReport;
   apiGraphql?: import("./ApiGraphqlReport.js").ApiGraphqlReviewReport;
+  protocolSecurity?: import("../modules/protocolSecurity/ProtocolSecurityTypes.js").ProtocolSecurityReport;
   linkPortalSecurity?: import("./LinkPortalSecurityReport.js").LinkPortalSecurityReport;
   operationalEndpointSecurity?: import("./OperationalEndpointSecurityReport.js").OperationalEndpointSecurityReport;
   billingEntitlement?: import("./BillingEntitlementReport.js").BillingEntitlementReport;
   secretBoundary?: import("./SecretBoundaryReport.js").SecretBoundaryReport;
+  activeVulnerability?: import("./ActiveVulnerabilityReport.js").ActiveVulnerabilityReport;
   discoveredUrls: ResponseObservation[];
   findings: Finding[];
 }

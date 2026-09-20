@@ -7,7 +7,15 @@
     "known_username": "replace-with-disposable-account-username",
     "unknown_username": "replace-with-nonexistent-username",
     "password": "replace-with-disposable-account-password",
-    "fixed_session": "replace-with-operator-supplied-fixation-candidate"
+    "fixed_session": "replace-with-operator-supplied-fixation-candidate",
+    "totp_seed": "replace-with-base32-test-account-seed",
+    "oidc_client_id": "replace-with-test-client-id",
+    "oidc_client_secret": "replace-with-test-client-secret",
+    "oidc_subject": "replace-with-disposable-subject",
+    "supabase_anon_key": "replace-with-test-project-anon-key",
+    "supabase_service_key": "replace-with-test-project-service-key",
+    "oauth_redirect_uri": "replace-with-approved-test-redirect-uri",
+    "oauth_state": "replace-with-opaque-test-state"
   },
   "notes": [
     "Keep this file outside version control after inserting real values.",

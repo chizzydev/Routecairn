@@ -12,7 +12,10 @@ const identifier = z.string().regex(/^[A-Za-z0-9._-]{1,100}$/);
 const path = z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*(?:\[(?:0|[1-9][0-9]{0,2})\]|\.[A-Za-z_$][A-Za-z0-9_$]*){0,8}$/).refine((value) => !value.replace(/\[(\d+)\]/g, ".$1").split(".").some((part) => ["__proto__", "prototype", "constructor"].includes(part)), "Capture path contains a forbidden segment.");
 const method = z.enum(["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"]);
 const actor = z.object({ id: identifier, safeAlias: z.string().min(1).max(80), authSlot: z.enum(["anonymous", "primary", "account_a", "account_b"]), requestAuthentication: z.enum(["NONE", "PROFILE"]).optional(), relationship: z.string().min(1).max(80), declaredState: z.string().min(1).max(80), tenantAlias: z.string().min(1).max(80).optional() }).strict();
-const authorization = z.object({ mode: z.literal("CONTROLLED_INVARIANT"), environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]), confirmation: z.literal("I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING"), authorizedBy: z.string().min(2).max(160), changeTicket: z.string().min(1).max(160), authorizedAt: z.string().datetime(), expiresAt: z.string().datetime(), disposableEntities: z.literal(true), productionAcknowledged: z.boolean().default(false) }).strict();
+const authorization = z.union([
+  z.object({ mode: z.literal("OBSERVE_ONLY"), environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]) }).strict(),
+  z.object({ mode: z.literal("CONTROLLED_INVARIANT"), environment: z.enum(["LOCAL", "TEST", "STAGING", "PRODUCTION"]), confirmation: z.literal("I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING"), authorizedBy: z.string().min(2).max(160), changeTicket: z.string().min(1).max(160), authorizedAt: z.string().datetime(), expiresAt: z.string().datetime(), disposableEntities: z.literal(true), productionAcknowledged: z.boolean().default(false) }).strict()
+]);
 const capture = z.discriminatedUnion("source", [z.object({ name: identifier, source: z.literal("JSON"), path }).strict(), z.object({ name: identifier, source: z.literal("HEADER"), header: z.string().min(1).max(100) }).strict(), z.object({ name: identifier, source: z.literal("COOKIE"), cookie: z.string().min(1).max(100) }).strict()]);
 const request = z.object({ method, url: z.string().url().max(2048), stateChanging: z.boolean().default(false), headers: z.record(z.string().max(8192)).default({}), bodyFormat: z.enum(["JSON", "FORM"]).optional(), fields: z.record(z.unknown()).optional() }).strict();
 const observation = z.object({ id: identifier, actorId: identifier, request, captures: z.array(capture).min(1).max(20) }).strict();
@@ -28,7 +31,7 @@ const invariant = z.discriminatedUnion("kind", [
 ]);
 const cleanupAction = z.object({ id: identifier, actorId: identifier, request, successStatusCodes: z.array(z.number().int().min(100).max(599)).min(1).max(20) }).strict();
 const stateMachine = z.object({ beforeCapture: identifier, afterCapture: identifier, states: z.array(z.string().min(1).max(100)).min(2).max(50), allowedTransitions: z.array(z.object({ from: z.string().min(1).max(100), to: z.string().min(1).max(100) }).strict()).min(1).max(100) }).strict();
-const testCase = z.object({ id: identifier, label: z.string().min(1).max(160), category: z.enum(businessInvariantCategories), actors: z.array(actor).min(1).max(8), authorization, preState: z.array(observation).min(1).max(20), actions: z.array(action).min(1).max(20), postState: z.array(observation).min(1).max(20), invariants: z.array(invariant).min(1).max(40), stateMachine: stateMachine.optional(), cleanupRequired: z.literal(true), cleanup: z.array(cleanupAction).min(1).max(20), cleanupVerification: z.array(observation).min(1).max(20), cleanupInvariants: z.array(invariant).min(1).max(40) }).strict();
+const testCase = z.object({ id: identifier, label: z.string().min(1).max(160), category: z.enum(businessInvariantCategories), actors: z.array(actor).min(1).max(8), authorization, preState: z.array(observation).min(1).max(20), actions: z.array(action).max(20), postState: z.array(observation).min(1).max(20), invariants: z.array(invariant).min(1).max(40), stateMachine: stateMachine.optional(), cleanupRequired: z.boolean().default(true), cleanup: z.array(cleanupAction).max(20), cleanupVerification: z.array(observation).max(20), cleanupInvariants: z.array(invariant).max(40) }).strict();
 export const businessInvariantInputSchema = z.object({ schemaVersion: z.literal(1).default(1), maxCases: z.number().int().min(1).max(20).default(10), maxRequests: z.number().int().min(1).max(500).default(100), maxResponseBytes: z.number().int().min(256).max(262144).default(32768), maxConcurrency: z.number().int().min(1).max(4).default(2), cases: z.array(testCase).min(1).max(20) }).strict();
 export type BusinessInvariantInput = z.infer<typeof businessInvariantInputSchema>;
 type PlannedActor = z.infer<typeof actor> & { requestAuthentication: "NONE" | "PROFILE" };
@@ -51,7 +54,16 @@ export function planBusinessInvariant(input: BusinessInvariantInput, context: { 
   const cases = parsed.cases.map((item) => {
     if (caseIds.has(item.id)) throw new AppError(`Duplicate business invariant case ${item.id}.`, "BUSINESS_INVARIANT_DUPLICATE_ID"); caseIds.add(item.id);
     const actors = item.actors.map((value) => ({ ...value, requestAuthentication: value.requestAuthentication ?? (value.authSlot === "anonymous" ? "NONE" as const : "PROFILE" as const) }));
-    validateActors(actors, context, item.id); validateAuthorization(item.authorization, now, item.id);
+    validateActors(actors, context, item.id);
+    const readOnly = item.actions.length === 0;
+    if (readOnly) {
+      if (item.authorization.mode !== "OBSERVE_ONLY") throw new AppError(`Read-only case ${item.id} must use OBSERVE_ONLY authorization.`, "BUSINESS_INVARIANT_AUTHORIZATION_INVALID");
+      if (item.cleanupRequired || item.cleanup.length > 0 || item.cleanupVerification.length > 0 || item.cleanupInvariants.length > 0) throw new AppError(`Read-only case ${item.id} cannot declare cleanup.`, "BUSINESS_INVARIANT_CLEANUP_INVALID");
+    } else {
+      if (item.authorization.mode !== "CONTROLLED_INVARIANT") throw new AppError(`Mutating case ${item.id} requires controlled authorization.`, "BUSINESS_INVARIANT_AUTHORIZATION_REQUIRED");
+      validateAuthorization(item.authorization, now, item.id);
+      if (!item.cleanupRequired || item.cleanup.length === 0 || item.cleanupVerification.length === 0 || item.cleanupInvariants.length === 0) throw new AppError(`Mutating case ${item.id} requires cleanup actions, verification, and assertions.`, "BUSINESS_INVARIANT_CLEANUP_REQUIRED");
+    }
     const actorIds = new Set(actors.map((value) => value.id)); const captureNames = new Set<string>(); const actionIds = new Set<string>(); const nodeIds = new Set<string>(); const invariantIds = new Set<string>();
     for (const state of item.preState) { claimId(state.id, nodeIds, "workflow node"); validateObservation(state, actorIds, actors, captureNames, matcher, origin, context); requestCount += 1; }
     for (const current of item.actions) {
@@ -71,7 +83,10 @@ export function planBusinessInvariant(input: BusinessInvariantInput, context: { 
     }
     for (const state of item.cleanupVerification) { claimId(state.id, nodeIds, "workflow node"); validateObservation(state, actorIds, actors, captureNames, matcher, origin, context); requestCount += 1; }
     for (const current of item.cleanupInvariants) { claimId(current.id, invariantIds, "invariant"); validateInvariant(current, captureNames, actionIds); }
-    const sanitizedAuthorization = { mode: "CONTROLLED_INVARIANT" as const, environment: item.authorization.environment, authorizationIdentityConfirmed: true as const, changeTicketConfirmed: true as const, authorizedAt: item.authorization.authorizedAt, expiresAt: item.authorization.expiresAt, disposableEntities: true as const, productionAcknowledged: item.authorization.productionAcknowledged, confirmationAccepted: true as const };
+    const controlledAuthorization = item.authorization.mode === "CONTROLLED_INVARIANT" ? item.authorization : undefined;
+    const sanitizedAuthorization = readOnly
+      ? { mode: "OBSERVE_ONLY" as const, environment: item.authorization.environment, authorizationIdentityConfirmed: false as const, changeTicketConfirmed: false as const, disposableEntities: false as const, productionAcknowledged: item.authorization.environment === "PRODUCTION", confirmationAccepted: false as const }
+      : { mode: "CONTROLLED_INVARIANT" as const, environment: item.authorization.environment, authorizationIdentityConfirmed: true as const, changeTicketConfirmed: true as const, authorizedAt: controlledAuthorization!.authorizedAt, expiresAt: controlledAuthorization!.expiresAt, disposableEntities: true as const, productionAcknowledged: controlledAuthorization!.productionAcknowledged, confirmationAccepted: true as const };
     const planCase = { ...item, actors, authorization: sanitizedAuthorization, comparisonFingerprint: fingerprint(item, actors) };
     return JSON.parse(JSON.stringify(planCase)) as BusinessInvariantCasePlan;
   });
@@ -91,6 +106,7 @@ function validateActors(actors: PlannedActor[], context: CredentialContext, case
 }
 
 function validateAuthorization(value: z.infer<typeof authorization>, now: Date, caseId: string): void {
+  if (value.mode !== "CONTROLLED_INVARIANT") throw new AppError(`Mutating case ${caseId} requires controlled authorization.`, "BUSINESS_INVARIANT_AUTHORIZATION_REQUIRED");
   if (new Date(value.authorizedAt).getTime() > now.getTime() || new Date(value.expiresAt).getTime() <= now.getTime()) throw new AppError(`Authorization for ${caseId} is not currently valid.`, "BUSINESS_INVARIANT_AUTHORIZATION_EXPIRED");
   if (value.environment === "PRODUCTION" && !value.productionAcknowledged) throw new AppError(`Production case ${caseId} requires productionAcknowledged=true.`, "BUSINESS_INVARIANT_PRODUCTION_ACK_REQUIRED");
 }

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "maxRequests": 20,
+  "maxRequestBytes": 262144,
+  "maxResponseBytes": 65536,
+  "maxDurationMs": 10000,
+  "actors": [
+    { "id": "anonymous", "safeAlias": "public", "authSlot": "anonymous", "relationship": "untrusted" },
+    { "id": "member", "safeAlias": "member", "authSlot": "primary", "relationship": "authenticated" }
+  ],
+  "cases": [
+    {
+      "id": "events-member",
+      "label": "Authenticated event stream",
+      "kind": "SSE",
+      "actorId": "member",
+      "requireVerifiedIdentity": true,
+      "url": "https://app.example.com/api/events",
+      "headers": {},
+      "method": "GET",
+      "maxEvents": 4,
+      "expectation": { "decision": "ALLOW", "allowedStatuses": [200], "deniedStatuses": [401, 403], "messageType": "ready", "minMessages": 1 }
+    },
+    {
+      "id": "graphql-subscription-member",
+      "label": "Member notification subscription",
+      "kind": "GRAPHQL_SUBSCRIPTION",
+      "actorId": "member",
+      "requireVerifiedIdentity": true,
+      "url": "wss://app.example.com/graphql",
+      "headers": {},
+      "transport": "GRAPHQL_TRANSPORT_WS",
+      "operationName": "RouteCairnNotifications",
+      "document": "subscription RouteCairnNotifications { notifications { __typename } }",
+      "variables": {},
+      "maxMessages": 5,
+      "expectation": { "decision": "ALLOW", "allowedStatuses": [101], "deniedStatuses": [401, 403], "messageType": "next", "minMessages": 1 }
+    },
+    {
+      "id": "http2-member",
+      "label": "HTTP/2 authorization parity",
+      "kind": "HTTP2_AUTHORIZATION",
+      "actorId": "member",
+      "requireVerifiedIdentity": true,
+      "url": "https://app.example.com/api/profile",
+      "headers": { "accept": "application/json" },
+      "method": "GET",
+      "expectation": { "decision": "ALLOW", "allowedStatuses": [200], "deniedStatuses": [401, 403], "minMessages": 0 }
+    }
+  ]
+}

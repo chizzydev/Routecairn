@@ -72,8 +72,9 @@ async function executeCollectionAuthorization(context: ScanContext): Promise<Col
         observations.push(blockedObservation(collection, casePlan, blockReason));
         continue;
       }
-      observations.push(await sendAndClassify(context, collection, casePlan));
-      executedRequests += 1;
+      const result = await sendAndClassify(context, collection, casePlan);
+      observations.push(result.observation);
+      executedRequests += result.executedRequests;
     }
   }
 
@@ -83,21 +84,89 @@ async function executeCollectionAuthorization(context: ScanContext): Promise<Col
     enabled: true,
     plannedCollections: plan.collections.length,
     plannedCases: plan.requestMatrix.length,
-    plannedRequests: plan.requestMatrix.length,
+    plannedRequests: plan.collections.reduce((total, collection) => total + collection.cases.length * (collection.pagination?.maxPages ?? 1), 0),
     executedRequests,
     confirmedIssues,
     observations: compared,
     notes: [
       "Collection authorization testing executed only collection cases resolved before scan execution.",
-      "Only GET requests were used; no pagination, endpoint discovery, query mutation, search expansion, or identifier harvesting occurred.",
+      "Only GET requests were used; configured pagination stayed on the original origin and path, used bounded pages, and accepted only declared query keys.",
       "Unmatched returned identifiers were discarded and never retained in reports."
     ]
   };
 }
 
-async function sendAndClassify(context: ScanContext, collection: CollectionAuthorizationDefinitionPlan, casePlan: CollectionAuthorizationCasePlan): Promise<CollectionAuthorizationObservation> {
-  const response = await context.createHttpClient().send({ url: casePlan.url, method: "GET", headers: { ...collection.headers, ...headersForCase(context, casePlan) } });
-  return classifyResponse(context, collection, casePlan, response);
+async function sendAndClassify(context: ScanContext, collection: CollectionAuthorizationDefinitionPlan, casePlan: CollectionAuthorizationCasePlan): Promise<{ observation: CollectionAuthorizationObservation; executedRequests: number }> {
+  const maxPages = collection.pagination?.maxPages ?? 1;
+  let url = casePlan.url;
+  let selected: CollectionAuthorizationObservation | undefined;
+  let executedRequests = 0;
+  let termination: NonNullable<CollectionAuthorizationObservation["paginationTermination"]> = collection.pagination ? "MAX_PAGES" : "NOT_CONFIGURED";
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await context.createHttpClient().send({ url, method: "GET", headers: { ...collection.headers, ...headersForCase(context, casePlan) }, skipCache: true, disableRetries: true });
+    executedRequests += 1;
+    const observation = classifyResponse(context, collection, casePlan, response);
+    selected = preferPageObservation(selected, observation);
+    if (observation.observedMembership === "FOUND_ONCE" || observation.observedMembership === "FOUND_MULTIPLE_TIMES" || observation.findingCategory) { termination = "MATCH_FOUND"; break; }
+    if (!collection.pagination) break;
+    if (response.error) { termination = "REQUEST_FAILED"; break; }
+    const next = nextPageUrl(collection, url, response);
+    if (next.kind === "NONE") { termination = "EXHAUSTED"; break; }
+    if (next.kind === "INVALID") { termination = "INVALID_NEXT"; selected = { ...selected, notes: [...selected.notes, next.reason] }; break; }
+    url = next.url;
+  }
+  const observation = selected ?? blockedObservation(collection, casePlan, "No collection request was executed.");
+  return { observation: { ...observation, pagesFetched: executedRequests, paginationTermination: termination }, executedRequests };
+}
+
+function preferPageObservation(current: CollectionAuthorizationObservation | undefined, candidate: CollectionAuthorizationObservation): CollectionAuthorizationObservation {
+  if (!current) return candidate;
+  if (candidate.findingCategory || candidate.observedMembership === "FOUND_ONCE" || candidate.observedMembership === "FOUND_MULTIPLE_TIMES") return candidate;
+  return { ...candidate, notes: [...current.notes, ...candidate.notes] };
+}
+
+type NextPage = { kind: "NEXT"; url: string } | { kind: "NONE" } | { kind: "INVALID"; reason: string };
+
+function nextPageUrl(collection: CollectionAuthorizationDefinitionPlan, currentUrl: string, response: HttpResponse): NextPage {
+  const pagination = collection.pagination;
+  if (!pagination) return { kind: "NONE" };
+  let candidate: string | undefined;
+  if (pagination.mode === "LINK_HEADER") candidate = nextLink(headersForAnalysis(response).link, currentUrl);
+  else {
+    const parsed = parseJson(bodyPreviewForAnalysis(response) ?? "", collection.maxJsonDepth);
+    const path = parseSafeFieldPath(pagination.nextPath, { maxDepth: 8, maxArrayIndex: 50, code: "COLLECTION_AUTHORIZATION_FIELD_PATH_INVALID" });
+    const value = parsed && isRecord(parsed) ? valueAtSafePath(parsed, path).value : undefined;
+    if (value === undefined || value === null || value === "") return { kind: "NONE" };
+    if (typeof value !== "string" && typeof value !== "number") return { kind: "INVALID", reason: "Pagination value was not a bounded scalar." };
+    const text = String(value);
+    if (text.length > 512 || /[\r\n\0]/.test(text)) return { kind: "INVALID", reason: "Pagination value exceeded the safe scalar contract." };
+    if (pagination.mode === "JSON_CURSOR") { const next = new URL(currentUrl); next.searchParams.set(pagination.cursorQueryParameter, text); candidate = next.toString(); }
+    else candidate = new URL(text, currentUrl).toString();
+  }
+  if (!candidate) return { kind: "NONE" };
+  return validateNextPageUrl(collection, candidate);
+}
+
+function nextLink(header: string | readonly string[] | undefined, base: string): string | undefined {
+  const text = typeof header === "string" ? header : header?.join(",");
+  if (!text) return undefined;
+  for (const part of text.split(",")) {
+    const match = part.match(/<([^>]+)>\s*;[^,]*\brel\s*=\s*"?next"?/i);
+    if (match?.[1]) { try { return new URL(match[1], base).toString(); } catch { return match[1]; } }
+  }
+  return undefined;
+}
+
+function validateNextPageUrl(collection: CollectionAuthorizationDefinitionPlan, candidate: string): NextPage {
+  let initial: URL; let next: URL;
+  try { initial = new URL(collection.url); next = new URL(candidate); } catch { return { kind: "INVALID", reason: "Pagination destination was not a valid URL." }; }
+  if (next.username || next.password || next.hash || next.origin !== initial.origin || next.pathname !== initial.pathname) return { kind: "INVALID", reason: "Pagination destination changed the configured origin or path." };
+  const allowed = new Set(initial.searchParams.keys());
+  const pagination = collection.pagination!;
+  if (pagination.mode === "JSON_CURSOR") allowed.add(pagination.cursorQueryParameter);
+  else for (const key of pagination.allowedQueryParameters) allowed.add(key);
+  for (const key of next.searchParams.keys()) if (!allowed.has(key) || /(?:token|secret|password|api.?key|signature|jwt)/i.test(key)) return { kind: "INVALID", reason: `Pagination destination introduced undeclared query parameter "${key}".` };
+  return { kind: "NEXT", url: next.toString() };
 }
 
 function headersForCase(context: ScanContext, casePlan: CollectionAuthorizationCasePlan): Record<string, string> {

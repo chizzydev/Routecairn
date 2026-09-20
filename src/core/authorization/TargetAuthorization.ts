@@ -50,7 +50,7 @@ export class TargetAuthorizationGuard {
     this.plan = targetAuthorizationSchema.parse(input);
   }
 
-  public check(url: string, method: string, body?: string): string | undefined {
+  public check(url: string, method: string, body?: string | Buffer): string | undefined {
     const program = this.plan.bugBounty;
     if (!program) return;
     let parsed: URL;
@@ -70,7 +70,7 @@ export class TargetAuthorizationGuard {
     if (rule?.bodySha256 && body !== undefined && digest(body) !== rule.bodySha256) return "authorization-body-mismatch";
   }
 
-  public reserve(url: string, method: string, body?: string): string | undefined {
+  public reserve(url: string, method: string, body?: string | Buffer): string | undefined {
     const denied = this.check(url, method, body);
     if (denied) return denied;
     const program = this.plan.bugBounty;
@@ -111,4 +111,4 @@ function matchesAsset(url: URL, asset: { origin: string; pathPrefix: string }): 
   const prefix = asset.pathPrefix.replace(/\/$/, "");
   return url.origin === asset.origin && (!prefix || url.pathname === prefix || url.pathname.startsWith(`${prefix}/`));
 }
-function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
+function digest(value: string | Buffer): string { return createHash("sha256").update(value).digest("hex"); }

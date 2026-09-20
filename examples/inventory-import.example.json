@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "maxRoutes": 40,
+  "maxGraphqlOperations": 10,
+  "maxFiles": 10,
+  "maxCollections": 3,
+  "sources": [
+    {
+      "id": "public-openapi",
+      "kind": "OPENAPI",
+      "document": {
+        "openapi": "3.1.0",
+        "servers": [{ "url": "https://app.example.com" }],
+        "paths": {
+          "/api/status": {
+            "get": {
+              "summary": "Public status",
+              "security": [],
+              "responses": {
+                "200": {
+                  "content": {
+                    "application/json": {
+                      "schema": {
+                        "type": "object",
+                        "properties": { "status": { "type": "string" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "/api/admin/rebuild": {
+            "post": { "security": [], "responses": { "202": {} } }
+          }
+        }
+      }
+    },
+    {
+      "id": "public-postman",
+      "kind": "POSTMAN",
+      "document": {
+        "info": { "name": "Public reads" },
+        "item": [
+          { "name": "Health", "request": { "method": "GET", "url": "https://app.example.com/health" } }
+        ]
+      }
+    },
+    {
+      "id": "captured-public-traffic",
+      "kind": "HAR",
+      "document": {
+        "log": {
+          "entries": [
+            {
+              "request": { "method": "GET", "url": "https://app.example.com/api/events", "headers": [] },
+              "response": {
+                "status": 200,
+                "headers": [{ "name": "Link", "value": "</api/events?page=2>; rel=next" }],
+                "content": { "mimeType": "application/json", "text": "{\"items\":[]}" }
+              }
+            },
+            {
+              "request": { "method": "GET", "url": "https://app.example.com/files/public-guide.pdf", "headers": [] },
+              "response": { "status": 200, "headers": [], "content": { "mimeType": "application/pdf" } }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "graphql-introspection",
+      "kind": "GRAPHQL_SCHEMA",
+      "endpoint": "https://app.example.com/graphql",
+      "document": {
+        "data": {
+          "__schema": {
+            "queryType": { "name": "Query" },
+            "mutationType": { "name": "Mutation" },
+            "types": [
+              { "name": "Query", "fields": [{ "name": "status", "args": [], "type": { "kind": "SCALAR", "name": "String" } }] },
+              { "name": "Mutation", "fields": [{ "name": "rebuild", "args": [] }] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "supabase-catalog",
+      "kind": "SUPABASE_CATALOG",
+      "projectUrl": "https://app.example.com",
+      "anonKeyEnv": "SUPABASE_ANON_KEY",
+      "document": {
+        "tables": [
+          {
+            "schema": "public",
+            "name": "profiles",
+            "exposed": true,
+            "rlsEnabled": true,
+            "columns": [{ "name": "id" }, { "name": "email", "sensitive": true }]
+          }
+        ],
+        "functions": [{ "schema": "public", "name": "rebuild", "securityDefiner": true }],
+        "buckets": [{ "id": "avatars", "public": true }],
+        "storageObjects": [{ "bucket": "avatars", "path": "public/avatar.png", "public": true, "mimeType": "image/png" }],
+        "relationships": [{ "name": "profile_team", "from": "profiles", "to": "teams" }]
+      }
+    }
+  ]
+}

@@ -20,6 +20,7 @@ export type ModuleId =
   | "parameter-analysis"
   | "nextjs-review"
   | "vulnerability-workflows"
+  | "active-vulnerability-validation"
   | "workflow-validation"
   | "authenticated-testing"
   | "role-comparison"
@@ -36,6 +37,7 @@ export type ModuleId =
   | "business-invariant"
   | "controlled-race"
   | "api-graphql-authorization"
+  | "protocol-security"
   | "link-portal-export-security"
   | "operational-endpoint-security"
   | "billing-entitlement-security"
@@ -73,6 +75,7 @@ export type ModuleCapability =
   | "business-invariant"
   | "controlled-race"
   | "api-graphql-authorization"
+  | "protocol-security"
   | "link-portal-export-security"
   | "operational-endpoint-security"
   | "billing-entitlement-security"
@@ -85,6 +88,7 @@ export type ModuleCapability =
   | "exposure"
   | "nextjs"
   | "workflow"
+  | "active-vulnerability-validation"
   | "proof";
 
 export type ModuleCost = "low" | "medium" | "high";
@@ -687,6 +691,11 @@ export interface CollectionAuthorizationDefinitionPlan {
   maxInspectedEntries: number;
   maxResponseBytes: number;
   maxJsonDepth: number;
+  pagination?: Readonly<
+    | { mode: "LINK_HEADER"; maxPages: number; allowedQueryParameters: readonly string[] }
+    | { mode: "JSON_URL"; nextPath: string; maxPages: number; allowedQueryParameters: readonly string[] }
+    | { mode: "JSON_CURSOR"; nextPath: string; cursorQueryParameter: string; maxPages: number }
+  >;
   actors: readonly CollectionActorPlan[];
   knownObjects: readonly KnownCollectionObjectPlan[];
   cases: readonly CollectionAuthorizationCasePlan[];
@@ -1083,9 +1092,11 @@ export interface ResolvedScanPlan {
   businessInvariant?: Readonly<import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan>;
   controlledRace?: Readonly<import("../../modules/controlledRace/ControlledRaceTypes.js").ControlledRacePlan>;
   apiGraphql?: Readonly<import("../../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlReviewPlan>;
+  protocolSecurity?: Readonly<import("../../modules/protocolSecurity/ProtocolSecurityTypes.js").ProtocolSecurityPlan>;
   linkPortalSecurity?: Readonly<import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan>;
   operationalEndpointSecurity?: Readonly<import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan>;
   billingEntitlement?: Readonly<import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan>;
+  activeVulnerability?: Readonly<import("../../modules/activeVulnerability/ActiveVulnerabilityTypes.js").ActiveVulnerabilityPlan>;
 }
 
 export interface ModuleMetadata {
@@ -1154,9 +1165,11 @@ export interface ScanPlannerInput {
   businessInvariant?: import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan;
   controlledRace?: import("../../modules/controlledRace/ControlledRaceTypes.js").ControlledRacePlan;
   apiGraphql?: import("../../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlReviewPlan;
+  protocolSecurity?: import("../../modules/protocolSecurity/ProtocolSecurityTypes.js").ProtocolSecurityPlan;
   linkPortalSecurity?: import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan;
   operationalEndpointSecurity?: import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan;
   billingEntitlement?: import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan;
+  activeVulnerability?: import("../../modules/activeVulnerability/ActiveVulnerabilityTypes.js").ActiveVulnerabilityPlan;
   legacyMode?: ScanMode;
   legacyModeTranslation?: string;
 }

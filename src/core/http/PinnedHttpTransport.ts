@@ -84,6 +84,35 @@ export function createPinnedConnector(options: Partial<DestinationPolicyOptions>
   };
 }
 
+/** A connector permanently bound to one already-validated origin/address pair.
+ * It is safe to reuse only for that exact origin. The remote socket is checked
+ * again after connect and TLS continues to authenticate the original hostname. */
+export function createBoundPinnedConnector(pin: PinnedDestination, options: { allowHttp2: boolean; timeoutMs: number; onConnect?: (protocol: "http/1.1" | "h2") => void }): Connector {
+  const baseConnector = createUndiciConnector({ keepAlive: true, keepAliveInitialDelay: 1000, maxCachedSessions: 100, allowH2: options.allowHttp2, timeout: options.timeoutMs });
+  return (connectOptions, callback) => {
+    let requested: PinnedDestination;
+    try {
+      const protocol = protocolFor(connectOptions.protocol);
+      const hostname = canonicalHostname(connectOptions.hostname);
+      const port = connectOptions.port || (protocol === "https:" ? "443" : "80");
+      requested = { ...pin, protocol, hostname, port, origin: `${protocol}//${hostForOrigin(hostname, port, protocol)}` };
+      if (requested.origin !== pin.origin || hostname !== pin.hostname || port !== pin.port || protocol !== pin.protocol) throw new PinnedConnectionError("Origin-isolated pool rejected a cross-origin connection.", "PINNED_POOL_ORIGIN_MISMATCH");
+    } catch (error) { callback(normalizePinnedError(error), null); return; }
+    baseConnector({ ...connectOptions, hostname: pin.address.address, host: pin.address.address, ...(pin.protocol === "https:" && !isIpLiteral(pin.hostname) ? { servername: pin.hostname } : connectOptions.servername ? { servername: connectOptions.servername } : {}) }, (error, socket) => {
+      if (error || !socket) { callback(error ?? new PinnedConnectionError("Pinned connection failed.", "PINNED_CONNECTION_FAILED"), null); return; }
+      if (!socket.remoteAddress || !sameIp(socket.remoteAddress, pin.address.address)) { socket.destroy(); callback(new PinnedConnectionError("Pinned socket remote address did not match the selected destination.", "PINNED_REMOTE_ADDRESS_MISMATCH"), null); return; }
+      const alpn = "alpnProtocol" in socket ? (socket as TLSSocket).alpnProtocol : undefined;
+      if (alpn === "h2" && (!options.allowHttp2 || pin.protocol !== "https:")) { socket.destroy(); callback(new PinnedConnectionError("HTTP/2 negotiation was not permitted for this pool.", "PINNED_HTTP2_POLICY_MISMATCH"), null); return; }
+      options.onConnect?.(alpn === "h2" ? "h2" : "http/1.1");
+      callback(null, socket);
+    });
+  };
+}
+
+export function connectorOptionsForUrl(url: URL): ConnectorOptions {
+  return { hostname: url.hostname, protocol: url.protocol, port: url.port || (url.protocol === "https:" ? "443" : "80") };
+}
+
 export async function resolvePinnedDestination(connectOptions: ConnectorOptions, policy: DestinationPolicyOptions): Promise<PinnedDestination> {
   const protocol = protocolFor(connectOptions.protocol);
   const hostname = canonicalHostname(connectOptions.hostname);
@@ -128,13 +157,12 @@ async function resolveAddresses(hostname: string, policy: DestinationPolicyOptio
   if (isInternalHostname(hostname)) throw new PinnedConnectionError("Internal hostname was blocked by destination policy.", "DNS_PROHIBITED_ADDRESS");
 
   const resolver = policy.dnsResolver ?? defaultResolver;
-  const timeout = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new PinnedConnectionError("DNS resolution timed out.", "DNS_TIMEOUT")), policy.dnsTimeoutMs);
-  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new PinnedConnectionError("DNS resolution timed out.", "DNS_TIMEOUT")), policy.dnsTimeoutMs); timer.unref(); });
   const raw = await Promise.race([resolver(hostname), timeout]).catch((error: unknown) => {
     if (error instanceof PinnedConnectionError) throw error;
     throw new PinnedConnectionError("DNS resolution failed.", "DNS_RESOLUTION_FAILED");
-  });
+  }).finally(() => { if (timer) clearTimeout(timer); });
   return raw.map(normalizeDnsAnswer);
 }
 

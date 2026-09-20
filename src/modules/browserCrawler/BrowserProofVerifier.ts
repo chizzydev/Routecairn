@@ -101,6 +101,24 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
   }
 }
 
+/** Executes returned markup in an offline, credential-free browser context.
+ * This stays in the hardened browser layer so active validation cannot create
+ * an unsupervised Playwright session. */
+export async function verifyOfflineXssExecution(html: string, nonce: string, timeoutMs: number): Promise<"EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  try {
+    browser = await chromium.launch({ headless: true, timeout: Math.min(timeoutMs, 15_000) });
+    const context = await browser.newContext({ offline: true, serviceWorkers: "block", javaScriptEnabled: true, acceptDownloads: false });
+    await context.route("**/*", (route) => route.abort("blockedbyclient"));
+    const page = await context.newPage();
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 10_000) });
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof);
+    await context.close();
+    return observed === nonce ? "EXECUTED" : "NOT_EXECUTED";
+  } catch { return "UNAVAILABLE"; }
+  finally { await browser?.close().catch(() => undefined); }
+}
+
 function assertOrigin(url: string, origin: string): void { if (new URL(url).origin !== origin) throw new Error("Browser proof bootstrap left the approved origin."); }
 function safePageUrl(request: import("playwright").Request, fallback: string): string { try { return request.frame().url() || fallback; } catch { return fallback; } }
 function safeError(error: unknown): string { return error instanceof Error ? error.message.replace(/([?&][^=]+=)[^&\s]+/g, "$1<redacted>").slice(0, 300) : "unknown browser error"; }

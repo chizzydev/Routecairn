@@ -54,6 +54,16 @@ describe("collection authorization planner", () => {
     publicAuth.collections[0].actors[2].authProfile = "account_a";
     expect(() => planCollectionAuthorizationTesting(publicAuth, { target: "https://app.example.com/", scope: exampleScope, authProfileSet: profileSet() })).toThrow(/Public collection actor/);
   });
+
+  it("accepts bounded cursor pagination and budgets every possible page", () => {
+    const input = validInput("https://app.example.com");
+    input.collections[0]!.pagination = { mode: "JSON_CURSOR", nextPath: "nextCursor", cursorQueryParameter: "cursor", maxPages: 3 };
+    input.maxRequests = 9;
+    const plan = planCollectionAuthorizationTesting(input, { target: "https://app.example.com/", scope: exampleScope, authProfileSet: profileSet() });
+    expect(plan.collections[0]?.pagination).toEqual({ mode: "JSON_CURSOR", nextPath: "nextCursor", cursorQueryParameter: "cursor", maxPages: 3 });
+    input.maxRequests = 8;
+    expect(() => planCollectionAuthorizationTesting(input, { target: "https://app.example.com/", scope: exampleScope, authProfileSet: profileSet() })).toThrow(/up to 9 requests/);
+  });
 });
 
 function validInput(origin: string): CollectionAuthorizationInput {

@@ -39,6 +39,8 @@ import type { LinkPortalSecurityReport } from "../../reports/LinkPortalSecurityR
 import type { OperationalEndpointSecurityReport } from "../../reports/OperationalEndpointSecurityReport.js";
 import type { BillingEntitlementReport } from "../../reports/BillingEntitlementReport.js";
 import type { SecretBoundaryReport } from "../../reports/SecretBoundaryReport.js";
+import type { ActiveVulnerabilityReport } from "../../reports/ActiveVulnerabilityReport.js";
+import type { ProtocolSecurityReport } from "../../modules/protocolSecurity/ProtocolSecurityTypes.js";
 import type { Finding } from "../findings/Finding.js";
 import type { ModuleResult } from "../plugins/Plugin.js";
 import type { ValuePresenceAttestation } from "../evidence/ValuePresenceAttestation.js";
@@ -89,10 +91,12 @@ export class ScanState {
   private businessInvariant: BusinessInvariantReport | undefined;
   private controlledRace: ControlledRaceReport | undefined;
   private apiGraphql: ApiGraphqlReviewReport | undefined;
+  private protocolSecurity: ProtocolSecurityReport | undefined;
   private linkPortalSecurity: LinkPortalSecurityReport | undefined;
   private operationalEndpointSecurity: OperationalEndpointSecurityReport | undefined;
   private billingEntitlement: BillingEntitlementReport | undefined;
   private secretBoundary: SecretBoundaryReport | undefined;
+  private activeVulnerability: ActiveVulnerabilityReport | undefined;
   private baseline: BaselineReport | undefined;
   private startedAt = new Date();
   private completedAt: Date | undefined;
@@ -338,10 +342,12 @@ export class ScanState {
     if (result.businessInvariant) this.businessInvariant = result.businessInvariant;
     if (result.controlledRace) this.controlledRace = result.controlledRace;
     if (result.apiGraphql) this.apiGraphql = result.apiGraphql;
+    if (result.protocolSecurity) this.protocolSecurity = result.protocolSecurity;
     if (result.linkPortalSecurity) this.linkPortalSecurity = result.linkPortalSecurity;
     if (result.operationalEndpointSecurity) this.operationalEndpointSecurity = result.operationalEndpointSecurity;
     if (result.billingEntitlement) this.billingEntitlement = result.billingEntitlement;
     if (result.secretBoundary) this.secretBoundary = result.secretBoundary;
+    if (result.activeVulnerability) this.activeVulnerability = result.activeVulnerability;
     if (result.assistedReview) this.assistedReview = result.assistedReview;
 
     if (result.findings) {
@@ -355,10 +361,13 @@ export class ScanState {
 
   public recordApiGraphql(report: ApiGraphqlReviewReport): void { this.apiGraphql = report; }
   public getApiGraphql(): ApiGraphqlReviewReport | undefined { return this.apiGraphql; }
+  public recordProtocolSecurity(report: ProtocolSecurityReport): void { this.protocolSecurity = report; }
+  public getProtocolSecurity(): ProtocolSecurityReport | undefined { return this.protocolSecurity; }
   public getLinkPortalSecurity(): LinkPortalSecurityReport | undefined { return this.linkPortalSecurity; }
   public getOperationalEndpointSecurity(): OperationalEndpointSecurityReport | undefined { return this.operationalEndpointSecurity; }
   public getBillingEntitlement(): BillingEntitlementReport | undefined { return this.billingEntitlement; }
   public getSecretBoundary(): SecretBoundaryReport | undefined { return this.secretBoundary; }
+  public getActiveVulnerability(): ActiveVulnerabilityReport | undefined { return this.activeVulnerability; }
 
   public getResponses(): HttpResponse[] {
     return [...this.responses];
@@ -519,10 +528,12 @@ export class ScanState {
       ...(this.businessInvariant ? { businessInvariant: this.businessInvariant } : {}),
       ...(this.controlledRace ? { controlledRace: this.controlledRace } : {}),
       ...(this.apiGraphql ? { apiGraphql: this.apiGraphql } : {}),
+      ...(this.protocolSecurity ? { protocolSecurity: this.protocolSecurity } : {}),
       ...(this.linkPortalSecurity ? { linkPortalSecurity: this.linkPortalSecurity } : {}),
       ...(this.operationalEndpointSecurity ? { operationalEndpointSecurity: this.operationalEndpointSecurity } : {}),
       ...(this.billingEntitlement ? { billingEntitlement: this.billingEntitlement } : {}),
       ...(this.secretBoundary ? { secretBoundary: this.secretBoundary } : {}),
+      ...(this.activeVulnerability ? { activeVulnerability: this.activeVulnerability } : {}),
       ...(this.assistedReview ? { assistedReview: this.assistedReview } : {}),
       discoveredUrls,
       findings

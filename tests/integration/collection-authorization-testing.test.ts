@@ -129,6 +129,41 @@ describe("collection authorization testing integration", () => {
     expect(JSON.stringify(report.scanPlan.collectionAuthorizationTesting)).toContain("<object:");
     expect(report.requestAudit.every((entry) => Object.values(entry.requestHeaders).every((value) => value !== "session=account-a" && value !== "session=account-b"))).toBe(true);
   });
+
+  it("follows an explicitly bounded cursor and blocks response-driven path expansion", async () => {
+    const seen: string[] = [];
+    server = createServer((request, response) => {
+      seen.push(String(request.url));
+      if (request.url === "/") return json(response, { ok: true });
+      if (request.url === "/api/paged") return json(response, { items: [], nextCursor: "page-2" });
+      if (request.url === "/api/paged?cursor=page-2") return json(response, { items: [{ id: "known-1", type: "project" }] });
+      if (request.url === "/api/unsafe") return json(response, { items: [], next: "/admin/export?page=2" });
+      response.writeHead(404).end();
+    });
+    await listen(server);
+    const port = (server.address() as AddressInfo).port;
+    const tempDir = await mkdtemp(join(tmpdir(), "routecairn-pagination-"));
+    tempDirs.push(tempDir);
+    const target = `http://127.0.0.1:${port}/`;
+    const publicActor = [{ id: "public", relationship: "PUBLIC", safeAlias: "Public" }];
+    const knownObjects = [{ id: "known", objectId: "known-1", objectType: "project", expectedPublic: true, confirmedSafeToTest: true }];
+    const base = { label: "Paged", category: "LIST", method: "GET", headers: {}, expectedContentType: "application/json", completeness: "FIXED_RESULT_WINDOW", resultArrayPath: "items", objectIdPath: "id", objectTypePath: "type", maxInspectedEntries: 10, maxResponseBytes: 65536, maxJsonDepth: 8, actors: publicActor, knownObjects, cases: [{ id: "observe", actorId: "public", knownObjectId: "known", expectedMembership: "OBSERVE_ONLY", requireVerifiedIdentity: false }] };
+    const manifest = {
+      schemaVersion: 1, maxCollections: 2, maxCasesPerCollection: 1, maxKnownObjects: 1, maxRequests: 6, maxRetainedObservations: 4, maxPreviewLength: 80,
+      collections: [
+        { ...base, id: "paged", url: `${target}api/paged`, pagination: { mode: "JSON_CURSOR", nextPath: "nextCursor", cursorQueryParameter: "cursor", maxPages: 3 } },
+        { ...base, id: "unsafe", url: `${target}api/unsafe`, cases: [{ ...base.cases[0], id: "unsafe-observe" }], pagination: { mode: "JSON_URL", nextPath: "next", maxPages: 3, allowedQueryParameters: ["page"] } }
+      ]
+    };
+    const result = await runScanCommand(target, { scope: await writeScope(tempDir), output: join(tempDir, "reports"), collectionAuthorization: await writeJson(tempDir, "pagination.json", manifest) });
+    const report = JSON.parse(await readFile(result.reportPath, "utf8")) as { collectionAuthorization: { plannedRequests: number; executedRequests: number; observations: Array<{ collectionId: string; observedMembership: string; pagesFetched: number; paginationTermination: string }> } };
+    expect(report.collectionAuthorization.plannedRequests).toBe(6);
+    expect(report.collectionAuthorization.executedRequests).toBe(3);
+    expect(report.collectionAuthorization.observations.find((item) => item.collectionId === "paged")).toMatchObject({ observedMembership: "FOUND_ONCE", pagesFetched: 2, paginationTermination: "MATCH_FOUND" });
+    expect(report.collectionAuthorization.observations.find((item) => item.collectionId === "unsafe")).toMatchObject({ pagesFetched: 1, paginationTermination: "INVALID_NEXT" });
+    expect(seen).toContain("/api/paged?cursor=page-2");
+    expect(seen.some((url) => url.startsWith("/admin/export"))).toBe(false);
+  });
 });
 
 function collectionInput(target: string) {

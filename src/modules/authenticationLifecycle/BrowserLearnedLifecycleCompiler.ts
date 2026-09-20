@@ -112,6 +112,7 @@ export function planBrowserLearnedLifecycleAutomation(input: BrowserLearnedLifec
     maxStepsPerCase,
     maxRequests,
     maxResponseBytes: parsed.maxResponseBytes,
+    fixtures: { inboxes: [], totp: [], webauthn: [], oidc: [], providers: [] },
     cases: [],
     automation: {
       categories: parsed.categories,
@@ -170,7 +171,7 @@ function compileRecipeCategory(category: AuthenticationLifecycleCategory, candid
   if (recipes.length !== 1) return { reasons: [recipes.length === 0 ? "OPERATOR_RECIPE_REQUIRED" : "DUPLICATE_OPERATOR_RECIPE"] };
   const recipe = recipes[0]!;
   if (recipe.testCase.category !== category) return { reasons: ["RECIPE_CATEGORY_MISMATCH"] };
-  const learnedRequestBound = recipe.testCase.steps.some((step) => step.phase !== "CLEANUP" && step.request.method === candidate.method && withoutQuery(step.request.url) === withoutQuery(candidate.endpoint));
+  const learnedRequestBound = recipe.testCase.steps.some((step) => step.phase !== "CLEANUP" && step.request?.method === candidate.method && withoutQuery(step.request.url) === withoutQuery(candidate.endpoint));
   if (!learnedRequestBound) return { reasons: ["RECIPE_LEARNED_REQUEST_BINDING_MISMATCH"] };
   return { reasons: [], testCase: { ...recipe.testCase, authorization: authorizationInput(automation.authorization) } };
 }
@@ -256,11 +257,11 @@ function setField(target: Record<string, unknown>, path: string, value: string):
   }
 }
 function actionStep(id: string, actorId: string, candidate: BrowserLearnedTestCase, fields: Record<string, unknown>, assertions: AuthenticationLifecycleInput["cases"][number]["steps"][number]["assertions"]): AuthenticationLifecycleInput["cases"][number]["steps"][number] {
-  return { id, phase: "ACTION", actorId, waitBeforeMs: 0, request: { method: candidate.method as "POST" | "PATCH" | "PUT" | "DELETE", url: candidate.endpoint, stateChanging: true, headers: {}, bodyFormat: candidate.requestBodyFormat!, fields }, captures: [], assertions };
+  return { id, phase: "ACTION", actorId, waitBeforeMs: 0, fixtureActions: [], request: { method: candidate.method as "POST" | "PATCH" | "PUT" | "DELETE", url: candidate.endpoint, stateChanging: true, headers: {}, bodyFormat: candidate.requestBodyFormat!, fields }, captures: [], assertions };
 }
 function cleanupStep(automation: BrowserLearnedLifecycleAutomationPlan, actorId: string, cookie: string | undefined, bindSession: boolean, capture = "learned_session"): AuthenticationLifecycleInput["cases"][number]["steps"][number] {
   const headers = { ...automation.cleanup.headers, ...(bindSession && cookie ? { Cookie: `${cookie}={{CAPTURE:${capture}}}` } : {}) };
-  return { id: "learned-cleanup", phase: "CLEANUP", actorId, waitBeforeMs: 0, request: { method: automation.cleanup.method as "POST" | "PATCH" | "PUT" | "DELETE", url: automation.cleanup.url, stateChanging: true, headers, ...(automation.cleanup.bodyFormat ? { bodyFormat: automation.cleanup.bodyFormat } : {}), ...(automation.cleanup.fields ? { fields: automation.cleanup.fields as Record<string, unknown> } : {}) }, captures: [], assertions: [{ kind: "STATUS_IN", values: [...automation.cleanup.successStatusCodes] }] };
+  return { id: "learned-cleanup", phase: "CLEANUP", actorId, waitBeforeMs: 0, fixtureActions: [], request: { method: automation.cleanup.method as "POST" | "PATCH" | "PUT" | "DELETE", url: automation.cleanup.url, stateChanging: true, headers, ...(automation.cleanup.bodyFormat ? { bodyFormat: automation.cleanup.bodyFormat } : {}), ...(automation.cleanup.fields ? { fields: automation.cleanup.fields as Record<string, unknown> } : {}) }, captures: [], assertions: [{ kind: "STATUS_IN", values: [...automation.cleanup.successStatusCodes] }] };
 }
 function authorizationInput(value: LifecycleAuthorizationPlan): AuthenticationLifecycleInput["cases"][number]["authorization"] {
   return { mode: "CONTROLLED_LIFECYCLE", environment: value.environment, confirmation: "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING", authorizedBy: "confirmed-operator", changeTicket: "confirmed-change", authorizedAt: value.authorizedAt!, expiresAt: value.expiresAt!, disposableAccounts: true, productionAcknowledged: value.productionAcknowledged };

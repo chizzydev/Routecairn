@@ -1,4 +1,7 @@
 import type { HttpMethod } from "../../core/http/HttpTypes.js";
+import type { TotpAlgorithm } from "./AuthenticationFixtures.js";
+import type { VirtualWebAuthnOptions } from "../browserCrawler/VirtualWebAuthnManager.js";
+import type { TurnkeyAuthAdapterConfig, TurnkeyAuthOperation } from "./TurnkeyAuthProviderAdapters.js";
 
 export const authenticationLifecycleCategories = [
   "LOGIN_ENUMERATION_RESISTANCE",
@@ -84,9 +87,35 @@ export interface LifecycleStepPlan {
   phase: LifecycleStepPhase;
   actorId: string;
   waitBeforeMs: number;
+  fixtureActions: readonly LifecycleFixtureActionPlan[];
   request: LifecycleRequestPlan;
   captures: readonly LifecycleCapturePlan[];
   assertions: readonly LifecycleAssertionPlan[];
+}
+
+export type LifecycleFixtureActionPlan =
+  | { kind: "TOTP_GENERATE"; profileId: string; capture: string; seed?: { source: "SECRET" | "CAPTURE"; ref: string } | undefined }
+  | { kind: "INBOX_START"; adapterId: string; captureEndpoint: string }
+  | { kind: "INBOX_WAIT"; adapterId: string; channel: "EMAIL" | "SMS"; recipientSecretRef: string; capture: string; value: "TEXT" | "HTML" | "SUBJECT" | "CODE" | "LINK"; timeoutMs: number; afterCapture?: string | undefined }
+  | { kind: "INBOX_CLEAR"; adapterId: string; channel: "EMAIL" | "SMS"; recipientSecretRef: string }
+  | { kind: "WEBAUTHN_CREATE"; authenticatorId: string }
+  | { kind: "WEBAUTHN_ADD_CREDENTIAL"; authenticatorId: string; credentialIdSecretRef: string; privateKeySecretRef: string; rpId: string; userHandleSecretRef?: string | undefined; signCount: number }
+  | { kind: "WEBAUTHN_CLEAR"; authenticatorId: string }
+  | { kind: "WEBAUTHN_REMOVE"; authenticatorId: string }
+  | { kind: "OIDC_START"; harnessId: string; captureIssuer: string; captureAuthorizationEndpoint?: string | undefined; captureTokenEndpoint?: string | undefined; captureCallbackEndpoint?: string | undefined }
+  | { kind: "OIDC_WAIT_CALLBACK"; harnessId: string; parameter: string; capture: string; timeoutMs: number };
+
+export interface AuthenticationFixturesPlan {
+  inboxes: readonly ({ id: string; kind: "LOCAL_HTTP" } | { id: string; kind: "MAILPIT" | "MAILHOG"; baseUrl: string })[];
+  totp: readonly { id: string; secretRef?: string | undefined; encoding: "BASE32" | "HEX" | "UTF8"; algorithm: TotpAlgorithm; digits: 6 | 7 | 8; periodSeconds: number; epochSeconds: number }[];
+  webauthn: readonly ({ id: string } & VirtualWebAuthnOptions)[];
+  oidc: readonly { id: string; clientIdSecretRef: string; clientSecretRef?: string | undefined; redirectUris: readonly string[]; subjectSecretRef: string; port: number; accessTokenLifetimeSeconds: number }[];
+  providers: readonly TurnkeyAuthAdapterConfig[];
+}
+
+export interface LifecycleProviderCallPlan {
+  adapterId: string;
+  operation: TurnkeyAuthOperation;
 }
 
 export interface AuthenticationLifecycleCasePlan {
@@ -109,6 +138,7 @@ export interface AuthenticationLifecyclePlan {
   maxStepsPerCase: number;
   maxRequests: number;
   maxResponseBytes: number;
+  fixtures?: AuthenticationFixturesPlan;
   cases: readonly AuthenticationLifecycleCasePlan[];
   automation?: Readonly<BrowserLearnedLifecycleAutomationPlan>;
   notes: readonly string[];

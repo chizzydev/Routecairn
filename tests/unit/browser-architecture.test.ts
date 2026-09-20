@@ -7,6 +7,7 @@ const allowedPlaywrightFiles = new Set([
   join("src", "modules", "browserCrawler", "PlaywrightCrawler.ts"),
   join("src", "modules", "browserCrawler", "BrowserLearning.ts"),
   join("src", "modules", "browserCrawler", "BrowserProofVerifier.ts"),
+  join("src", "modules", "browserCrawler", "VirtualWebAuthnManager.ts"),
   join("src", "modules", "browserCrawler", "Screenshotter.ts")
 ]);
 

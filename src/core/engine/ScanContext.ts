@@ -15,6 +15,7 @@ import { WorkflowMutationCoordinator, type WorkflowCheckpoint } from "../offensi
 import { CleanupExecution } from "./CleanupExecution.js";
 import type { ModuleResult } from "../plugins/Plugin.js";
 import { ScanRequestLedger, type RequestLedgerLane } from "../http/ScanRequestLedger.js";
+import { PinnedOriginPool } from "../http/PinnedOriginPool.js";
 
 export interface ScanContextOptions {
   target: string;
@@ -44,10 +45,12 @@ export class ScanContext {
   private readonly cleanupWindows = new Map<RequestSafetyBroker, CleanupExecution>();
   private readonly cleanupAnnounced = new WeakSet<RequestSafetyBroker>();
   private readonly cancellationCleanup: CleanupExecution;
+  private readonly connectionPool: PinnedOriginPool;
   public readonly partialModules = new Map<string, () => ModuleResult>();
 
   public constructor(public readonly options: ScanContextOptions) {
     this.cancellationCleanup = new CleanupExecution(undefined, options.abortSignal);
+    this.connectionPool = new PinnedOriginPool(options.config.transport);
     this.mutations = new WorkflowMutationCoordinator(options);
     const authorization = options.plan.targetAuthorization ? new TargetAuthorizationGuard(options.plan.targetAuthorization) : undefined;
     if (authorization && authorization.plan.targetOrigin !== new URL(options.target).origin) throw new Error("TARGET_AUTHORIZATION_ORIGIN_MISMATCH");
@@ -97,6 +100,7 @@ export class ScanContext {
         maxResponseBytes: this.options.plan.limits.maxResponseBytes,
         retry: this.options.plan.limits.retry,
         maxRequests: this.options.plan.limits.maxRequests,
+        connectionPool: this.connectionPool,
         ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
       },
       this.scopeMatcher,
@@ -123,6 +127,7 @@ export class ScanContext {
       maxResponseBytes: this.options.plan.limits.maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests: attackBudget,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
@@ -133,6 +138,7 @@ export class ScanContext {
       rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond, concurrency: 1,
       bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes, maxResponseBytes: this.options.plan.limits.maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 }, maxRequests: browserProofBudget,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true, ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN")) : undefined;
     const cleanupProofTransport = proofConfigured ? this.createWorkflowCleanupHttpClient(browserProofBudget, this.options.plan.limits.maxResponseBytes) : undefined;
@@ -164,6 +170,7 @@ export class ScanContext {
    */
   public createAuthenticationLifecycleHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
+    const fixtureOrigins = [...(this.options.plan.authenticationLifecycle?.fixtures?.providers.flatMap((provider) => [new URL(provider.baseUrl).origin, ...(provider.tokenBaseUrl ? [new URL(provider.tokenBaseUrl).origin] : provider.provider === "FIREBASE" && new URL(provider.baseUrl).hostname === "identitytoolkit.googleapis.com" ? ["https://securetoken.googleapis.com"] : [])]) ?? []), ...(this.options.plan.authenticationLifecycle?.fixtures?.inboxes.flatMap((inbox) => inbox.kind === "LOCAL_HTTP" ? [] : [new URL(inbox.baseUrl).origin]) ?? [])];
     return new RequestSafetyBroker({
       userAgent: this.options.scope.userAgent,
       timeoutMs: this.options.plan.limits.requestTimeoutMs,
@@ -173,10 +180,12 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
+      allowedPrivateOrigins: fixtureOrigins,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
+    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({ ...entry, requestedUrl: "redacted://authentication-lifecycle-request", ...(entry.finalUrl ? { finalUrl: "redacted://authentication-lifecycle-response" } : {}), requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])), redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" })) }), this.coordination("SCAN"));
   }
 
   /**
@@ -195,6 +204,7 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
@@ -215,6 +225,7 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       controlledRaceEnabled: true,
@@ -233,8 +244,35 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
+  }
+
+  /** Bounded active-validation transport. All probe families share the
+   * scan-wide ledger, disable mutation escalation, redirects, and retries at
+   * call sites, and retain raw bodies only through the transient analysis
+   * channel. */
+  public createActiveVulnerabilityHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
+    this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
+    return new RequestSafetyBroker({
+      userAgent: this.options.scope.userAgent,
+      timeoutMs: this.options.plan.limits.requestTimeoutMs,
+      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+      concurrency: Math.max(1, Math.min(3, this.options.plan.limits.concurrency)),
+      bodyPreviewBytes: maxResponseBytes,
+      maxResponseBytes,
+      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+      maxRequests,
+      connectionPool: this.connectionPool,
+      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
+      ...entry,
+      requestedUrl: "redacted://active-vulnerability-request",
+      ...(entry.finalUrl ? { finalUrl: "redacted://active-vulnerability-response" } : {}),
+      requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
+      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+    }), this.coordination("SCAN"));
   }
 
   /** Dedicated bounded transport for signed capabilities and protected artifacts.
@@ -251,6 +289,7 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
@@ -276,6 +315,7 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
@@ -303,6 +343,7 @@ export class ScanContext {
       maxResponseBytes,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
+      connectionPool: this.connectionPool,
       controlledMutationEnabled: true,
       controlledDeletionEnabled: true,
       controlledRaceEnabled: true,
@@ -320,14 +361,16 @@ export class ScanContext {
     return this.options.plan.modules.find((modulePlan) => modulePlan.id === moduleId)?.settings ?? {};
   }
 
-  public createWorkflowCleanupHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
+  public createWorkflowCleanupHttpClient(maxRequests: number, maxResponseBytes: number, allowedPrivateOrigins: readonly string[] = []): RequestSafetyBroker {
     const window = new CleanupExecution();
     const broker = new RequestSafetyBroker({
       userAgent: this.options.scope.userAgent, timeoutMs: this.options.plan.limits.requestTimeoutMs,
       rateLimitPerSecond: Math.min(this.options.plan.limits.rateLimitPerSecond, this.options.recoveryScope?.rateLimitPerSecond ?? this.options.scope.rateLimitPerSecond), concurrency: 1,
       bodyPreviewBytes: maxResponseBytes, maxResponseBytes, maxRequests,
+      connectionPool: this.connectionPool,
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       controlledMutationEnabled: true, controlledDeletionEnabled: true,
+      allowedPrivateOrigins,
       abortSignal: AbortSignal.any([window.signal, this.cancellationCleanup.signal])
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({ ...entry, requestedUrl: "redacted://workflow-cleanup", ...(entry.finalUrl ? { finalUrl: "redacted://workflow-cleanup" } : {}), requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((key) => [key, "<redacted>"])), redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" })) }), this.coordination("CLEANUP"));
     this.cleanupWindows.set(broker, window);
@@ -364,10 +407,13 @@ export class ScanContext {
     this.cleanupWindows.delete(broker);
   }
 
-  public dispose(): void {
+  public async dispose(): Promise<void> {
     this.finishCaseCleanup();
     this.cancellationCleanup.dispose();
+    await this.connectionPool.close();
   }
+
+  public transportDiagnostics() { return this.connectionPool.diagnostics(); }
 
   public finishCaseCleanup(): void {
     for (const window of this.cleanupWindows.values()) window.dispose();

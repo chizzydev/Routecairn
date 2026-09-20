@@ -57,6 +57,23 @@ describe("authentication lifecycle planner", () => {
     expect(weakened).not.toBe(before);
   });
 
+  it("plans native fixture actions and compiles turnkey provider calls", () => {
+    const providerTarget = "https://project.supabase.co/";
+    const providerScope = { ...scope, allowedDomains: ["project.supabase.co"] };
+    const authProfile = { label: "fixture-member", headers: {}, cookies: [], identityVerification: { mode: "disabled" as const, method: "GET" as const, expectedContentType: "application/json", successStatusCodes: [200], maxResponseBytes: 8192, anonymousMarkers: [] }, lifecycleSecrets: { totp_seed: "JBSWY3DPEHPK3PXP", recipient: "fixture@example.test", anon_key: "fixture-anon-key" }, notes: [] };
+    const input = authenticationLifecycleInputSchema.parse({
+      fixtures: {
+        inboxes: [{ id: "mail", kind: "LOCAL_HTTP" }],
+        totp: [{ id: "mfa", secretRef: "totp_seed" }],
+        providers: [{ id: "supabase", provider: "SUPABASE_AUTH", baseUrl: providerTarget, apiKeySecretRef: "anon_key" }]
+      },
+      cases: [{ id: "fixture-case", label: "Fixture lifecycle", category: "MFA_ENROLLMENT_REMOVAL", actors: [{ id: "member", safeAlias: "fixture-member", authSlot: "primary", relationship: "SELF", declaredState: "ACTIVE" }], authorization: observeAuthorization, steps: [{ id: "authorize", phase: "VERIFY", actorId: "member", fixtureActions: [{ kind: "TOTP_GENERATE", profileId: "mfa", capture: "totp_code" }], providerCall: { adapterId: "supabase", operation: "OAUTH_AUTHORIZE" }, assertions: [{ kind: "STATUS_IN", values: [302] }] }] }]
+    });
+    const plan = planAuthenticationLifecycle(input, { target: providerTarget, scope: providerScope, authProfile });
+    expect(plan.cases[0]?.steps[0]).toMatchObject({ fixtureActions: [{ kind: "TOTP_GENERATE", capture: "totp_code" }], request: { method: "GET", url: "https://project.supabase.co/auth/v1/authorize", headers: { apikey: "{{SECRET:anon_key}}" } } });
+    expect(JSON.stringify(plan)).not.toContain("fixture-anon-key");
+  });
+
   it("rejects implicit mutations, literal secrets, missing cleanup, and out-of-scope requests", () => {
     const base = { id: "bad", label: "Bad case", category: "SESSION_REVOCATION", actors: [anonymousActor], authorization: observeAuthorization, steps: [{ id: "action", phase: "ACTION", actorId: "public", request: { method: "POST", url: new URL("/revoke", target).toString(), stateChanging: false } }] };
     expect(() => planAuthenticationLifecycle(authenticationLifecycleInputSchema.parse({ cases: [base] }), { target, scope })).toThrowError(AppError);

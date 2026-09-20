@@ -26,6 +26,7 @@ import { loadBrowserLearnedLifecycleAutomationInput, planBrowserLearnedLifecycle
 import { loadBusinessInvariantInput, planBusinessInvariant } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
 import { loadControlledRaceInput, planControlledRace } from "../../modules/controlledRace/ControlledRacePlanner.js";
 import { loadApiGraphqlInput, planApiGraphqlReview } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
+import { loadProtocolSecurityInput, planProtocolSecurity } from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
 import { loadLinkPortalSecurityInput, planLinkPortalSecurity } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
 import { loadOperationalEndpointSecurityInput, planOperationalEndpointSecurity } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
 import { loadBillingEntitlementInput, planBillingEntitlement } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
@@ -37,6 +38,8 @@ import { readFile } from "node:fs/promises";
 import { controlledMutationContractSchema } from "../../core/offensive/ControlledMutationTypes.js";
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
+import { loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import { compileSafeInventoryImport, loadSafeInventoryImport } from "../../intelligence/inventory/SafeInventoryImporter.js";
 
 const logger = createLogger();
 
@@ -68,6 +71,7 @@ interface ScanCommandOptions {
   businessInvariants?: string;
   controlledRaces?: string;
   apiGraphql?: string;
+  protocolSecurity?: string;
   linkPortalSecurity?: string;
   operationalEndpoints?: string;
   billingEntitlement?: string;
@@ -75,6 +79,8 @@ interface ScanCommandOptions {
   assistedReview?: string;
   preHandover?: string;
   targetAuthorization?: string;
+  activeVulnerability?: string;
+  inventoryImport?: string;
 }
 
 export function registerScanCommand(program: Command): void {
@@ -109,6 +115,7 @@ export function registerScanCommand(program: Command): void {
     .option("--business-invariants <file>", "Path to an explicit authorized business-invariant manifest.")
     .option("--controlled-races <file>", "Path to an explicit authorized synchronized race-testing manifest.")
     .option("--api-graphql <file>", "Path to an explicit API and GraphQL authorization review manifest.")
+    .option("--protocol-security <file>", "Path to a bounded protocol-level security manifest.")
     .option("--link-portal-security <file>", "Path to an explicit signed-link, invite, portal, export, and artifact security manifest.")
     .option("--operational-endpoints <file>", "Path to an explicit webhook, cron, job, incident, health, admin, and worker endpoint security manifest.")
     .option("--billing-entitlement <file>", "Path to an explicit synthetic checkout, billing, entitlement, subscription, and premium-flow security manifest.")
@@ -116,6 +123,8 @@ export function registerScanCommand(program: Command): void {
     .option("--assisted-review <file>", "Append an explicit Assisted Trust & Security Review case inventory and completion gate.")
     .option("--pre-handover <file>", "Run an explicit disposable pre-handover registry and sequence; requires the pre-handover profile.")
     .option("--target-authorization <file>", "Exact target authorization mode and, for bug bounty, enforceable program permissions.")
+    .option("--active-vulnerability <file>", "Path to a bounded active-vulnerability validation manifest (dashboard builder is preferred).")
+    .option("--inventory-import <file>", "Import bounded read-only OpenAPI, Postman, HAR, GraphQL schema, and Supabase catalog inventory.")
     .action(async (target: string, options: ScanCommandOptions) => {
       const controller = new AbortController();
       let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -156,6 +165,8 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const engine = new RouteCairnEngine();
   const outputDir = resolveOutputDir(options.output, config.reportsDir, target, profile);
   const authProfile = options.auth ? await loadAuthProfile(resolve(options.auth)) : undefined;
+  const importedInventory = options.inventoryImport ? compileSafeInventoryImport(await loadSafeInventoryImport(resolve(options.inventoryImport)), target) : undefined;
+  const targetAuthorization = options.targetAuthorization ? targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8"))) : undefined;
   if (options.authenticationLifecycle && options.authenticationLifecycleAuto) throw new AppError("Use either --authentication-lifecycle or --authentication-lifecycle-auto, not both.", "AUTH_LIFECYCLE_INPUT_CONFLICT");
   if (options.authenticationLifecycleAuto && !authProfile) throw new AppError("Browser-learned lifecycle automation requires --auth with an authenticated browser bootstrap.", "AUTH_LIFECYCLE_AUTOMATION_AUTH_REQUIRED");
 
@@ -173,20 +184,24 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const authorizationMatrixTesting = options.authorizationMatrix
     ? planAuthorizationMatrixTesting(await loadAuthorizationMatrixInput(resolve(options.authorizationMatrix)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
-  const collectionAuthorizationTesting = options.collectionAuthorization
-    ? planCollectionAuthorizationTesting(await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+  if (importedInventory?.collectionAuthorization && options.collectionAuthorization) throw new AppError("Use either --inventory-import collection inventory or --collection-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
+  if (importedInventory?.fileAuthorization && options.fileAuthorization) throw new AppError("Use either --inventory-import file inventory or --file-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
+  if (importedInventory?.supabaseAuthorization && options.supabaseAuthorization) throw new AppError("Use either --inventory-import Supabase inventory or --supabase-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
+  if (importedInventory?.apiGraphql && options.apiGraphql) throw new AppError("Use either --inventory-import API inventory or --api-graphql, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
+  const collectionAuthorizationTesting = options.collectionAuthorization || importedInventory?.collectionAuthorization
+    ? planCollectionAuthorizationTesting(options.collectionAuthorization ? await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization)) : importedInventory!.collectionAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const bulkAuthorizationTesting = options.bulkAuthorization
     ? planBulkAuthorizationTesting(await loadBulkAuthorizationInput(resolve(options.bulkAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
-  const fileAuthorizationTesting = options.fileAuthorization
-    ? planFileAuthorizationTesting(await loadFileAuthorizationInput(resolve(options.fileAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+  const fileAuthorizationTesting = options.fileAuthorization || importedInventory?.fileAuthorization
+    ? planFileAuthorizationTesting(options.fileAuthorization ? await loadFileAuthorizationInput(resolve(options.fileAuthorization)) : importedInventory!.fileAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const equivalentRouteTesting = options.equivalentRoutes
     ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
-  const supabaseAuthorization = options.supabaseAuthorization
-    ? planSupabaseAuthorization(await loadSupabaseAuthorizationInput(resolve(options.supabaseAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+  const supabaseAuthorization = options.supabaseAuthorization || importedInventory?.supabaseAuthorization
+    ? planSupabaseAuthorization(options.supabaseAuthorization ? await loadSupabaseAuthorizationInput(resolve(options.supabaseAuthorization)) : importedInventory!.supabaseAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const authenticationLifecycle = options.authenticationLifecycle
     ? planAuthenticationLifecycle(await loadAuthenticationLifecycleInput(resolve(options.authenticationLifecycle)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
@@ -199,8 +214,11 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const controlledRace = options.controlledRaces
     ? planControlledRace(await loadControlledRaceInput(resolve(options.controlledRaces)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
-  const apiGraphql = options.apiGraphql
-    ? planApiGraphqlReview(await loadApiGraphqlInput(resolve(options.apiGraphql)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+  const apiGraphql = options.apiGraphql || importedInventory?.apiGraphql
+    ? planApiGraphqlReview(options.apiGraphql ? await loadApiGraphqlInput(resolve(options.apiGraphql)) : importedInventory!.apiGraphql!, { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    : undefined;
+  const protocolSecurity = options.protocolSecurity
+    ? planProtocolSecurity(await loadProtocolSecurityInput(resolve(options.protocolSecurity)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const linkPortalSecurity = options.linkPortalSecurity
     ? planLinkPortalSecurity(await loadLinkPortalSecurityInput(resolve(options.linkPortalSecurity)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
@@ -211,6 +229,9 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const billingEntitlement = options.billingEntitlement
     ? planBillingEntitlement(await loadBillingEntitlementInput(resolve(options.billingEntitlement)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
+  const activeVulnerability = options.activeVulnerability
+    ? planActiveVulnerabilityValidation(await loadActiveVulnerabilityInput(resolve(options.activeVulnerability)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(targetAuthorization ? { targetAuthorization } : {}) })
+    : undefined;
   const privilegeMutationTesting = options.privilegeMutation
     ? planPrivilegeMutationTesting(privilegeMutationInputSchema.parse(JSON.parse(await readFile(resolve(options.privilegeMutation), "utf8"))), { target, maxCases: 10 })
     : undefined;
@@ -218,7 +239,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const parsedMutationContracts = mutationContractSource ? (Array.isArray(mutationContractSource) ? mutationContractSource : [mutationContractSource]).map((value) => controlledMutationContractSchema.parse(value)) : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
   let includeModules =
-    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting || supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || options.secretBoundary
+    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting || supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || options.secretBoundary
       ? [
           ...new Set([
             ...(translated.includeModules ?? []),
@@ -235,9 +256,11 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
             ...(businessInvariant ? (["business-invariant"] as ModuleId[]) : []),
             ...(controlledRace ? (["controlled-race"] as ModuleId[]) : []),
             ...(apiGraphql ? (["api-graphql-authorization"] as ModuleId[]) : []),
+            ...(protocolSecurity ? (["protocol-security"] as ModuleId[]) : []),
             ...(linkPortalSecurity ? (["link-portal-export-security"] as ModuleId[]) : []),
             ...(operationalEndpointSecurity ? (["operational-endpoint-security"] as ModuleId[]) : []),
             ...(billingEntitlement ? (["billing-entitlement-security"] as ModuleId[]) : []),
+            ...(activeVulnerability ? (["active-vulnerability-validation", "api-mapper", "parameter-analysis"] as ModuleId[]) : []),
             ...(options.secretBoundary ? (["baseline", "js-intelligence", "exposure-review", "secret-boundary"] as ModuleId[]) : []),
             ...(options.authenticationLifecycleAuto ? (["baseline", "browser-crawler"] as ModuleId[]) : [])
           ])
@@ -247,7 +270,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   if (assistedReview) includeModules = [...new Set([...(includeModules ?? resolveScanProfile(translated.profileName).enabledModules), "assisted-review" as ModuleId])];
   const plan = planner.resolve({
     ...(options.preHandover ? { preHandover: planPreHandover(JSON.parse(await readFile(resolve(options.preHandover), "utf8"))) } : {}),
-    ...(options.targetAuthorization ? { targetAuthorization: targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8"))) } : {}),
+    ...(targetAuthorization ? { targetAuthorization } : {}),
     ...(assistedReview ? { assistedReview } : {}),
     requestedProfile: translated.profileName,
     scope: finalScope,
@@ -279,9 +302,11 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     ...(businessInvariant ? { businessInvariant } : {}),
     ...(controlledRace ? { controlledRace } : {}),
     ...(apiGraphql ? { apiGraphql } : {}),
+    ...(protocolSecurity ? { protocolSecurity } : {}),
     ...(linkPortalSecurity ? { linkPortalSecurity } : {}),
     ...(operationalEndpointSecurity ? { operationalEndpointSecurity } : {}),
     ...(billingEntitlement ? { billingEntitlement } : {}),
+    ...(activeVulnerability ? { activeVulnerability } : {}),
     ...(translated.legacyMode ? { legacyMode: translated.legacyMode } : {}),
     ...(translated.legacyModeTranslation ? { legacyModeTranslation: translated.legacyModeTranslation } : {})
   });

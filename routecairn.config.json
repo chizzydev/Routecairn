@@ -3,5 +3,18 @@
   "reportsDir": "./reports",
   "defaultScopeFile": "./examples/scope.example.json",
   "bodyPreviewBytes": 8192,
-  "requestTimeoutMs": 15000
+  "requestTimeoutMs": 15000,
+  "transport": {
+    "poolingEnabled": true,
+    "http2Enabled": false,
+    "maxOrigins": 64,
+    "maxConnectionsPerOrigin": 4,
+    "maxConcurrentHttp2Streams": 32,
+    "maxHeaderSizeBytes": 16384,
+    "keepAliveTimeoutMs": 10000,
+    "keepAliveMaxTimeoutMs": 30000,
+    "maxConnectionLifetimeMs": 120000,
+    "maxRequestsPerConnection": 1000,
+    "dnsCacheTtlMs": 0
+  }
 }

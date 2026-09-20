@@ -44,6 +44,15 @@ function renderMarkdown(report: RouteCairnReport): string {
       `- Ordinary / cleanup transmitted: ${report.requestBudget.scanTransmitted} / ${report.requestBudget.cleanupTransmitted}`,
       `- Ordinary / cleanup remaining: ${report.requestBudget.scanRemaining} / ${report.requestBudget.cleanupRemaining}`
     ] : []),
+    ...(report.transport ? [
+      `- Connection pooling: ${report.transport.poolingEnabled ? "enabled" : "disabled"}`,
+      `- Constrained HTTP/2: ${report.transport.http2Enabled ? "enabled for TLS origins" : "disabled"}`,
+      `- Origin pool hits / misses: ${report.transport.poolHits} / ${report.transport.poolMisses}`,
+      `- Connections created / estimated reuses: ${report.transport.connectionsCreated} / ${report.transport.estimatedConnectionReuses}`,
+      `- HTTP/1.1 / HTTP/2 connections: ${report.transport.http1Connections} / ${report.transport.http2Connections}`,
+      `- DNS resolutions / cache hits / blocked: ${report.transport.dnsResolutions} / ${report.transport.dnsCacheHits} / ${report.transport.blockedResolutions}`,
+      `- Pin rotations / origin evictions: ${report.transport.pinRotations} / ${report.transport.originEvictions}`
+    ] : []),
     `- Technologies detected: ${report.technologies.length}`,
     "",
     "## Technologies Detected",
@@ -170,6 +179,10 @@ function renderMarkdown(report: RouteCairnReport): string {
     "",
     ...apiGraphqlLines(report),
     "",
+    "## Protocol-Level Security",
+    "",
+    ...protocolSecurityLines(report),
+    "",
     "## Signed Links, Portals, Invites, and Exports",
     "",
     ...linkPortalSecurityLines(report),
@@ -185,6 +198,10 @@ function renderMarkdown(report: RouteCairnReport): string {
     "## Secret Boundary and Sensitive Exposure",
     "",
     ...secretBoundaryLines(report),
+    "",
+    "## Active Vulnerability Validation",
+    "",
+    ...activeVulnerabilityLines(report),
     "",
     "## Assisted Security Review",
     "",
@@ -207,6 +224,20 @@ function renderMarkdown(report: RouteCairnReport): string {
     ...observationTable(report.discoveredUrls),
     ""
   ].join("\n");
+}
+
+function activeVulnerabilityLines(report: RouteCairnReport): string[] {
+  const review = report.activeVulnerability;
+  if (!review?.enabled) return ["Active vulnerability validation was not configured."];
+  return [
+    `- Cases: ${review.plannedCases} (${review.explicitCases} explicit, ${review.discoveredCases} discovery-compiled)`,
+    `- Proven / secure / inconclusive / blocked / not assessed: ${review.provenCases} / ${review.secureCases} / ${review.inconclusiveCases} / ${review.blockedCases} / ${review.notAssessedCases}`,
+    `- Requests: ${review.requestsTransmitted} / ${review.requestBudget}`,
+    "",
+    "| Class | Planned | Proven | Secure | Inconclusive | Blocked | Not assessed |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...review.coverage.map((value) => `| ${value.vulnerabilityClass} | ${value.planned} | ${value.proven} | ${value.secure} | ${value.inconclusive} | ${value.blocked} | ${value.notAssessed} |`)
+  ];
 }
 
 function assistedReviewLines(report: RouteCairnReport): string[] {
@@ -320,6 +351,22 @@ function apiGraphqlLines(report: RouteCairnReport): string[] {
     ...review.checks.map((item) => `| ${escapeCell(item.checkId)} | ${item.kind} | ${escapeCell(item.actorAlias)} | ${item.routeAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.reasonCode} | ${item.comparisonFingerprint.slice(0, 16)} |`),
     "",
     "API/GraphQL evidence omits credentials, request bodies, variables, response values, object identities, and tenant identities."
+  ];
+}
+
+function protocolSecurityLines(report: RouteCairnReport): string[] {
+  const review = report.protocolSecurity;
+  if (!review?.enabled) return ["No explicit protocol-security manifest was supplied."];
+  return [
+    `- Cases executed: ${review.executedCases}/${review.plannedCases}`,
+    `- Passed / failed / inconclusive / blocked: ${review.passedCases} / ${review.failedCases} / ${review.inconclusiveCases} / ${review.blockedCases}`,
+    ...review.notes.map((note) => `- ${note}`),
+    "",
+    "| Case | Kind | Actor | Outcome | Reason | Status | Messages | Events | Protocol | Cleanup |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.kind} | ${escapeCell(item.actorAlias)} | ${item.outcome} | ${item.reason} | ${item.statusCode ?? "-"} | ${item.messageCount} | ${item.eventCount} | ${item.negotiatedProtocol ?? "-"} | ${item.cleanupOutcome ?? "-"} |`),
+    "",
+    "Protocol evidence retains counts, status, negotiated protocol, outcomes, and fingerprints only; message, event, protobuf, upload, variable, credential, and response payloads are omitted."
   ];
 }
 

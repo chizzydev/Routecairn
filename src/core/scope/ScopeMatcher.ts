@@ -12,7 +12,7 @@ export class ScopeMatcher {
     this.scope = scope;
   }
 
-  public decide(url: string, method = "GET"): ScopeDecision {
+  public decide(url: string, method = "GET", body?: string | Buffer): ScopeDecision {
     let parsed: URL;
     let normalizedUrl: string;
 
@@ -39,7 +39,7 @@ export class ScopeMatcher {
       return { allowed: false, reason: "disallowed-path", normalizedUrl };
     }
 
-    if (this.authorization?.check(normalizedUrl, method)) return { allowed: false, reason: "target-authorization-denied", normalizedUrl };
+    if (this.authorization?.check(normalizedUrl, method, body)) return { allowed: false, reason: "target-authorization-denied", normalizedUrl };
     return { allowed: true, reason: "allowed", normalizedUrl };
   }
 

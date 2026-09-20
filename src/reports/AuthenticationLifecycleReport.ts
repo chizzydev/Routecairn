@@ -49,6 +49,14 @@ export interface AuthenticationLifecycleReport {
   blockedCases: number;
   cleanupRequired: number;
   cleanupFailed: number;
+  fixtures: {
+    inboxAdapters: number;
+    totpProfiles: number;
+    webauthnAuthenticators: number;
+    oidcHarnesses: number;
+    providerAdapters: string[];
+    secretsStored: false;
+  };
   learningAutomation?: {
     source: "BROWSER_LEARNED";
     sourceCandidateId?: string;

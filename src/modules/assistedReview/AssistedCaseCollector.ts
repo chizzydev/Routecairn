@@ -48,6 +48,7 @@ export function collectAssistedCases(result: ModuleResult, findings: readonly Fi
   for (const value of result.bulkAuthorization?.observations ?? []) add("AUTHORIZATION", { id: `${value.definitionId}/${value.caseId}`, outcome: value.observedDecision, matched: ["BULK_POLICY_SATISFIED", "BULK_ALLOWED_CONFIRMED", "BULK_DENIED_CONFIRMED", "ATOMIC_REJECTION_CONFIRMED", "UNAUTHORIZED_OBJECT_FILTERED", "PER_OBJECT_DECISIONS_CONFIRMED"].includes(value.observedDecision), finding: Boolean(value.findingCategory) });
   for (const value of result.fileAuthorization?.observations ?? []) add("AUTHORIZATION", { id: `${value.definitionId}/${value.caseId}`, outcome: value.observedDecision, matched: fileExpectationMatched(value.expectedDecision, value.observedDecision, value.identityConfirmed), finding: Boolean(value.findingCategory) });
   for (const value of result.secretBoundary?.observations ?? []) add(value.surface.startsWith("BROWSER_") || value.surface === "COOKIE" ? "BROWSER" : "API", { id: value.comparisonFingerprint, outcome: value.outcome === "NEEDS_REVIEW" ? "INCONCLUSIVE" : "PASS", fingerprint: value.comparisonFingerprint });
+  for (const value of result.activeVulnerability?.cases ?? []) add(value.vulnerabilityClass === "REFLECTED_XSS" ? "BROWSER" : "API", { id: value.caseId, label: value.label, outcome: value.outcome, fingerprint: value.comparisonFingerprint });
   if (result.browserCrawl?.authentication) add("BROWSER", { id: "authenticated-browser-bootstrap", label: "Authenticated browser bootstrap", outcome: result.browserCrawl.authentication.bootstrapSucceeded ? "PASS" : "BLOCKED" });
   return cases;
 }
@@ -65,7 +66,7 @@ export function collectReportAssistedCases(report: Partial<RouteCairnReport>): A
     supabaseAuthorization: "supabase-authorization", authenticationLifecycle: "authentication-lifecycle",
     businessInvariant: "business-invariant", controlledRace: "controlled-race", apiGraphql: "api-graphql-authorization",
     linkPortalSecurity: "link-portal-export-security", operationalEndpointSecurity: "operational-endpoint-security",
-    billingEntitlement: "billing-entitlement-security", secretBoundary: "secret-boundary", browserCrawl: "browser-crawler"
+    billingEntitlement: "billing-entitlement-security", secretBoundary: "secret-boundary", activeVulnerability: "active-vulnerability-validation", browserCrawl: "browser-crawler"
   } as const;
   return Object.entries(modules).flatMap(([key, pluginName]) => collectAssistedCases({ pluginName, [key]: report[key as keyof typeof modules] }, report.findings));
 }

@@ -18,7 +18,7 @@ describe("shared workflow mutation coordination and restart recovery", () => {
     await expect(another.acquire("different-engine-case")).rejects.toThrow("UNRESOLVED_PRIOR_CLEANUP");
     const result = await recoverWorkflow(checkpoint, { mutationJournalDir: context.mutations.directory });
     expect(result.cleanupOutcome).toBe("ROLLBACK_VERIFIED");
-    expect(received).toEqual(["POST /fixture/cleanup", "GET /state"]);
+    expect(received).toEqual(workflow === "protocolSecurity" ? ["POST /fixture/cleanup"] : ["POST /fixture/cleanup", "GET /state"]);
     expect(await new MutationJournal(context.mutations.journal.path).unresolvedCaseIds()).toEqual([]);
     await expect(readFile(path)).rejects.toMatchObject({ code: "ENOENT" });
     await another.acquire("next-engine-case"); await another.release();

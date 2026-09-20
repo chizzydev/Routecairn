@@ -107,6 +107,26 @@ const summaryExpectationConfigSchema = z
   })
   .strict();
 
+const paginationSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("LINK_HEADER"),
+    maxPages: z.number().int().min(2).max(10).default(3),
+    allowedQueryParameters: z.array(z.string().regex(/^[A-Za-z0-9_.-]{1,80}$/)).max(12).default([])
+  }).strict(),
+  z.object({
+    mode: z.literal("JSON_URL"),
+    nextPath: z.string().min(1).max(160),
+    maxPages: z.number().int().min(2).max(10).default(3),
+    allowedQueryParameters: z.array(z.string().regex(/^[A-Za-z0-9_.-]{1,80}$/)).max(12).default([])
+  }).strict(),
+  z.object({
+    mode: z.literal("JSON_CURSOR"),
+    nextPath: z.string().min(1).max(160),
+    cursorQueryParameter: z.string().regex(/^[A-Za-z0-9_.-]{1,80}$/),
+    maxPages: z.number().int().min(2).max(10).default(3)
+  }).strict()
+]);
+
 const caseSchema = z
   .object({
     id: z.string().min(1).max(120),
@@ -144,6 +164,7 @@ const collectionSchema = z
     maxInspectedEntries: z.number().int().positive().max(200).default(50),
     maxResponseBytes: z.number().int().positive().max(512 * 1024).default(65536),
     maxJsonDepth: z.number().int().positive().max(24).default(10),
+    pagination: paginationSchema.optional(),
     actors: z.array(actorSchema).min(1).max(maxActors),
     knownObjects: z.array(knownObjectSchema).max(maxKnownObjects).default([]),
     cases: z.array(caseSchema).min(1).max(maxCasesPerCollection)
@@ -193,8 +214,9 @@ export function planCollectionAuthorizationTesting(
   const scopeMatcher = new ScopeMatcher(options.target, options.scope);
   const collections = input.collections.map((collection) => planCollection(collection, input, scopeMatcher, options.authProfileSet));
   const requestMatrix = collections.flatMap((collection) => [...collection.cases]);
-  if (requestMatrix.length > input.maxRequests) {
-    throw new AppError(`Collection authorization input resolves ${requestMatrix.length} requests, exceeding maxRequests ${input.maxRequests}.`, "COLLECTION_AUTHORIZATION_TOO_MANY_REQUESTS");
+  const plannedRequests = collections.reduce((total, collection) => total + collection.cases.length * (collection.pagination?.maxPages ?? 1), 0);
+  if (plannedRequests > input.maxRequests) {
+    throw new AppError(`Collection authorization input resolves up to ${plannedRequests} requests, exceeding maxRequests ${input.maxRequests}.`, "COLLECTION_AUTHORIZATION_TOO_MANY_REQUESTS");
   }
   return deepFreeze({
     schemaVersion: 1,
@@ -209,7 +231,7 @@ export function planCollectionAuthorizationTesting(
     maxPreviewLength: input.maxPreviewLength,
     notes: [
       "Collection authorization testing executes only operator-supplied GET collection cases.",
-      "Runtime responses do not add object IDs, actors, endpoints, query parameters, pages, or cases.",
+      "Pagination is followed only when an explicit bounded contract is present; destinations remain on the configured origin and path and query keys are allowlisted.",
       "Only exact supplied object IDs are compared; unmatched returned IDs are discarded from retained evidence."
     ]
   });
@@ -236,6 +258,8 @@ function planCollection(
   parseOptionalPath(input.objectOwnerPath);
   parseOptionalPath(input.objectStatePath);
   parseOptionalPath(input.objectTypePath);
+  if (input.pagination?.mode === "JSON_URL" || input.pagination?.mode === "JSON_CURSOR") parseOptionalPath(input.pagination.nextPath);
+  validatePagination(input);
 
   const actors = input.actors.map((actor) => actorPlan(actor, authProfileSet));
   validateActors(input.id, actors, authProfileSet);
@@ -317,6 +341,7 @@ function planCollection(
     maxInspectedEntries: input.maxInspectedEntries,
     maxResponseBytes: input.maxResponseBytes,
     maxJsonDepth: input.maxJsonDepth,
+    ...(input.pagination ? { pagination: input.pagination } : {}),
     actors,
     knownObjects,
     cases
@@ -378,11 +403,24 @@ function validateEndpoint(input: CollectionAuthorizationInput["collections"][num
     throw new AppError(`Collection "${input.id}" URL is invalid.`, "COLLECTION_AUTHORIZATION_ENDPOINT_INVALID");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new AppError(`Collection "${input.id}" must use http or https.`, "COLLECTION_AUTHORIZATION_PROTOCOL_INVALID");
-  for (const key of parsed.searchParams.keys()) {
-    if (paginationKeyPattern.test(key)) throw new AppError(`Collection "${input.id}" contains pagination parameter "${key}".`, "COLLECTION_AUTHORIZATION_PAGINATION_REJECTED");
-  }
+  for (const key of parsed.searchParams.keys()) if (paginationKeyPattern.test(key)) throw new AppError(`Collection "${input.id}" initial URL contains pagination parameter "${key}". Pagination must start from the configured first page.`, "COLLECTION_AUTHORIZATION_PAGINATION_REJECTED");
   for (const [name, value] of Object.entries(input.headers)) {
     if (secretLikePattern.test(name) || secretLikePattern.test(value)) throw new AppError(`Collection "${input.id}" contains sensitive or auth-like static headers.`, "COLLECTION_AUTHORIZATION_HEADER_UNSAFE");
+  }
+}
+
+function validatePagination(input: CollectionAuthorizationInput["collections"][number]): void {
+  const pagination = input.pagination;
+  if (!pagination) return;
+  const initial = new URL(input.url);
+  const fixedKeys = new Set(initial.searchParams.keys());
+  if (pagination.mode === "JSON_CURSOR") {
+    if (secretLikePattern.test(pagination.cursorQueryParameter)) throw new AppError(`Collection "${input.id}" cursor parameter is secret-like.`, "COLLECTION_AUTHORIZATION_PAGINATION_INVALID");
+    if (fixedKeys.has(pagination.cursorQueryParameter)) throw new AppError(`Collection "${input.id}" initial URL must not contain its generated cursor parameter.`, "COLLECTION_AUTHORIZATION_PAGINATION_INVALID");
+    return;
+  }
+  for (const key of pagination.allowedQueryParameters) {
+    if (secretLikePattern.test(key)) throw new AppError(`Collection "${input.id}" pagination allowlist contains a secret-like parameter.`, "COLLECTION_AUTHORIZATION_PAGINATION_INVALID");
   }
 }
 

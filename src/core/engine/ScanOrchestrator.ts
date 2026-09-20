@@ -40,11 +40,13 @@ import { AuthenticationLifecycleModule } from "../../modules/authenticationLifec
 import { BusinessInvariantModule } from "../../modules/businessInvariant/BusinessInvariantModule.js";
 import { ControlledRaceModule } from "../../modules/controlledRace/ControlledRaceModule.js";
 import { ApiGraphqlModule } from "../../modules/apiGraphql/ApiGraphqlModule.js";
+import { ProtocolSecurityModule } from "../../modules/protocolSecurity/ProtocolSecurityModule.js";
 import { LinkPortalSecurityModule } from "../../modules/linkPortalSecurity/LinkPortalSecurityModule.js";
 import { OperationalEndpointSecurityModule } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityModule.js";
 import { BillingEntitlementModule } from "../../modules/billingEntitlement/BillingEntitlementModule.js";
 import { SecretBoundaryModule } from "../../modules/secretBoundary/SecretBoundaryModule.js";
 import { AssistedReviewModule } from "../../modules/assistedReview/AssistedReviewModule.js";
+import { ActiveVulnerabilityModule } from "../../modules/activeVulnerability/ActiveVulnerabilityModule.js";
 
 export class ScanOrchestrator {
   private readonly moduleRunner: ModuleRunner;
@@ -99,6 +101,7 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new ParameterAnalysisModule(), moduleMetadata("parameter-analysis"));
   registry.register(new NextJsReviewModule(), moduleMetadata("nextjs-review"));
   registry.register(new VulnerabilityWorkflowModule(), moduleMetadata("vulnerability-workflows"));
+  registry.register(new ActiveVulnerabilityModule(), moduleMetadata("active-vulnerability-validation"));
   registry.register(new WorkflowValidationModule(), moduleMetadata("workflow-validation"));
   registry.register(new AuthenticatedTestingModule(), moduleMetadata("authenticated-testing"));
   registry.register(new RoleComparisonModule(), moduleMetadata("role-comparison"));
@@ -116,6 +119,7 @@ export function createDefaultPluginRegistry(): PluginRegistry {
   registry.register(new BusinessInvariantModule(), moduleMetadata("business-invariant"));
   registry.register(new ControlledRaceModule(), moduleMetadata("controlled-race"));
   registry.register(new ApiGraphqlModule(), moduleMetadata("api-graphql-authorization"));
+  registry.register(new ProtocolSecurityModule(), moduleMetadata("protocol-security"));
   registry.register(new LinkPortalSecurityModule(), moduleMetadata("link-portal-export-security"));
   registry.register(new OperationalEndpointSecurityModule(), moduleMetadata("operational-endpoint-security"));
   registry.register(new BillingEntitlementModule(), moduleMetadata("billing-entitlement-security"));

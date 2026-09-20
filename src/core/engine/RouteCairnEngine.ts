@@ -65,6 +65,7 @@ export class RouteCairnEngine {
           allowedMethods: options.scope.allowedMethods, rateLimitPerSecond: options.plan.limits.rateLimitPerSecond,
           concurrency: options.plan.limits.concurrency, sameOriginOnly: options.scope.sameOriginOnly, includeSubdomains: options.scope.includeSubdomains
         },
+        transport: context.transportDiagnostics(),
         ...safeStateReportForReport(stateReport, options.plan),
         execution: { status, partial: status !== "COMPLETED", reason, checkpointAt: new Date().toISOString(), cleanup }
       };
@@ -97,7 +98,7 @@ export class RouteCairnEngine {
       await options.eventSink?.emit({ type: status === "CANCELLED" ? "SCAN_CANCELLED" : "SCAN_FAILED", message: reason });
     } finally {
       clearTimeout(deadlineTimer);
-      context.dispose();
+      await context.dispose();
     }
     await checkpoint();
     const report = await makeReport();
@@ -109,7 +110,7 @@ export class RouteCairnEngine {
   }
 }
 function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toReport"]>>(stateReport: T, plan: ScanContextOptions["plan"]): T {
-  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement) {
+  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.protocolSecurity && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement && !plan.activeVulnerability) {
     return stateReport;
   }
 
@@ -119,15 +120,15 @@ function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toR
     ...stateReport,
     requestAudit: stateReport.requestAudit.map((entry) => ({
       ...entry,
-      requestedUrl: redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.requestedUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes),
-      ...(entry.finalUrl ? { finalUrl: redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.finalUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) } : {}),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: redactApiRoutes(redactSupabaseQuery(redactObjectIds(hop.location, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) }))
+      requestedUrl: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.requestedUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes),
+      ...(entry.finalUrl ? { finalUrl: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.finalUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) } : {}),
+      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(hop.location, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) }))
     }))
   };
 }
 
 function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions["plan"] {
-  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement && !plan.privilegeMutationTesting) {
+  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.protocolSecurity && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement && !plan.activeVulnerability && !plan.privilegeMutationTesting) {
     return plan;
   }
 
@@ -265,11 +266,39 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
             }))
           }
         }
-      : {})
-    ,...(plan.apiGraphql ? { apiGraphql: redactApiGraphqlPlan(plan.apiGraphql) } : {}),
+      : {}),
+    ...(plan.apiGraphql ? { apiGraphql: redactApiGraphqlPlan(plan.apiGraphql) } : {}),
+    ...(plan.protocolSecurity ? { protocolSecurity: redactProtocolSecurityPlan(plan.protocolSecurity) } : {}),
     ...(plan.linkPortalSecurity ? { linkPortalSecurity: redactLinkPortalPlan(plan.linkPortalSecurity) } : {}),
     ...(plan.operationalEndpointSecurity ? { operationalEndpointSecurity: redactOperationalEndpointPlan(plan.operationalEndpointSecurity) } : {}),
-    ...(plan.billingEntitlement ? { billingEntitlement: redactBillingEntitlementPlan(plan.billingEntitlement) } : {})
+    ...(plan.billingEntitlement ? { billingEntitlement: redactBillingEntitlementPlan(plan.billingEntitlement) } : {}),
+    ...(plan.activeVulnerability ? { activeVulnerability: redactActiveVulnerabilityPlan(plan.activeVulnerability) } : {})
+  };
+}
+
+function redactProtocolSecurityPlan(plan: NonNullable<ScanContextOptions["plan"]["protocolSecurity"]>): NonNullable<ScanContextOptions["plan"]["protocolSecurity"]> {
+  return { ...plan, cases: plan.cases.map((item) => ({ ...item, url: `redacted://protocol/${item.id}`, headers: {}, expectation: { ...item.expectation, ...(item.expectation.equals !== undefined ? { equals: "<redacted>" } : {}) }, ...(item.kind === "WEBSOCKET" ? { messages: item.messages.map(() => "<redacted>") } : {}), ...(item.kind === "SSE" && item.body !== undefined ? { body: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_MUTATION" || item.kind === "GRAPHQL_SUBSCRIPTION" ? { document: `<redacted-operation:${hashValue(item.document)}>`, variables: {}, ...(item.kind === "GRAPHQL_SUBSCRIPTION" && item.connectionPayload !== undefined ? { connectionPayload: "<redacted>" } : {}) } : {}), ...(item.kind === "MULTIPART_UPLOAD" ? { fields: {}, files: item.files.map((file) => ({ ...file, contentSecretRef: "<redacted-ref>" })) } : {}), ...(item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM" ? { payloadSecretRef: "<redacted-ref>" } : {}), ...(item.kind.startsWith("HTTP") && "bodySecretRef" in item && item.bodySecretRef ? { bodySecretRef: "<redacted-ref>" } : {}), ...("authorization" in item && item.authorization ? { authorization: { ...item.authorization, operator: "<redacted>", ticket: "<redacted>" } } : {}), ...("cleanup" in item && item.cleanup ? { cleanup: { ...item.cleanup, url: "redacted://protocol-cleanup", headers: {}, ...(item.cleanup.body !== undefined ? { body: "<redacted>" } : {}) } } : {}) })) as typeof plan.cases };
+}
+
+function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["plan"]["activeVulnerability"]>): NonNullable<ScanContextOptions["plan"]["activeVulnerability"]> {
+  return {
+    ...plan,
+    cases: plan.cases.map((testCase) => ({
+      ...testCase,
+      request: {
+        ...testCase.request,
+        url: `redacted://active-vulnerability/${testCase.id}`,
+        headers: Object.fromEntries(Object.keys(testCase.request.headers).map((name) => [name, "<redacted>"])),
+        ...(testCase.request.body !== undefined ? { body: "<redacted>" } : {}),
+        injection: { ...testCase.request.injection, originalValue: "<redacted>" }
+      },
+      proof: {
+        ...testCase.proof,
+        ...(testCase.proof.marker ? { marker: "<redacted-canary>" } : {}),
+        ...(testCase.proof.callbackUrl ? { callbackUrl: "redacted://active-callback" } : {}),
+        ...(testCase.proof.callbackPollUrl ? { callbackPollUrl: "redacted://active-callback-poll" } : {})
+      }
+    }))
   };
 }
 

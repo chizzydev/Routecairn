@@ -5,17 +5,27 @@ export const businessInvariantCategories = ["FINANCIAL_LIMIT", "ONE_TIME_ACTION"
 export type BusinessInvariantCategory = (typeof businessInvariantCategories)[number];
 export type InvariantOutcome = "PASS" | "FAIL" | "INCONCLUSIVE" | "BLOCKED";
 
-export interface BusinessInvariantAuthorizationPlan {
-  mode: "CONTROLLED_INVARIANT";
-  environment: "LOCAL" | "TEST" | "STAGING" | "PRODUCTION";
-  authorizationIdentityConfirmed: true;
-  changeTicketConfirmed: true;
-  authorizedAt: string;
-  expiresAt: string;
-  disposableEntities: true;
-  productionAcknowledged: boolean;
-  confirmationAccepted: true;
-}
+export type BusinessInvariantAuthorizationPlan =
+  | {
+      mode: "OBSERVE_ONLY";
+      environment: "LOCAL" | "TEST" | "STAGING" | "PRODUCTION";
+      authorizationIdentityConfirmed: false;
+      changeTicketConfirmed: false;
+      disposableEntities: false;
+      productionAcknowledged: boolean;
+      confirmationAccepted: false;
+    }
+  | {
+      mode: "CONTROLLED_INVARIANT";
+      environment: "LOCAL" | "TEST" | "STAGING" | "PRODUCTION";
+      authorizationIdentityConfirmed: true;
+      changeTicketConfirmed: true;
+      authorizedAt: string;
+      expiresAt: string;
+      disposableEntities: true;
+      productionAcknowledged: boolean;
+      confirmationAccepted: true;
+    };
 
 export interface InvariantRequestPlan {
   method: HttpMethod;

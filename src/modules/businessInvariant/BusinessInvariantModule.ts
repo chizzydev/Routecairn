@@ -39,18 +39,19 @@ export async function executeBusinessInvariant(context: ScanContext): Promise<Bu
     const entries = observations.filter((item) => item.category === category);
     return [category, { planned: plan.cases.filter((item) => item.category === category).length, executed: entries.filter((item) => item.outcome !== "BLOCKED").length, passed: entries.filter((item) => item.outcome === "PASS").length, failed: entries.filter((item) => item.outcome === "FAIL").length }];
   })) as BusinessInvariantReport["coverage"];
-  return { enabled: true, plannedCases: plan.cases.length, executedCases: observations.filter((item) => item.outcome !== "BLOCKED").length, passedCases: count(observations, "PASS"), failedCases: count(observations, "FAIL"), inconclusiveCases: count(observations, "INCONCLUSIVE"), blockedCases: count(observations, "BLOCKED"), cleanupRequired: plan.cases.length, cleanupFailed: observations.filter((item) => item.cleanupOutcome === "CLEANUP_FAILED").length, duplicateAttempts: plan.cases.flatMap((item) => item.actions).reduce((total, action) => total + Math.max(0, action.execution.attempts - 1), 0), concurrentActions: plan.cases.flatMap((item) => item.actions).filter((action) => action.execution.mode === "CONCURRENT_DUPLICATE").length, observations, coverage, notes: [...plan.notes, "Supplied credentials stay worker-local. Case state is encrypted in recovery checkpoints until verified cleanup; reports never contain raw restoration values. Reports retain status, structure fingerprints, counters, and invariant outcomes.", "A finding requires a configured invariant or expectation to be contradicted; transport uncertainty is never promoted to a finding."] };
+  return { enabled: true, plannedCases: plan.cases.length, executedCases: observations.filter((item) => item.outcome !== "BLOCKED").length, passedCases: count(observations, "PASS"), failedCases: count(observations, "FAIL"), inconclusiveCases: count(observations, "INCONCLUSIVE"), blockedCases: count(observations, "BLOCKED"), cleanupRequired: plan.cases.filter((item) => item.cleanupRequired).length, cleanupFailed: observations.filter((item) => item.cleanupOutcome === "CLEANUP_FAILED").length, duplicateAttempts: plan.cases.flatMap((item) => item.actions).reduce((total, action) => total + Math.max(0, action.execution.attempts - 1), 0), concurrentActions: plan.cases.flatMap((item) => item.actions).filter((action) => action.execution.mode === "CONCURRENT_DUPLICATE").length, observations, coverage, notes: [...plan.notes, "Supplied credentials stay worker-local. Case state is encrypted in recovery checkpoints until verified cleanup; reports never contain raw restoration values. Reports retain status, structure fingerprints, counters, and invariant outcomes.", "A finding requires a configured invariant or expectation to be contradicted; transport uncertainty is never promoted to a finding."] };
   };
   context.partialModules.set("business-invariant", () => { const report = snapshot(); return { pluginName: "business-invariant", businessInvariant: report, findings: findingsFromReport(report) }; });
   for (const testCase of plan.cases) {
     if (context.options.abortSignal?.aborted && !context.options.workflowRecovery) break;
-    if ((context.options.workflowRecovery ? [] : await journal.unresolvedCaseIds()).length > 0) { observations.push(blockedCase(testCase, "UNRESOLVED_PRIOR_CLEANUP")); continue; }
+    if (testCase.actions.length > 0 && (context.options.workflowRecovery ? [] : await journal.unresolvedCaseIds()).length > 0) { observations.push(blockedCase(testCase, "UNRESOLVED_PRIOR_CLEANUP")); continue; }
     try { observations.push(await executeCase(context, transport, journal, lock, testCase)); } finally { await lock.release(); context.finishCaseCleanup(); await context.options.checkpointReport?.(); }
   }
   return snapshot();
 }
 
 async function executeCase(context: ScanContext, transport: RequestSafetyBroker, journal: MutationJournal, lock: GlobalMutationLock, testCase: BusinessInvariantCasePlan): Promise<BusinessInvariantCaseObservation> {
+  if (testCase.actions.length === 0) return executeReadOnlyCase(context, transport, testCase);
   const captures = new Map<string, unknown>();
   const actionRuntime = new Map<string, ActionRuntime>();
   const actions: BusinessInvariantActionObservation[] = [];
@@ -90,7 +91,7 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
       mainOutcome = mergeOutcome(mainOutcome, post);
       if (postStateVerified) {
         invariantResults = testCase.invariants.map((item) => evaluateInvariant(item, captures, actionRuntime));
-        mainOutcome = invariantResults.reduce((outcome, item) => mergeOutcome(outcome, item.outcome), mainOutcome);
+        mainOutcome = invariantResults.reduce<InvariantOutcome>((outcome, item) => mergeOutcome(outcome, item.outcome), mainOutcome);
         if (testCase.stateMachine) {
           stateMachineResult = evaluateStateMachine(testCase.stateMachine.beforeCapture, testCase.stateMachine.afterCapture, testCase.stateMachine.allowedTransitions, captures);
           mainOutcome = mergeOutcome(mainOutcome, stateMachineResult.outcome);
@@ -117,6 +118,34 @@ async function executeCase(context: ScanContext, transport: RequestSafetyBroker,
   }
   if (cleanupOutcome === "CLEANUP_FAILED") notes.push("Cleanup verification failed; the disposable entity must not be reused until manually reconciled.");
   return { caseId: testCase.id, label: testCase.label, category: testCase.category, actorModel: actorModel(testCase), outcome: mainOutcome, cleanupOutcome, comparisonFingerprint: testCase.comparisonFingerprint, preStateVerified, postStateVerified, actions, invariants: invariantResults, cleanupInvariants: cleanupInvariantResults, ...(stateMachineResult ? { stateMachine: stateMachineResult } : {}), notes };
+}
+
+async function executeReadOnlyCase(context: ScanContext, transport: RequestSafetyBroker, testCase: BusinessInvariantCasePlan): Promise<BusinessInvariantCaseObservation> {
+  const captures = new Map<string, unknown>();
+  const notes: string[] = [];
+  let mainOutcome: InvariantOutcome = "PASS";
+  let preStateVerified = false;
+  let postStateVerified = false;
+  let invariantResults: BusinessInvariantAssertionObservation[] = [];
+  try {
+    const pre = await executeObservations(context, transport, testCase, testCase.preState, captures);
+    preStateVerified = pre === "PASS";
+    mainOutcome = mergeOutcome(mainOutcome, pre);
+    if (mainOutcome === "PASS") {
+      const post = await executeObservations(context, transport, testCase, testCase.postState, captures);
+      postStateVerified = post === "PASS";
+      mainOutcome = mergeOutcome(mainOutcome, post);
+      if (mainOutcome === "PASS") {
+        invariantResults = testCase.invariants.map((item) => evaluateInvariant(item, captures, new Map()));
+        mainOutcome = invariantResults.reduce<InvariantOutcome>((outcome, item) => mergeOutcome(outcome, item.outcome), mainOutcome);
+      }
+    }
+  } catch {
+    mainOutcome = "INCONCLUSIVE";
+    notes.push("A read-only observation could not be completed without transmitting a mutation.");
+  }
+  captures.clear();
+  return { caseId: testCase.id, label: testCase.label, category: testCase.category, actorModel: actorModel(testCase), outcome: mainOutcome, cleanupOutcome: "NOT_REQUIRED", comparisonFingerprint: testCase.comparisonFingerprint, preStateVerified, postStateVerified, actions: [], invariants: invariantResults, cleanupInvariants: [], notes };
 }
 
 async function executeObservations(context: ScanContext, transport: RequestSafetyBroker, testCase: BusinessInvariantCasePlan, observations: BusinessInvariantCasePlan["preState"], captures: Map<string, unknown>): Promise<InvariantOutcome> {
