@@ -16,9 +16,10 @@ import { AdaptiveSecurityWorkspace } from "./AdaptiveSecurityWorkspace";
 import type { AdvancedEngineId } from "./AdvancedEngineStudio";
 import { ProviderAdapterWorkspace } from "./ProviderAdapterWorkspace";
 import { ContinuousAssuranceWorkspace } from "./ContinuousAssuranceWorkspace";
+import { OperationsWorkspace } from "./OperationsWorkspace";
 const ScanStudio = React.lazy(async () => ({ default: (await import("./ScanStudio")).ScanStudio }));
 
-type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "users" | "audit" | "settings";
+type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "operations" | "users" | "audit" | "settings";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -28,7 +29,7 @@ export function App() {
   const [selectedId, setSelectedId] = useState("");
   const [findingFilters, setFindingFilters] = useState<Record<string, string>>({});
   const [retestDraft, setRetestDraft] = useState<RetestDraft>();
-  const [adaptiveDraft, setAdaptiveDraft] = useState<{ target: TargetSummary; engineId: AdvancedEngineId }>();
+  const [adaptiveDraft, setAdaptiveDraft] = useState<{ target: TargetSummary; engineId: AdvancedEngineId; engineConfiguration: Record<string, unknown>; binding: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 }; limits: { maxRequests: number; cleanupReservedRequests: number; evidenceLevel: "strong" } }>();
   const [adapterDraft, setAdapterDraft] = useState<any>();
   const [error, setError] = useState("");
 
@@ -84,6 +85,7 @@ export function App() {
         <button className={view === "configurations" ? "active" : ""} onClick={() => setView("configurations")}>Configurations</button>
         <button className={view === "credentials" ? "active" : ""} onClick={() => setView("credentials")}>Credentials</button>
         <button className={view === "workers" ? "active" : ""} onClick={() => setView("workers")}>Workers</button>
+        <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")}>Operations</button>
         <button className={view === "users" ? "active" : ""} onClick={() => setView("users")}>Users</button>
         <button className={view === "audit" ? "active" : ""} onClick={() => setView("audit")}>Audit</button>
         <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Settings</button>
@@ -106,12 +108,13 @@ export function App() {
         {view === "mutation" && <ControlledMutationWorkspace />}
         {view === "production-mutation" && <ProductionMutationWorkspace />}
         {view === "live-acceptance" && <LiveAcceptanceWorkspace />}
-        {view === "adaptive-security" && <AdaptiveSecurityWorkspace canApprove={principal?.role === "OWNER"} onOpenBuilder={(draft) => { setRetestDraft(undefined); setAdaptiveDraft({ target: draft.target, engineId: draft.engineId as AdvancedEngineId }); setView("new-scan"); }} />}
+        {view === "adaptive-security" && <AdaptiveSecurityWorkspace canApprove={principal?.role === "OWNER"} onOpenBuilder={(draft) => { setRetestDraft(undefined); setAdaptiveDraft({ ...draft, engineId: draft.engineId as AdvancedEngineId }); setView("new-scan"); }} />}
         {view === "provider-adapters" && <ProviderAdapterWorkspace canManage={principal?.role === "OWNER"} onUse={({ target, input, binding }) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft({ target, engineId: input.engineId, engineConfiguration: input.engineConfiguration, authentication: input.authentication, binding, limits: input.limits }); setView("new-scan"); }} />}
         {view === "continuous-assurance" && <ContinuousAssuranceWorkspace canManage={principal?.role === "OWNER"} />}
         {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setAdaptiveDraft(undefined); setView("new-scan"); }} />}
         {view === "credentials" && <Credentials />}
         {view === "workers" && <WorkerDiagnostics canManage={principal?.role === "OWNER"} />}
+        {view === "operations" && <OperationsWorkspace canManage={principal?.role === "OWNER"} />}
         {view === "users" && <Users />}
         {view === "audit" && <AuditLog />}
         {view === "settings" && <Settings />}

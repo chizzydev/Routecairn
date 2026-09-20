@@ -20,6 +20,7 @@ export interface DashboardScanCreateRequest {
   targetId?: string | undefined;
   authorizationDeclaration?: string | undefined;
   configFile?: string | undefined;
+  transport?: import("zod").input<typeof import("../../config/ConfigSchema.js").transportConfigSchema> | undefined;
   authFile?: string | undefined;
   authAFile?: string | undefined;
   authBFile?: string | undefined;
@@ -32,6 +33,9 @@ export interface DashboardScanCreateRequest {
   cleanupReservedRequests?: number | undefined;
   includeModules?: string[] | undefined;
   providerAdapterBinding?: import("../contracts/ProviderAdapterSchemas.js").ProviderAdapterBinding | undefined;
+  adaptiveExecutionBinding?: import("../contracts/AdaptiveSecuritySchemas.js").AdaptiveExecutionBinding | undefined;
+  inventoryImport?: import("zod").input<typeof import("../../intelligence/inventory/SafeInventoryImporter.js").safeInventoryImportInputSchema> | undefined;
+  inventoryImportFile?: string | undefined;
   supabaseAuthorization?: import("zod").input<typeof import("../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js").supabaseAuthorizationInputSchema> | undefined;
   supabaseAuthorizationFile?: string | undefined;
   authenticationLifecycle?: import("zod").input<typeof import("../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js").authenticationLifecycleInputSchema> | undefined;
@@ -44,12 +48,16 @@ export interface DashboardScanCreateRequest {
   controlledRaceFile?: string | undefined;
   apiGraphql?: import("zod").input<typeof import("../../modules/apiGraphql/ApiGraphqlPlanner.js").apiGraphqlInputSchema> | undefined;
   apiGraphqlFile?: string | undefined;
+  protocolSecurity?: import("zod").input<typeof import("../../modules/protocolSecurity/ProtocolSecurityPlanner.js").protocolSecurityInputSchema> | undefined;
+  protocolSecurityFile?: string | undefined;
   linkPortalSecurity?: import("zod").input<typeof import("../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js").linkPortalSecurityInputSchema> | undefined;
   linkPortalSecurityFile?: string | undefined;
   operationalEndpointSecurity?: import("zod").input<typeof import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js").operationalEndpointSecurityInputSchema> | undefined;
   operationalEndpointSecurityFile?: string | undefined;
   billingEntitlement?: import("zod").input<typeof import("../../modules/billingEntitlement/BillingEntitlementPlanner.js").billingEntitlementInputSchema> | undefined;
   billingEntitlementFile?: string | undefined;
+  activeVulnerability?: import("zod").input<typeof import("../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js").activeVulnerabilityInputSchema> | undefined;
+  activeVulnerabilityFile?: string | undefined;
   assistedReviewFile?: string | undefined;
   preHandoverFile?: string | undefined;
   preHandover?: import("zod").input<typeof import("../../modules/preHandover/PreHandoverPlanner.js").preHandoverInputSchema> | undefined;
@@ -65,6 +73,7 @@ export interface PlanPreviewResponse {
   modules: Array<{ id: string; phase: string; settings: Record<string, unknown> }>;
   limits: Record<string, unknown>;
   evidence: Record<string, unknown>;
+  transport: import("../../core/http/PinnedOriginPool.js").PinnedTransportSettings;
   skippedModules: Array<{ id: string; reason: string }>;
   controlledWorkflowRequests: Array<{ workflowId: string; exactRequests: number }>;
   planSnapshot: Record<string, unknown>;

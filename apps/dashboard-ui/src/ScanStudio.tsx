@@ -76,6 +76,19 @@ type NextJsReviewSettings = {
   maxNextJsAssetsInspected: number;
   maxNextJsRoutesProcessed: number;
 };
+type TransportState = {
+  poolingEnabled: boolean;
+  http2Enabled: boolean;
+  maxOrigins: number;
+  maxConnectionsPerOrigin: number;
+  maxConcurrentHttp2Streams: number;
+  maxHeaderSizeBytes: number;
+  keepAliveTimeoutMs: number;
+  keepAliveMaxTimeoutMs: number;
+  maxConnectionLifetimeMs: number;
+  maxRequestsPerConnection: number;
+  dnsCacheTtlMs: number;
+};
 type StudioState = {
   currentStep: number;
   scanName: string;
@@ -95,6 +108,7 @@ type StudioState = {
   profile: string;
   selectedModules: string[];
   nextJsReview: NextJsReviewSettings;
+  transport: TransportState;
   authMode: AuthMode;
   primary: ActorState;
   accountA: ActorState;
@@ -106,6 +120,7 @@ type StudioState = {
   workflows: WorkflowDraft[];
   advancedEngines: AdvancedEngineDraft[];
   providerAdapterBinding?: { profileId: string; versionId: string; adapterDigest: string };
+  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 };
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;
@@ -148,6 +163,7 @@ type CapabilityRegistry = {
     id: "minimal" | "normal" | "strong";
     retention: string;
   }>;
+  transport?: { defaults: TransportState; http2: string; dnsRevalidation: string; diagnostics: string[] };
 };
 
 const steps = [
@@ -207,7 +223,7 @@ export function ScanStudio({
 }: {
   onLaunched: (scanId: string) => void;
   initialDraft?: RetestDraft;
-  initialAdaptiveDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"] };
+  initialAdaptiveDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration?: Record<string, unknown>; binding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 }; limits?: { maxRequests: number; cleanupReservedRequests: number; evidenceLevel: "strong" } };
   initialAdapterDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration: Record<string, unknown>; authentication: { mode: "public" } | { mode: "primary"; credentialProfileId: string } | { mode: "account-pair"; accountAProfileId: string; accountBProfileId: string }; binding: { profileId: string; versionId: string; adapterDigest: string }; limits: { maxRequests: number; cleanupReservedRequests: number; rateLimitPerSecond: number; concurrency: number; evidenceLevel: "minimal" | "normal" | "strong" } };
 }) {
   const savedConfiguration = initialDraft || initialAdaptiveDraft || initialAdapterDraft ? undefined : readPendingConfiguration();
@@ -236,8 +252,8 @@ export function ScanStudio({
     targetId: initialDraft?.targetId ?? initialAdapterDraft?.target.id ?? initialAdaptiveDraft?.target.id ?? "",
     target: initialDraft?.target ?? initialAdapterDraft?.target.baseOrigin ?? initialAdaptiveDraft?.target.baseOrigin ?? "",
     authorizationCategory: (initialAdapterDraft?.target ?? initialAdaptiveDraft?.target)?.authorizationType === "BUG_BOUNTY" ? "BUG_BOUNTY" : "OWNED",
-    authorizationConfirmed: false,
-    authorizationNote: "",
+    authorizationConfirmed: Boolean(initialAdaptiveDraft),
+    authorizationNote: initialAdaptiveDraft ? "Evidence-bound read-only adaptive execution from the registered target and approved scope." : "",
     scope: {
       program: retestScope?.program ?? adaptiveTargetScope?.program ?? "Authorized Security Test",
       allowedDomains: retestScope?.allowedDomains ?? adaptiveTargetScope?.allowedDomains ?? (initialDraft?.target ? [new URL(initialDraft.target).hostname] : initialAdapterDraft ? [new URL(initialAdapterDraft.target.baseOrigin).hostname] : initialAdaptiveDraft ? [new URL(initialAdaptiveDraft.target.baseOrigin).hostname] : []),
@@ -251,7 +267,7 @@ export function ScanStudio({
       respectRobotsTxt: retestScope?.respectRobotsTxt ?? adaptiveTargetScope?.respectRobotsTxt ?? false,
       userAgent: retestScope?.userAgent ?? adaptiveTargetScope?.userAgent ?? "RouteCairn/0.1",
     },
-    profile: initialDraft?.profile ?? (initialAdapterDraft ? initialAdapterDraft.authentication.mode === "public" ? "full" : "authenticated" : savedConfiguration?.profile ?? "quick"),
+    profile: initialDraft?.profile ?? (initialAdapterDraft ? initialAdapterDraft.authentication.mode === "public" ? "full" : "authenticated" : initialAdaptiveDraft ? "full" : savedConfiguration?.profile ?? "quick"),
     selectedModules: initialDraft?.selectedModules ?? savedConfiguration?.modules ?? [],
     nextJsReview: {
       inspectNextJsSourceMaps: true,
@@ -264,17 +280,31 @@ export function ScanStudio({
       maxNextJsAssetsInspected: 50,
       maxNextJsRoutesProcessed: 200,
     },
+    transport: {
+      poolingEnabled: true,
+      http2Enabled: false,
+      maxOrigins: 64,
+      maxConnectionsPerOrigin: 4,
+      maxConcurrentHttp2Streams: 32,
+      maxHeaderSizeBytes: 16384,
+      keepAliveTimeoutMs: 10000,
+      keepAliveMaxTimeoutMs: 30000,
+      maxConnectionLifetimeMs: 120000,
+      maxRequestsPerConnection: 1000,
+      dnsCacheTtlMs: 0,
+    },
     authMode: initialAdapterDraft?.authentication.mode ?? (initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public"),
     primary: initialAdapterDraft?.authentication.mode === "primary" ? { ...emptyActor("primary"), source: "saved", savedId: initialAdapterDraft.authentication.credentialProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
     accountA: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account A"), source: "saved", savedId: initialAdapterDraft.authentication.accountAProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
     accountB: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account B"), source: "saved", savedId: initialAdapterDraft.authentication.accountBProfileId } : initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
-    evidenceLevel: initialAdapterDraft?.limits.evidenceLevel ?? (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
-    maxRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.maxRequests) : "",
-    cleanupReservedRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.cleanupReservedRequests) : "",
+    evidenceLevel: initialAdapterDraft?.limits.evidenceLevel ?? initialAdaptiveDraft?.limits?.evidenceLevel ?? (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
+    maxRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.maxRequests) : initialAdaptiveDraft?.limits ? String(initialAdaptiveDraft.limits.maxRequests) : "",
+    cleanupReservedRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.cleanupReservedRequests) : initialAdaptiveDraft?.limits ? String(initialAdaptiveDraft.limits.cleanupReservedRequests) : "",
     outputs: initialDraft?.outputs && initialDraft.outputs.json && initialDraft.outputs.markdown && initialDraft.outputs.html ? { json: true, markdown: true, html: true } : { json: true, markdown: true, html: true },
     workflows: (initialDraft?.reusableWorkflows ?? []) as WorkflowDraft[],
     advancedEngines: [],
     ...(initialAdapterDraft ? { providerAdapterBinding: initialAdapterDraft.binding } : {}),
+    ...(initialAdaptiveDraft ? { adaptiveExecutionBinding: initialAdaptiveDraft.binding } : {}),
     authenticationLifecycleFile: "",
     authenticationLifecycleAutoFile: "",
     businessInvariantFile: "",
@@ -559,7 +589,7 @@ export function ScanStudio({
               <AdvancedEngineStudio
                 target={state.target}
                 initialEngineId={initialAdapterDraft?.engineId ?? initialAdaptiveDraft?.engineId}
-                initialEngineValue={initialAdapterDraft?.engineConfiguration as never}
+                initialEngineValue={(initialAdapterDraft?.engineConfiguration ?? initialAdaptiveDraft?.engineConfiguration) as never}
                 drafts={state.advancedEngines}
                 selectedModules={state.selectedModules}
                 onChange={(advancedEngines) => {
@@ -1850,8 +1880,29 @@ function LimitsStep({
         and can only be used for restoration. Empty fields use the resolved
         profile and automatic cleanup reserve shown in Plan Review.
       </p>
+      <fieldset>
+        <legend>IP-bound transport</legend>
+        <div className="grid two">
+          <label className="checkbox"><input type="checkbox" checked={state.transport.poolingEnabled} onChange={(event) => update({ transport: { ...state.transport, poolingEnabled: event.target.checked } })} /> Reuse verified origin-isolated connections</label>
+          <label className="checkbox"><input type="checkbox" checked={state.transport.http2Enabled} onChange={(event) => update({ transport: { ...state.transport, http2Enabled: event.target.checked } })} /> Allow constrained HTTP/2 for HTTPS origins</label>
+          <TransportNumber label="Retained origin pools" value={state.transport.maxOrigins} min={1} max={1024} set={(value) => update({ transport: { ...state.transport, maxOrigins: value } })} />
+          <TransportNumber label="Connections per origin" value={state.transport.maxConnectionsPerOrigin} min={1} max={32} set={(value) => update({ transport: { ...state.transport, maxConnectionsPerOrigin: value } })} />
+          <TransportNumber label="HTTP/2 streams per connection" value={state.transport.maxConcurrentHttp2Streams} min={1} max={256} set={(value) => update({ transport: { ...state.transport, maxConcurrentHttp2Streams: value } })} />
+          <TransportNumber label="Maximum response headers (bytes)" value={state.transport.maxHeaderSizeBytes} min={4096} max={65536} set={(value) => update({ transport: { ...state.transport, maxHeaderSizeBytes: value } })} />
+          <TransportNumber label="Keep-alive timeout (ms)" value={state.transport.keepAliveTimeoutMs} min={100} max={120000} set={(value) => update({ transport: { ...state.transport, keepAliveTimeoutMs: value } })} />
+          <TransportNumber label="Maximum keep-alive (ms)" value={state.transport.keepAliveMaxTimeoutMs} min={100} max={300000} set={(value) => update({ transport: { ...state.transport, keepAliveMaxTimeoutMs: value } })} />
+          <TransportNumber label="Connection lifetime (ms)" value={state.transport.maxConnectionLifetimeMs} min={1000} max={900000} set={(value) => update({ transport: { ...state.transport, maxConnectionLifetimeMs: value } })} />
+          <TransportNumber label="Requests per connection" value={state.transport.maxRequestsPerConnection} min={1} max={10000} set={(value) => update({ transport: { ...state.transport, maxRequestsPerConnection: value } })} />
+          <TransportNumber label="Validated DNS pin lease (ms)" value={state.transport.dnsCacheTtlMs} min={0} max={60000} set={(value) => update({ transport: { ...state.transport, dnsCacheTtlMs: value } })} />
+        </div>
+        <small>Zero DNS lease revalidates before every dispatch. A lease caches only the already validated IP pin. HTTP/2 remains TLS-only and pools never span origins.</small>
+      </fieldset>
     </div>
   );
+}
+
+function TransportNumber({ label, value, min, max, set }: { label: string; value: number; min: number; max: number; set: (value: number) => void }) {
+  return <label>{label}<input type="number" min={min} max={max} value={value} onChange={(event) => set(Number(event.target.value))} /></label>;
 }
 
 function EvidenceStep({
@@ -1931,6 +1982,7 @@ function ReviewStep({
         }}
       />
       <Review title="Authentication" value={safeAuthReview(state)} />
+      <Review title="IP-bound transport" value={state.transport} />
       <Review title="Identity" value={safeIdentityReview(state)} />
       <Review
         title="Controlled workflows"
@@ -2082,6 +2134,13 @@ function validate(state: StudioState): ValidationError[] {
   if (maxRequests !== undefined && cleanupReserve !== undefined && cleanupReserve > maxRequests) {
     errors.push({ step: 5, message: "Cleanup reserve cannot exceed the total scan request budget." });
   }
+  const transportBounds: Array<[number, number, number]> = [
+    [state.transport.maxOrigins, 1, 1024], [state.transport.maxConnectionsPerOrigin, 1, 32], [state.transport.maxConcurrentHttp2Streams, 1, 256], [state.transport.maxHeaderSizeBytes, 4096, 65536],
+    [state.transport.keepAliveTimeoutMs, 100, 120000], [state.transport.keepAliveMaxTimeoutMs, 100, 300000], [state.transport.maxConnectionLifetimeMs, 1000, 900000],
+    [state.transport.maxRequestsPerConnection, 1, 10000], [state.transport.dnsCacheTtlMs, 0, 60000]
+  ];
+  if (transportBounds.some(([value, min, max]) => !Number.isInteger(value) || value < min || value > max)) errors.push({ step: 5, message: "Transport settings are outside their safe bounds." });
+  if (state.transport.keepAliveMaxTimeoutMs < state.transport.keepAliveTimeoutMs) errors.push({ step: 5, message: "Maximum keep-alive must be greater than or equal to the keep-alive timeout." });
   if (state.scope.allowedMethods.length === 0)
     errors.push({ step: 1, message: "At least one safe method is required." });
   if (!state.profile)
@@ -2269,12 +2328,14 @@ function buildRequest(state: StudioState): Record<string, unknown> {
     authorizationDeclaration: `${state.authorizationCategory}: ${state.authorizationNote || "Authorized in Scan Studio"}`,
     rateLimitPerSecond: state.scope.rateLimitPerSecond,
     concurrency: state.scope.concurrency,
+    transport: state.transport,
     ...(state.maxRequestsOverride !== "" ? { maxRequests: Number(state.maxRequestsOverride) } : {}),
     ...(state.cleanupReservedRequestsOverride !== "" ? { cleanupReservedRequests: Number(state.cleanupReservedRequestsOverride) } : {}),
     ...(state.selectedModules.length
       ? { includeModules: state.selectedModules }
       : {}),
     ...(state.providerAdapterBinding ? { providerAdapterBinding: state.providerAdapterBinding } : {}),
+    ...(state.adaptiveExecutionBinding ? { adaptiveExecutionBinding: state.adaptiveExecutionBinding } : {}),
     ...advancedEngineRequestValues(state.advancedEngines),
     ...(state.authenticationLifecycleFile ? { authenticationLifecycleFile: state.authenticationLifecycleFile } : {}),
     ...(state.authenticationLifecycleAutoFile ? { authenticationLifecycleAutoFile: state.authenticationLifecycleAutoFile } : {}),

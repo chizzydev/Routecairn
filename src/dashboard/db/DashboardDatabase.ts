@@ -40,6 +40,13 @@ export class DashboardDatabase {
     if (!installation) {
       metaUpsert.run("installation_id", randomUUID(), nowIso());
     }
+    const defaultOrganization = this.db.prepare("SELECT value FROM dashboard_meta WHERE key = 'default_organization_id'").get() as { value: string } | undefined;
+    const defaultOrganizationId = defaultOrganization?.value ?? randomUUID();
+    if (!defaultOrganization) metaUpsert.run("default_organization_id", defaultOrganizationId, nowIso());
+    const timestamp = nowIso();
+    this.db.prepare("INSERT OR IGNORE INTO organizations (id, slug, name, status, created_by, created_at, updated_at) VALUES (?, 'default', 'Default organization', 'ACTIVE', 'SYSTEM', ?, ?)").run(defaultOrganizationId, timestamp, timestamp);
+    this.db.prepare(`INSERT OR IGNORE INTO organization_memberships (organization_id,user_id,role,created_by,created_at,updated_at)
+      SELECT ?, id, CASE role WHEN 'OWNER' THEN 'OWNER' WHEN 'ANALYST' THEN 'ANALYST' ELSE 'VIEWER' END, 'SYSTEM', ?, ? FROM dashboard_users`).run(defaultOrganizationId, timestamp, timestamp);
     metaUpsert.run("schema_version", String(dashboardSchemaVersion), nowIso());
     metaUpsert.run("last_migration_at", nowIso(), nowIso());
   }

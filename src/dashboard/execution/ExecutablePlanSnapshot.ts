@@ -157,11 +157,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function manifestPathEntries(request: DashboardScanCreateRequest): Array<[string, string]> {
   const fields = [
-    "scopeFile", "configFile", "authFile", "authAFile", "authBFile",
+    "scopeFile", "configFile", "authFile", "authAFile", "authBFile", "inventoryImportFile",
     "supabaseAuthorizationFile",
     "authenticationLifecycleFile", "authenticationLifecycleAutoFile", "businessInvariantFile",
-    "controlledRaceFile", "apiGraphqlFile", "linkPortalSecurityFile",
-    "operationalEndpointSecurityFile", "billingEntitlementFile", "assistedReviewFile",
+    "controlledRaceFile", "apiGraphqlFile", "protocolSecurityFile", "linkPortalSecurityFile",
+    "operationalEndpointSecurityFile", "billingEntitlementFile", "activeVulnerabilityFile", "assistedReviewFile",
     "preHandoverFile", "targetAuthorizationFile"
   ] as const;
   return fields.flatMap((field) => request[field] ? [[field, request[field]!] as [string, string]] : []);

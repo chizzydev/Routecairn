@@ -48,9 +48,11 @@ function workflowFacts(report: Partial<RouteCairnReport>): CaseFact[] {
   for (const item of report.businessInvariant?.observations ?? []) facts.push(contractObservation("business-invariant", "business-invariant", item.caseId, item, item.comparisonFingerprint));
   for (const item of report.controlledRace?.observations ?? []) facts.push(contractObservation("controlled-race", "controlled-race", item.caseId, item, item.comparisonFingerprint));
   for (const item of report.apiGraphql?.checks ?? []) facts.push(contractObservation("api-graphql-authorization", "api-graphql-authorization", item.checkId, item, item.comparisonFingerprint));
+  for (const item of report.protocolSecurity?.observations ?? []) facts.push(contractObservation("protocol-security", item.kind, item.caseId, item, item.comparisonFingerprint));
   for (const item of report.linkPortalSecurity?.observations ?? []) facts.push(contractObservation("link-portal-export-security", "link-portal-export-security", item.caseId, item, item.comparisonFingerprint));
   for (const item of report.operationalEndpointSecurity?.observations ?? []) facts.push(contractObservation("operational-endpoint-security", "operational-endpoint-security", item.caseId, item, item.comparisonFingerprint));
   for (const item of report.billingEntitlement?.observations ?? []) facts.push(contractObservation("billing-entitlement-security", "billing-entitlement-security", item.caseId, item, item.comparisonFingerprint));
+  for (const item of report.activeVulnerability?.cases ?? []) facts.push(contractObservation("active-vulnerability-validation", "active-vulnerability-validation", item.caseId, item, item.comparisonFingerprint));
   return facts;
 }
 
@@ -59,7 +61,12 @@ function contractObservation(workflowId: string, moduleId: string, alias: string
   const outcome = String(item.outcome ?? item.observedDecision ?? "INCONCLUSIVE");
   const blocked = /BLOCKED|IDENTITY_UNVERIFIED|CREDENTIAL_UNAVAILABLE/.test(outcome);
   const cleanupOutcome = String(item.cleanupOutcome ?? "");
-  const failed = /INCONCLUSIVE|ERROR|UNPARSEABLE|RATE_LIMITED/.test(outcome) || /FAILED|NOT_REACHED|REQUIRED|UNKNOWN/.test(cleanupOutcome);
+  const readOnlyCleanup = ["NOT_REQUIRED", "CLEANUP_NOT_REACHED"].includes(cleanupOutcome) && (
+    item.cleanupRequired === false
+    || Array.isArray(item.actions) && item.actions.length === 0
+    || Array.isArray(item.steps) && (item.steps as Array<Record<string, unknown>>).every((step) => step.stateChanging !== true)
+  );
+  const failed = /INCONCLUSIVE|ERROR|UNPARSEABLE|RATE_LIMITED/.test(outcome) || (!readOnlyCleanup && /FAILED|NOT_REACHED|REQUIRED|UNKNOWN/.test(cleanupOutcome));
   const matched = typeof item.matchedExpectation === "boolean" ? item.matchedExpectation : outcome === "PASS" ? true : outcome === "FAIL" ? false : undefined;
   const semantics = Object.fromEntries(["category", "surface", "resource", "operation", "actor", "boundary", "kind", "routeAliases", "protocols", "actorModel", "actorAliases", "resourceAliases", "targetType"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));
   const result = Object.fromEntries(["outcome", "observedDecision", "cleanupOutcome", "reasonCode", "identityConfirmed", "preStateVerified", "postStateVerified"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));

@@ -12,6 +12,10 @@ export interface DashboardPaths {
   mutationJournalDir: string;
   mutationJournalRegistryPath: string;
   workersDir: string;
+  backupsDir: string;
+  integrationsDir: string;
+  thirdPartyModulesDir: string;
+  restoreMarkerPath: string;
 }
 
 export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
@@ -27,7 +31,11 @@ export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
     executablePlanKeyPath: resolve(root, "keys", "executable-plan.key"),
     mutationJournalDir,
     mutationJournalRegistryPath: resolve(mutationJournalDir, "mutation-journals.json"),
-    workersDir: resolve(root, "workers")
+    workersDir: resolve(root, "workers"),
+    backupsDir: resolve(root, "backups"),
+    integrationsDir: resolve(root, "integrations"),
+    thirdPartyModulesDir: resolve(root, "third-party-modules"),
+    restoreMarkerPath: resolve(root, "restore-on-restart.json")
   };
 }
 

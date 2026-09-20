@@ -54,11 +54,15 @@ export class ServerSessionManager {
     const passwordHash = await hashPassword(input.password);
     const id = cryptoRandomId();
     const now = nowIso();
-    this.database.db
-      .prepare(
-        "INSERT INTO dashboard_users (id, login, normalized_login, password_hash, role, enabled, created_at, updated_at, password_changed_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
-      )
-      .run(id, clamp(input.login, 320), normalized, passwordHash, input.role, now, now, now, input.createdByUserId ?? null);
+    this.database.transaction(() => {
+      this.database.db
+        .prepare(
+          "INSERT INTO dashboard_users (id, login, normalized_login, password_hash, role, enabled, created_at, updated_at, password_changed_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
+        )
+        .run(id, clamp(input.login, 320), normalized, passwordHash, input.role, now, now, now, input.createdByUserId ?? null);
+      const organization = this.database.db.prepare("SELECT value FROM dashboard_meta WHERE key = 'default_organization_id'").get() as { value: string } | undefined;
+      if (organization) this.database.db.prepare("INSERT INTO organization_memberships (organization_id,user_id,role,created_by,created_at,updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(organization.value, id, input.role === "OWNER" ? "OWNER" : input.role, input.createdByUserId ?? "SYSTEM", now, now);
+    });
     return id;
   }
 
@@ -144,6 +148,19 @@ export class ServerSessionManager {
     input.response.setHeader("Set-Cookie", this.cookie(sessionToken, Date.now() + sessionTtlMs));
     const updated = this.database.db.prepare("SELECT * FROM dashboard_users WHERE id = ?").get(user.id) as DbUserRow;
     return { csrfToken, user: userSummary(this.database, updated), permissions: permissionsForRole(user.role) };
+  }
+
+  public loginFederated(userId: string, request: IncomingMessage, response: ServerResponse): { csrfToken: string; user: DashboardUserSummary; permissions: DashboardPermission[] } {
+    const user = this.database.db.prepare("SELECT * FROM dashboard_users WHERE id=? AND enabled=1").get(userId) as DbUserRow | undefined;
+    if (!user) throw new SessionError("Federated identity is not linked to an enabled dashboard user.");
+    const sessionToken = token(); const csrfToken = token(); const sessionId = cryptoRandomId(); const now = nowIso(); const expiresAt = new Date(Date.now() + sessionTtlMs).toISOString();
+    this.database.transaction(() => {
+      this.database.db.prepare("INSERT INTO dashboard_sessions (id,user_id,token_hash,csrf_token_hash,created_at,last_seen_at,expires_at,safe_user_agent,safe_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(sessionId, user.id, tokenHash(sessionToken, this.security.sessionSecret), tokenHash(csrfToken, this.security.sessionSecret), now, now, expiresAt, safeHeader(request.headers["user-agent"]), sourceFingerprint(request, this.security.sessionSecret).slice(0, 24));
+      this.database.db.prepare("INSERT INTO dashboard_csrf_tokens (session_id,token_hash,created_at) VALUES (?, ?, ?)").run(sessionId, tokenHash(csrfToken, this.security.sessionSecret), now);
+      this.database.db.prepare("UPDATE dashboard_users SET last_login_at=? WHERE id=?").run(now, user.id);
+    });
+    response.setHeader("Set-Cookie", this.cookie(sessionToken, Date.now() + sessionTtlMs));
+    return { csrfToken, user: userSummary(this.database, user), permissions: permissionsForRole(user.role) };
   }
 
   public requireSession(request: IncomingMessage): DashboardPrincipal {

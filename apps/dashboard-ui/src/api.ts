@@ -73,7 +73,11 @@ export interface PlanPreview {
   profile: string;
   modules: Array<{ id: string; phase: string; settings: Record<string, unknown> }>;
   limits: Record<string, unknown>;
-  evidence: Record<string, unknown>;
+    evidence: Record<string, unknown>;
+    transport: {
+      poolingEnabled: boolean; http2Enabled: boolean; maxOrigins: number; maxConnectionsPerOrigin: number; maxConcurrentHttp2Streams: number; maxHeaderSizeBytes: number;
+      keepAliveTimeoutMs: number; keepAliveMaxTimeoutMs: number; maxConnectionLifetimeMs: number; maxRequestsPerConnection: number; dnsCacheTtlMs: number;
+    };
   skippedModules: Array<{ id: string; reason: string }>;
   controlledWorkflowRequests: Array<{
     workflowId: string;

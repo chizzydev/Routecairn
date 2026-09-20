@@ -27,6 +27,7 @@ import { browserLearnedLifecycleAutomationInputSchema, loadBrowserLearnedLifecyc
 import { businessInvariantInputSchema, loadBusinessInvariantInput, planBusinessInvariant } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
 import { controlledRaceInputSchema, loadControlledRaceInput, planControlledRace } from "../../modules/controlledRace/ControlledRacePlanner.js";
 import { apiGraphqlInputSchema, loadApiGraphqlInput, planApiGraphqlReview } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
+import { protocolSecurityInputSchema, loadProtocolSecurityInput, planProtocolSecurity } from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
 import { linkPortalSecurityInputSchema, loadLinkPortalSecurityInput, planLinkPortalSecurity } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
 import { operationalEndpointSecurityInputSchema, loadOperationalEndpointSecurityInput, planOperationalEndpointSecurity } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
 import { billingEntitlementInputSchema, loadBillingEntitlementInput, planBillingEntitlement } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
@@ -38,6 +39,8 @@ import { planPreHandover } from "../../modules/preHandover/PreHandoverPlanner.js
 import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
 import { approvedMutationPlan } from "./ApprovedMutationPlan.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
+import { activeVulnerabilityInputSchema, loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import { compileSafeInventoryImport, loadSafeInventoryImport, safeInventoryImportInputSchema } from "../../intelligence/inventory/SafeInventoryImporter.js";
 
 export interface DashboardResolvedAuth {
   authProfile?: AuthProfile | undefined;
@@ -52,14 +55,26 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
   if ((request.credentialProfileAId && !request.credentialProfileBId) || (!request.credentialProfileAId && request.credentialProfileBId)) {
     throw new Error("Account-pair credential profiles require both Account A and Account B.");
   }
-  const config = request.configFile ? await loadRouteCairnConfig(resolve(request.configFile)) : routeCairnConfigSchema.parse(defaultConfig);
+  const baseConfig = request.configFile ? await loadRouteCairnConfig(resolve(request.configFile)) : routeCairnConfigSchema.parse(defaultConfig);
+  const config = request.transport ? routeCairnConfigSchema.parse({ ...baseConfig, transport: request.transport }) : baseConfig;
   const scope = request.studio?.scope ? scopeSchema.parse(request.studio.scope) : await loadScope(resolve(requiredScopeFile(request)));
   const studioEphemeralAuth = authFromStudioEphemeral(request);
   const authProfile = resolvedAuth?.authProfile ?? studioEphemeralAuth?.authProfile ?? (request.authFile ? await loadAuthProfile(resolve(request.authFile)) : undefined);
   const authProfileSet = resolvedAuth?.authProfileSet ?? studioEphemeralAuth?.authProfileSet ?? (request.authAFile && request.authBFile ? await loadAuthProfileSet(resolve(request.authAFile), resolve(request.authBFile)) : undefined);
+  const importedInventoryInput = request.inventoryImport ? safeInventoryImportInputSchema.parse(request.inventoryImport) : (request.inventoryImportFile ? await loadSafeInventoryImport(resolve(request.inventoryImportFile)) : undefined);
+  const importedInventory = importedInventoryInput ? compileSafeInventoryImport(importedInventoryInput, request.target) : undefined;
   const workflowPlans = resolveStudioWorkflowPlans(request, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) });
-  const planningOptions = { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) };
-  const supabaseInput = request.supabaseAuthorization ? supabaseAuthorizationInputSchema.parse(request.supabaseAuthorization) : (request.supabaseAuthorizationFile ? await loadSupabaseAuthorizationInput(resolve(request.supabaseAuthorizationFile)) : undefined);
+  if (importedInventory?.collectionAuthorization && workflowPlans.collectionAuthorizationTesting) throw new Error("Inventory import conflicts with the configured collection workflow.");
+  if (importedInventory?.fileAuthorization && workflowPlans.fileAuthorizationTesting) throw new Error("Inventory import conflicts with the configured file workflow.");
+  const importedWorkflowPlans = {
+    ...workflowPlans,
+    ...(importedInventory?.collectionAuthorization ? { collectionAuthorizationTesting: planCollectionAuthorizationTesting(importedInventory.collectionAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {}),
+    ...(importedInventory?.fileAuthorization ? { fileAuthorizationTesting: planFileAuthorizationTesting(importedInventory.fileAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {})
+  };
+  const targetAuthorization = request.targetAuthorization || request.targetAuthorizationFile ? targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) : undefined;
+  const planningOptions = { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(targetAuthorization ? { targetAuthorization } : {}) };
+  if (importedInventory?.supabaseAuthorization && (request.supabaseAuthorization || request.supabaseAuthorizationFile)) throw new Error("Inventory import conflicts with explicit Supabase authorization input.");
+  const supabaseInput = request.supabaseAuthorization ? supabaseAuthorizationInputSchema.parse(request.supabaseAuthorization) : (request.supabaseAuthorizationFile ? await loadSupabaseAuthorizationInput(resolve(request.supabaseAuthorizationFile)) : importedInventory?.supabaseAuthorization);
   const supabaseAuthorization = supabaseInput ? planSupabaseAuthorization(supabaseInput, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) : undefined;
   const lifecycleInput = request.authenticationLifecycle ? authenticationLifecycleInputSchema.parse(request.authenticationLifecycle) : (request.authenticationLifecycleFile ? await loadAuthenticationLifecycleInput(resolve(request.authenticationLifecycleFile)) : undefined);
   const lifecycleAutomationInput = request.authenticationLifecycleAutomation ? browserLearnedLifecycleAutomationInputSchema.parse(request.authenticationLifecycleAutomation) : (request.authenticationLifecycleAutoFile ? await loadBrowserLearnedLifecycleAutomationInput(resolve(request.authenticationLifecycleAutoFile)) : undefined);
@@ -73,35 +88,42 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
   const businessInvariant = businessInvariantInput ? planBusinessInvariant(businessInvariantInput, planningOptions) : undefined;
   const controlledRaceInput = request.controlledRace ? controlledRaceInputSchema.parse(request.controlledRace) : (request.controlledRaceFile ? await loadControlledRaceInput(resolve(request.controlledRaceFile)) : undefined);
   const controlledRace = controlledRaceInput ? planControlledRace(controlledRaceInput, planningOptions) : undefined;
-  const apiGraphqlInput = request.apiGraphql ? apiGraphqlInputSchema.parse(request.apiGraphql) : (request.apiGraphqlFile ? await loadApiGraphqlInput(resolve(request.apiGraphqlFile)) : undefined);
+  if (importedInventory?.apiGraphql && (request.apiGraphql || request.apiGraphqlFile)) throw new Error("Inventory import conflicts with explicit API / GraphQL input.");
+  const apiGraphqlInput = request.apiGraphql ? apiGraphqlInputSchema.parse(request.apiGraphql) : (request.apiGraphqlFile ? await loadApiGraphqlInput(resolve(request.apiGraphqlFile)) : importedInventory?.apiGraphql);
   const apiGraphql = apiGraphqlInput ? planApiGraphqlReview(apiGraphqlInput, planningOptions) : undefined;
+  const protocolSecurityInput = request.protocolSecurity ? protocolSecurityInputSchema.parse(request.protocolSecurity) : (request.protocolSecurityFile ? await loadProtocolSecurityInput(resolve(request.protocolSecurityFile)) : undefined);
+  const protocolSecurity = protocolSecurityInput ? planProtocolSecurity(protocolSecurityInput, planningOptions) : undefined;
   const linkPortalSecurityInput = request.linkPortalSecurity ? linkPortalSecurityInputSchema.parse(request.linkPortalSecurity) : (request.linkPortalSecurityFile ? await loadLinkPortalSecurityInput(resolve(request.linkPortalSecurityFile)) : undefined);
   const linkPortalSecurity = linkPortalSecurityInput ? planLinkPortalSecurity(linkPortalSecurityInput, planningOptions) : undefined;
   const operationalEndpointSecurityInput = request.operationalEndpointSecurity ? operationalEndpointSecurityInputSchema.parse(request.operationalEndpointSecurity) : (request.operationalEndpointSecurityFile ? await loadOperationalEndpointSecurityInput(resolve(request.operationalEndpointSecurityFile)) : undefined);
   const operationalEndpointSecurity = operationalEndpointSecurityInput ? planOperationalEndpointSecurity(operationalEndpointSecurityInput, planningOptions) : undefined;
   const billingEntitlementInput = request.billingEntitlement ? billingEntitlementInputSchema.parse(request.billingEntitlement) : (request.billingEntitlementFile ? await loadBillingEntitlementInput(resolve(request.billingEntitlementFile)) : undefined);
   const billingEntitlement = billingEntitlementInput ? planBillingEntitlement(billingEntitlementInput, planningOptions) : undefined;
+  const activeVulnerabilityInput = request.activeVulnerability ? activeVulnerabilityInputSchema.parse(request.activeVulnerability) : (request.activeVulnerabilityFile ? await loadActiveVulnerabilityInput(resolve(request.activeVulnerabilityFile)) : undefined);
+  const activeVulnerability = activeVulnerabilityInput ? planActiveVulnerabilityValidation(activeVulnerabilityInput, planningOptions) : undefined;
   const requestedModules = request.includeModules && request.includeModules.length > 0 ? request.includeModules as ModuleId[] : undefined;
-  const includeModules = supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement ? [...new Set([...(requestedModules ?? []), ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
+  const includeModules = supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || importedInventory ? [...new Set([...(requestedModules ?? []), ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(protocolSecurity ? ["protocol-security" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(activeVulnerability ? ["active-vulnerability-validation" as ModuleId] : []), ...(activeVulnerability ? ["api-mapper" as ModuleId, "parameter-analysis" as ModuleId] : []), ...(importedInventory?.collectionAuthorization ? ["collection-authorization-testing" as ModuleId] : []), ...(importedInventory?.fileAuthorization ? ["file-authorization-testing" as ModuleId] : []), ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
   const input: ScanPlannerInput = {
     ...(request.includeModules?.includes("privilege-mutation-testing") && mutationContracts.length ? { privilegeMutationTesting: approvedMutationPlan(mutationContracts) } : {}),
     ...(request.preHandover || request.preHandoverFile ? { preHandover: planPreHandover(request.preHandover ?? JSON.parse(await readFile(resolve(request.preHandoverFile!), "utf8"))) } : {}),
-    ...(request.targetAuthorization || request.targetAuthorizationFile ? { targetAuthorization: targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) } : {}),
+    ...(targetAuthorization ? { targetAuthorization } : {}),
     ...(request.assistedReview || request.assistedReviewFile ? { assistedReview: planAssistedReview(request.assistedReview ?? await loadAssistedReviewInput(resolve(request.assistedReviewFile!))) } : {}),
     requestedProfile: request.profile,
     scope,
     config,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
-    ...workflowPlans,
+    ...importedWorkflowPlans,
     ...(supabaseAuthorization ? { supabaseAuthorization } : {}),
     ...(authenticationLifecycle ? { authenticationLifecycle } : {}),
     ...(businessInvariant ? { businessInvariant } : {}),
     ...(controlledRace ? { controlledRace } : {}),
     ...(apiGraphql ? { apiGraphql } : {}),
+    ...(protocolSecurity ? { protocolSecurity } : {}),
     ...(linkPortalSecurity ? { linkPortalSecurity } : {}),
     ...(operationalEndpointSecurity ? { operationalEndpointSecurity } : {}),
     ...(billingEntitlement ? { billingEntitlement } : {}),
+    ...(activeVulnerability ? { activeVulnerability } : {}),
     overrides: {
       ...(request.rateLimitPerSecond ? { rateLimitPerSecond: request.rateLimitPerSecond } : {}),
       ...(request.concurrency ? { concurrency: request.concurrency } : {}),
@@ -165,6 +187,7 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     configFile: request.configFile ? resolve(request.configFile) : undefined,
     scopeFileLabel: request.scopeFile ? safePathLabel(request.scopeFile) : "inline-scope",
     configFileLabel: request.configFile ? safePathLabel(request.configFile) : "default",
+    transport: request.transport,
     auth: Boolean(request.authFile),
     accountPair: Boolean(request.authAFile && request.authBFile),
     savedCredentialAuth: Boolean(request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId),
@@ -177,6 +200,9 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     cleanupReservedRequests: request.cleanupReservedRequests,
     includeModules: request.includeModules ?? [],
     providerAdapterBinding: request.providerAdapterBinding,
+    adaptiveExecutionBinding: request.adaptiveExecutionBinding,
+    inventoryImport: request.inventoryImport ? { configured: true, sourceCount: request.inventoryImport.sources.length } : undefined,
+    inventoryImportFileLabel: request.inventoryImportFile ? safePathLabel(request.inventoryImportFile) : undefined,
     supabaseAuthorization: inlineWorkflowSummary("supabase-authorization", request.supabaseAuthorization),
     supabaseAuthorizationFileLabel: request.supabaseAuthorizationFile ? safePathLabel(request.supabaseAuthorizationFile) : undefined,
     authenticationLifecycle: inlineWorkflowSummary("authentication-lifecycle", request.authenticationLifecycle),
@@ -189,12 +215,16 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     controlledRaceFileLabel: request.controlledRaceFile ? safePathLabel(request.controlledRaceFile) : undefined,
     apiGraphql: inlineWorkflowSummary("api-graphql-authorization", request.apiGraphql),
     apiGraphqlFileLabel: request.apiGraphqlFile ? safePathLabel(request.apiGraphqlFile) : undefined,
+    protocolSecurity: inlineWorkflowSummary("protocol-security", request.protocolSecurity),
+    protocolSecurityFileLabel: request.protocolSecurityFile ? safePathLabel(request.protocolSecurityFile) : undefined,
     linkPortalSecurity: inlineWorkflowSummary("link-portal-export-security", request.linkPortalSecurity),
     linkPortalSecurityFileLabel: request.linkPortalSecurityFile ? safePathLabel(request.linkPortalSecurityFile) : undefined,
     operationalEndpointSecurity: inlineWorkflowSummary("operational-endpoint-security", request.operationalEndpointSecurity),
     operationalEndpointSecurityFileLabel: request.operationalEndpointSecurityFile ? safePathLabel(request.operationalEndpointSecurityFile) : undefined,
     billingEntitlement: inlineWorkflowSummary("billing-entitlement-security", request.billingEntitlement),
     billingEntitlementFileLabel: request.billingEntitlementFile ? safePathLabel(request.billingEntitlementFile) : undefined,
+    activeVulnerability: inlineWorkflowSummary("active-vulnerability-validation", request.activeVulnerability),
+    activeVulnerabilityFileLabel: request.activeVulnerabilityFile ? safePathLabel(request.activeVulnerabilityFile) : undefined,
     assistedReviewFileLabel: request.assistedReviewFile ? safePathLabel(request.assistedReviewFile) : undefined,
     assistedReview: request.assistedReview,
     preHandoverFileLabel: request.preHandoverFile ? safePathLabel(request.preHandoverFile) : undefined,
@@ -226,9 +256,11 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
     businessInvariant: workflowPlanSummary(plan.businessInvariant),
     controlledRace: workflowPlanSummary(plan.controlledRace),
     apiGraphql: workflowPlanSummary(plan.apiGraphql),
+    protocolSecurity: workflowPlanSummary(plan.protocolSecurity),
     linkPortalSecurity: workflowPlanSummary(plan.linkPortalSecurity),
     operationalEndpointSecurity: workflowPlanSummary(plan.operationalEndpointSecurity),
-    billingEntitlement: workflowPlanSummary(plan.billingEntitlement)
+    billingEntitlement: workflowPlanSummary(plan.billingEntitlement),
+    activeVulnerability: workflowPlanSummary(plan.activeVulnerability)
   });
   return {
     plannerVersion: String(plan.schemaVersion),
@@ -252,9 +284,11 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
       businessInvariant: Boolean(plan.businessInvariant),
       controlledRace: Boolean(plan.controlledRace),
       apiGraphql: Boolean(plan.apiGraphql),
+      protocolSecurity: Boolean(plan.protocolSecurity),
       linkPortalSecurity: Boolean(plan.linkPortalSecurity),
       operationalEndpointSecurity: Boolean(plan.operationalEndpointSecurity),
       billingEntitlement: Boolean(plan.billingEntitlement),
+      activeVulnerability: Boolean(plan.activeVulnerability),
       assistedReview: Boolean(plan.assistedReview)
     },
     redactedPlan

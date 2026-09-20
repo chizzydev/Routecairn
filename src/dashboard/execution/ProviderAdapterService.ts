@@ -19,12 +19,14 @@ const engineCapability: Record<AdvancedEngineId, string> = {
   "business-invariant": "BUSINESS_INVARIANT",
   "controlled-race": "CONTROLLED_RACE",
   "api-graphql-authorization": "API_GRAPHQL_AUTHORIZATION",
+  "protocol-security": "PROTOCOL_SECURITY",
   "link-portal-export-security": "CAPABILITY_LINKS",
   "operational-endpoint-security": "OPERATIONAL_ENDPOINTS",
   "billing-entitlement-security": "SYNTHETIC_BILLING",
   "assisted-review": "ASSISTED_REVIEW",
   "pre-handover-assault": "PRE_HANDOVER",
-  "bug-bounty-authorization": "BUG_BOUNTY_SCOPE"
+  "bug-bounty-authorization": "BUG_BOUNTY_SCOPE",
+  "active-vulnerability-validation": "ACTIVE_VULNERABILITY_VALIDATION"
 };
 
 export interface ProviderAdapterPreview {

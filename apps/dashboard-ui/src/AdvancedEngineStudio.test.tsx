@@ -30,10 +30,10 @@ describe("advanced engine studio", () => {
   });
 
   it("maps every enabled builder to its inline planner contract and splits pre-handover authorization", () => {
-    const ids: AdvancedEngineId[] = ["supabase-authorization", "authentication-lifecycle", "authentication-lifecycle-automation", "business-invariant", "controlled-race", "api-graphql-authorization", "link-portal-export-security", "operational-endpoint-security", "billing-entitlement-security", "assisted-review", "pre-handover-assault", "bug-bounty-authorization"];
+    const ids: AdvancedEngineId[] = ["supabase-authorization", "authentication-lifecycle", "authentication-lifecycle-automation", "business-invariant", "controlled-race", "api-graphql-authorization", "link-portal-export-security", "operational-endpoint-security", "billing-entitlement-security", "assisted-review", "pre-handover-assault", "bug-bounty-authorization", "active-vulnerability-validation"];
     const drafts = ids.map((id) => ({ id, enabled: id !== "bug-bounty-authorization", editorMode: "guided" as const, value: id === "pre-handover-assault" ? { orchestration: { schemaVersion: 1 }, authorization: { schemaVersion: 1 } } : { schemaVersion: 1 } }));
     const result = advancedEngineRequestValues(drafts);
-    expect(Object.keys(result).sort()).toEqual(["apiGraphql", "assistedReview", "authenticationLifecycle", "authenticationLifecycleAutomation", "billingEntitlement", "businessInvariant", "controlledRace", "linkPortalSecurity", "operationalEndpointSecurity", "preHandover", "supabaseAuthorization", "targetAuthorization"].sort());
+    expect(Object.keys(result).sort()).toEqual(["activeVulnerability", "apiGraphql", "assistedReview", "authenticationLifecycle", "authenticationLifecycleAutomation", "billingEntitlement", "businessInvariant", "controlledRace", "linkPortalSecurity", "operationalEndpointSecurity", "preHandover", "supabaseAuthorization", "targetAuthorization"].sort());
     expect(result.preHandover).toEqual({ schemaVersion: 1 });
     expect(result.targetAuthorization).toEqual({ schemaVersion: 1 });
   });

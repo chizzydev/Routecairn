@@ -12,6 +12,7 @@ import {
   extractSafeValuePresenceAttestations,
   type SafeValuePresenceAttestation
 } from "../security/ValuePresenceAttestations.js";
+import { writePdfProofPack } from "./PdfProofPackWriter.js";
 
 export class ProofPackService {
   private readonly artifacts: ArtifactRepository;
@@ -57,10 +58,13 @@ export class ProofPackService {
     const html = renderHtml(title, description, selected, mutationProof);
     const markdownPath = resolve(dir, "proof-pack.md");
     const htmlPath = resolve(dir, "proof-pack.html");
+    const pdfPath = resolve(dir, "proof-pack.pdf");
     writeFileSync(markdownPath, markdown, "utf8");
     writeFileSync(htmlPath, html, "utf8");
+    writePdfProofPack(pdfPath, markdown);
     const markdownArtifact = this.recordArtifact(proofPackId, markdownPath, "PROOF_PACK_MARKDOWN", "text/markdown; charset=utf-8");
     const htmlArtifact = this.recordArtifact(proofPackId, htmlPath, "PROOF_PACK_HTML", "text/html; charset=utf-8");
+    const pdfArtifact = this.recordArtifact(proofPackId, pdfPath, "PROOF_PACK_PDF", "application/pdf");
 
     const versionRow = this.database.db.prepare("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM proof_packs WHERE safe_title = ?").get(title) as { version: number };
     this.database.transaction(() => {
@@ -78,7 +82,7 @@ export class ProofPackService {
           JSON.stringify([...new Set(selected.map((item) => item.occurrence.scan_id))]),
           "Generated from confirmed local dashboard findings.",
           findings.length,
-          JSON.stringify([markdownArtifact, htmlArtifact]),
+          JSON.stringify([markdownArtifact, htmlArtifact, pdfArtifact]),
           JSON.stringify({ findingIds, valuePresenceAttestationCount: selected.reduce((total, item) => total + item.attestations.length, 0) })
         );
       const insert = this.database.db.prepare(

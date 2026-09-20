@@ -41,7 +41,15 @@ export type DashboardPermission =
   | "controlledMutation.approve"
   | "controlledMutation.recover"
   | "workers.read"
-  | "workers.manage";
+  | "workers.manage"
+  | "operations.read"
+  | "organizations.manage"
+  | "sso.manage"
+  | "notifications.manage"
+  | "sync.manage"
+  | "backups.manage"
+  | "integrations.manage"
+  | "modules.manage";
 
 const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>> = {
   OWNER: new Set([
@@ -81,7 +89,8 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "controlledMutation.approve",
     "controlledMutation.recover",
     "workers.read",
-    "workers.manage"
+    "workers.manage",
+    "operations.read", "organizations.manage", "sso.manage", "notifications.manage", "sync.manage", "backups.manage", "integrations.manage", "modules.manage"
   ]),
   ANALYST: new Set([
     "scans.read",
@@ -108,9 +117,10 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "credentials.use",
     "credentials.test",
     "artifacts.download",
-    "workers.read"
+    "workers.read",
+    "operations.read", "integrations.manage"
   ]),
-  VIEWER: new Set(["scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download", "workers.read"])
+  VIEWER: new Set(["scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download", "workers.read", "operations.read"])
 };
 
 export interface DashboardPrincipal {

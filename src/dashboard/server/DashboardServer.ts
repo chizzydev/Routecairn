@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { mkdirSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DashboardDatabase, nowIso } from "../db/DashboardDatabase.js";
 import { ArtifactRepository, AuditRepository, EventRepository, FindingRepository, ProjectRepository, SavedConfigurationRepository, ScanRepository, TargetRepository } from "../db/DashboardRepositories.js";
 import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
@@ -61,6 +61,15 @@ import { ContinuousAssuranceService } from "../execution/ContinuousAssuranceServ
 import { EvidenceGovernanceService } from "../execution/EvidenceGovernanceService.js";
 import { ScanComparisonService } from "../comparisons/ScanComparisonService.js";
 import { continuousAssuranceNotificationAckSchema, continuousAssurancePolicyInputSchema, continuousAssuranceReviewSchema, continuousAssuranceRunSchema, continuousAssuranceStateSchema, continuousAssuranceTokenRotationSchema, deploymentTriggerSchema, evidenceGovernancePolicySchema, evidenceExportSchema, evidencePurgeSchema } from "../contracts/ContinuousAssuranceSchemas.js";
+import { BackupRestoreService } from "../operations/BackupRestoreService.js";
+import { OrganizationPermissionError, OrganizationService } from "../operations/OrganizationService.js";
+import { NotificationService } from "../operations/NotificationService.js";
+import { RemoteWorkerAuthError, RemoteWorkerService } from "../operations/RemoteWorkerService.js";
+import { CloudSyncAuthError, CloudSyncService } from "../operations/CloudSyncService.js";
+import { IntegrationExportService } from "../operations/IntegrationExportService.js";
+import { ThirdPartyModuleService } from "../operations/ThirdPartyModuleService.js";
+import { SsoService } from "../operations/SsoService.js";
+import { backupCreateSchema, backupRestoreSchema, cloudSyncPeerSchema, cloudSyncPushSchema, integrationExportSchema, notificationChannelSchema, notificationEnqueueSchema, organizationCreateSchema, organizationMemberSchema, remoteEnrollmentSchema, remoteHeartbeatSchema, remoteJobLeaseRenewSchema, remoteJobResultSchema, remoteJobSchema, remoteWorkerEnrollSchema, remoteWorkerStateSchema, ssoProviderSchema, thirdPartyModuleExecuteSchema, thirdPartyModuleRegisterSchema } from "../contracts/OperationalScaleSchemas.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -81,6 +90,10 @@ export interface DashboardServerHandle {
   close(): Promise<void>;
 }
 
+export function packagedDashboardUiDirectory(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../../../apps/dashboard-ui/dist");
+}
+
 const maxJsonBodyBytes = 1024 * 1024;
 
 export async function startDashboardServer(options: DashboardServerOptions = {}): Promise<DashboardServerHandle> {
@@ -91,11 +104,16 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     throw new Error("RouteCairn Dashboard refuses non-loopback binding in local mode.");
   }
   const paths = resolveDashboardPaths(options.dataDir);
+  const vaultKey = parseVaultKey(options.masterKey ?? process.env.ROUTECAIRN_MASTER_KEY, options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   mkdirSync(paths.reportsDir, { recursive: true });
   mkdirSync(paths.artifactsDir, { recursive: true });
   mkdirSync(paths.proofPacksDir, { recursive: true });
   mkdirSync(paths.mutationJournalDir, { recursive: true });
   mkdirSync(paths.workersDir, { recursive: true });
+  mkdirSync(paths.backupsDir, { recursive: true });
+  mkdirSync(paths.integrationsDir, { recursive: true });
+  mkdirSync(paths.thirdPartyModulesDir, { recursive: true });
+  BackupRestoreService.applyStagedRestore(paths, vaultKey);
   const database = new DashboardDatabase(paths.databasePath);
   database.migrate();
   database.recoverInterruptedScans();
@@ -113,7 +131,6 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const artifacts = new ArtifactRepository(database);
   const configurations = new SavedConfigurationRepository(database);
   const audit = new AuditRepository(database);
-  const vaultKey = parseVaultKey(options.masterKey ?? process.env.ROUTECAIRN_MASTER_KEY, options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   const vault = new CredentialVault(database, vaultKey);
   const mutationApprovals = new ControlledMutationApprovalRepository(database);
   const mutationRecovery = new ControlledMutationRecoveryService(database, paths, targets, vault);
@@ -128,8 +145,16 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const evidenceGovernance = new EvidenceGovernanceService(database, paths, vaultKey);
   const continuousAssurance = new ContinuousAssuranceService(database, paths, execution, providerAdapters, new ScanComparisonService(database), evidenceGovernance);
   const proofPacks = new ProofPackService(database, paths);
+  const organizations = new OrganizationService(database);
+  const notifications = new NotificationService(database); notifications.start();
+  const remoteWorkers = new RemoteWorkerService(database);
+  const cloudSync = new CloudSyncService(database);
+  const backups = new BackupRestoreService(database, paths, vaultKey);
+  const integrationExports = new IntegrationExportService(database, paths);
+  const thirdPartyModules = new ThirdPartyModuleService(database, paths);
+  const sso = new SsoService(database);
   const importer = new HistoricalReportImporter(database, paths);
-  const uiDistDir = options.uiDistDir ?? resolve("apps", "dashboard-ui", "dist");
+  const uiDistDir = options.uiDistDir ?? packagedDashboardUiDirectory();
 
   const server = createServer(async (request, response) => {
     try {
@@ -151,6 +176,40 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
         audit.append({ actorLabel: session.user.id, action: "LOGIN_SUCCESS", resourceType: "SESSION", summary: "Server dashboard login succeeded." });
         sendJson(response, 200, session);
         return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/auth/sso/providers") {
+        sendJson(response, 200, { providers: sso.list() }); return;
+      }
+      const ssoStart = /^\/api\/auth\/sso\/(?<id>[0-9a-f-]+)\/start$/.exec(url.pathname);
+      if (request.method === "GET" && ssoStart?.groups?.id) {
+        if (!serverSessions || !serverSecurity) throw new HttpError(404, "SSO is unavailable in local mode.");
+        const redirectUri = `${serverSecurity.publicOrigin}/api/auth/sso/${ssoStart.groups.id}/callback`;
+        redirect(response, sso.start(ssoStart.groups.id, redirectUri)); return;
+      }
+      const ssoCallback = /^\/api\/auth\/sso\/(?<id>[0-9a-f-]+)\/callback$/.exec(url.pathname);
+      if (request.method === "GET" && ssoCallback?.groups?.id) {
+        if (!serverSessions || !serverSecurity) throw new HttpError(404, "SSO is unavailable in local mode.");
+        const state = url.searchParams.get("state") ?? ""; const code = url.searchParams.get("code") ?? "";
+        const userId = await sso.callback(ssoCallback.groups.id, state, code); const session = serverSessions.loginFederated(userId, request, response);
+        audit.append({ actorLabel: session.user.id, action: "SSO_LOGIN_SUCCESS", resourceType: "SESSION", summary: "Federated dashboard login succeeded." });
+        redirect(response, serverSecurity.publicOrigin); return;
+      }
+      if (request.method === "POST" && url.pathname === "/api/remote-agents/enroll") {
+        const result=remoteWorkers.enroll(remoteWorkerEnrollSchema.parse(await readJson(request)));cloudSync.record(remoteWorkers.organizationForWorker(result.workerId),"remote-worker",result.workerId,"UPSERT",{status:"ONLINE",generation:result.generation});sendJson(response, 201, result); return;
+      }
+      if (request.method === "POST" && url.pathname.startsWith("/api/remote-agents/worker/")) {
+        const body = await readJson(request); const worker = remoteWorkers.authenticate(request.method, url.pathname, body, request.headers);
+        if (url.pathname.endsWith("/heartbeat")) { remoteWorkers.heartbeat(worker, remoteHeartbeatSchema.parse(body)); sendJson(response, 200, { ok: true }); return; }
+        if (url.pathname.endsWith("/claim")) { sendJson(response, 200, remoteWorkers.claim(worker)); return; }
+        const renew = /^\/api\/remote-agents\/worker\/jobs\/(?<id>[0-9a-f-]+)\/renew$/.exec(url.pathname);
+        if (renew?.groups?.id) { const parsed=remoteJobLeaseRenewSchema.parse(body); sendJson(response,200,remoteWorkers.renew(worker,renew.groups.id,parsed.leaseToken));return; }
+        const complete = /^\/api\/remote-agents\/worker\/jobs\/(?<id>[0-9a-f-]+)\/complete$/.exec(url.pathname);
+        if (complete?.groups?.id) { const parsed = remoteJobResultSchema.parse(body); remoteWorkers.complete(worker, complete.groups.id, { leaseToken: parsed.leaseToken, status: parsed.status, ...(parsed.result ? { result: parsed.result } : {}), ...(parsed.error ? { error: parsed.error } : {}) }); cloudSync.record(worker.organization_id,"remote-job",complete.groups.id,"UPSERT",{status:parsed.status,workerId:worker.id});sendJson(response, 200, { ok: true }); return; }
+        throw new HttpError(404, "Remote agent operation not found.");
+      }
+      if (request.method === "POST" && url.pathname === "/api/cloud-sync/receive") {
+        const body = cloudSyncPushSchema.parse(await readJson(request)); const peerName = String(request.headers["x-routecairn-sync-peer"] ?? ""); const signature = String(request.headers["x-routecairn-sync-signature"] ?? "");
+        sendJson(response, 200, cloudSync.receiveFromPeer(peerName, body, signature)); return;
       }
       if (request.method === "POST" && url.pathname === "/api/continuous-assurance/deployments") {
         const parsed = deploymentTriggerSchema.parse(await readJson(request));
@@ -195,6 +254,14 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,providerAdapters
           ,continuousAssurance
           ,evidenceGovernance
+          ,organizations
+          ,notifications
+          ,remoteWorkers
+          ,cloudSync
+          ,backups
+          ,integrationExports
+          ,thirdPartyModules
+          ,sso
         });
         return;
       }
@@ -214,6 +281,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     ...(localSessions ? { bootstrapUrl: localSessions.bootstrapUrl(url) } : {}),
     close: async () => {
       continuousAssurance.shutdown();
+      await notifications.shutdown();
       await execution.shutdown();
       await mutationRecovery.shutdown();
       await workflowRecovery.shutdown();
@@ -276,6 +344,14 @@ interface ApiContext {
   providerAdapters: ProviderAdapterService;
   continuousAssurance: ContinuousAssuranceService;
   evidenceGovernance: EvidenceGovernanceService;
+  organizations: OrganizationService;
+  notifications: NotificationService;
+  remoteWorkers: RemoteWorkerService;
+  cloudSync: CloudSyncService;
+  backups: BackupRestoreService;
+  integrationExports: IntegrationExportService;
+  thirdPartyModules: ThirdPartyModuleService;
+  sso: SsoService;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -323,6 +399,14 @@ function requirePermission(context: ApiContext, permission: DashboardPermission)
   context.serverSessions?.requirePermission(context.principal, permission);
 }
 
+function operationalOrganization(context: ApiContext): string {
+  return context.url.searchParams.get("organizationId") ?? context.organizations.defaultOrganizationId();
+}
+
+function requireOrg(context: ApiContext, organizationId: string, permission: import("../operations/OrganizationService.js").OrganizationPermission): void {
+  context.organizations.require(organizationId, context.principal!.userId, permission, context.mode === "local");
+}
+
 async function handleApiGet(context: ApiContext): Promise<void> {
   const { response, url, scans, projects, targets, findingCommandCenter, comparison, events, artifacts, paths } = context;
   const assistedReview = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/assisted-review$/.exec(url.pathname);
@@ -339,6 +423,34 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   if (url.pathname === "/api/auth/session") {
     sendJson(response, 200, { ok: true, principal: context.principal });
     return;
+  }
+  if (url.pathname === "/api/operations/organizations") {
+    requirePermission(context, "operations.read"); sendJson(response, 200, { organizations: context.organizations.list(context.principal!.userId, context.mode === "local") }); return;
+  }
+  const organizationDetail = /^\/api\/operations\/organizations\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
+  if (organizationDetail?.groups?.id) {
+    requirePermission(context, "operations.read"); sendJson(response, 200, context.organizations.detail(organizationDetail.groups.id, context.principal!.userId, context.mode === "local")); return;
+  }
+  if (url.pathname === "/api/operations/notifications") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { channels: context.notifications.list(organizationId), deliveries: context.notifications.deliveries(organizationId) }); return;
+  }
+  if (url.pathname === "/api/operations/remote-workers") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, context.remoteWorkers.list(organizationId)); return;
+  }
+  if (url.pathname === "/api/operations/cloud-sync") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { peers: context.cloudSync.list(organizationId) }); return;
+  }
+  if (url.pathname === "/api/operations/backups") {
+    requirePermission(context, "operations.read"); sendJson(response, 200, { backups: context.backups.list(), restorePending: existsSync(context.paths.restoreMarkerPath) }); return;
+  }
+  if (url.pathname === "/api/operations/integrations") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { exports: context.integrationExports.list(organizationId) }); return;
+  }
+  if (url.pathname === "/api/operations/modules") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { modules: context.thirdPartyModules.list(organizationId) }); return;
+  }
+  if (url.pathname === "/api/operations/sso") {
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { providers: context.sso.list(organizationId) }); return;
   }
   if (url.pathname === "/api/users") {
     requirePermission(context, "users.manage");
@@ -691,7 +803,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     requirePermission(context, "artifacts.download");
     const item = artifacts.get(artifact.groups.id);
     if (!item) throw new HttpError(404, "Artifact not found.");
-    serveArtifact(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir]);
+    serveArtifact(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
     return;
   }
   const artifactPreview = /^\/api\/artifacts\/(?<id>[0-9a-f-]+)\/preview$/.exec(url.pathname);
@@ -699,7 +811,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     requirePermission(context, "artifacts.download");
     const item = artifacts.get(artifactPreview.groups.id);
     if (!item) throw new HttpError(404, "Artifact not found.");
-    serveImagePreview(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir]);
+    serveImagePreview(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
     return;
   }
   throw new HttpError(404, "API route not found.");
@@ -707,6 +819,61 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
   const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
+  if (request.method === "POST" && url.pathname === "/api/operations/organizations") {
+    requirePermission(context, "organizations.manage"); const parsed = organizationCreateSchema.parse(await readJson(request)); const id = context.organizations.create(parsed, context.principal!.userId); context.cloudSync.record(id,"organization",id,"UPSERT",{name:parsed.name,slug:parsed.slug,status:"ACTIVE"}); audit.append({ actorLabel: context.principal?.userId, action: "ORGANIZATION_CREATED", resourceType: "ORGANIZATION", resourceId: id, summary: "Organization created." }); sendJson(response, 201, { organizationId: id }); return;
+  }
+  const orgMember = /^\/api\/operations\/organizations\/(?<id>[0-9a-f-]+)\/members$/.exec(url.pathname);
+  if (request.method === "POST" && orgMember?.groups?.id) {
+    requirePermission(context, "operations.read"); requireOrg(context, orgMember.groups.id, "members.manage"); const parsed = organizationMemberSchema.parse(await readJson(request)); context.organizations.setMember(orgMember.groups.id, parsed, context.principal!.userId, context.mode === "local"); context.cloudSync.record(orgMember.groups.id,"organization-membership",parsed.userId,"UPSERT",{userId:parsed.userId,role:parsed.role}); audit.append({ actorLabel: context.principal?.userId, action: "ORGANIZATION_MEMBER_UPDATED", resourceType: "ORGANIZATION", resourceId: orgMember.groups.id, summary: "Organization membership updated.", metadata: { userId: parsed.userId, role: parsed.role } }); sendJson(response, 200, { ok: true }); return;
+  }
+  const orgMemberRemove = /^\/api\/operations\/organizations\/(?<id>[0-9a-f-]+)\/members\/(?<userId>[0-9a-f-]+)\/remove$/.exec(url.pathname);
+  if (request.method === "POST" && orgMemberRemove?.groups?.id && orgMemberRemove.groups.userId) {
+    requirePermission(context, "operations.read"); requireOrg(context, orgMemberRemove.groups.id, "members.manage"); context.organizations.removeMember(orgMemberRemove.groups.id, orgMemberRemove.groups.userId, context.principal!.userId, context.mode === "local"); context.cloudSync.record(orgMemberRemove.groups.id,"organization-membership",orgMemberRemove.groups.userId,"DELETE",{userId:orgMemberRemove.groups.userId}); audit.append({ actorLabel: context.principal?.userId, action: "ORGANIZATION_MEMBER_REMOVED", resourceType: "ORGANIZATION", resourceId: orgMemberRemove.groups.id, summary: "Organization member removed." }); sendJson(response, 200, { ok: true }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/sso") {
+    requirePermission(context, "operations.read"); const parsed = ssoProviderSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "sso.manage"); const id = context.sso.create(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"sso-provider",id,"UPSERT",{name:parsed.name,issuer:parsed.issuer,enabled:parsed.enabled}); audit.append({ actorLabel: context.principal?.userId, action: "SSO_PROVIDER_CREATED", resourceType: "SSO_PROVIDER", resourceId: id, summary: "OIDC provider configured using an environment-backed client secret." }); sendJson(response, 201, { providerId: id }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/notifications/channels") {
+    requirePermission(context, "operations.read"); const parsed = notificationChannelSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "notifications.manage"); const id = context.notifications.create(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"notification-channel",id,"UPSERT",{name:parsed.name,kind:parsed.kind,enabled:parsed.enabled}); audit.append({ actorLabel: context.principal?.userId, action: "NOTIFICATION_CHANNEL_CREATED", resourceType: "NOTIFICATION_CHANNEL", resourceId: id, summary: "External notification channel configured with environment-backed secret material." }); sendJson(response, 201, { channelId: id }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/notifications/deliveries") {
+    requirePermission(context, "operations.read"); const parsed = notificationEnqueueSchema.parse(await readJson(request)); const organizationId=context.notifications.organizationForChannels(parsed.channelIds); requireOrg(context, organizationId, "notifications.manage"); const ids = context.notifications.enqueue(parsed); context.cloudSync.record(organizationId,"notification-delivery",parsed.idempotencyKey,"UPSERT",{eventType:parsed.eventType,resourceType:parsed.resourceType,resourceId:parsed.resourceId??"",deliveryCount:ids.length}); audit.append({ actorLabel: context.principal?.userId, action: "NOTIFICATION_ENQUEUED", resourceType: parsed.resourceType, resourceId: parsed.resourceId, summary: "External notification delivery queued.", metadata: { eventType: parsed.eventType, deliveryCount: ids.length } }); sendJson(response, 202, { deliveryIds: ids }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/remote-workers/enrollments") {
+    requirePermission(context, "operations.read"); const parsed = remoteEnrollmentSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const enrollment = context.remoteWorkers.createEnrollment({ organizationId: parsed.organizationId, expiresInMinutes: parsed.expiresInMinutes, ...(parsed.nameHint ? { nameHint: parsed.nameHint } : {}) }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-worker-enrollment",enrollment.enrollmentId,"UPSERT",{nameHint:parsed.nameHint??"",expiresAt:enrollment.expiresAt}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_ENROLLMENT_CREATED", resourceType: "REMOTE_WORKER", resourceId: enrollment.enrollmentId, summary: "One-time remote worker enrollment created." }); sendJson(response, 201, enrollment); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/remote-jobs") {
+    requirePermission(context, "operations.read"); const parsed = remoteJobSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const id = context.remoteWorkers.enqueue(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-job",id,"UPSERT",{kind:parsed.kind,priority:parsed.priority,requiredCapabilities:parsed.requiredCapabilities}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_JOB_QUEUED", resourceType: "REMOTE_JOB", resourceId: id, summary: "Signed remote-worker job queued.", metadata: { kind: parsed.kind } }); sendJson(response, 202, { jobId: id }); return;
+  }
+  const remoteWorkerState = /^\/api\/operations\/remote-workers\/(?<id>[0-9a-f-]+)\/state$/.exec(url.pathname);
+  if (request.method === "POST" && remoteWorkerState?.groups?.id) {
+    requirePermission(context, "operations.read"); const organizationId=context.remoteWorkers.organizationForWorker(remoteWorkerState.groups.id); requireOrg(context, organizationId, "workers.manage"); const parsed = remoteWorkerStateSchema.parse(await readJson(request)); context.remoteWorkers.setStatus(remoteWorkerState.groups.id, parsed.status); context.cloudSync.record(organizationId,"remote-worker",remoteWorkerState.groups.id,"UPSERT",{status:parsed.status}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_STATE_CHANGED", resourceType: "REMOTE_WORKER", resourceId: remoteWorkerState.groups.id, summary: `Remote worker changed to ${parsed.status}.` }); sendJson(response, 200, { ok: true }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/cloud-sync/peers") {
+    requirePermission(context, "operations.read"); const parsed = cloudSyncPeerSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "org.manage"); const id = context.cloudSync.createPeer(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"cloud-sync-peer",id,"UPSERT",{name:parsed.name,enabled:parsed.enabled}); audit.append({ actorLabel: context.principal?.userId, action: "CLOUD_SYNC_PEER_CREATED", resourceType: "CLOUD_SYNC_PEER", resourceId: id, summary: "Signed cloud synchronization peer configured." }); sendJson(response, 201, { peerId: id }); return;
+  }
+  const cloudPush = /^\/api\/operations\/cloud-sync\/(?<id>[0-9a-f-]+)\/push$/.exec(url.pathname);
+  if (request.method === "POST" && cloudPush?.groups?.id) {
+    requirePermission(context, "operations.read"); requireOrg(context, context.cloudSync.organizationForPeer(cloudPush.groups.id), "org.manage"); await readJson(request); const result = await context.cloudSync.push(cloudPush.groups.id); audit.append({ actorLabel: context.principal?.userId, action: "CLOUD_SYNC_PUSHED", resourceType: "CLOUD_SYNC_PEER", resourceId: cloudPush.groups.id, summary: "Signed cloud synchronization batch pushed.", metadata: result }); sendJson(response, 200, result); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/backups") {
+    requirePermission(context, "backups.manage"); const parsed = backupCreateSchema.parse(await readJson(request)); const id = await context.backups.create(parsed.encrypted, context.principal!.userId); audit.append({ actorLabel: context.principal?.userId, action: "BACKUP_CREATED", resourceType: "BACKUP", resourceId: id, summary: "Consistent dashboard backup created." }); sendJson(response, 201, { backupId: id }); return;
+  }
+  const backupVerify = /^\/api\/operations\/backups\/(?<id>[0-9a-f-]+)\/verify$/.exec(url.pathname);
+  if (request.method === "POST" && backupVerify?.groups?.id) { requirePermission(context, "backups.manage"); await readJson(request); sendJson(response, 200, context.backups.verify(backupVerify.groups.id)); return; }
+  if (request.method === "POST" && url.pathname === "/api/operations/backups/stage-restore") {
+    requirePermission(context, "backups.manage"); const parsed = backupRestoreSchema.parse(await readJson(request)); context.backups.stageRestore(parsed.backupId); audit.append({ actorLabel: context.principal?.userId, action: "BACKUP_RESTORE_STAGED", resourceType: "BACKUP", resourceId: parsed.backupId, summary: "Verified backup staged for restore on restart." }); sendJson(response, 202, { restartRequired: true }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/integrations/exports") {
+    requirePermission(context, "integrations.manage"); const parsed = integrationExportSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "integrations.manage"); const result = context.integrationExports.create(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"integration-export",result.exportId,"UPSERT",{scanId:parsed.scanId,format:parsed.format,artifactId:result.artifactId}); audit.append({ actorLabel: context.principal?.userId, action: "INTEGRATION_EXPORT_CREATED", resourceType: "SCAN", resourceId: parsed.scanId, summary: `${parsed.format} integration export created.` }); sendJson(response, 201, result); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/modules") {
+    requirePermission(context, "operations.read"); const parsed = thirdPartyModuleRegisterSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "modules.manage"); const id = context.thirdPartyModules.register(parsed.organizationId, parsed.packageDirectory, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"third-party-module",id,"UPSERT",{status:"REGISTERED"}); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_REGISTERED", resourceType: "THIRD_PARTY_MODULE", resourceId: id, summary: "Third-party module package registered for separate approval." }); sendJson(response, 201, { moduleId: id }); return;
+  }
+  const moduleApprove = /^\/api\/operations\/modules\/(?<id>[0-9a-f-]+)\/approve$/.exec(url.pathname);
+  if (request.method === "POST" && moduleApprove?.groups?.id) { requirePermission(context, "operations.read"); const organizationId=context.thirdPartyModules.organizationForModule(moduleApprove.groups.id); requireOrg(context, organizationId, "modules.manage"); await readJson(request); context.thirdPartyModules.approve(moduleApprove.groups.id, context.principal!.userId); context.cloudSync.record(organizationId,"third-party-module",moduleApprove.groups.id,"UPSERT",{status:"APPROVED"}); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_APPROVED", resourceType: "THIRD_PARTY_MODULE", resourceId: moduleApprove.groups.id, summary: "Exact third-party module package approved." }); sendJson(response, 200, { ok: true }); return; }
+  const moduleExecute = /^\/api\/operations\/modules\/(?<id>[0-9a-f-]+)\/execute$/.exec(url.pathname);
+  if (request.method === "POST" && moduleExecute?.groups?.id) { requirePermission(context, "operations.read"); requireOrg(context, context.thirdPartyModules.organizationForModule(moduleExecute.groups.id), "modules.manage"); const parsed = thirdPartyModuleExecuteSchema.parse(await readJson(request)); const result = await context.thirdPartyModules.execute(moduleExecute.groups.id, parsed.input); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_EXECUTED", resourceType: "THIRD_PARTY_MODULE", resourceId: moduleExecute.groups.id, summary: "Approved third-party module executed in the restricted SDK host." }); sendJson(response, 200, { result }); return; }
   if (request.method === "POST" && url.pathname === "/api/provider-adapters/preview") {
     requirePermission(context, "scans.create");
     const parsed = providerAdapterInputSchema.parse(await readJson(request));
@@ -846,11 +1013,19 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   }
   const adaptiveLink = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/link$/.exec(url.pathname);
   if (request.method === "POST" && adaptiveLink?.groups?.id) {
-    requirePermission(context, "controlledMutation.approve");
+    requirePermission(context, context.adaptiveSecurity.recommendationRequiresApproval(adaptiveLink.groups.id) ? "controlledMutation.approve" : "scans.create");
     const parsed = adaptiveRecommendationLinkSchema.parse(await readJson(request));
     const adaptiveSecurity = context.adaptiveSecurity.linkRecommendation(adaptiveLink.groups.id, parsed.scanId, parsed.caseFingerprint, context.principal?.userId ?? "local-operator");
     audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_RECOMMENDATION_EXECUTION_LINKED", resourceType: "ADAPTIVE_SECURITY_RECOMMENDATION", resourceId: adaptiveLink.groups.id, summary: "An explicitly approved recommendation was linked to an exact same-target workflow case for verification.", metadata: { scanId: parsed.scanId, caseFingerprint: parsed.caseFingerprint } });
     sendJson(response, 200, { adaptiveSecurity });
+    return;
+  }
+  const adaptiveMaterialize = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/materialize$/.exec(url.pathname);
+  if (request.method === "POST" && adaptiveMaterialize?.groups?.id) {
+    requirePermission(context, "scans.create");
+    const materialized = context.adaptiveSecurity.materializeRecommendation(adaptiveMaterialize.groups.id);
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_READ_ONLY_CASE_MATERIALIZED", resourceType: "ADAPTIVE_RECOMMENDATION", resourceId: adaptiveMaterialize.groups.id, summary: "Evidence-bound read-only recommendation materialized into an executable Scan Studio case; no target request was sent.", metadata: { engineId: materialized.engineId, executionFingerprint: (materialized.binding as { executionFingerprint: string }).executionFingerprint } });
+    sendJson(response, 200, { materialized });
     return;
   }
   const adaptiveRefresh = /^\/api\/adaptive-security\/recommendations\/(?<id>[0-9a-f-]+)\/refresh$/.exec(url.pathname);
@@ -1148,6 +1323,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     validateScanReferences(context, parsed);
     requireCredentialUsePermission(context, parsed);
     await assertProviderAdapterExecution(context, parsed);
+    context.adaptiveSecurity.assertExecutionBinding(parsed);
     const preview = await execution.preview(parsed);
     audit.append({ actorLabel: context.principal?.userId, action: "SCAN_STUDIO_PLAN_PREVIEW", resourceType: "TARGET", resourceId: parsed.targetId, summary: `Plan preview resolved for ${new URL(parsed.target).origin}.`, metadata: { projectId: parsed.projectId, profile: parsed.profile, moduleCount: preview.modules.length, studioVersion: parsed.studio?.version } });
     sendJson(response, 200, preview);
@@ -1184,6 +1360,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requireCredentialUsePermission(context, parsed);
     if (parsed.studio?.retestContext) findingCommandCenter.validateRetestContext(parsed.studio.retestContext);
     await assertProviderAdapterExecution(context, parsed);
+    context.adaptiveSecurity.assertExecutionBinding(parsed);
     const scanId = await execution.enqueue(parsed);
     if (parsed.providerAdapterBinding) context.providerAdapters.bindScan(scanId, parsed.providerAdapterBinding);
     if (parsed.studio?.retestContext) {
@@ -1712,10 +1889,17 @@ function sendJson(response: ServerResponse, statusCode: number, value: unknown):
   response.end(JSON.stringify(value));
 }
 
+function redirect(response: ServerResponse, location: string): void {
+  response.statusCode = 302;
+  response.setHeader("location", location);
+  response.setHeader("cache-control", "no-store");
+  response.end();
+}
+
 function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
   const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
-  const statusCode = conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError ? 403 : error instanceof SessionError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
+  const statusCode = conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
     sendJson(response, statusCode, { error: workflowError ? "Workflow validation failed." : "Request validation failed.", code: workflowError ? "WORKFLOW_CASE_INVALID" : "REQUEST_VALIDATION_FAILED", diagnostics: error.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message })) });

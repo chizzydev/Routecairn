@@ -12,6 +12,7 @@ import { startDashboardServer } from "../../src/dashboard/server/DashboardServer
 import { resolveDashboardPaths } from "../../src/dashboard/services/DashboardPaths.js";
 import { LocalSessionManager } from "../../src/dashboard/auth/LocalSession.js";
 import type { RouteCairnReport } from "../../src/reports/ReportTypes.js";
+import { advancedEngineIds } from "../../src/dashboard/contracts/AdvancedEngineSchemas.js";
 
 describe("dashboard closure workflows", () => {
   it("serves overview, scan detail, finding detail, and proof-pack listing from real persisted data", async () => {
@@ -65,13 +66,13 @@ describe("dashboard closure workflows", () => {
         const auth = await authenticate(handle.url, handle.bootstrapUrl);
         const capabilities = await apiGet<any>(handle.url, "/api/capabilities", auth.cookie);
         expect(capabilities.modules.some((module: any) => module.id === "object-pair-testing")).toBe(true);
-        expect(capabilities.advancedEngineDashboard).toHaveLength(15);
+        expect(capabilities.advancedEngineDashboard).toHaveLength(advancedEngineIds.length + 3);
         expect(capabilities.advancedEngineDashboard.filter((engine: any) => !["live-target-acceptance", "fixture-provider-adapters", "continuous-assurance"].includes(engine.id)).every((engine: any) => engine.dashboardOperation === "GUIDED_BUILDER")).toBe(true);
         expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "live-target-acceptance")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
         expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "fixture-provider-adapters")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
         expect(capabilities.advancedEngineDashboard.find((engine: any) => engine.id === "continuous-assurance")?.dashboardOperation).toBe("MANAGED_WORKSPACE");
         const advanced = await apiGet<any>(handle.url, "/api/advanced-engines/catalog?target=https%3A%2F%2Fapp.example.test", auth.cookie);
-        expect(advanced.engines).toHaveLength(12);
+        expect(advanced.engines).toHaveLength(advancedEngineIds.length);
         expect(advanced.engines.find((engine: any) => engine.id === "supabase-authorization")?.template.projectUrl).toBe("https://app.example.test");
         const invalidCatalogTarget = await fetch(`${handle.url}/api/advanced-engines/catalog?target=not-a-url`, { headers: { cookie: auth.cookie } });
         expect(invalidCatalogTarget.status).toBe(400);
@@ -157,8 +158,14 @@ describe("dashboard closure workflows", () => {
       const targetId = new TargetRepository(database).create({ displayName: "Adaptive API fixture", baseOrigin: "https://app.test", tags: [], classification: "PRIVATE", authorizationType: "OWNED", authorizationSummary: "Owned disposable adaptive fixture", productionEnabled: false, approvedScope: { program: "Adaptive", allowedDomains: ["app.test"], disallowedPaths: [], allowedMethods: ["GET"], rateLimitPerSecond: 1, concurrency: 1, maxDepth: 1, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn/Test" } });
       const scanId = "91919191-9191-4191-8191-919191919191";
       new ScanRepository(database).create({ id: scanId, source: "DASHBOARD", status: "COMPLETED", targetOrigin: "https://app.test", safeTargetLabel: "adaptive", profile: "full", evidenceLevel: "strong", safeConfigurationSummary: {}, targetId });
-      const reportPath = resolve(paths.reportsDir, "adaptive-report.json"); writeFileSync(reportPath, JSON.stringify(fixtureReport()), "utf8");
-      const artifactId = new ArtifactRepository(database).create({ scanId, type: "JSON_REPORT", name: "adaptive-report.json", path: reportPath, size: Buffer.byteLength(JSON.stringify(fixtureReport())), contentType: "application/json", hash: "a".repeat(64) });
+      const adaptiveReport = fixtureReport();
+      adaptiveReport.scanPlan = {} as RouteCairnReport["scanPlan"];
+      adaptiveReport.requestAudit = [{ requestedUrl: "https://app.test/api/catalog", finalUrl: "https://app.test/api/catalog", method: "GET", outcome: "sent", statusCode: 200, requestHeaders: {}, redirectChain: [], source: "http" }];
+      adaptiveReport.responses = [{ requestedUrl: "https://app.test/api/catalog", finalUrl: "https://app.test/api/catalog", method: "GET", statusCode: 200, headers: { "content-type": "application/json" }, contentType: "application/json", bodyHash: "c".repeat(64), responseTimeMs: 4, redirectChain: [] }];
+      adaptiveReport.apiMapper = { endpoints: [{ endpoint: "https://app.test/api/catalog", method: "GET", routeType: "api", riskTags: [], likelyManualTests: [], authRelevance: "low", hasObjectId: false, privilegeSensitivity: "low", dataExposureSensitivity: "low", rateLimitSensitivity: "low" }], graphQlEndpoints: [], notes: [] };
+      const serializedAdaptiveReport = JSON.stringify(adaptiveReport);
+      const reportPath = resolve(paths.reportsDir, "adaptive-report.json"); writeFileSync(reportPath, serializedAdaptiveReport, "utf8");
+      const artifactId = new ArtifactRepository(database).create({ scanId, type: "JSON_REPORT", name: "adaptive-report.json", path: reportPath, size: Buffer.byteLength(serializedAdaptiveReport), contentType: "application/json", hash: "a".repeat(64) });
       new ScanRepository(database).attachArtifacts(scanId, { json: artifactId }); database.close();
       const handle = await startDashboardServer({ dataDir: dir, uiDistDir: resolve("apps", "dashboard-ui", "dist") });
       try {
@@ -171,6 +178,10 @@ describe("dashboard closure workflows", () => {
         expect(accepted.adaptiveSecurity.snapshots[0]).toMatchObject({ status: "BASELINE" });
         const state = await apiGet<any>(handle.url, `/api/adaptive-security/targets/${targetId}`, auth.cookie);
         expect(state.adaptiveSecurity.policy.requiredLanes).toEqual(["PUBLIC_BASELINE"]);
+        const ready = state.adaptiveSecurity.recommendations.find((item: any) => item.category === "API_READ_ONLY_REGRESSION");
+        expect(ready).toMatchObject({ operatorApprovalRequired: false, requiredBindings: [], draft: { executable: true, automation: { state: "READY_READ_ONLY" } } });
+        const materialized = await apiMutation<any>(handle.url, `/api/adaptive-security/recommendations/${ready.id}/materialize`, auth, {});
+        expect(materialized.materialized).toMatchObject({ targetId, engineId: "api-graphql-authorization", limits: { cleanupReservedRequests: 0, evidenceLevel: "strong" }, binding: { recommendationId: ready.id, sourceFingerprint: ready.sourceFingerprint, compilerVersion: 1 } });
       } finally { await handle.close(); }
     } finally { cleanup(dir); }
   });

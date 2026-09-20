@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { scopeSchema } from "../../config/ConfigSchema.js";
+import { scopeSchema, transportConfigSchema } from "../../config/ConfigSchema.js";
 import { scanProfileNameSchema } from "../../config/ScanProfiles.js";
 import { scanStudioSchema } from "./ScanStudioSchemas.js";
 import { browserBootstrapSchema } from "../../core/auth/AuthProfile.js";
@@ -12,12 +12,17 @@ import { browserLearnedLifecycleAutomationInputSchema } from "../../modules/auth
 import { businessInvariantInputSchema } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
 import { controlledRaceInputSchema } from "../../modules/controlledRace/ControlledRacePlanner.js";
 import { apiGraphqlInputSchema } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
+import { protocolSecurityInputSchema } from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
 import { linkPortalSecurityInputSchema } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
 import { operationalEndpointSecurityInputSchema } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
 import { billingEntitlementInputSchema } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
 import { providerAdapterBindingSchema } from "./ProviderAdapterSchemas.js";
+import { activeVulnerabilityInputSchema } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import { adaptiveExecutionBindingSchema } from "./AdaptiveSecuritySchemas.js";
+import { safeInventoryImportInputSchema } from "../../intelligence/inventory/SafeInventoryImporter.js";
+import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
 
-export const dashboardScanCreateSchema = z.object({
+export const dashboardScanCreateSchema: z.ZodType<DashboardScanCreateRequest> = z.object({
   target: z.string().url(),
   recoveryScope: scopeSchema.optional(),
   workflowRecoveryDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
@@ -27,6 +32,7 @@ export const dashboardScanCreateSchema = z.object({
   targetId: z.string().uuid().optional(),
   authorizationDeclaration: z.string().min(1).max(1000).optional(),
   configFile: z.string().min(1).max(1000).optional(),
+  transport: transportConfigSchema.optional(),
   authFile: z.string().min(1).max(1000).optional(),
   authAFile: z.string().min(1).max(1000).optional(),
   authBFile: z.string().min(1).max(1000).optional(),
@@ -39,6 +45,9 @@ export const dashboardScanCreateSchema = z.object({
   cleanupReservedRequests: z.number().int().min(0).max(5000).optional(),
   includeModules: z.array(z.string().min(1).max(120)).max(40).optional(),
   providerAdapterBinding: providerAdapterBindingSchema.optional(),
+  adaptiveExecutionBinding: adaptiveExecutionBindingSchema.optional(),
+  inventoryImport: safeInventoryImportInputSchema.optional(),
+  inventoryImportFile: z.string().min(1).max(1000).optional(),
   supabaseAuthorization: supabaseAuthorizationInputSchema.optional(),
   supabaseAuthorizationFile: z.string().min(1).max(1000).optional(),
   authenticationLifecycle: authenticationLifecycleInputSchema.optional(),
@@ -51,12 +60,16 @@ export const dashboardScanCreateSchema = z.object({
   controlledRaceFile: z.string().min(1).max(1000).optional(),
   apiGraphql: apiGraphqlInputSchema.optional(),
   apiGraphqlFile: z.string().min(1).max(1000).optional(),
+  protocolSecurity: protocolSecurityInputSchema.optional(),
+  protocolSecurityFile: z.string().min(1).max(1000).optional(),
   linkPortalSecurity: linkPortalSecurityInputSchema.optional(),
   linkPortalSecurityFile: z.string().min(1).max(1000).optional(),
   operationalEndpointSecurity: operationalEndpointSecurityInputSchema.optional(),
   operationalEndpointSecurityFile: z.string().min(1).max(1000).optional(),
   billingEntitlement: billingEntitlementInputSchema.optional(),
   billingEntitlementFile: z.string().min(1).max(1000).optional(),
+  activeVulnerability: activeVulnerabilityInputSchema.optional(),
+  activeVulnerabilityFile: z.string().min(1).max(1000).optional(),
   assistedReviewFile: z.string().min(1).max(1000).optional(),
   preHandoverFile: z.string().min(1).max(1000).optional(),
   preHandover: preHandoverInputSchema.optional(),
@@ -71,6 +84,8 @@ export const dashboardScanCreateSchema = z.object({
   if (value.preHandover && value.preHandoverFile) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use an inline pre-handover manifest or a file, not both." });
   if (value.targetAuthorization && value.targetAuthorizationFile) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Use inline target authorization or a file, not both." });
   if (value.assistedReview && value.assistedReviewFile) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["assistedReview"], message: "Use an inline review manifest or a review file, not both." });
+  if (value.inventoryImport && value.inventoryImportFile) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["inventoryImport"], message: "Use an inline inventory import or an inventory import file, not both." });
+  if ((value.inventoryImport || value.inventoryImportFile) && (value.apiGraphql || value.apiGraphqlFile || value.supabaseAuthorization || value.supabaseAuthorizationFile || value.studio?.workflows.some((workflow) => workflow.enabled && (workflow.workflowId === "collection-authorization" || workflow.workflowId === "file-authorization")))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["inventoryImport"], message: "Inventory import cannot be combined with explicit API, Supabase, collection, or file workflow inputs." });
   if (!value.scopeFile && !value.studio?.scope) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scopeFile"], message: "Provide either an inline Scan Studio scope or a scope file." });
   }
@@ -82,9 +97,11 @@ export const dashboardScanCreateSchema = z.object({
     [value.businessInvariant, value.businessInvariantFile, "businessInvariant", "business invariant"],
     [value.controlledRace, value.controlledRaceFile, "controlledRace", "controlled race"],
     [value.apiGraphql, value.apiGraphqlFile, "apiGraphql", "API / GraphQL"],
+    [value.protocolSecurity, value.protocolSecurityFile, "protocolSecurity", "protocol security"],
     [value.linkPortalSecurity, value.linkPortalSecurityFile, "linkPortalSecurity", "signed-link / portal"],
     [value.operationalEndpointSecurity, value.operationalEndpointSecurityFile, "operationalEndpointSecurity", "operational endpoint"],
-    [value.billingEntitlement, value.billingEntitlementFile, "billingEntitlement", "billing / entitlement"]
+    [value.billingEntitlement, value.billingEntitlementFile, "billingEntitlement", "billing / entitlement"],
+    [value.activeVulnerability, value.activeVulnerabilityFile, "activeVulnerability", "active vulnerability validation"]
   ];
   for (const [inlineValue, fileValue, path, label] of exclusiveInputs) if (inlineValue && fileValue) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message: `Use inline ${label} configuration or a file, not both.` });
@@ -103,7 +120,7 @@ export const dashboardScanCreateSchema = z.object({
   if (value.studio && value.studio.authentication.mode !== "public" && (value.authFile || value.authAFile || value.authBFile || value.credentialProfileId || value.credentialProfileAId || value.credentialProfileBId)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["studio", "authentication"], message: "Scan Studio authentication cannot be combined with legacy auth inputs." });
   }
-});
+}) as unknown as z.ZodType<DashboardScanCreateRequest>;
 
 export const reviewTransitionSchema = z.object({
   newStatus: z.enum(["UNREVIEWED", "IN_REVIEW", "CONFIRMED", "FALSE_POSITIVE", "ACCEPTED_RISK", "DUPLICATE", "RESOLVED", "REOPENED"]),

@@ -5,6 +5,10 @@ import { clamp, nowIso } from "../db/DashboardDatabase.js";
 import type { RouteCairnReport, BrowserLearnedTestCase } from "../../reports/ReportTypes.js";
 import { adaptivePolicyInputSchema } from "../contracts/AdaptiveSecuritySchemas.js";
 import type { LiveAcceptanceLane } from "../contracts/LiveAcceptanceSchemas.js";
+import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
+import { validateAdvancedEngineInput, advancedEngineCatalog, type AdvancedEngineId } from "../contracts/AdvancedEngineSchemas.js";
+import { adaptiveExecutionBindingSchema, type AdaptiveExecutionBinding } from "../contracts/AdaptiveSecuritySchemas.js";
+import { compileBillingReadOnlyCase, compileBusinessInvariantReadOnlyCase, compileGraphqlIntrospectionCase, compileOperationalHealthCase, compileRouteReadOnlyCase, compileSupabaseReadOnlyCase, type AdaptiveCompiledReadOnlyCase } from "./AdaptiveReadOnlyCompiler.js";
 
 const defaultRequiredLanes = ["PUBLIC_BASELINE", "AUTHENTICATED_IDENTITY", "ACCOUNT_PAIR_AUTHORIZATION", "BROWSER_LEARNING", "AUTHENTICATION_LIFECYCLE", "API_GRAPHQL_AUTHORIZATION", "DATA_AUTHORIZATION", "BUSINESS_LOGIC", "OPERATIONAL_ENDPOINTS", "BILLING_ENTITLEMENTS", "MUTATION_ACCEPTANCE", "RECOVERY_ACCEPTANCE"] as const;
 const terminalScans = new Set(["COMPLETED", "IMPORTED", "FAILED", "CANCELLED", "INTERRUPTED"]);
@@ -95,10 +99,11 @@ export class AdaptiveSecurityService {
 
   public linkRecommendation(id: string, scanId: string, caseFingerprint: string, actor: string): Record<string, unknown> {
     const row = this.recommendationRow(id);
-    if (row.status !== "APPROVED") throw new Error("ADAPTIVE_RECOMMENDATION_APPROVAL_REQUIRED");
+    if (row.status !== "APPROVED" && !(row.status === "PROPOSED" && row.operator_approval_required === 0)) throw new Error("ADAPTIVE_RECOMMENDATION_APPROVAL_REQUIRED");
     const scan = this.database.db.prepare("SELECT target_id,status,created_at FROM scans WHERE id=? AND deleted_at IS NULL").get(scanId) as { target_id: string | null; status: string; created_at: string } | undefined;
     if (!scan || scan.target_id !== row.target_id) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
-    if (!row.reviewed_at || Date.parse(scan.created_at) < Date.parse(row.reviewed_at)) throw new Error("ADAPTIVE_POST_APPROVAL_EXECUTION_REQUIRED");
+    const eligibleAfter = row.reviewed_at ?? (row.operator_approval_required === 0 ? row.created_at : undefined);
+    if (!eligibleAfter || Date.parse(scan.created_at) < Date.parse(eligibleAfter)) throw new Error("ADAPTIVE_POST_APPROVAL_EXECUTION_REQUIRED");
     const status = verifyRecommendation(this.database, row.engine_id, scanId, scan.status, caseFingerprint);
     this.database.db.prepare("UPDATE adaptive_security_recommendations SET status=?,linked_scan_id=?,linked_case_fingerprint=?,execution_outcome=?,reviewed_by=COALESCE(reviewed_by,?),updated_at=? WHERE id=?")
       .run(status === "VERIFIED" ? "VERIFIED" : status === "INCONCLUSIVE" ? "INCONCLUSIVE" : "EXECUTION_LINKED", scanId, caseFingerprint, status, actor, nowIso(), id);
@@ -115,6 +120,42 @@ export class AdaptiveSecurityService {
     this.database.db.prepare("UPDATE adaptive_security_recommendations SET status=?,execution_outcome=?,updated_at=? WHERE id=?")
       .run(outcome === "VERIFIED" ? "VERIFIED" : outcome === "INCONCLUSIVE" ? "INCONCLUSIVE" : "EXECUTION_LINKED", outcome, nowIso(), id);
     return this.state(row.target_id);
+  }
+
+  public materializeRecommendation(id: string): Record<string, unknown> {
+    const row = this.recommendationRow(id);
+    const materialized = this.readOnlyMaterialization(row);
+    return {
+      targetId: row.target_id,
+      engineId: row.engine_id,
+      engineConfiguration: materialized.engineConfiguration,
+      binding: materialized.binding,
+      limits: { maxRequests: Math.max(10, materialized.requestCount + 4), cleanupReservedRequests: 0, evidenceLevel: "strong" },
+      automation: materialized.automation
+    };
+  }
+
+  public recommendationRequiresApproval(id: string): boolean {
+    return Boolean(this.recommendationRow(id).operator_approval_required);
+  }
+
+  public assertExecutionBinding(request: DashboardScanCreateRequest): void {
+    if (!request.adaptiveExecutionBinding) return;
+    const binding = adaptiveExecutionBindingSchema.parse(request.adaptiveExecutionBinding);
+    const row = this.recommendationRow(binding.recommendationId);
+    const materialized = this.readOnlyMaterialization(row);
+    if (binding.sourceFingerprint !== row.source_fingerprint || binding.executionFingerprint !== materialized.binding.executionFingerprint || binding.compilerVersion !== materialized.binding.compilerVersion) throw new Error("ADAPTIVE_EXECUTION_BINDING_MISMATCH");
+    if (request.targetId !== row.target_id) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
+    const target = this.database.db.prepare("SELECT base_origin FROM targets WHERE id=?").get(row.target_id) as { base_origin: string } | undefined;
+    if (!target || new URL(request.target).origin !== target.base_origin) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
+    const requestField = advancedEngineCatalog.find((entry) => entry.id === row.engine_id)?.requestField;
+    if (!requestField) throw new Error("ADAPTIVE_EXECUTION_ENGINE_UNAVAILABLE");
+    const configured = (request as unknown as Record<string, unknown>)[requestField];
+    if (digest(configured) !== digest(materialized.engineConfiguration)) throw new Error("ADAPTIVE_EXECUTION_CONFIGURATION_CHANGED");
+    const configuredAdvancedEngines = advancedEngineCatalog.filter((entry) => (request as unknown as Record<string, unknown>)[entry.requestField] !== undefined);
+    if (configuredAdvancedEngines.length !== 1 || configuredAdvancedEngines[0]?.id !== row.engine_id) throw new Error("ADAPTIVE_EXECUTION_ADDITIONAL_ENGINE_FORBIDDEN");
+    if (request.studio?.authentication.mode !== "public") throw new Error("ADAPTIVE_READ_ONLY_EXECUTION_REQUIRES_PUBLIC_ACTOR");
+    if ((request.cleanupReservedRequests ?? 0) !== 0) throw new Error("ADAPTIVE_READ_ONLY_EXECUTION_CLEANUP_RESERVE_INVALID");
   }
 
   public state(targetId: string): Record<string, unknown> {
@@ -165,17 +206,37 @@ export class AdaptiveSecurityService {
 
   private insertRecommendation(targetId: string, snapshotId: string, item: Recommendation, createdAt: string): void {
     this.database.db.prepare(`INSERT OR IGNORE INTO adaptive_security_recommendations (id,target_id,snapshot_id,category,engine_id,lane_kind,source_fingerprint,status,mutation_hypothesis,operator_approval_required,safe_draft_json,required_bindings_json,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,'PROPOSED',?,?,?, ?,?,?)`).run(randomUUID(), targetId, snapshotId, item.category, item.engineId, item.laneKind, item.sourceFingerprint, item.mutationHypothesis ? 1 : 0, 1, JSON.stringify(item.draft), JSON.stringify(item.requiredBindings), createdAt, createdAt);
+      VALUES (?,?,?,?,?,?,?,'PROPOSED',?,?,?, ?,?,?)`).run(randomUUID(), targetId, snapshotId, item.category, item.engineId, item.laneKind, item.sourceFingerprint, item.mutationHypothesis ? 1 : 0, item.operatorApprovalRequired ? 1 : 0, JSON.stringify(item.draft), JSON.stringify(item.requiredBindings), createdAt, createdAt);
   }
 
   private executionCandidates(row: RecommendationListRow): Record<string, unknown>[] {
-    if (row.status === "PROPOSED" || row.status === "DISMISSED" || !row.reviewed_at) return [];
+    if (row.status === "DISMISSED" || (row.operator_approval_required === 1 && (row.status === "PROPOSED" || !row.reviewed_at))) return [];
     const workflowId = engineWorkflow(row.engine_id);
     if (!workflowId) return [];
+    const eligibleAfter = row.reviewed_at ?? row.created_at;
     return (this.database.db.prepare(`SELECT w.scan_id,w.safe_case_alias,w.safe_case_fingerprint,w.execution_state,w.matched_expectation,w.evidence_strength,s.status AS scan_status,s.created_at
       FROM scan_workflow_case_executions w JOIN scans s ON s.id=w.scan_id
       WHERE s.target_id=? AND s.deleted_at IS NULL AND s.status IN ('COMPLETED','IMPORTED') AND s.created_at>=? AND w.workflow_id=? AND w.execution_state='COMPLETED'
-      ORDER BY s.created_at DESC LIMIT 30`).all(row.target_id, row.reviewed_at, workflowId) as ExecutionCandidateRow[]).map((item) => ({ scanId: item.scan_id, caseAlias: item.safe_case_alias, caseFingerprint: item.safe_case_fingerprint, executionState: item.execution_state, matchedExpectation: item.matched_expectation === null ? undefined : Boolean(item.matched_expectation), evidenceStrength: item.evidence_strength, scanStatus: item.scan_status, createdAt: item.created_at }));
+      ORDER BY s.created_at DESC LIMIT 30`).all(row.target_id, eligibleAfter, workflowId) as ExecutionCandidateRow[]).map((item) => ({ scanId: item.scan_id, caseAlias: item.safe_case_alias, caseFingerprint: item.safe_case_fingerprint, executionState: item.execution_state, matchedExpectation: item.matched_expectation === null ? undefined : Boolean(item.matched_expectation), evidenceStrength: item.evidence_strength, scanStatus: item.scan_status, createdAt: item.created_at }));
+  }
+
+  private readOnlyMaterialization(row: RecommendationRow): { engineConfiguration: Record<string, unknown>; requestCount: number; binding: AdaptiveExecutionBinding; automation: Record<string, unknown> } {
+    if (row.mutation_hypothesis || row.operator_approval_required || row.status === "DISMISSED") throw new Error("ADAPTIVE_READ_ONLY_AUTOMATION_UNAVAILABLE");
+    const snapshot = this.database.db.prepare("SELECT target_row_version,source_scan_id FROM adaptive_security_snapshots WHERE id=? AND target_id=?").get(row.snapshot_id, row.target_id) as { target_row_version: number; source_scan_id: string } | undefined;
+    const target = this.database.db.prepare("SELECT row_version FROM targets WHERE id=?").get(row.target_id) as { row_version: number } | undefined;
+    const scan = snapshot ? this.database.db.prepare("SELECT status FROM scans WHERE id=? AND target_id=? AND deleted_at IS NULL").get(snapshot.source_scan_id, row.target_id) as { status: string } | undefined : undefined;
+    if (!snapshot || !target || snapshot.target_row_version !== target.row_version || !scan || !["COMPLETED", "IMPORTED"].includes(scan.status)) throw new Error("ADAPTIVE_EXECUTION_SOURCE_STALE");
+    const draft = JSON.parse(row.safe_draft_json) as Record<string, unknown>;
+    const automation = draft.automation;
+    const configuration = draft.engineConfiguration;
+    if (!automation || typeof automation !== "object" || !configuration || typeof configuration !== "object" || Array.isArray(configuration) || draft.executable !== true) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
+    const state = automation as Record<string, unknown>;
+    if (state.state !== "READY_READ_ONLY" || state.compilerVersion !== 1 || typeof state.requestCount !== "number" || typeof state.evidenceFingerprint !== "string") throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
+    const validated = validateAdvancedEngineInput(row.engine_id as AdvancedEngineId, configuration);
+    if (!validated.valid || !validated.value || typeof validated.value !== "object" || Array.isArray(validated.value) || !isReadOnlyConfiguration(row.engine_id, validated.value as Record<string, unknown>)) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_NOT_READ_ONLY");
+    const expected = executionFingerprint(row.engine_id, row.source_fingerprint, String(state.evidenceFingerprint), validated.value, 1);
+    if (draft.executionFingerprint !== expected) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_FINGERPRINT_MISMATCH");
+    return { engineConfiguration: validated.value as Record<string, unknown>, requestCount: state.requestCount, binding: { recommendationId: row.id, sourceFingerprint: row.source_fingerprint, executionFingerprint: expected, compilerVersion: 1 }, automation: state };
   }
 
   private recommendationRow(id: string): RecommendationRow { const row = this.database.db.prepare("SELECT * FROM adaptive_security_recommendations WHERE id=?").get(id) as RecommendationRow | undefined; if (!row) throw new Error("ADAPTIVE_RECOMMENDATION_NOT_FOUND"); return row; }
@@ -205,7 +266,7 @@ function inventoryFrom(report: RouteCairnReport, workflowCases: AdaptiveInventor
   const versions = [...new Set((report.apiGraphql?.inventory ?? []).flatMap((item) => item.version ? [safeName(item.version)] : []))].sort();
   const reportCases = observedWorkflowCases(report);
   const mergedCases = new Map([...workflowCases, ...reportCases].map((item) => [item.key, item]));
-  const producers = [report.apiMapper && "api-mapper", report.apiProbe && "api-probe", report.apiGraphql && "api-graphql", report.browserCrawl?.authentication && "browser-learning", report.supabaseAuthorization && "supabase-authorization", report.authenticationLifecycle && "authentication-lifecycle", report.businessInvariant && "business-invariant", report.controlledRace && "controlled-race", report.linkPortalSecurity && "link-portal-export-security", report.operationalEndpointSecurity && "operational-endpoint-security", report.billingEntitlement && "billing-entitlement-security"].filter((item): item is string => Boolean(item)).sort();
+  const producers = [report.apiMapper && "api-mapper", report.apiProbe && "api-probe", report.apiGraphql && "api-graphql", report.browserCrawl?.authentication && "browser-learning", report.supabaseAuthorization && "supabase-authorization", report.authenticationLifecycle && "authentication-lifecycle", report.businessInvariant && "business-invariant", report.controlledRace && "controlled-race", report.linkPortalSecurity && "link-portal-export-security", report.operationalEndpointSecurity && "operational-endpoint-security", report.billingEntitlement && "billing-entitlement-security", report.activeVulnerability && "active-vulnerability-validation", report.protocolSecurity && "protocol-security"].filter((item): item is string => Boolean(item)).sort();
   const buildSignals = { technologies: report.technologies.map((item) => item.name).sort(), nextBuild: report.nextJsReview?.buildIds ?? [] };
   return { schemaVersion: 1, buildFingerprint: digest(buildSignals), buildEvidence: buildSignals.technologies.length > 0 || buildSignals.nextBuild.length > 0, producers, origins: [...origins].sort(), routes: [...routes.values()].sort(byKey), fields, apiFields, cookies, graphql, graphqlOperations, adminRoutes: [...new Set((report.browserCrawl?.authentication?.adminRoutes ?? []).map((item) => safePath(new URL(item, report.target).pathname)))].sort(), roles, versions, supabaseResources, lifecycleCategories, workflowCases: [...mergedCases.values()].sort(byKey) };
 }
@@ -233,6 +294,8 @@ function observedWorkflowCases(report: RouteCairnReport): AdaptiveInventory["wor
   add("link-portal-export-security", report.linkPortalSecurity?.observations ?? []);
   add("operational-endpoint-security", report.operationalEndpointSecurity?.observations ?? []);
   add("billing-entitlement-security", report.billingEntitlement?.observations ?? []);
+  add("active-vulnerability-validation", report.activeVulnerability?.cases ?? []);
+  add("protocol-security", report.protocolSecurity?.observations ?? []);
   return output;
 }
 
@@ -266,34 +329,76 @@ function compareInventory(before: AdaptiveInventory, after: AdaptiveInventory, i
 
 function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory, drifts: Drift[]): Recommendation[] {
   const result = new Map<string, Recommendation>();
-  const add = (item: Omit<Recommendation, "sourceFingerprint"> & { source: unknown }) => { const sourceFingerprint = digest(item.source); const key = `${item.category}:${sourceFingerprint}`; result.set(key, { ...item, sourceFingerprint }); };
+  const add = (item: Omit<Recommendation, "sourceFingerprint" | "operatorApprovalRequired"> & { source: unknown; compiled?: AdaptiveCompiledReadOnlyCase | undefined }) => {
+    const sourceFingerprint = digest(item.source);
+    const key = `${item.category}:${sourceFingerprint}`;
+    const draft = item.compiled ? executableDraft(item.draft, item.compiled, sourceFingerprint) : { ...item.draft, automation: { state: "REQUIRES_BINDINGS", compilerVersion: 1, mutationApprovalRequired: item.mutationHypothesis, unresolvedBindings: item.requiredBindings } };
+    result.set(key, { category: item.category, engineId: item.engineId, laneKind: item.laneKind, mutationHypothesis: item.mutationHypothesis, sourceFingerprint, operatorApprovalRequired: !item.compiled, draft, requiredBindings: item.compiled ? [] : item.requiredBindings });
+  };
   for (const candidate of report.browserCrawl?.authentication?.learnedTestCases ?? []) {
     for (const category of candidate.suggestedLifecycleCategories) add({ category: `LIFECYCLE_${category}`, engineId: "authentication-lifecycle", laneKind: "AUTHENTICATION_LIFECYCLE", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { category, method: candidate.method, endpoint: safePath(new URL(candidate.endpoint).pathname), fields: candidate.observedFieldNames.map(safeName).sort(), bodyFormat: candidate.requestBodyFormat ?? "NONE", authorizationContext: candidate.authorizationContext, classification: candidate.classification }, draft: learnedDraft(candidate, category), requiredBindings: lifecycleBindings(category) });
     const path = safePath(new URL(candidate.endpoint).pathname);
-    if (/graphql/i.test(path)) add({ category: "GRAPHQL_OPERATION_REVIEW", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, protocol: "GRAPHQL", pathTemplate: path, method: candidate.method, executable: false }, requiredBindings: ["named operation", "actor matrix", "field expectations", "tenant expectation"] });
+    if (/graphql/i.test(path)) { const compiled = candidate.classification === "READ_ONLY_OBSERVATION" ? compileGraphqlIntrospectionCase(report, path) : undefined; add({ category: compiled ? "GRAPHQL_INTROSPECTION_READ_ONLY" : "GRAPHQL_OPERATION_REVIEW", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, protocol: "GRAPHQL", pathTemplate: path, method: candidate.method, executable: Boolean(compiled) }, requiredBindings: ["named operation", "actor matrix", "field expectations", "tenant expectation"], compiled }); }
     if (/signed|invite|portal|export|download/i.test(path)) add({ category: "CAPABILITY_LINK_REVIEW", engineId: "link-portal-export-security", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, executable: false }, requiredBindings: ["resource owner", "tenant", "expiry", "tamper/replay assertions", "cleanup"] });
-    if (/webhook|cron|job|health|admin|worker/i.test(path)) add({ category: "OPERATIONAL_ENDPOINT_REVIEW", engineId: "operational-endpoint-security", laneKind: "OPERATIONAL_ENDPOINTS", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, executable: false }, requiredBindings: ["endpoint kind", "authorized actor", "signature/auth expectation", "replay/workload bounds", "cleanup"] });
+    if (/webhook|cron|job|health|admin|worker/i.test(path)) {
+      const operational = candidate.classification === "READ_ONLY_OBSERVATION" ? compileOperationalHealthCase(report, { protocol: "REST", method: candidate.method, pathTemplate: path, source: "browser-learning", stateChanging: false }) : undefined;
+      add({ category: operational ? "OPERATIONAL_HEALTH_READ_ONLY" : "OPERATIONAL_ENDPOINT_REVIEW", engineId: "operational-endpoint-security", laneKind: "OPERATIONAL_ENDPOINTS", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, executable: Boolean(operational) }, requiredBindings: operational ? [] : ["endpoint kind", "authorized actor", "signature/auth expectation", "replay/workload bounds", "cleanup"], compiled: operational });
+    }
+    if (/checkout|billing|payment|subscription|plan|entitlement|premium|refund|invoice/i.test(path)) {
+      const billing = candidate.classification === "READ_ONLY_OBSERVATION" ? compileBillingReadOnlyCase(report, { protocol: "REST", method: candidate.method, pathTemplate: path, source: "browser-learning", stateChanging: false }) : undefined;
+      add({ category: billing ? "SYNTHETIC_BILLING_READ_ONLY" : "SYNTHETIC_BILLING_REVIEW", engineId: "billing-entitlement-security", laneKind: "BILLING_ENTITLEMENTS", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, providerMode: "SYNTHETIC_ONLY", realPaymentExecution: "FORBIDDEN", executable: Boolean(billing) }, requiredBindings: billing ? [] : ["test-provider fixture", "synthetic event", "account ownership", "authoritative entitlement verification", "cleanup"], compiled: billing });
+    }
+    if (!/graphql|signed|invite|portal|export|download|webhook|cron|job|health|admin|worker|checkout|billing|payment|subscription|plan|entitlement|premium|refund|invoice/i.test(path) && candidate.classification === "READ_ONLY_OBSERVATION") {
+      const invariant = compileBusinessInvariantReadOnlyCase(report, { protocol: "REST", method: candidate.method, pathTemplate: path, source: "browser-learning", stateChanging: false });
+      if (invariant) add({ category: "BUSINESS_INVARIANT_READ_ONLY", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: false, source: { method: candidate.method, path, kind: "stable-observation" }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, executable: true }, requiredBindings: [], compiled: invariant });
+    }
   }
-  for (const item of inventory.routes.filter((route) => route.source === "api-mapper" || route.source === "api-graphql-inventory")) {
-    add({ category: "API_AUTHORIZATION_MATRIX", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: item.stateChanging, source: item, draft: { protocol: item.protocol, pathTemplate: item.pathTemplate, documentedMethods: [item.method], executable: false }, requiredBindings: ["Account A/B object identities", "expected decisions", "response field rules"] });
-    if (item.stateChanging) add({ category: "BUSINESS_INVARIANT_CANDIDATE", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: true, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["pre-state", "bounded action sequence", "expected invariant", "authoritative post-state", "verified cleanup"] });
+  for (const item of inventory.routes.filter((route) => route.source === "api-mapper" || route.source === "api-graphql-inventory" || (route.source === "browser-learning" && !route.stateChanging))) {
+    const compiled = item.protocol === "REST" ? compileRouteReadOnlyCase(report, item) : !item.stateChanging ? compileGraphqlIntrospectionCase(report, item.pathTemplate) : undefined;
+    add({ category: compiled ? (item.protocol === "REST" ? "API_READ_ONLY_REGRESSION" : "GRAPHQL_INTROSPECTION_READ_ONLY") : "API_AUTHORIZATION_MATRIX", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: item.stateChanging && !compiled, source: item, draft: { protocol: item.protocol, pathTemplate: item.pathTemplate, documentedMethods: [item.method], executable: Boolean(compiled) }, requiredBindings: ["Account A/B object identities", "expected decisions", "response field rules"], compiled });
+    if (item.stateChanging) {
+      add({ category: "BUSINESS_INVARIANT_CANDIDATE", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: true, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["pre-state", "bounded action sequence", "expected invariant", "authoritative post-state", "verified cleanup"] });
+    } else {
+      const invariant = item.protocol === "REST" ? compileBusinessInvariantReadOnlyCase(report, item) : undefined;
+      if (invariant) add({ category: "BUSINESS_INVARIANT_READ_ONLY", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: false, source: { method: item.method, pathTemplate: item.pathTemplate, kind: "stable-observation" }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: true }, requiredBindings: [], compiled: invariant });
+    }
     if (/signed|invite|portal|export|download|report|evidence/i.test(item.pathTemplate)) add({ category: "CAPABILITY_LINK_REVIEW", engineId: "link-portal-export-security", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: item.stateChanging, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["resource owner", "tenant", "expiry", "tamper/replay assertions", "cleanup"] });
-    if (/webhook|cron|job|health|incident|admin|worker/i.test(item.pathTemplate)) add({ category: "OPERATIONAL_ENDPOINT_REVIEW", engineId: "operational-endpoint-security", laneKind: "OPERATIONAL_ENDPOINTS", mutationHypothesis: item.stateChanging, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["endpoint kind", "authorized actor", "signature/auth expectation", "replay/workload bounds", "cleanup"] });
-    if (/checkout|billing|payment|subscription|plan|entitlement|premium|refund|invoice/i.test(item.pathTemplate)) add({ category: "SYNTHETIC_BILLING_REVIEW", engineId: "billing-entitlement-security", laneKind: "BILLING_ENTITLEMENTS", mutationHypothesis: item.stateChanging, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, providerMode: "SYNTHETIC_ONLY", realPaymentExecution: "FORBIDDEN", executable: false }, requiredBindings: ["test-provider fixture", "synthetic event", "account ownership", "authoritative entitlement verification", "cleanup"] });
+    if (/webhook|cron|job|health|incident|admin|worker|status|readiness|liveness/i.test(item.pathTemplate)) { const operational = compileOperationalHealthCase(report, item); add({ category: operational ? "OPERATIONAL_HEALTH_READ_ONLY" : "OPERATIONAL_ENDPOINT_REVIEW", engineId: "operational-endpoint-security", laneKind: "OPERATIONAL_ENDPOINTS", mutationHypothesis: item.stateChanging, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: Boolean(operational) }, requiredBindings: ["endpoint kind", "authorized actor", "signature/auth expectation", "replay/workload bounds", "cleanup"], compiled: operational }); }
+    if (/checkout|billing|payment|subscription|plan|entitlement|premium|refund|invoice/i.test(item.pathTemplate)) {
+      const billing = item.protocol === "REST" ? compileBillingReadOnlyCase(report, item) : undefined;
+      add({ category: billing ? "SYNTHETIC_BILLING_READ_ONLY" : "SYNTHETIC_BILLING_REVIEW", engineId: "billing-entitlement-security", laneKind: "BILLING_ENTITLEMENTS", mutationHypothesis: item.stateChanging, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, providerMode: "SYNTHETIC_ONLY", realPaymentExecution: "FORBIDDEN", executable: Boolean(billing) }, requiredBindings: billing ? [] : ["test-provider fixture", "synthetic event", "account ownership", "authoritative entitlement verification", "cleanup"], compiled: billing });
+    }
   }
-  for (const item of inventory.supabaseResources) add({ category: "SUPABASE_AUTHORIZATION_MATRIX", engineId: "supabase-authorization", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: item.operations.some((operation) => operation !== "SELECT"), source: item, draft: { surface: item.surface, resource: item.resource, operations: item.operations, actors: item.actors, executable: false }, requiredBindings: ["Account A/B and tenant identities", "exact object bindings", "expected decisions", "sensitive columns", "cleanup for writes"] });
+  for (const path of inventory.graphql) {
+    const compiled = compileGraphqlIntrospectionCase(report, path);
+    if (!compiled) continue;
+    add({ category: "GRAPHQL_INTROSPECTION_READ_ONLY", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: false, source: { protocol: "GRAPHQL", path, kind: "generated-introspection" }, draft: { protocol: "GRAPHQL", pathTemplate: path, operation: "GENERATED_INTROSPECTION", executable: true }, requiredBindings: [], compiled });
+  }
+  for (const item of inventory.supabaseResources) { const compiled = item.operations.every((operation) => operation === "SELECT") ? compileSupabaseReadOnlyCase(report, item) : undefined; add({ category: compiled ? "SUPABASE_ANONYMOUS_READ_REGRESSION" : "SUPABASE_AUTHORIZATION_MATRIX", engineId: "supabase-authorization", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: item.operations.some((operation) => operation !== "SELECT"), source: item, draft: { surface: item.surface, resource: item.resource, operations: item.operations, actors: item.actors, executable: Boolean(compiled) }, requiredBindings: ["Account A/B and tenant identities", "exact object bindings", "expected decisions", "sensitive columns", "cleanup for writes"], compiled }); }
   for (const item of drifts.filter((entry) => entry.severity === "HIGH")) add({ category: `DRIFT_${item.type}`, engineId: driftEngine(item.type), laneKind: driftLane(item.type), mutationHypothesis: false, source: item, draft: { semanticKey: item.semanticKey, safeSummary: item.summary }, requiredBindings: ["operator review", "exact regression case", "authoritative expected outcome"] });
   return [...result.values()];
 }
 
 function learnedDraft(candidate: BrowserLearnedTestCase, category: string): Record<string, unknown> { return { sourceCandidateId: candidate.id, category, method: candidate.method, pathTemplate: safePath(new URL(candidate.endpoint).pathname), requestBodyFormat: candidate.requestBodyFormat ?? "UNKNOWN", observedFieldNames: candidate.observedFieldNames.map(safeName).sort(), observedStatusCodes: [...candidate.observedStatusCodes].sort(), state: "DRAFT_REQUIRES_OPERATOR_CASE", executable: false }; }
+function executableDraft(summary: Record<string, unknown>, compiled: AdaptiveCompiledReadOnlyCase, sourceFingerprint: string): Record<string, unknown> { const automation = { state: "READY_READ_ONLY", compilerVersion: 1, evidenceStrength: compiled.evidenceStrength, evidenceFingerprint: compiled.evidenceFingerprint, requestCount: compiled.requestCount, mutationApprovalRequired: false, summary: compiled.summary }; const executionFingerprintValue = executionFingerprint(compiled.engineId, sourceFingerprint, compiled.evidenceFingerprint, compiled.engineConfiguration, 1); return { ...summary, executable: true, automation, engineConfiguration: compiled.engineConfiguration, executionFingerprint: executionFingerprintValue }; }
+function executionFingerprint(engineId: string, sourceFingerprint: string, evidenceFingerprint: string, engineConfiguration: unknown, compilerVersion: number): string { return digest({ purpose: "adaptive-read-only-execution", engineId, sourceFingerprint, evidenceFingerprint, engineConfiguration, compilerVersion }); }
+function isReadOnlyConfiguration(engineId: string, value: Record<string, unknown>): boolean {
+  if (engineId === "api-graphql-authorization") { const routes = Array.isArray(value.routes) ? value.routes as Array<Record<string, unknown>> : []; const checks = Array.isArray(value.checks) ? value.checks as Array<Record<string, unknown>> : []; return routes.length > 0 && checks.length > 0 && routes.every((route) => route.protocol === "GRAPHQL" || (Array.isArray(route.documentedMethods) && (route.documentedMethods as unknown[]).every((method) => ["GET", "HEAD", "OPTIONS"].includes(String(method))))) && checks.every((check) => check.kind === "GRAPHQL_INTROSPECTION" || !containsUnsafeMethod(check)); }
+  if (engineId === "operational-endpoint-security") return !containsUnsafeMethod(value) && !containsTrueStateChanging(value);
+  if (engineId === "billing-entitlement-security") { const cases = Array.isArray(value.cases) ? value.cases as Array<Record<string, unknown>> : []; return cases.length > 0 && cases.every((item) => item.authorization && (item.authorization as Record<string, unknown>).mode === "OBSERVE_ONLY" && item.cleanupRequired !== true && Array.isArray(item.steps) && (item.steps as Array<Record<string, unknown>>).length > 0 && (item.steps as Array<Record<string, unknown>>).every((step) => step.operation === "OBSERVE" && !containsUnsafeMethod(step) && step.request && (step.request as Record<string, unknown>).stateChanging !== true)); }
+  if (engineId === "business-invariant") { const cases = Array.isArray(value.cases) ? value.cases as Array<Record<string, unknown>> : []; return cases.length > 0 && cases.every((item) => item.authorization && (item.authorization as Record<string, unknown>).mode === "OBSERVE_ONLY" && item.cleanupRequired !== true && Array.isArray(item.actions) && (item.actions as unknown[]).length === 0 && Array.isArray(item.cleanup) && (item.cleanup as unknown[]).length === 0 && Array.isArray(item.cleanupVerification) && (item.cleanupVerification as unknown[]).length === 0 && !containsTrueStateChanging(item) && Array.isArray(item.preState) && Array.isArray(item.postState) && [...(item.preState as Array<Record<string, unknown>>), ...(item.postState as Array<Record<string, unknown>>)].every((state) => ["GET", "HEAD"].includes(String((state.request as Record<string, unknown>)?.method)))); }
+  if (engineId === "supabase-authorization") { const cases = Array.isArray(value.cases) ? value.cases as Array<Record<string, unknown>> : []; return cases.length > 0 && cases.every((item) => item.operation === "SELECT" && ["GET", "HEAD"].includes(String(item.method)) && item.actor === "ANONYMOUS"); }
+  return false;
+}
+function containsUnsafeMethod(value: unknown): boolean { if (Array.isArray(value)) return value.some(containsUnsafeMethod); if (!value || typeof value !== "object") return false; const item = value as Record<string, unknown>; if (typeof item.method === "string" && !["GET", "HEAD", "OPTIONS"].includes(item.method)) return true; return Object.values(item).some(containsUnsafeMethod); }
+function containsTrueStateChanging(value: unknown): boolean { if (Array.isArray(value)) return value.some(containsTrueStateChanging); if (!value || typeof value !== "object") return false; const item = value as Record<string, unknown>; if (item.stateChanging === true || item.cleanupRequired === true) return true; return Object.values(item).some(containsTrueStateChanging); }
 function lifecycleBindings(category: string): string[] { const common = ["disposable actor", "exact assertions", "expiring authorization", "verified cleanup"]; if (/RESET|INVITATION|MFA|PASSKEY|RECOVERY|LINKING|VERIFICATION/.test(category)) common.push("single-use token/fixture binding"); if (/EXPIRATION/.test(category)) common.push("bounded wait contract"); return common; }
 function driftEngine(type: string): string { return type.includes("COOKIE") || type.includes("AUTH") ? "authentication-lifecycle" : type.includes("DATA") ? "supabase-authorization" : type.includes("WRITABLE") ? "business-invariant" : "api-graphql-authorization"; }
 function driftLane(type: string): LiveAcceptanceLane["kind"] { return type.includes("COOKIE") || type.includes("AUTH") ? "AUTHENTICATION_LIFECYCLE" : type.includes("DATA") ? "DATA_AUTHORIZATION" : type.includes("WRITABLE") ? "BUSINESS_LOGIC" : "API_GRAPHQL_AUTHORIZATION"; }
 function compareSet<T extends Record<string, unknown>>(before: T[], after: T[], key: keyof T, added: string, removed: string, output: Drift[], includeRemoved: boolean, severity: (item: T) => Drift["severity"]): void { const old = new Map(before.map((item) => [String(item[key]), item])); const next = new Map(after.map((item) => [String(item[key]), item])); for (const [id, item] of next) if (!old.has(id)) output.push(drift(added, severity(item), id, `${added.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); if (includeRemoved) for (const id of old.keys()) if (!next.has(id)) output.push(drift(removed, "MEDIUM", id, `${removed.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); }
 function drift(type: string, severity: Drift["severity"], semanticKey: string, summary: string): Drift { return { type, severity, semanticKey, summary }; }
 function verifyRecommendation(database: DashboardDatabase, engineId: string, scanId: string, scanStatus: string, caseFingerprint: string): "RUNNING" | "VERIFIED" | "INCONCLUSIVE" { if (!terminalScans.has(scanStatus)) return "RUNNING"; if (!["COMPLETED","IMPORTED"].includes(scanStatus)) return "INCONCLUSIVE"; const module = engineModule(engineId); const workflow = engineWorkflow(engineId); if (!module || !workflow) return "INCONCLUSIVE"; const moduleRow = database.db.prepare("SELECT status FROM scan_module_executions WHERE scan_id=? AND module_id=?").get(scanId, module) as { status: string } | undefined; const caseRow = database.db.prepare("SELECT execution_state FROM scan_workflow_case_executions WHERE scan_id=? AND workflow_id=? AND safe_case_fingerprint=?").get(scanId, workflow, caseFingerprint) as { execution_state: string } | undefined; return moduleRow?.status === "COMPLETED" && caseRow?.execution_state === "COMPLETED" ? "VERIFIED" : "INCONCLUSIVE"; }
-function engineModule(id: string): string | undefined { return ({ "authentication-lifecycle": "authentication-lifecycle", "api-graphql-authorization": "api-graphql-authorization", "link-portal-export-security": "link-portal-export-security", "operational-endpoint-security": "operational-endpoint-security", "billing-entitlement-security": "billing-entitlement-security", "business-invariant": "business-invariant", "supabase-authorization": "supabase-authorization" } as Record<string,string>)[id]; }
+function engineModule(id: string): string | undefined { return ({ "authentication-lifecycle": "authentication-lifecycle", "api-graphql-authorization": "api-graphql-authorization", "link-portal-export-security": "link-portal-export-security", "operational-endpoint-security": "operational-endpoint-security", "billing-entitlement-security": "billing-entitlement-security", "business-invariant": "business-invariant", "supabase-authorization": "supabase-authorization", "active-vulnerability-validation": "active-vulnerability-validation" } as Record<string,string>)[id]; }
 function engineWorkflow(id: string): string | undefined { return engineModule(id); }
 function safePath(value: string): string { const path = value.split("?")[0]!.replace(/\/[0-9]{2,}(?=\/|$)/g, "/:id").replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}(?=\/|$)/gi, "/:id").replace(/\/[A-Za-z0-9_-]{32,}(?=\/|$)/g, "/:token"); return (path.startsWith("/") ? path : `/${path}`).slice(0, 500); }
 function safeName(value: string): string { return value.replace(/[\r\n\0|]/g, "_").slice(0, 160); }
@@ -304,7 +409,7 @@ function snapshotSummary(row: SnapshotListRow | SnapshotRow): Record<string, unk
 function recommendationSummary(row: RecommendationListRow): Record<string, unknown> { return { id: row.id, snapshotId: row.snapshot_id, category: row.category, engineId: row.engine_id, laneKind: row.lane_kind, sourceFingerprint: row.source_fingerprint, status: row.status, mutationHypothesis: Boolean(row.mutation_hypothesis), operatorApprovalRequired: Boolean(row.operator_approval_required), draft: JSON.parse(row.safe_draft_json), requiredBindings: JSON.parse(row.required_bindings_json), ...(row.operator_rationale ? { rationale: row.operator_rationale } : {}), ...(row.linked_scan_id ? { linkedScanId: row.linked_scan_id } : {}), ...(row.linked_case_fingerprint ? { linkedCaseFingerprint: row.linked_case_fingerprint } : {}), ...(row.execution_outcome ? { executionOutcome: row.execution_outcome } : {}), ...(row.adapter_profile_id ? { adapterProfileId: row.adapter_profile_id, adapterVersionId: row.adapter_version_id } : {}), createdAt: row.created_at, updatedAt: row.updated_at }; }
 
 interface Drift { type: string; severity: "INFO" | "LOW" | "MEDIUM" | "HIGH"; semanticKey: string; summary: string }
-interface Recommendation { category: string; engineId: string; laneKind: LiveAcceptanceLane["kind"]; sourceFingerprint: string; mutationHypothesis: boolean; draft: Record<string, unknown>; requiredBindings: string[] }
+interface Recommendation { category: string; engineId: string; laneKind: LiveAcceptanceLane["kind"]; sourceFingerprint: string; mutationHypothesis: boolean; operatorApprovalRequired: boolean; draft: Record<string, unknown>; requiredBindings: string[] }
 interface PolicyRow { required_lanes_json: string; require_na_evidence: number; detect_removed_surfaces: number; row_version: number }
 interface SnapshotListRow { id: string; source_scan_id: string; status: string; model_digest: string; target_row_version: number; build_fingerprint: string; created_at: string; accepted_at: string | null }
 interface SnapshotRow extends SnapshotListRow { target_id: string; inventory_json: string }

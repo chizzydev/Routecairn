@@ -33,6 +33,7 @@ import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
 import { assertRegisteredTargetScope } from "./RegisteredTargetScope.js";
 import { AdaptiveSecurityService } from "./AdaptiveSecurityService.js";
+import { requestsForClass } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
 
 const maxQueuedScans = 20;
 
@@ -82,7 +83,7 @@ export class ScanExecutionService {
 
   public async preview(request: DashboardScanCreateRequest): Promise<PlanPreviewResponse> {
     const credentialAuth = this.resolveCredentialAuth(request);
-    const { plan, scope } = await resolveDashboardScanPlan(request, credentialAuth);
+    const { plan, scope, config } = await resolveDashboardScanPlan(request, credentialAuth);
     this.assertTargetBinding(request, scope, plan.limits);
     const previewIdentity = safePlanIdentity(request, plan);
     const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
@@ -92,6 +93,7 @@ export class ScanExecutionService {
       modules: plan.modules.map((modulePlan) => ({ id: modulePlan.id, phase: modulePlan.phase, settings: modulePlan.settings as Record<string, unknown> })),
       limits: plan.limits as unknown as Record<string, unknown>,
       evidence: plan.evidence as unknown as Record<string, unknown>,
+      transport: config.transport,
       skippedModules: plan.skippedModules.map((skipped) => ({ id: skipped.id, reason: skipped.reason })),
       controlledWorkflowRequests: ([
         ["object-pair", plan.objectPairTesting],
@@ -106,12 +108,14 @@ export class ScanExecutionService {
         ["business-invariant", plan.businessInvariant],
         ["controlled-race", plan.controlledRace],
         ["api-graphql-authorization", plan.apiGraphql],
+        ["protocol-security", plan.protocolSecurity],
         ["link-portal-export-security", plan.linkPortalSecurity],
         ["operational-endpoint-security", plan.operationalEndpointSecurity],
         ["billing-entitlement-security", plan.billingEntitlement],
         ["assisted-review", plan.assistedReview],
         ["pre-handover-assault", plan.preHandover],
-        ["bug-bounty-authorization", plan.targetAuthorization]
+        ["bug-bounty-authorization", plan.targetAuthorization],
+        ["active-vulnerability-validation", plan.activeVulnerability]
       ] as const).flatMap(([workflowId, workflowPlan]) => workflowPlan ? [{ workflowId, exactRequests: exactWorkflowRequests(workflowId, workflowPlan) }] : []),
       planSnapshot: planSnapshot(plan, scope),
       credentialReadiness,
@@ -578,6 +582,7 @@ export function exactWorkflowRequests(workflowId: string, value: unknown): numbe
   if (workflowId === "controlled-race") return array(plan.cases).reduce<number>((total, testCase) => { const item = record(testCase); return total + array(item.preState).length + array(item.groups).reduce<number>((sum, group) => sum + array(record(group).requests).length, 0) + array(item.postState).length + array(item.cleanup).length + array(item.cleanupVerification).length; }, 0);
   if (workflowId === "billing-entitlement-security") return array(plan.cases).reduce<number>((total, testCase) => total + array(record(testCase).steps).reduce<number>((sum, step) => sum + numeric(record(record(step).execution).attempts, 1), 0), 0);
   if (workflowId === "api-graphql-authorization") return array(plan.checks).reduce<number>((total, check) => { const item = record(check); if (item.kind === "METHOD_CONFUSION") return total + 1 + array(item.alternateMethods).length; if (item.kind === "GRAPHQL_ALIAS_LIMIT" || item.kind === "GRAPHQL_BATCH_LIMIT") return total + array(item.documents).length; if (item.kind === "VERSION_BOUNDARY") return total + 2; return total + 1; }, 0);
+  if (workflowId === "active-vulnerability-validation") return array(plan.cases).reduce<number>((total, testCase) => total + requestsForClass(String(record(testCase).vulnerabilityClass ?? ""), Boolean(record(record(testCase).proof).callbackPollUrl)), 0) + numeric(record(plan.discovery).maxCandidates, 0) * 4;
   if (workflowId === "pre-handover-assault") return 3 + array(plan.objects).length;
   if (workflowId === "assisted-review" || workflowId === "bug-bounty-authorization") return 0;
   return numeric(plan.maxRequests, 0);

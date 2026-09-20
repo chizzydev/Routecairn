@@ -35,6 +35,8 @@ import type { LinkPortalSecurityReport } from "../../reports/LinkPortalSecurityR
 import type { OperationalEndpointSecurityReport } from "../../reports/OperationalEndpointSecurityReport.js";
 import type { BillingEntitlementReport } from "../../reports/BillingEntitlementReport.js";
 import type { SecretBoundaryReport } from "../../reports/SecretBoundaryReport.js";
+import type { ActiveVulnerabilityReport } from "../../reports/ActiveVulnerabilityReport.js";
+import type { ProtocolSecurityReport } from "../../modules/protocolSecurity/ProtocolSecurityTypes.js";
 
 export type PluginPhase = "baseline" | "fingerprint" | "intelligence" | "discovery" | "analysis";
 
@@ -69,10 +71,12 @@ export interface ModuleResult {
   businessInvariant?: BusinessInvariantReport;
   controlledRace?: ControlledRaceReport;
   apiGraphql?: ApiGraphqlReviewReport;
+  protocolSecurity?: ProtocolSecurityReport;
   linkPortalSecurity?: LinkPortalSecurityReport;
   operationalEndpointSecurity?: OperationalEndpointSecurityReport;
   billingEntitlement?: BillingEntitlementReport;
   secretBoundary?: SecretBoundaryReport;
+  activeVulnerability?: ActiveVulnerabilityReport;
   discoveredUrls?: ResponseObservation[];
   findings?: Finding[];
   notes?: string[];

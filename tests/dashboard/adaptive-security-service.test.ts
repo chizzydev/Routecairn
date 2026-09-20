@@ -67,6 +67,9 @@ describe("adaptive security model and recommendation loop", () => {
     const failedScan = scan(database, targetId);
     recordWorkflowCaseExecutions(database.db, failedScan, { authenticationLifecycle: { observations: [{ caseId: "logout", category: "LOGOUT_INVALIDATION", comparisonFingerprint: fingerprint, outcome: "PASS", cleanupOutcome: "CLEANUP_FAILED", actorModel: [], steps: [] }] } } as any);
     expect(database.db.prepare("SELECT execution_state FROM scan_workflow_case_executions WHERE scan_id=?").get(failedScan)).toEqual({ execution_state: "FAILED" });
+    const readOnlyScan = scan(database, targetId);
+    recordWorkflowCaseExecutions(database.db, readOnlyScan, { businessInvariant: { observations: [{ caseId: "stable-read", category: "CUSTOM", comparisonFingerprint: "f".repeat(64), outcome: "PASS", cleanupOutcome: "NOT_REQUIRED", actorModel: [], actions: [], invariants: [] }] }, billingEntitlement: { observations: [{ caseId: "billing-read", category: "CANCELLATION_ENTITLEMENT_PERSISTENCE", comparisonFingerprint: "a".repeat(64), outcome: "PASS", cleanupOutcome: "NOT_REQUIRED", steps: [{ stateChanging: false }] }] } } as any);
+    expect(database.db.prepare("SELECT workflow_id,execution_state FROM scan_workflow_case_executions WHERE scan_id=? ORDER BY workflow_id").all(readOnlyScan)).toEqual([{ workflow_id: "billing-entitlement-security", execution_state: "COMPLETED" }, { workflow_id: "business-invariant", execution_state: "COMPLETED" }]);
     database.close();
   });
 });

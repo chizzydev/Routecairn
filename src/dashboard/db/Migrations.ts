@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 28;
+export const dashboardSchemaVersion = 31;
 
 export const dashboardMigrations: readonly {
   version: number;
@@ -1364,6 +1364,258 @@ CREATE TABLE evidence_purge_actions (
   executed_by TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+`
+  },
+  {
+    version: 29,
+    sql: `
+ALTER TABLE live_acceptance_plans ADD COLUMN standard TEXT NOT NULL DEFAULT 'CUSTOM'
+  CHECK(standard IN ('CUSTOM','BROADER_REAL_TARGET_V1'));
+ALTER TABLE live_acceptance_runs ADD COLUMN standard TEXT NOT NULL DEFAULT 'CUSTOM'
+  CHECK(standard IN ('CUSTOM','BROADER_REAL_TARGET_V1'));
+ALTER TABLE live_acceptance_run_lanes ADD COLUMN proof_contract_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE live_acceptance_run_lanes ADD COLUMN baseline_scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT;
+ALTER TABLE live_acceptance_run_lanes ADD COLUMN comparison_id TEXT REFERENCES scan_comparisons(id) ON DELETE RESTRICT;
+CREATE INDEX idx_live_acceptance_lanes_baseline_scan ON live_acceptance_run_lanes(baseline_scan_id);
+CREATE INDEX idx_live_acceptance_lanes_comparison ON live_acceptance_run_lanes(comparison_id);
+`
+  },
+  {
+    version: 30,
+    sql: `
+CREATE TABLE organizations (
+  id TEXT PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('ACTIVE','SUSPENDED','ARCHIVED')),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  row_version INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE organization_memberships (
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES dashboard_users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK(role IN ('OWNER','ADMIN','ANALYST','VIEWER')),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(organization_id,user_id)
+);
+CREATE INDEX idx_organization_members_user ON organization_memberships(user_id,organization_id);
+
+CREATE TABLE sso_providers (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  issuer TEXT NOT NULL,
+  authorization_endpoint TEXT NOT NULL,
+  token_endpoint TEXT NOT NULL,
+  jwks_uri TEXT NOT NULL,
+  client_id TEXT NOT NULL,
+  client_secret_env TEXT NOT NULL,
+  scopes_json TEXT NOT NULL,
+  allowed_domains_json TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(organization_id,name)
+);
+
+CREATE TABLE sso_identities (
+  provider_id TEXT NOT NULL REFERENCES sso_providers(id) ON DELETE CASCADE,
+  subject TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES dashboard_users(id) ON DELETE CASCADE,
+  email_fingerprint TEXT,
+  created_at TEXT NOT NULL,
+  last_login_at TEXT,
+  PRIMARY KEY(provider_id,subject)
+);
+
+CREATE TABLE sso_login_states (
+  state_hash TEXT PRIMARY KEY,
+  provider_id TEXT NOT NULL REFERENCES sso_providers(id) ON DELETE CASCADE,
+  verifier TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT
+);
+
+CREATE TABLE notification_channels (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('WEBHOOK','SLACK','EMAIL','GITHUB','JIRA')),
+  endpoint TEXT,
+  secret_env TEXT,
+  configuration_json TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(organization_id,name)
+);
+
+CREATE TABLE notification_deliveries (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT,
+  safe_payload_json TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('PENDING','DELIVERING','DELIVERED','RETRY','FAILED')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  last_attempt_at TEXT,
+  delivered_at TEXT,
+  response_status INTEGER,
+  safe_error TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(channel_id,idempotency_key)
+);
+CREATE INDEX idx_notification_delivery_due ON notification_deliveries(status,next_attempt_at);
+
+CREATE TABLE remote_worker_enrollments (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  name_hint TEXT,
+  expires_at TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  consumed_at TEXT
+);
+
+CREATE TABLE remote_workers (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  public_key_pem TEXT NOT NULL,
+  public_key_fingerprint TEXT NOT NULL UNIQUE,
+  capabilities_json TEXT NOT NULL,
+  labels_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('ONLINE','OFFLINE','DRAINING','QUARANTINED','REVOKED')),
+  generation INTEGER NOT NULL DEFAULT 1,
+  last_seen_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_remote_workers_org ON remote_workers(organization_id,status,last_seen_at);
+
+CREATE TABLE remote_worker_nonces (
+  worker_id TEXT NOT NULL REFERENCES remote_workers(id) ON DELETE CASCADE,
+  nonce TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY(worker_id,nonce)
+);
+
+CREATE TABLE remote_jobs (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('SCAN','EXPORT','MODULE','PING')),
+  safe_payload_json TEXT NOT NULL,
+  required_capabilities_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('QUEUED','LEASED','RUNNING','COMPLETED','FAILED','CANCELLED')),
+  priority INTEGER NOT NULL DEFAULT 0,
+  assigned_worker_id TEXT REFERENCES remote_workers(id) ON DELETE SET NULL,
+  lease_token_hash TEXT,
+  lease_expires_at TEXT,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  safe_result_json TEXT,
+  safe_error TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT
+);
+CREATE INDEX idx_remote_jobs_dispatch ON remote_jobs(organization_id,status,priority DESC,created_at);
+
+CREATE TABLE cloud_sync_peers (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  endpoint TEXT NOT NULL,
+  shared_secret_env TEXT NOT NULL,
+  enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+  outbound_cursor INTEGER NOT NULL DEFAULT 0,
+  inbound_cursor INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(organization_id,name)
+);
+
+CREATE TABLE cloud_sync_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL UNIQUE,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK(operation IN ('UPSERT','DELETE')),
+  safe_payload_json TEXT NOT NULL,
+  payload_digest TEXT NOT NULL,
+  origin_installation_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_cloud_sync_events_org ON cloud_sync_events(organization_id,sequence);
+
+CREATE TABLE operational_backups (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK(status IN ('CREATING','READY','VERIFIED','RESTORE_STAGED','FAILED','DELETED')),
+  path TEXT,
+  manifest_digest TEXT,
+  byte_size INTEGER NOT NULL DEFAULT 0,
+  encrypted INTEGER NOT NULL CHECK(encrypted IN (0,1)),
+  key_version TEXT,
+  safe_error TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  verified_at TEXT,
+  restore_staged_at TEXT
+);
+
+CREATE TABLE integration_exports (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  format TEXT NOT NULL CHECK(format IN ('SARIF','JUNIT','BURP_XML','JSON')),
+  scan_id TEXT REFERENCES scans(id) ON DELETE RESTRICT,
+  path TEXT NOT NULL,
+  artifact_id TEXT REFERENCES artifacts(id) ON DELETE SET NULL,
+  item_count INTEGER NOT NULL,
+  content_hash TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE third_party_modules (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  module_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  manifest_json TEXT NOT NULL,
+  package_path TEXT NOT NULL,
+  package_digest TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('REGISTERED','APPROVED','DISABLED','QUARANTINED')),
+  approved_by TEXT,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(organization_id,module_id,version)
+);
+`
+  },
+  {
+    version: 31,
+    sql: `
+ALTER TABLE remote_workers ADD COLUMN resources_json TEXT;
+CREATE INDEX idx_remote_worker_nonces_expiry ON remote_worker_nonces(expires_at);
+CREATE INDEX idx_remote_jobs_lease_expiry ON remote_jobs(status,lease_expires_at);
+CREATE INDEX idx_sso_login_states_expiry ON sso_login_states(expires_at,consumed_at);
 `
   }
 ];

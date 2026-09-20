@@ -13,7 +13,8 @@ export type AdvancedEngineId =
   | "billing-entitlement-security"
   | "assisted-review"
   | "pre-handover-assault"
-  | "bug-bounty-authorization";
+  | "bug-bounty-authorization"
+  | "active-vulnerability-validation";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -213,7 +214,7 @@ export function advancedEngineRequestValues(drafts: readonly AdvancedEngineDraft
   const fields: Record<AdvancedEngineId, string> = {
     "supabase-authorization": "supabaseAuthorization", "authentication-lifecycle": "authenticationLifecycle", "authentication-lifecycle-automation": "authenticationLifecycleAutomation",
     "business-invariant": "businessInvariant", "controlled-race": "controlledRace", "api-graphql-authorization": "apiGraphql", "link-portal-export-security": "linkPortalSecurity",
-    "operational-endpoint-security": "operationalEndpointSecurity", "billing-entitlement-security": "billingEntitlement", "assisted-review": "assistedReview", "pre-handover-assault": "preHandover", "bug-bounty-authorization": "targetAuthorization"
+    "operational-endpoint-security": "operationalEndpointSecurity", "billing-entitlement-security": "billingEntitlement", "assisted-review": "assistedReview", "pre-handover-assault": "preHandover", "bug-bounty-authorization": "targetAuthorization", "active-vulnerability-validation": "activeVulnerability"
   };
   const result: Record<string, JsonObject> = {};
   for (const item of drafts.filter((candidate) => candidate.enabled)) {
@@ -276,6 +277,7 @@ function enumOptions(engineId: AdvancedEngineId, key: string, path: Array<string
     "link-portal-export-security": ["SIGNED_LINK_EXPIRY", "SIGNATURE_TAMPERING", "ID_SUBSTITUTION", "CROSS_TENANT_SIGNED_LINK", "SIGNED_LINK_REPLAY", "SIGNED_LINK_REVOCATION", "INVITE_EMAIL_BINDING", "INVITE_REPLAY", "INVITE_EXPIRATION", "PORTAL_TENANT_BINDING", "EXPORT_AUTHORIZATION", "EVIDENCE_ARTIFACT_AUTHORIZATION", "OBJECT_PATH_OWNERSHIP"],
     "operational-endpoint-security": ["WEBHOOK_SIGNATURE_REJECTION", "WEBHOOK_REPLAY_PROTECTION", "WEBHOOK_IDEMPOTENCY", "WEBHOOK_EVENT_ORDERING", "WEBHOOK_PAYLOAD_INTEGRITY", "CRON_AUTHENTICATION", "CRON_REPLAY_PROTECTION", "CRON_SCOPE_WORKLOAD_LIMIT", "JOB_AUTHORIZATION", "INCIDENT_ACCESS_CONTROL", "HEALTH_INFORMATION_EXPOSURE", "ADMIN_WORKER_AUTHORIZATION"],
     "billing-entitlement-security": ["CLIENT_PRICE_MANIPULATION", "PRODUCT_PLAN_SUBSTITUTION", "UNVERIFIED_PAYMENT_ENTITLEMENT", "CANCELLATION_ENTITLEMENT_PERSISTENCE", "DUPLICATE_WEBHOOK_PROCESSING", "REPLAYED_PAYMENT_EVENT", "CROSS_ACCOUNT_PREMIUM_ACCESS", "REFUND_DOWNGRADE_CONSISTENCY", "SUBSCRIPTION_OWNERSHIP_CONFUSION", "PAYMENT_EVENT_RACE"]
-  }; const contextual = key === "category" ? categories[engineId] ?? [] : key === "kind" ? (path.map(String).includes("endpoints") ? ["WEBHOOK", "CRON", "JOB", "INCIDENT", "HEALTH", "ADMIN", "WORKER", "CHECKOUT_VALIDATION", "SYNTHETIC_WEBHOOK", "ENTITLEMENT_STATE", "SUBSCRIPTION_STATE", "PREMIUM_ACCESS", "FIXTURE_CONTROL"] : path.map(String).includes("resources") ? ["SIGNED_LINK", "INVITE", "PORTAL", "EXPORT", "EVIDENCE_ARTIFACT", "OBJECT_PATH"] : path.map(String).includes("routes") ? ["OBJECT", "COLLECTION", "FUNCTION", "SCHEMA", "DOCUMENTATION"] : path.map(String).includes("checks") ? ["OBJECT_AUTHORIZATION", "FUNCTION_AUTHORIZATION", "FIELD_AUTHORIZATION", "TENANT_ISOLATION", "METHOD_CONFUSION", "GRAPHQL_INTROSPECTION", "GRAPHQL_ALIAS_LIMIT", "GRAPHQL_BATCH_LIMIT", "VERSION_BOUNDARY"] : []) : common[key] ?? [];
+    ,"active-vulnerability-validation": ["SQL_INJECTION", "NOSQL_INJECTION", "REFLECTED_XSS", "SSRF", "COMMAND_INJECTION", "TEMPLATE_INJECTION", "PATH_TRAVERSAL", "CSRF", "OPEN_REDIRECT", "CACHE_POISONING", "CACHE_DECEPTION", "UNSAFE_DESERIALIZATION", "XXE", "HTTP_DESYNCHRONIZATION"]
+  }; const contextual = key === "category" || key === "vulnerabilityClass" ? categories[engineId] ?? [] : key === "kind" ? (path.map(String).includes("endpoints") ? ["WEBHOOK", "CRON", "JOB", "INCIDENT", "HEALTH", "ADMIN", "WORKER", "CHECKOUT_VALIDATION", "SYNTHETIC_WEBHOOK", "ENTITLEMENT_STATE", "SUBSCRIPTION_STATE", "PREMIUM_ACCESS", "FIXTURE_CONTROL"] : path.map(String).includes("resources") ? ["SIGNED_LINK", "INVITE", "PORTAL", "EXPORT", "EVIDENCE_ARTIFACT", "OBJECT_PATH"] : path.map(String).includes("routes") ? ["OBJECT", "COLLECTION", "FUNCTION", "SCHEMA", "DOCUMENTATION"] : path.map(String).includes("checks") ? ["OBJECT_AUTHORIZATION", "FUNCTION_AUTHORIZATION", "FIELD_AUTHORIZATION", "TENANT_ISOLATION", "METHOD_CONFUSION", "GRAPHQL_INTROSPECTION", "GRAPHQL_ALIAS_LIMIT", "GRAPHQL_BATCH_LIMIT", "VERSION_BOUNDARY"] : []) : common[key] ?? [];
   const value = current === null ? "null" : String(current); return contextual.length && !contextual.includes(value) ? [value, ...contextual] : contextual;
 }

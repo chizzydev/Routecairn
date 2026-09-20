@@ -54,11 +54,35 @@ describe("dashboard-native advanced engines", () => {
     if (!parsed.success) expect(parsed.error.issues.some((issue) => issue.path.includes("supabaseAuthorization"))).toBe(true);
   });
 
+  it("plans inline safe inventory imports without persisting source documents in the safe summary", async () => {
+    const target = "https://app.example.test";
+    const request = dashboardScanCreateSchema.parse({
+      ...publicStudioRequest(target),
+      inventoryImport: {
+        schemaVersion: 1,
+        sources: [{ id: "openapi", kind: "OPENAPI", document: { openapi: "3.1.0", paths: { "/health": { get: { security: [], responses: { "200": {} } } } } } }]
+      }
+    });
+    const resolved = await resolveDashboardScanPlan(request);
+    expect(resolved.plan.modules.map((module) => module.id)).toContain("api-graphql-authorization");
+    expect(resolved.plan.apiGraphql?.checks).toHaveLength(1);
+    const safe = JSON.stringify(safeConfigurationSummary(request));
+    expect(safe).toContain('"sourceCount":1');
+    expect(safe).not.toContain("/health");
+  });
+
   it("previews physical request capacity for learned automation, pre-handover setup, and signed URL follows", () => {
     expect(exactWorkflowRequests("authentication-lifecycle", { source: "BROWSER_LEARNED", maxRequests: 12, cases: [] })).toBe(12);
     expect(exactWorkflowRequests("pre-handover-assault", { objects: [{}, {}] })).toBe(5);
     expect(exactWorkflowRequests("supabase-authorization", { cases: [{ signedUrl: { followOnce: true } }, {}] })).toBe(3);
     expect(exactWorkflowRequests("assisted-review", { cases: [{}] })).toBe(0);
+  });
+
+  it("accepts and binds an inline origin-isolated transport policy", async () => {
+    const request = dashboardScanCreateSchema.parse({ ...publicStudioRequest("https://app.example.test"), transport: { poolingEnabled: true, http2Enabled: true, maxOrigins: 12, maxConnectionsPerOrigin: 2, maxConcurrentHttp2Streams: 16, maxHeaderSizeBytes: 12288, keepAliveTimeoutMs: 5000, keepAliveMaxTimeoutMs: 15000, maxConnectionLifetimeMs: 60000, maxRequestsPerConnection: 250, dnsCacheTtlMs: 750 } });
+    const resolved = await resolveDashboardScanPlan(request);
+    expect(resolved.config.transport).toMatchObject({ http2Enabled: true, maxOrigins: 12, maxHeaderSizeBytes: 12288, dnsCacheTtlMs: 750 });
+    expect(safeConfigurationSummary(request).transport).toEqual(request.transport);
   });
 
   it("fails capability parity if any advanced engine loses its dashboard operation contract", () => {
