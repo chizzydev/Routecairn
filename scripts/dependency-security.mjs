@@ -51,6 +51,7 @@ function generateSbom(npmArguments, outputPath, scope, packageManifest) {
   const result = npm(npmArguments);
   if (result.status !== 0) fail(commandFailure(result, `npm ${npmArguments.join(" ")} failed.`));
   const document = parseJson(result.stdout, `${scope} SBOM`);
+  canonicalizeRootComponent(document, packageManifest);
   validateSbom(document, scope, packageManifest);
   const serialized = `${JSON.stringify(document, null, 2)}\n`;
   atomicText(outputPath, serialized);
@@ -62,6 +63,17 @@ function generateSbom(npmArguments, outputPath, scope, packageManifest) {
     componentCount: document.components.length,
     digest: createHash("sha256").update(serialized).digest("hex")
   };
+}
+
+function canonicalizeRootComponent(document, packageManifest) {
+  const root = document?.metadata?.component;
+  const name = String(packageManifest.name ?? "");
+  const version = String(packageManifest.version ?? "");
+  if (!root || root.version !== version || !name || !version) return;
+  let decodedPurl = "";
+  try { decodedPurl = decodeURIComponent(String(root.purl ?? "")); } catch { decodedPurl = ""; }
+  const packageIdentity = `${name}@${version}`;
+  if (root["bom-ref"] === packageIdentity || decodedPurl === `pkg:npm/${packageIdentity}`) root.name = name;
 }
 
 function validateSbom(document, scope, packageManifest) {
