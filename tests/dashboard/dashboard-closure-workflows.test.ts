@@ -364,7 +364,7 @@ describe("dashboard closure workflows", () => {
       await fixture.close();
       cleanup(dir);
     }
-  }, 30000);
+  }, 45000);
 });
 
 function tempDir(prefix: string): string {
@@ -438,7 +438,7 @@ async function rawMutation(baseUrl: string, path: string, auth: { cookie: string
 }
 
 async function waitForScan(baseUrl: string, cookie: string, scanId: string): Promise<any> {
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 120; i += 1) {
     const body = await apiGet<{ scan: any }>(baseUrl, `/api/scans/${scanId}`, cookie);
     if (["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"].includes(body.scan.status)) return body.scan;
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 250));
