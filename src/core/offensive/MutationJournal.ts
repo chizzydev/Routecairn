@@ -54,7 +54,7 @@ export class GlobalMutationLock {
   private lease: Database.Database | undefined;
   private distributedClient: DistributedMutationCoordinatorClient | undefined;
   private distributedLease: DistributedMutationLease | undefined;
-  private distributedHolderId = randomBytes(24).toString("base64url");
+  private distributedHolderId = `holder-${randomBytes(24).toString("base64url")}`;
   private renewalTimer: ReturnType<typeof setInterval> | undefined;
   public constructor(private readonly path: string, private readonly options: { distributed?: boolean; coordinator?: DistributedMutationCoordinatorClient } = {}) {}
 
