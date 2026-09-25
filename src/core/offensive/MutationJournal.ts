@@ -3,6 +3,7 @@ import { mkdir, open, readFile, readdir, rename, unlink } from "node:fs/promises
 import { dirname, join, resolve } from "node:path";
 import type { MutationJournalEntry } from "./ControlledMutationTypes.js";
 import { MutationJournalRegistry, mutationRegistryPaths } from "./MutationJournalRegistry.js";
+import { distributedMutationCoordinatorFromEnvironment, type DistributedMutationCoordinatorClient, type DistributedMutationLease, type DistributedMutationReleaseState } from "./DistributedMutationCoordinator.js";
 import Database from "better-sqlite3";
 
 export class MutationJournal {
@@ -51,7 +52,11 @@ const journalStages = new Set<string>(["AUTHORIZED", "ACTOR_IDENTITY_VERIFIED", 
 export class GlobalMutationLock {
   private handle: Awaited<ReturnType<typeof open>> | undefined;
   private lease: Database.Database | undefined;
-  public constructor(private readonly path: string) {}
+  private distributedClient: DistributedMutationCoordinatorClient | undefined;
+  private distributedLease: DistributedMutationLease | undefined;
+  private distributedHolderId = randomBytes(24).toString("base64url");
+  private renewalTimer: ReturnType<typeof setInterval> | undefined;
+  public constructor(private readonly path: string, private readonly options: { distributed?: boolean; coordinator?: DistributedMutationCoordinatorClient } = {}) {}
 
   public async acquire(caseId: string, recovery = false): Promise<void> {
     if (this.lease) throw new Error("MUTATION_LOCK_HELD: global lock already held.");
@@ -91,11 +96,26 @@ export class GlobalMutationLock {
           if (files.some((file) => file.endsWith(".recovery.enc") && latest.get(file.slice(0, -13))?.stage !== "ROLLBACK_VERIFIED")) throw new Error("UNRESOLVED_RECOVERY_CHECKPOINT");
         }
       }
+      const distributed = this.distributedCoordinator();
+      if (distributed) {
+        this.distributedClient = distributed;
+        this.distributedLease = await distributed.acquire(caseId, this.distributedHolderId, recovery);
+        this.startRenewal();
+      }
     } catch (error) { await this.release(); throw error; }
   }
 
   public async release(): Promise<void> {
+    let distributedError: unknown;
     try {
+      this.stopRenewal();
+      if (this.distributedClient && this.distributedLease) {
+        const cleanup = await distributedReleaseState(dirname(this.path));
+        try { await this.distributedClient.release(this.distributedLease, this.distributedHolderId, cleanup); }
+        catch (error) { distributedError = error; }
+      }
+      this.distributedLease = undefined;
+      this.distributedClient = undefined;
       if (this.handle) {
         await this.handle.close();
         this.handle = undefined;
@@ -104,7 +124,25 @@ export class GlobalMutationLock {
     } finally {
       if (this.lease) { this.lease.close(); this.lease = undefined; }
     }
+    if (distributedError) throw distributedError;
   }
+
+  private distributedCoordinator(): DistributedMutationCoordinatorClient | undefined {
+    if (this.options.distributed === false || isAuxiliaryLock(this.path)) return undefined;
+    return this.options.coordinator ?? distributedMutationCoordinatorFromEnvironment();
+  }
+
+  private startRenewal(): void {
+    this.stopRenewal();
+    this.renewalTimer = setInterval(() => {
+      const client = this.distributedClient, lease = this.distributedLease;
+      if (!client || !lease) return;
+      void client.renew(lease, this.distributedHolderId).then((result) => { lease.expiresAt = result.expiresAt; }).catch(() => undefined);
+    }, 30_000);
+    this.renewalTimer.unref();
+  }
+
+  private stopRenewal(): void { if (this.renewalTimer) clearInterval(this.renewalTimer); this.renewalTimer = undefined; }
 }
 
 export function safeRequestUrl(rawUrl: string): string {
@@ -140,4 +178,22 @@ function isMissing(error: unknown): boolean { return typeof error === "object" &
 function processIsAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; }
   catch (error) { return !(typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH"); }
+}
+
+function isAuxiliaryLock(path: string): boolean { return /\.(?:append|registration|creation)\.lock$/i.test(path); }
+
+async function distributedReleaseState(root: string): Promise<DistributedMutationReleaseState> {
+  try {
+    const registered = (await Promise.all(mutationRegistryPaths(root).map((path) => new MutationJournalRegistry(path).directories()))).flat();
+    const obligations = new Map<string, string>();
+    for (const directory of new Set([resolve(root), ...registered.map((value) => resolve(value))])) {
+      const entries = await new MutationJournal(join(directory, "mutation-journal.json")).read();
+      const latest = new Map(entries.map((entry) => [entry.caseId, entry]));
+      for (const unresolved of [...latest.values()].filter((entry) => cleanupObligationStages.has(entry.stage))) obligations.set(unresolved.caseId, unresolved.stage);
+      const files = await readdir(directory).catch((error: unknown) => { if (isMissing(error)) return []; throw error; });
+      for (const file of files.filter((name) => name.endsWith(".recovery.enc") && latest.get(name.slice(0, -13))?.stage !== "ROLLBACK_VERIFIED")) obligations.set(file.slice(0, -13), "MUTATION_STATE_UNCERTAIN");
+    }
+    if (obligations.size) return { state: "UNRESOLVED", obligations: [...obligations].map(([caseId, stage]) => ({ caseId, stage })) };
+    return { state: "CLEAN" };
+  } catch { return { state: "UNKNOWN", stage: "MUTATION_STATE_UNCERTAIN" }; }
 }
