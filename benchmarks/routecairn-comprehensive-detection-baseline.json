@@ -1,0 +1,1967 @@
+{
+  "schemaVersion": 1,
+  "kind": "ROUTECAIRN_BENCHMARK_RESULT",
+  "benchmarkId": "routecairn-comprehensive-detection-lab",
+  "label": "RouteCairn comprehensive detection benchmark",
+  "generatedAt": "2026-09-20T14:26:59.332Z",
+  "release": {
+    "label": "0.1.0-comprehensive-baseline",
+    "build": "comprehensive-baseline",
+    "routeCairnVersion": "0.1.0"
+  },
+  "manifestDigest": "5d59342ff03d19e0b5aec8f00e557ebbd26c4f55da6f58cdb0159e63fbe05e0e",
+  "reportDigests": [
+    "78581f95cafb35226ed531a1af73c6256ec089bbe2b26721eb29be4da836926b",
+    "45eb5202b41a84fda971f1900c59aea74917f53fccec431d49e1c84283e25f9b",
+    "8798dd7a7d84fdea869e03df86cde121686ded479459e7bf774dd87f257f755a"
+  ],
+  "repetitions": 3,
+  "runTelemetry": [
+    {
+      "runtimeMs": 78894.6306,
+      "peakRssBytes": 230879232,
+      "requestCount": 80,
+      "transmittedRequestCount": 118,
+      "cpuUserMicros": 4594000,
+      "cpuSystemMicros": 2688000
+    },
+    {
+      "runtimeMs": 79132.926,
+      "peakRssBytes": 185384960,
+      "requestCount": 80,
+      "transmittedRequestCount": 118,
+      "cpuUserMicros": 4594000,
+      "cpuSystemMicros": 3281000
+    },
+    {
+      "runtimeMs": 78803.8065,
+      "peakRssBytes": 176136192,
+      "requestCount": 80,
+      "transmittedRequestCount": 118,
+      "cpuUserMicros": 3031000,
+      "cpuSystemMicros": 2437000
+    }
+  ],
+  "confusion": {
+    "truePositive": 45,
+    "falseNegative": 0,
+    "falsePositive": 0,
+    "trueNegative": 45,
+    "inconclusive": 0,
+    "uncovered": 0,
+    "unexpectedFindings": 0
+  },
+  "metrics": {
+    "recall": 1,
+    "precision": 1,
+    "falsePositiveRate": 0,
+    "inconclusiveRate": 0,
+    "coverageCompleteness": 1,
+    "conclusiveCoverage": 1,
+    "stabilityRate": 1
+  },
+  "cleanup": {
+    "observed": 18,
+    "passed": 18,
+    "failed": 0,
+    "successRate": 1
+  },
+  "categories": [
+    {
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "BILLING_AUTHORIZATION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "BROWSER",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "FUNCTION_AUTHORIZATION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "OBJECT_AUTHORIZATION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "OPEN_REDIRECT",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "PROTOCOL_GRAPHQL_MUTATION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "PROTOCOL_MULTIPART",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "PROTOCOL_SSE",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "RACE_CONDITION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "SIGNED_LINK",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "SQL_INJECTION",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "SUPABASE_RPC",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "SUPABASE_STORAGE",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    },
+    {
+      "category": "SUPABASE_TABLE_RLS",
+      "caseCount": 2,
+      "positiveCases": 1,
+      "negativeCases": 1,
+      "confusion": {
+        "truePositive": 3,
+        "falseNegative": 0,
+        "falsePositive": 0,
+        "trueNegative": 3,
+        "inconclusive": 0,
+        "uncovered": 0
+      },
+      "metrics": {
+        "recall": 1,
+        "falsePositiveRate": 0,
+        "inconclusiveRate": 0,
+        "coverageCompleteness": 1,
+        "stabilityRate": 1
+      }
+    }
+  ],
+  "efficiency": {
+    "runtimeMs": {
+      "min": 78803.8065,
+      "median": 78894.6306,
+      "p95": 79109.09646,
+      "max": 79132.926,
+      "mean": 78943.7877
+    },
+    "peakRssBytes": {
+      "min": 176136192,
+      "median": 185384960,
+      "p95": 226329804.8,
+      "max": 230879232,
+      "mean": 197466794.66666666
+    },
+    "requestCount": {
+      "min": 80,
+      "median": 80,
+      "p95": 80,
+      "max": 80,
+      "mean": 80
+    },
+    "transmittedRequestCount": {
+      "min": 118,
+      "median": 118,
+      "p95": 118,
+      "max": 118,
+      "mean": 118
+    },
+    "requestsPerAssessedCase": {
+      "min": 2.6666666666666665,
+      "median": 2.6666666666666665,
+      "p95": 2.6666666666666665,
+      "max": 2.6666666666666665,
+      "mean": 2.6666666666666665
+    },
+    "runtimePerRequestMs": {
+      "min": 667.8288686440678,
+      "median": 668.5985644067797,
+      "p95": 670.4160716949152,
+      "max": 670.6180169491525,
+      "mean": 669.0151500000001
+    }
+  },
+  "cases": [
+    {
+      "id": "object-vulnerable",
+      "label": "Detect cross-tenant object authorization bypass",
+      "expected": "FINDING",
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "rest",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-d2491bb731ec"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-d2491bb731ec"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-d2491bb731ec"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "object-secure",
+      "label": "Accept correctly denied cross-tenant object access",
+      "expected": "NO_FINDING",
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "rest",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "admin-vulnerable",
+      "label": "Detect privileged function authorization bypass",
+      "expected": "FINDING",
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "rest",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-2a080aec8831"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-2a080aec8831"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "api-graphql-2a080aec8831"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "admin-secure",
+      "label": "Accept correctly denied privileged function access",
+      "expected": "NO_FINDING",
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "rest",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "sql-vulnerable",
+      "label": "Detect database error differential",
+      "expected": "FINDING",
+      "category": "SQL_INJECTION",
+      "tags": [
+        "active",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-7f1459014488a9f6"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-7f1459014488a9f6"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-7f1459014488a9f6"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "sql-secure",
+      "label": "Accept neutralized SQL canary",
+      "expected": "NO_FINDING",
+      "category": "SQL_INJECTION",
+      "tags": [
+        "active",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "redirect-vulnerable",
+      "label": "Detect an untrusted external redirect",
+      "expected": "FINDING",
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "active",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-3fe377250b2b6024"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-3fe377250b2b6024"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "active-3fe377250b2b6024"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "redirect-secure",
+      "label": "Accept a same-origin redirect boundary",
+      "expected": "NO_FINDING",
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "active",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-sse-vulnerable",
+      "label": "Detect SSE authorization bypass",
+      "expected": "FINDING",
+      "category": "PROTOCOL_SSE",
+      "tags": [
+        "protocol",
+        "sse",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-7fa9bc34c6cd"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-7fa9bc34c6cd"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-7fa9bc34c6cd"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-sse-secure",
+      "label": "Accept secure SSE authorization bypass control",
+      "expected": "NO_FINDING",
+      "category": "PROTOCOL_SSE",
+      "tags": [
+        "protocol",
+        "sse",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-graphql-vulnerable",
+      "label": "Detect GraphQL mutation authorization bypass",
+      "expected": "FINDING",
+      "category": "PROTOCOL_GRAPHQL_MUTATION",
+      "tags": [
+        "protocol",
+        "graphql",
+        "cleanup",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-4c4194835820"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-4c4194835820"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-4c4194835820"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-graphql-secure",
+      "label": "Accept secure GraphQL mutation authorization bypass control",
+      "expected": "NO_FINDING",
+      "category": "PROTOCOL_GRAPHQL_MUTATION",
+      "tags": [
+        "protocol",
+        "graphql",
+        "cleanup",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-multipart-vulnerable",
+      "label": "Detect multipart authorization bypass",
+      "expected": "FINDING",
+      "category": "PROTOCOL_MULTIPART",
+      "tags": [
+        "protocol",
+        "multipart",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-2f2b49f5e8d8"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-2f2b49f5e8d8"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "protocol-2f2b49f5e8d8"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "protocol-multipart-secure",
+      "label": "Accept secure multipart authorization bypass control",
+      "expected": "NO_FINDING",
+      "category": "PROTOCOL_MULTIPART",
+      "tags": [
+        "protocol",
+        "multipart",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-table-vulnerable",
+      "label": "Detect Supabase table RLS bypass",
+      "expected": "FINDING",
+      "category": "SUPABASE_TABLE_RLS",
+      "tags": [
+        "supabase",
+        "rls",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-table-vulnerable"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-table-vulnerable"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-table-vulnerable"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-table-secure",
+      "label": "Accept secure Supabase table RLS bypass control",
+      "expected": "NO_FINDING",
+      "category": "SUPABASE_TABLE_RLS",
+      "tags": [
+        "supabase",
+        "rls",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-storage-vulnerable",
+      "label": "Detect Supabase storage isolation bypass",
+      "expected": "FINDING",
+      "category": "SUPABASE_STORAGE",
+      "tags": [
+        "supabase",
+        "storage",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-storage-vulnerable"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-storage-vulnerable"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-storage-vulnerable"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-storage-secure",
+      "label": "Accept secure Supabase storage isolation bypass control",
+      "expected": "NO_FINDING",
+      "category": "SUPABASE_STORAGE",
+      "tags": [
+        "supabase",
+        "storage",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-rpc-vulnerable",
+      "label": "Detect Supabase RPC authorization bypass",
+      "expected": "FINDING",
+      "category": "SUPABASE_RPC",
+      "tags": [
+        "supabase",
+        "rpc",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-rpc-vulnerable"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-rpc-vulnerable"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "supabase-supabase-rpc-vulnerable"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "supabase-rpc-secure",
+      "label": "Accept secure Supabase RPC authorization bypass control",
+      "expected": "NO_FINDING",
+      "category": "SUPABASE_RPC",
+      "tags": [
+        "supabase",
+        "rpc",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "auth-enumeration-vulnerable",
+      "label": "Detect login enumeration differential",
+      "expected": "FINDING",
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "authentication",
+        "lifecycle",
+        "cleanup",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-50156a7b73d3"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-50156a7b73d3"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-50156a7b73d3"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "auth-enumeration-secure",
+      "label": "Accept secure login enumeration differential control",
+      "expected": "NO_FINDING",
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "authentication",
+        "lifecycle",
+        "cleanup",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "signed-expiry-vulnerable",
+      "label": "Detect expired signed-link acceptance",
+      "expected": "FINDING",
+      "category": "SIGNED_LINK",
+      "tags": [
+        "signed-link",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0a8714824e49"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0a8714824e49"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0a8714824e49"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "signed-expiry-secure",
+      "label": "Accept secure expired signed-link acceptance control",
+      "expected": "NO_FINDING",
+      "category": "SIGNED_LINK",
+      "tags": [
+        "signed-link",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "billing-premium-vulnerable",
+      "label": "Detect cross-account premium access",
+      "expected": "FINDING",
+      "category": "BILLING_AUTHORIZATION",
+      "tags": [
+        "billing",
+        "entitlement",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9d6f8411e376"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9d6f8411e376"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9d6f8411e376"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "billing-premium-secure",
+      "label": "Accept secure cross-account premium access control",
+      "expected": "NO_FINDING",
+      "category": "BILLING_AUTHORIZATION",
+      "tags": [
+        "billing",
+        "entitlement",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "race-vulnerable",
+      "label": "Detect one-time token race",
+      "expected": "FINDING",
+      "category": "RACE_CONDITION",
+      "tags": [
+        "race",
+        "cleanup",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9b0f0c9fc250"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9b0f0c9fc250"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-9b0f0c9fc250"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "race-secure",
+      "label": "Accept secure one-time token race control",
+      "expected": "NO_FINDING",
+      "category": "RACE_CONDITION",
+      "tags": [
+        "race",
+        "cleanup",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    },
+    {
+      "id": "browser-secret-exposure",
+      "label": "Detect a server credential in a browser-delivered bundle",
+      "expected": "FINDING",
+      "category": "BROWSER",
+      "tags": [
+        "browser",
+        "secret-boundary",
+        "positive"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0159e9a24031",
+            "finding-10f2ca63ec47",
+            "finding-8e3e12cc98d5"
+          ]
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0159e9a24031",
+            "finding-10f2ca63ec47",
+            "finding-8e3e12cc98d5"
+          ]
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_POSITIVE",
+          "observed": "FINDING",
+          "matchedFindingIds": [
+            "finding-0159e9a24031",
+            "finding-10f2ca63ec47",
+            "finding-8e3e12cc98d5"
+          ]
+        }
+      ],
+      "aggregate": "TRUE_POSITIVE",
+      "stable": true
+    },
+    {
+      "id": "browser-authenticated-bootstrap",
+      "label": "Accept a successful authenticated browser bootstrap",
+      "expected": "NO_FINDING",
+      "category": "BROWSER",
+      "tags": [
+        "browser",
+        "authentication",
+        "negative-control"
+      ],
+      "required": true,
+      "runs": [
+        {
+          "run": 1,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 2,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        },
+        {
+          "run": 3,
+          "classification": "TRUE_NEGATIVE",
+          "observed": "NO_FINDING",
+          "matchedFindingIds": []
+        }
+      ],
+      "aggregate": "TRUE_NEGATIVE",
+      "stable": true
+    }
+  ],
+  "unexpectedFindings": [],
+  "gates": [
+    {
+      "id": "recall",
+      "passed": true,
+      "actual": 1,
+      "expected": ">= 1"
+    },
+    {
+      "id": "false-positive-rate",
+      "passed": true,
+      "actual": 0,
+      "expected": "<= 0"
+    },
+    {
+      "id": "inconclusive-rate",
+      "passed": true,
+      "actual": 0,
+      "expected": "<= 0"
+    },
+    {
+      "id": "coverage-completeness",
+      "passed": true,
+      "actual": 1,
+      "expected": ">= 1"
+    },
+    {
+      "id": "minimum-repetitions",
+      "passed": true,
+      "actual": 3,
+      "expected": ">= 3"
+    },
+    {
+      "id": "cleanup-observations",
+      "passed": true,
+      "actual": 18,
+      "expected": ">= 18"
+    },
+    {
+      "id": "cleanup-failures",
+      "passed": true,
+      "actual": 0,
+      "expected": "<= 0"
+    },
+    {
+      "id": "p95-runtime",
+      "passed": true,
+      "actual": 79109.09646,
+      "expected": "<= 180000 ms"
+    },
+    {
+      "id": "peak-rss",
+      "passed": true,
+      "actual": 230879232,
+      "expected": "<= 2000000000 bytes"
+    },
+    {
+      "id": "request-efficiency",
+      "passed": true,
+      "actual": 2.6666666666666665,
+      "expected": "<= 12 requests/assessed case"
+    },
+    {
+      "id": "category-size/AUTHENTICATION_LIFECYCLE",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/AUTHENTICATION_LIFECYCLE",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/BILLING_AUTHORIZATION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/BILLING_AUTHORIZATION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/BROWSER",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/BROWSER",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/FUNCTION_AUTHORIZATION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/FUNCTION_AUTHORIZATION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/OBJECT_AUTHORIZATION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/OBJECT_AUTHORIZATION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/OPEN_REDIRECT",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/OPEN_REDIRECT",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/PROTOCOL_GRAPHQL_MUTATION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/PROTOCOL_GRAPHQL_MUTATION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/PROTOCOL_MULTIPART",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/PROTOCOL_MULTIPART",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/PROTOCOL_SSE",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/PROTOCOL_SSE",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/RACE_CONDITION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/RACE_CONDITION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/SIGNED_LINK",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/SIGNED_LINK",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/SQL_INJECTION",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/SQL_INJECTION",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/SUPABASE_RPC",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/SUPABASE_RPC",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/SUPABASE_STORAGE",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/SUPABASE_STORAGE",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "category-size/SUPABASE_TABLE_RLS",
+      "passed": true,
+      "actual": 2,
+      "expected": ">= 2"
+    },
+    {
+      "id": "category-balance/SUPABASE_TABLE_RLS",
+      "passed": true,
+      "actual": true,
+      "expected": "at least one FINDING and one NO_FINDING case"
+    },
+    {
+      "id": "required-case/object-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/object-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/admin-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/admin-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/sql-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/sql-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/redirect-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/redirect-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/protocol-sse-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/protocol-sse-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/protocol-graphql-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/protocol-graphql-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/protocol-multipart-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/protocol-multipart-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/supabase-table-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/supabase-table-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/supabase-storage-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/supabase-storage-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/supabase-rpc-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/supabase-rpc-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/auth-enumeration-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/auth-enumeration-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/signed-expiry-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/signed-expiry-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/billing-premium-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/billing-premium-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/race-vulnerable",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/race-secure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    },
+    {
+      "id": "required-case/browser-secret-exposure",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_POSITIVE"
+    },
+    {
+      "id": "required-case/browser-authenticated-bootstrap",
+      "passed": true,
+      "actual": true,
+      "expected": "TRUE_NEGATIVE"
+    }
+  ],
+  "regressions": [],
+  "status": "PASSED"
+}

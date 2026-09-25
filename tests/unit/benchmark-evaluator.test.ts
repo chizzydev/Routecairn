@@ -8,6 +8,7 @@ describe("benchmark evaluator", () => {
     expect(result.confusion).toMatchObject({ truePositive: 1, falseNegative: 1, falsePositive: 1, trueNegative: 1, inconclusive: 1, uncovered: 1, unexpectedFindings: 1 });
     expect(result.metrics).toMatchObject({ recall: 0.25, falsePositiveRate: 0.5, inconclusiveRate: 0.2, coverageCompleteness: 0.8, conclusiveCoverage: 0.6, stabilityRate: 1 });
     expect(result.efficiency.requestsPerAssessedCase.mean).toBeCloseTo(10 / 3);
+    expect(result.cleanup).toEqual({ observed: 0, passed: 0, failed: 0, successRate: 0 });
     expect(result.gates.find((gate) => gate.id === "required-case/missed")?.passed).toBe(false);
     expect(result.status).toBe("FAILED");
   });
@@ -20,6 +21,47 @@ describe("benchmark evaluator", () => {
     expect(current.regressions.find((gate) => gate.id === "case-regressions")?.passed).toBe(false);
     expect(current.regressions.find((gate) => gate.id === "runtime-increase")?.passed).toBe(false);
     expect(current.status).toBe("FAILED");
+  });
+
+  it("gates repetition count and balanced category coverage", () => {
+    const balanced = {
+      ...manifest(),
+      cases: manifest().cases.slice(0, 2).map((item) => ({ ...item, category: "AUTH" })),
+      thresholds: { minRecall: 1, maxFalsePositiveRate: 0, maxInconclusiveRate: 0, minCoverageCompleteness: 1, minRepetitions: 3, minCasesPerCategory: 2, requireBalancedCategories: true }
+    };
+    const balancedReport = report();
+    balancedReport.findings = balancedReport.findings.filter((item) => item.workflow?.caseId !== "unexpected");
+    const run = { report: balancedReport, telemetry: { runtimeMs: 100, peakRssBytes: 1_000, requestCount: 10 } };
+    const insufficient = evaluateBenchmark(balanced, [run]);
+    expect(insufficient.status).toBe("FAILED");
+    expect(insufficient.gates.filter((gate) => !gate.passed)).toEqual([expect.objectContaining({ id: "minimum-repetitions" })]);
+    expect(insufficient.categories).toEqual([expect.objectContaining({ category: "AUTH", caseCount: 2, positiveCases: 1, negativeCases: 1 })]);
+
+    const repeated = evaluateBenchmark(balanced, [run, run, run]);
+    expect(repeated.status).toBe("PASSED");
+    expect(repeated.metrics.stabilityRate).toBe(1);
+  });
+
+  it("fails the release gate when a covered workflow leaves cleanup unresolved", () => {
+    const cleanupReport = {
+      ...report(),
+      findings: [],
+      apiGraphql: { checks: [], schemaComparisons: [] },
+      controlledRace: { observations: [{ caseId: "cleanup-case", label: "cleanup-case", outcome: "PASS", cleanupOutcome: "CLEANUP_FAILED", comparisonFingerprint: "cleanup-fingerprint" }] }
+    } as unknown as RouteCairnReport;
+    const cleanupManifest = {
+      schemaVersion: 1 as const,
+      id: "cleanup-fixture",
+      label: "Cleanup fixture",
+      cases: [{ id: "cleanup-case", label: "cleanup-case", expected: "NO_FINDING" as const, selectors: [{ workflowId: "controlled-race", caseId: "cleanup-case" }], category: "CLEANUP", tags: [], required: true }],
+      thresholds: { minRecall: 0, maxFalsePositiveRate: 0, maxInconclusiveRate: 0, minCoverageCompleteness: 1, minCleanupObservationsPerRun: 1, maxCleanupFailures: 0 },
+      regression: {},
+      metadata: {}
+    };
+    const result = evaluateBenchmark(cleanupManifest, [{ report: cleanupReport, telemetry: { runtimeMs: 10, peakRssBytes: 100, requestCount: 1 } }]);
+    expect(result.cleanup).toEqual({ observed: 1, passed: 0, failed: 1, successRate: 0 });
+    expect(result.gates.find((gate) => gate.id === "cleanup-failures")?.passed).toBe(false);
+    expect(result.status).toBe("FAILED");
   });
 });
 

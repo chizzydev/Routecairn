@@ -24,6 +24,11 @@ export const benchmarkThresholdsSchema = z.object({
   maxFalsePositiveRate: z.number().min(0).max(1).default(1),
   maxInconclusiveRate: z.number().min(0).max(1).default(1),
   minCoverageCompleteness: z.number().min(0).max(1).default(0),
+  minRepetitions: z.number().int().min(1).max(20).default(1),
+  minCasesPerCategory: z.number().int().min(1).max(5000).default(1),
+  requireBalancedCategories: z.boolean().default(false),
+  minCleanupObservationsPerRun: z.number().int().min(0).max(5000).default(0),
+  maxCleanupFailures: z.number().int().min(0).max(5000).default(0),
   maxMedianRuntimeMs: z.number().nonnegative().optional(),
   maxP95RuntimeMs: z.number().nonnegative().optional(),
   maxPeakRssBytes: z.number().int().nonnegative().optional(),
@@ -72,4 +77,3 @@ export type BenchmarkTruthCase = z.infer<typeof benchmarkTruthCaseSchema>;
 export type BenchmarkSelector = z.infer<typeof benchmarkSelectorSchema>;
 export type BenchmarkTelemetry = z.infer<typeof benchmarkTelemetrySchema>;
 export type BenchmarkClassification = "TRUE_POSITIVE" | "FALSE_NEGATIVE" | "FALSE_POSITIVE" | "TRUE_NEGATIVE" | "INCONCLUSIVE" | "UNCOVERED";
-

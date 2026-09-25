@@ -9,12 +9,15 @@ export interface BenchmarkCaseRun { run: number; classification: BenchmarkClassi
 export interface BenchmarkCaseResult { id: string; label: string; expected: "FINDING" | "NO_FINDING"; category?: string; tags: string[]; required: boolean; runs: BenchmarkCaseRun[]; aggregate: BenchmarkClassification; stable: boolean }
 export interface BenchmarkGate { id: string; passed: boolean; actual: number | boolean; expected: string }
 export interface BenchmarkRegression { id: string; passed: boolean; actual: number | boolean; expected: string }
+export interface BenchmarkCategoryResult { category: string; caseCount: number; positiveCases: number; negativeCases: number; confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number }; metrics: { recall: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; stabilityRate: number } }
 export interface BenchmarkResult {
   schemaVersion: 1; kind: "ROUTECAIRN_BENCHMARK_RESULT"; benchmarkId: string; label: string; generatedAt: string; release: { label?: string; build?: string; routeCairnVersion: string };
   manifestDigest: string; reportDigests: string[]; repetitions: number;
   runTelemetry: BenchmarkTelemetry[];
   confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number; unexpectedFindings: number };
   metrics: { recall: number; precision: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; conclusiveCoverage: number; stabilityRate: number };
+  cleanup: { observed: number; passed: number; failed: number; successRate: number };
+  categories: BenchmarkCategoryResult[];
   efficiency: { runtimeMs: Distribution; peakRssBytes: Distribution; requestCount: Distribution; transmittedRequestCount: Distribution; requestsPerAssessedCase: Distribution; runtimePerRequestMs: Distribution };
   cases: BenchmarkCaseResult[]; unexpectedFindings: Array<{ run: number; findingId: string; sourceModule: string; findingType: string; workflowId?: string; caseId?: string }>;
   gates: BenchmarkGate[]; regressions: BenchmarkRegression[]; status: "PASSED" | "FAILED";
@@ -50,13 +53,16 @@ export function evaluateBenchmark(rawManifest: unknown, rawRuns: readonly Benchm
     conclusiveCoverage: ratio(assessed, total),
     stabilityRate: ratio(cases.filter((item) => item.stable).length, cases.length)
   };
+  const categories = categoryResults(cases);
+  const cleanupCases = runs.flatMap((run) => collectReportAssistedCases(run.report).filter((observed) => observed.cleanupOutcome !== undefined && observed.cleanupOutcome !== "NOT_REQUIRED" && manifest.cases.some((truth) => truth.selectors.some((selector) => caseMatches(observed.workflowId, observed.caseId, selector)))));
+  const cleanup = { observed: cleanupCases.length, passed: cleanupCases.filter((item) => !item.cleanupFailed).length, failed: cleanupCases.filter((item) => item.cleanupFailed).length, successRate: ratio(cleanupCases.filter((item) => !item.cleanupFailed).length, cleanupCases.length) };
   const assessedByRun = runs.map((_, i) => cases.filter((item) => !["INCONCLUSIVE", "UNCOVERED"].includes(item.runs[i]!.classification)).length);
   const runtime = runs.map((run) => run.telemetry.runtimeMs);
   const requests = runs.map((run) => run.telemetry.requestCount);
   const transmitted = runs.map((run) => run.telemetry.transmittedRequestCount ?? run.telemetry.requestCount);
   const efficiency = { runtimeMs: distribution(runtime), peakRssBytes: distribution(runs.map((run) => run.telemetry.peakRssBytes)), requestCount: distribution(requests), transmittedRequestCount: distribution(transmitted), requestsPerAssessedCase: distribution(requests.map((value, i) => ratio(value, assessedByRun[i]!))), runtimePerRequestMs: distribution(runtime.map((value, i) => ratio(value, transmitted[i]!))) };
-  const gates = thresholdGates(manifest, metrics, efficiency, cases);
-  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, efficiency, cases, unexpectedFindings, gates };
+  const gates = thresholdGates(manifest, metrics, cleanup, efficiency, cases, categories, runs.length);
+  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, cleanup, categories, efficiency, cases, unexpectedFindings, gates };
   const regressions = options.baseline ? regressionGates(manifest, partial, options.baseline) : [];
   return { ...partial, regressions, status: [...gates, ...regressions].every((item) => item.passed) ? "PASSED" : "FAILED" };
 }
@@ -85,6 +91,14 @@ function ratio(numerator: number, denominator: number): number { return denomina
 function distribution(values: readonly number[]): Distribution { const sorted = [...values].sort((a, b) => a - b); return { min: sorted[0] ?? 0, median: percentile(sorted, 0.5), p95: percentile(sorted, 0.95), max: sorted.at(-1) ?? 0, mean: ratio(sorted.reduce((sum, value) => sum + value, 0), sorted.length) }; }
 function percentile(sorted: readonly number[], quantile: number): number { if (!sorted.length) return 0; const index = (sorted.length - 1) * quantile; const low = Math.floor(index); const high = Math.ceil(index); return sorted[low]! + (sorted[high]! - sorted[low]!) * (index - low); }
 function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+function categoryResults(cases: readonly BenchmarkCaseResult[]): BenchmarkCategoryResult[] {
+  return [...new Set(cases.map((item) => item.category ?? "UNCATEGORIZED"))].sort().map((category) => {
+    const selected = cases.filter((item) => (item.category ?? "UNCATEGORIZED") === category); const runs = selected.flatMap((item) => item.runs);
+    const count = (classification: BenchmarkClassification) => runs.filter((item) => item.classification === classification).length;
+    const confusion = { truePositive: count("TRUE_POSITIVE"), falseNegative: count("FALSE_NEGATIVE"), falsePositive: count("FALSE_POSITIVE"), trueNegative: count("TRUE_NEGATIVE"), inconclusive: count("INCONCLUSIVE"), uncovered: count("UNCOVERED") }; const total = runs.length;
+    return { category, caseCount: selected.length, positiveCases: selected.filter((item) => item.expected === "FINDING").length, negativeCases: selected.filter((item) => item.expected === "NO_FINDING").length, confusion, metrics: { recall: ratio(confusion.truePositive, confusion.truePositive + confusion.falseNegative + selected.filter((item) => item.expected === "FINDING").flatMap((item) => item.runs).filter((item) => ["INCONCLUSIVE", "UNCOVERED"].includes(item.classification)).length), falsePositiveRate: ratio(confusion.falsePositive, confusion.falsePositive + confusion.trueNegative), inconclusiveRate: ratio(confusion.inconclusive, total), coverageCompleteness: ratio(total - confusion.uncovered, total), stabilityRate: ratio(selected.filter((item) => item.stable).length, selected.length) } };
+  });
+}
 
 function assertUnambiguousSelectors(manifest: BenchmarkManifest, reports: readonly RouteCairnReport[]): void {
   for (const report of reports) {
@@ -99,17 +113,24 @@ function assertUnambiguousSelectors(manifest: BenchmarkManifest, reports: readon
   }
 }
 
-function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["metrics"], efficiency: BenchmarkResult["efficiency"], cases: readonly BenchmarkCaseResult[]): BenchmarkGate[] {
+function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["metrics"], cleanup: BenchmarkResult["cleanup"], efficiency: BenchmarkResult["efficiency"], cases: readonly BenchmarkCaseResult[], categories: readonly BenchmarkCategoryResult[], repetitions: number): BenchmarkGate[] {
   const t = manifest.thresholds; const gates: BenchmarkGate[] = [
     { id: "recall", passed: metrics.recall >= t.minRecall, actual: metrics.recall, expected: `>= ${t.minRecall}` },
     { id: "false-positive-rate", passed: metrics.falsePositiveRate <= t.maxFalsePositiveRate, actual: metrics.falsePositiveRate, expected: `<= ${t.maxFalsePositiveRate}` },
     { id: "inconclusive-rate", passed: metrics.inconclusiveRate <= t.maxInconclusiveRate, actual: metrics.inconclusiveRate, expected: `<= ${t.maxInconclusiveRate}` },
-    { id: "coverage-completeness", passed: metrics.coverageCompleteness >= t.minCoverageCompleteness, actual: metrics.coverageCompleteness, expected: `>= ${t.minCoverageCompleteness}` }
+    { id: "coverage-completeness", passed: metrics.coverageCompleteness >= t.minCoverageCompleteness, actual: metrics.coverageCompleteness, expected: `>= ${t.minCoverageCompleteness}` },
+    { id: "minimum-repetitions", passed: repetitions >= t.minRepetitions, actual: repetitions, expected: `>= ${t.minRepetitions}` },
+    { id: "cleanup-observations", passed: cleanup.observed >= t.minCleanupObservationsPerRun * repetitions, actual: cleanup.observed, expected: `>= ${t.minCleanupObservationsPerRun * repetitions}` },
+    { id: "cleanup-failures", passed: cleanup.failed <= t.maxCleanupFailures, actual: cleanup.failed, expected: `<= ${t.maxCleanupFailures}` }
   ];
   if (t.maxMedianRuntimeMs !== undefined) gates.push({ id: "median-runtime", passed: efficiency.runtimeMs.median <= t.maxMedianRuntimeMs, actual: efficiency.runtimeMs.median, expected: `<= ${t.maxMedianRuntimeMs} ms` });
   if (t.maxP95RuntimeMs !== undefined) gates.push({ id: "p95-runtime", passed: efficiency.runtimeMs.p95 <= t.maxP95RuntimeMs, actual: efficiency.runtimeMs.p95, expected: `<= ${t.maxP95RuntimeMs} ms` });
   if (t.maxPeakRssBytes !== undefined) gates.push({ id: "peak-rss", passed: efficiency.peakRssBytes.max <= t.maxPeakRssBytes, actual: efficiency.peakRssBytes.max, expected: `<= ${t.maxPeakRssBytes} bytes` });
   if (t.maxRequestsPerAssessedCase !== undefined) gates.push({ id: "request-efficiency", passed: efficiency.requestsPerAssessedCase.mean <= t.maxRequestsPerAssessedCase, actual: efficiency.requestsPerAssessedCase.mean, expected: `<= ${t.maxRequestsPerAssessedCase} requests/assessed case` });
+  for (const category of categories) {
+    gates.push({ id: `category-size/${category.category}`, passed: category.caseCount >= t.minCasesPerCategory, actual: category.caseCount, expected: `>= ${t.minCasesPerCategory}` });
+    if (t.requireBalancedCategories) gates.push({ id: `category-balance/${category.category}`, passed: category.positiveCases > 0 && category.negativeCases > 0, actual: category.positiveCases > 0 && category.negativeCases > 0, expected: "at least one FINDING and one NO_FINDING case" });
+  }
   for (const item of cases.filter((value) => value.required)) { const expected = item.expected === "FINDING" ? "TRUE_POSITIVE" : "TRUE_NEGATIVE"; gates.push({ id: `required-case/${item.id}`, passed: item.aggregate === expected, actual: item.aggregate === expected, expected }); }
   return gates;
 }
