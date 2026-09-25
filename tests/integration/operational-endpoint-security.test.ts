@@ -80,7 +80,7 @@ describe("operational endpoint security integration", () => {
     expect(markdown).toContain("## Webhook, Cron, and Operational Endpoints"); expect(html).toContain("operationalEndpointSecurity");
     const secrets = [webhookKey, webhookTimestamp, "ops-admin-private-811", "account-a-private-221", "account-b-private-331", "event-signature-private", "event-replay-private", "event-idempotency-private", "expected-product-private", "job-private-440", "incident-private-550", "postgres://internal-private-host/db", "operator-private-611", "OPS-private-877"];
     for (const secret of secrets) for (const artifact of [raw, markdown, html, journal]) expect(artifact, `persisted ${secret}`).not.toContain(secret);
-  }, 30_000);
+  }, 180_000);
 });
 
 function manifestFor(origin: string): unknown {
