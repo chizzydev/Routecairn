@@ -42,6 +42,8 @@ jobs:
         run: npm run build && npm run dashboard:build
       - name: Full unit and integration suite
         run: npm test
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - name: Measured effectiveness gate
         run: node dist/cli/index.js benchmark local --repetitions 3 --baseline benchmarks/routecairn-comprehensive-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
       - name: Preserve measured-effectiveness evidence
