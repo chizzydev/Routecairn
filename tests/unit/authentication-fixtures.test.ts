@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { generateTotp, LocalTestInboxHarness, MailHogTestInboxAdapter, MailpitTestInboxAdapter, OidcTestHarness, verifyTotp } from "../../src/modules/authenticationLifecycle/AuthenticationFixtures.js";
+import { AuthenticationFixtureRuntime } from "../../src/modules/authenticationLifecycle/AuthenticationFixtureRuntime.js";
 import { resolveTurnkeyAuthRequest } from "../../src/modules/authenticationLifecycle/TurnkeyAuthProviderAdapters.js";
 import { VirtualWebAuthnManager } from "../../src/modules/browserCrawler/VirtualWebAuthnManager.js";
 
@@ -51,6 +52,28 @@ describe("authentication fixtures", () => {
     expect((await fetch(endpoints.tokenEndpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form })).status).toBe(400);
   });
 
+  it("completes and validates discovery, callback state, PKCE, JWKS, ID token, and replay", async () => {
+    const harness = new OidcTestHarness({ clientId: "fixture-client", clientSecret: "fixture-secret", redirectUris: ["http://127.0.0.1/callback"], subject: "fixture-subject" }); closeables.push(harness);
+    await expect(harness.completeAuthorizationCodeFlow({ state: "state-0123456789abcdef", nonce: "nonce-0123456789abcdef", codeVerifier: "verifier-0123456789abcdefghijklmnopqrstuvwxyzABCDEFG" })).resolves.toMatchObject({ subject: "fixture-subject", discoveryValidated: true, callbackValidated: true, pkceValidated: true, idTokenValidated: true, replayRejected: true });
+  });
+
+  it("runs the complete OIDC callback lifecycle as a case-local fixture action", async () => {
+    const runtime = new AuthenticationFixtureRuntime({
+      inboxes: [], totp: [], webauthn: [], providers: [],
+      oidc: [{ id: "local-idp", clientIdSecretRef: "client_id", clientSecretRef: "client_secret", redirectUris: ["http://127.0.0.1/callback"], subjectSecretRef: "subject", port: 0, accessTokenLifetimeSeconds: 300 }]
+    });
+    closeables.push(runtime);
+    const captures = new Map<string, string>();
+    const names = await runtime.execute({ kind: "OIDC_AUTHORIZATION_CODE", harnessId: "local-idp", stateSecretRef: "state", nonceSecretRef: "nonce", pkceVerifierSecretRef: "verifier", captureAccessToken: "access", captureIdToken: "identity", captureSubject: "subject", timeoutMs: 5_000 }, captures, {
+      client_id: "fixture-client", client_secret: "fixture-secret", subject: "fixture-subject",
+      state: "state-0123456789abcdef", nonce: "nonce-0123456789abcdef", verifier: "v".repeat(64)
+    });
+    expect(names).toEqual(["access", "identity", "subject"]);
+    expect(captures.get("access")).toBeTruthy();
+    expect(captures.get("identity")?.split(".")).toHaveLength(3);
+    expect(captures.get("subject")).toBe("fixture-subject");
+  });
+
   it("creates, inspects, clears, and removes a Chromium virtual authenticator", async () => {
     const manager = new VirtualWebAuthnManager(); closeables.push(manager);
     await manager.create("platform", { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true });
@@ -62,7 +85,9 @@ describe("authentication fixtures", () => {
 
   it("resolves turnkey provider operations without embedding credentials", () => {
     const supabase = resolveTurnkeyAuthRequest({ id: "supabase", provider: "SUPABASE_AUTH", baseUrl: "https://project.supabase.co", apiKeySecretRef: "anon_key", serviceKeySecretRef: "service_key" }, "SIGN_UP", { email: "{{SECRET:email}}", password: "{{SECRET:password}}" });
-    expect(supabase).toMatchObject({ method: "POST", url: "https://project.supabase.co/auth/v1/signup", stateChanging: true, headers: { apikey: "{{SECRET:anon_key}}", Authorization: "Bearer {{SECRET:service_key}}" } });
+    expect(supabase).toMatchObject({ method: "POST", url: "https://project.supabase.co/auth/v1/signup", stateChanging: true, headers: { apikey: "{{SECRET:anon_key}}", Authorization: "Bearer {{SECRET:anon_key}}" } });
+    expect(resolveTurnkeyAuthRequest({ id: "supabase", provider: "SUPABASE_AUTH", baseUrl: "https://project.supabase.co", apiKeySecretRef: "anon_key", serviceKeySecretRef: "service_key" }, "SIGN_OUT", {}).headers.Authorization).toBe("Bearer {{CAPTURE:access_token}}");
+    expect(resolveTurnkeyAuthRequest({ id: "supabase", provider: "SUPABASE_AUTH", baseUrl: "https://project.supabase.co", apiKeySecretRef: "anon_key", serviceKeySecretRef: "service_key" }, "DELETE_USER", { userId: "{{CAPTURE:user_id}}" }).headers.Authorization).toBe("Bearer {{SECRET:service_key}}");
     const firebase = resolveTurnkeyAuthRequest({ id: "firebase", provider: "FIREBASE", baseUrl: "https://identitytoolkit.googleapis.com", apiKeySecretRef: "firebase_key" }, "SIGN_IN_PASSWORD", {});
     expect(firebase.url).toBe("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={{SECRET:firebase_key}}");
     expect(resolveTurnkeyAuthRequest({ id: "firebase", provider: "FIREBASE", baseUrl: "https://identitytoolkit.googleapis.com", apiKeySecretRef: "firebase_key" }, "REFRESH_TOKEN", {}).url).toBe("https://securetoken.googleapis.com/v1/token?key={{SECRET:firebase_key}}");

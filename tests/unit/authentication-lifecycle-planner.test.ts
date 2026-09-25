@@ -74,6 +74,17 @@ describe("authentication lifecycle planner", () => {
     expect(JSON.stringify(plan)).not.toContain("fixture-anon-key");
   });
 
+  it("plans the complete OIDC callback action and exposes only declared transient captures", () => {
+    const authProfile = { label: "oidc-member", headers: {}, cookies: [], identityVerification: { mode: "disabled" as const, method: "GET" as const, expectedContentType: "application/json", successStatusCodes: [200], maxResponseBytes: 8192, anonymousMarkers: [] }, lifecycleSecrets: { client_id: "fixture-client", client_secret: "fixture-secret", subject: "fixture-subject", state: "state-0123456789abcdef", nonce: "nonce-0123456789abcdef", verifier: "v".repeat(64) }, notes: [] };
+    const input = authenticationLifecycleInputSchema.parse({
+      fixtures: { oidc: [{ id: "local-idp", clientIdSecretRef: "client_id", clientSecretRef: "client_secret", redirectUris: ["http://127.0.0.1/callback"], subjectSecretRef: "subject" }] },
+      cases: [{ id: "oidc-flow", label: "Complete OIDC flow", category: "OAUTH_OIDC_STATE_REDIRECT_VALIDATION", actors: [{ id: "member", safeAlias: "oidc-member", authSlot: "primary", relationship: "SELF", declaredState: "ACTIVE" }], authorization: observeAuthorization, steps: [{ id: "verify", phase: "VERIFY", actorId: "member", fixtureActions: [{ kind: "OIDC_AUTHORIZATION_CODE", harnessId: "local-idp", stateSecretRef: "state", nonceSecretRef: "nonce", pkceVerifierSecretRef: "verifier", captureSubject: "verified_subject" }], request: { method: "GET", url: `${target}session?subject={{CAPTURE:verified_subject}}`, stateChanging: false }, assertions: [{ kind: "STATUS_IN", values: [200] }] }] }]
+    });
+    const plan = planAuthenticationLifecycle(input, { target, scope, authProfile });
+    expect(plan.cases[0]?.steps[0]?.fixtureActions).toEqual([{ kind: "OIDC_AUTHORIZATION_CODE", harnessId: "local-idp", stateSecretRef: "state", nonceSecretRef: "nonce", pkceVerifierSecretRef: "verifier", captureSubject: "verified_subject", timeoutMs: 30000 }]);
+    expect(JSON.stringify(plan)).not.toContain("fixture-secret");
+  });
+
   it("rejects implicit mutations, literal secrets, missing cleanup, and out-of-scope requests", () => {
     const base = { id: "bad", label: "Bad case", category: "SESSION_REVOCATION", actors: [anonymousActor], authorization: observeAuthorization, steps: [{ id: "action", phase: "ACTION", actorId: "public", request: { method: "POST", url: new URL("/revoke", target).toString(), stateChanging: false } }] };
     expect(() => planAuthenticationLifecycle(authenticationLifecycleInputSchema.parse({ cases: [base] }), { target, scope })).toThrowError(AppError);

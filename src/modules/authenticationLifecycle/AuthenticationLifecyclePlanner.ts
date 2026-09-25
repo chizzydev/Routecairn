@@ -63,6 +63,7 @@ const fixtureActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("WEBAUTHN_CLEAR"), authenticatorId: identifier }).strict(),
   z.object({ kind: z.literal("WEBAUTHN_REMOVE"), authenticatorId: identifier }).strict(),
   z.object({ kind: z.literal("OIDC_START"), harnessId: identifier, captureIssuer: identifier, captureAuthorizationEndpoint: identifier.optional(), captureTokenEndpoint: identifier.optional(), captureCallbackEndpoint: identifier.optional() }).strict(),
+  z.object({ kind: z.literal("OIDC_AUTHORIZATION_CODE"), harnessId: identifier, stateSecretRef: identifier, nonceSecretRef: identifier, pkceVerifierSecretRef: identifier, captureAccessToken: identifier.optional(), captureIdToken: identifier.optional(), captureSubject: identifier.optional(), timeoutMs: z.number().int().min(100).max(300_000).default(30_000) }).strict(),
   z.object({ kind: z.literal("OIDC_WAIT_CALLBACK"), harnessId: identifier, parameter: identifier, capture: identifier, timeoutMs: z.number().int().min(100).max(300_000).default(30_000) }).strict()
 ]);
 const fixtureSchema = z.object({
@@ -318,6 +319,11 @@ function validateFixtureActions(step: ResolvedLifecycleStepInput, capturesBefore
       const fixture = fixtures.oidc.find((item) => item.id === action.harnessId)!;
       requireSecret(fixture.clientIdSecretRef); requireSecret(fixture.subjectSecretRef); if (fixture.clientSecretRef) requireSecret(fixture.clientSecretRef);
     }
+    if (action.kind === "OIDC_AUTHORIZATION_CODE") {
+      const fixture = fixtures.oidc.find((item) => item.id === action.harnessId)!;
+      requireSecret(fixture.clientIdSecretRef); requireSecret(fixture.subjectSecretRef); if (fixture.clientSecretRef) requireSecret(fixture.clientSecretRef);
+      requireSecret(action.stateSecretRef); requireSecret(action.nonceSecretRef); requireSecret(action.pkceVerifierSecretRef);
+    }
   }
 }
 
@@ -325,6 +331,7 @@ function fixtureActionCaptures(action: z.infer<typeof fixtureActionSchema>): str
   if (action.kind === "TOTP_GENERATE" || action.kind === "INBOX_WAIT" || action.kind === "OIDC_WAIT_CALLBACK") return [action.capture];
   if (action.kind === "INBOX_START") return [action.captureEndpoint];
   if (action.kind === "OIDC_START") return [action.captureIssuer, ...(action.captureAuthorizationEndpoint ? [action.captureAuthorizationEndpoint] : []), ...(action.captureTokenEndpoint ? [action.captureTokenEndpoint] : []), ...(action.captureCallbackEndpoint ? [action.captureCallbackEndpoint] : [])];
+  if (action.kind === "OIDC_AUTHORIZATION_CODE") return [action.captureAccessToken, action.captureIdToken, action.captureSubject].filter((value): value is string => Boolean(value));
   return [];
 }
 

@@ -1,4 +1,4 @@
-import { createHash, createHmac, generateKeyPairSync, randomBytes, sign, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, createPublicKey, generateKeyPairSync, randomBytes, sign, timingSafeEqual, verify, type JsonWebKey } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -228,6 +228,18 @@ export interface OidcHarnessOptions {
   accessTokenLifetimeSeconds?: number;
 }
 
+export interface OidcAuthorizationCodeFlowResult {
+  accessToken: string;
+  idToken: string;
+  subject: string;
+  issuer: string;
+  discoveryValidated: true;
+  callbackValidated: true;
+  pkceValidated: true;
+  idTokenValidated: true;
+  replayRejected: true;
+}
+
 /** A loopback-only OAuth 2.0/OIDC authorization-code IdP and callback receiver. */
 export class OidcTestHarness {
   private readonly keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -261,6 +273,54 @@ export class OidcTestHarness {
     throw new Error("OIDC_CALLBACK_TIMEOUT");
   }
 
+  /** Exercises discovery, authorization redirect, callback, state, nonce,
+   * PKCE, token exchange, JWKS signature verification, and code replay. */
+  public async completeAuthorizationCodeFlow(input: { state: string; nonce: string; codeVerifier: string; timeoutMs?: number; signal?: AbortSignal }): Promise<OidcAuthorizationCodeFlowResult> {
+    if (!/^[A-Za-z0-9._~-]{16,256}$/.test(input.state) || !/^[A-Za-z0-9._~-]{16,256}$/.test(input.nonce) || !/^[A-Za-z0-9._~-]{43,128}$/.test(input.codeVerifier)) throw new Error("OIDC_FLOW_INPUT_INVALID");
+    const started = await this.start();
+    const discovery = await fetchBoundedJson(`${started.issuer}/.well-known/openid-configuration`, { ...(input.signal ? { signal: input.signal } : {}) });
+    if (!objectValue(discovery) || discovery.issuer !== started.issuer || discovery.authorization_endpoint !== started.authorizationEndpoint || discovery.token_endpoint !== started.tokenEndpoint || discovery.jwks_uri !== `${started.issuer}/jwks.json`) throw new Error("OIDC_DISCOVERY_INVALID");
+    const jwks = await fetchBoundedJson(`${started.issuer}/jwks.json`, { ...(input.signal ? { signal: input.signal } : {}) });
+    const keys = objectValue(jwks).keys;
+    const jwk = Array.isArray(keys) ? keys.map(objectValue).find((item) => item.kid === "routecairn-fixture" && item.kty === "RSA" && item.alg === "RS256" && item.use === "sig") : undefined;
+    if (!jwk) throw new Error("OIDC_JWKS_INVALID");
+    let verificationKey: ReturnType<typeof createPublicKey>;
+    try { verificationKey = createPublicKey({ key: jwk as JsonWebKey, format: "jwk" }); }
+    catch { throw new Error("OIDC_JWKS_INVALID"); }
+    const authorization = new URL(started.authorizationEndpoint);
+    authorization.search = new URLSearchParams({
+      response_type: "code",
+      client_id: this.options.clientId,
+      redirect_uri: started.callbackEndpoint,
+      scope: "openid profile",
+      state: input.state,
+      nonce: input.nonce,
+      code_challenge: base64Url(createHash("sha256").update(input.codeVerifier).digest()),
+      code_challenge_method: "S256"
+    }).toString();
+    const authorizeResponse = await fetch(authorization, { redirect: "manual", ...(input.signal ? { signal: input.signal } : {}) });
+    if (authorizeResponse.status !== 302) throw new Error("OIDC_AUTHORIZATION_FAILED");
+    const location = authorizeResponse.headers.get("location");
+    if (!location) throw new Error("OIDC_CALLBACK_LOCATION_MISSING");
+    const callbackUrl = new URL(location);
+    const expectedCallback = new URL(started.callbackEndpoint);
+    if (callbackUrl.origin !== expectedCallback.origin || callbackUrl.pathname !== expectedCallback.pathname) throw new Error("OIDC_CALLBACK_REDIRECT_INVALID");
+    const callbackResponse = await fetch(callbackUrl, { redirect: "error", ...(input.signal ? { signal: input.signal } : {}) });
+    if (!callbackResponse.ok) throw new Error("OIDC_CALLBACK_FAILED");
+    const callback = await this.waitForCallback({ ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}), ...(input.signal ? { signal: input.signal } : {}) });
+    if (!safeEqual(callback.state, input.state) || !callback.code) throw new Error("OIDC_CALLBACK_STATE_INVALID");
+    const tokenBody = new URLSearchParams({ grant_type: "authorization_code", code: callback.code, redirect_uri: started.callbackEndpoint, client_id: this.options.clientId, code_verifier: input.codeVerifier, ...(this.options.clientSecret ? { client_secret: this.options.clientSecret } : {}) });
+    const tokenResponse = await fetch(started.tokenEndpoint, { method: "POST", redirect: "error", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: tokenBody, ...(input.signal ? { signal: input.signal } : {}) });
+    const tokenPayload = objectValue(await readBoundedResponseJson(tokenResponse));
+    const accessToken = stringValue(tokenPayload.access_token);
+    const idToken = stringValue(tokenPayload.id_token);
+    if (!tokenResponse.ok || !accessToken || !idToken) throw new Error("OIDC_TOKEN_EXCHANGE_FAILED");
+    const claims = this.verifyIdToken(idToken, input.nonce, started.issuer, verificationKey);
+    const replay = await fetch(started.tokenEndpoint, { method: "POST", redirect: "error", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: tokenBody, ...(input.signal ? { signal: input.signal } : {}) });
+    if (replay.status !== 400 || objectValue(await readBoundedResponseJson(replay)).error !== "invalid_grant") throw new Error("OIDC_CODE_REPLAY_NOT_REJECTED");
+    return { accessToken, idToken, subject: String(claims.sub), issuer: started.issuer, discoveryValidated: true, callbackValidated: true, pkceValidated: true, idTokenValidated: true, replayRejected: true };
+  }
+
   public async close(): Promise<void> { const server = this.server; this.server = undefined; this.issuer = undefined; this.codes.clear(); this.callbacks.splice(0); if (server) await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
 
   private async handle(request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse): Promise<void> {
@@ -273,7 +333,8 @@ export class OidcTestHarness {
       const clientId = url.searchParams.get("client_id") ?? "";
       const redirectUri = url.searchParams.get("redirect_uri") ?? "";
       const state = url.searchParams.get("state") ?? "";
-      if (url.searchParams.get("response_type") !== "code" || clientId !== this.options.clientId || !this.options.redirectUris.includes(redirectUri) || !state) return oauthError(response, 400, "invalid_request");
+      const allowedRedirects = new Set([...this.options.redirectUris, `${origin}/callback`]);
+      if (url.searchParams.get("response_type") !== "code" || clientId !== this.options.clientId || !allowedRedirects.has(redirectUri) || !state) return oauthError(response, 400, "invalid_request");
       const challenge = url.searchParams.get("code_challenge") ?? undefined;
       if (challenge && (url.searchParams.get("code_challenge_method") !== "S256" || !/^[A-Za-z0-9_-]{43,128}$/.test(challenge))) return oauthError(response, 400, "invalid_request");
       const code = randomUrlToken(32);
@@ -304,11 +365,26 @@ export class OidcTestHarness {
     const body = base64Url(Buffer.from(JSON.stringify(payload)));
     return `${header}.${body}.${base64Url(sign("RSA-SHA256", Buffer.from(`${header}.${body}`), this.keyPair.privateKey))}`;
   }
+
+  private verifyIdToken(token: string, nonce: string, issuer: string, verificationKey: ReturnType<typeof createPublicKey>): Record<string, unknown> {
+    const parts = token.split(".");
+    if (parts.length !== 3) throw new Error("OIDC_ID_TOKEN_INVALID");
+    let header: Record<string, unknown>; let claims: Record<string, unknown>;
+    try { header = objectValue(JSON.parse(Buffer.from(parts[0]!, "base64url").toString("utf8"))); claims = objectValue(JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"))); }
+    catch { throw new Error("OIDC_ID_TOKEN_INVALID"); }
+    if (header.alg !== "RS256" || header.kid !== "routecairn-fixture" || !verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), verificationKey, Buffer.from(parts[2]!, "base64url"))) throw new Error("OIDC_ID_TOKEN_SIGNATURE_INVALID");
+    const now = Math.floor(Date.now() / 1000);
+    if (claims.iss !== issuer || claims.aud !== this.options.clientId || claims.sub !== this.options.subject || !safeEqual(String(claims.nonce ?? ""), nonce) || typeof claims.exp !== "number" || claims.exp <= now || typeof claims.iat !== "number" || claims.iat > now + 30) throw new Error("OIDC_ID_TOKEN_CLAIMS_INVALID");
+    return claims;
+  }
 }
 
 function isSafeRedirectUri(value: string): boolean { try { const url = new URL(value); return url.protocol === "https:" || (url.protocol === "http:" && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)); } catch { return false; } }
 function safeAdapterBase(value: string): string { const url = new URL(value); if (url.username || url.password || url.search || url.hash || (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)))) throw new Error("TEST_INBOX_BASE_URL_INVALID"); return url.toString().replace(/\/$/, ""); }
 async function boundedFetchJson(url: string, signal?: AbortSignal): Promise<unknown> { const response = await fetch(url, { redirect: "error", headers: { accept: "application/json" }, ...(signal ? { signal } : {}) }); if (!response.ok) throw new Error(`TEST_INBOX_HTTP_${response.status}`); const declared = Number(response.headers.get("content-length") ?? "0"); if (declared > 1024 * 1024) throw new Error("TEST_INBOX_RESPONSE_LIMIT"); const body = await response.text(); if (Buffer.byteLength(body, "utf8") > 1024 * 1024) throw new Error("TEST_INBOX_RESPONSE_LIMIT"); return JSON.parse(body); }
+async function fetchBoundedJson(url: string, options: { signal?: AbortSignal } = {}): Promise<Record<string, unknown>> { const response = await fetch(url, { redirect: "error", headers: { accept: "application/json" }, ...(options.signal ? { signal: options.signal } : {}) }); if (!response.ok) throw new Error(`OIDC_HTTP_${response.status}`); return objectValue(await readBoundedResponseJson(response)); }
+async function readBoundedResponseJson(response: Response): Promise<unknown> { const declared = Number(response.headers.get("content-length") ?? "0"); if (declared > 1024 * 1024) throw new Error("OIDC_RESPONSE_LIMIT"); const body = await response.text(); if (Buffer.byteLength(body, "utf8") > 1024 * 1024) throw new Error("OIDC_RESPONSE_LIMIT"); try { return JSON.parse(body); } catch { throw new Error("OIDC_RESPONSE_JSON_INVALID"); } }
+function safeEqual(left: string | undefined, right: string): boolean { if (left === undefined) return false; const a = Buffer.from(left); const b = Buffer.from(right); return a.length === b.length && timingSafeEqual(a, b); }
 function objectValue(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stringValue(value: unknown): string | undefined { return typeof value === "string" && value.length > 0 ? value : undefined; }
 function firstAddress(value: unknown): string | undefined { if (Array.isArray(value)) { const first = value[0]; if (typeof first === "string") return first; if (first && typeof first === "object") return stringValue((first as Record<string, unknown>).Address ?? (first as Record<string, unknown>).address); } return stringValue(value); }

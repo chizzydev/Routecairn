@@ -21,6 +21,33 @@
   },
   "cases": [
     {
+      "id": "complete-oidc-callback",
+      "label": "OIDC authorization-code callback is bound and one-use",
+      "category": "OAUTH_OIDC_STATE_REDIRECT_VALIDATION",
+      "actors": [{ "id": "member", "safeAlias": "disposable-member", "authSlot": "primary", "relationship": "SELF", "declaredState": "ACTIVE" }],
+      "authorization": { "mode": "OBSERVE_ONLY", "environment": "TEST" },
+      "steps": [
+        {
+          "id": "complete-authorization-code",
+          "phase": "VERIFY",
+          "actorId": "member",
+          "fixtureActions": [
+            {
+              "kind": "OIDC_AUTHORIZATION_CODE",
+              "harnessId": "local-idp",
+              "stateSecretRef": "oidc_state",
+              "nonceSecretRef": "oidc_nonce",
+              "pkceVerifierSecretRef": "oidc_pkce_verifier",
+              "captureSubject": "oidc_verified_subject",
+              "timeoutMs": 30000
+            }
+          ],
+          "request": { "method": "GET", "url": "https://app.example.com/api/auth/session", "stateChanging": false },
+          "assertions": [{ "kind": "STATUS_IN", "values": [200] }]
+        }
+      ]
+    },
+    {
       "id": "totp-verification",
       "label": "Current TOTP is accepted once",
       "category": "MFA_ENROLLMENT_REMOVAL",

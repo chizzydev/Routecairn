@@ -103,6 +103,7 @@ export type LifecycleFixtureActionPlan =
   | { kind: "WEBAUTHN_CLEAR"; authenticatorId: string }
   | { kind: "WEBAUTHN_REMOVE"; authenticatorId: string }
   | { kind: "OIDC_START"; harnessId: string; captureIssuer: string; captureAuthorizationEndpoint?: string | undefined; captureTokenEndpoint?: string | undefined; captureCallbackEndpoint?: string | undefined }
+  | { kind: "OIDC_AUTHORIZATION_CODE"; harnessId: string; stateSecretRef: string; nonceSecretRef: string; pkceVerifierSecretRef: string; captureAccessToken?: string | undefined; captureIdToken?: string | undefined; captureSubject?: string | undefined; timeoutMs: number }
   | { kind: "OIDC_WAIT_CALLBACK"; harnessId: string; parameter: string; capture: string; timeoutMs: number };
 
 export interface AuthenticationFixturesPlan {

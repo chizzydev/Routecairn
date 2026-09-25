@@ -210,7 +210,7 @@ async function executeStep(context: ScanContext, transport: RequestSafetyBroker,
   let headers: Record<string, string>;
   let body: string | undefined;
   try {
-    url = expandString(step.request.url, secrets, captures);
+    url = expandUrlString(step.request.url, secrets, captures);
     headers = { ...(profile && actor.requestAuthentication === "PROFILE" ? authHeadersForProfile(profile) : {}), ...expandRecord(step.request.headers, secrets, captures) };
     if (step.request.fields) {
       const expanded = expandValue(step.request.fields, secrets, captures) as Record<string, unknown>;
@@ -349,6 +349,7 @@ function testCaseOrigin(testCase: AuthenticationLifecycleCasePlan): string { ret
 function expandRecord(record: Readonly<Record<string, string>>, secrets: Record<string, string>, captures: Map<string, string>): Record<string, string> { return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, expandString(value, secrets, captures)])); }
 function expandValue(value: unknown, secrets: Record<string, string>, captures: Map<string, string>): unknown { if (Array.isArray(value)) return value.map((entry) => expandValue(entry, secrets, captures)); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, expandValue(entry, secrets, captures)])); return typeof value === "string" ? expandString(value, secrets, captures) : value; }
 function expandString(value: string, secrets: Record<string, string>, captures: Map<string, string>): string { return value.replace(/\{\{(SECRET|CAPTURE):([A-Za-z0-9._-]+)\}\}/g, (_match, kind: string, name: string) => { const resolved = kind === "SECRET" ? secrets[name] : captures.get(name); if (resolved === undefined) throw new Error("missing reference"); return resolved; }); }
+function expandUrlString(value: string, secrets: Record<string, string>, captures: Map<string, string>): string { return value.replace(/\{\{(SECRET|CAPTURE):([A-Za-z0-9._-]+)\}\}/g, (_match, kind: string, name: string) => { const resolved = kind === "SECRET" ? secrets[name] : captures.get(name); if (resolved === undefined) throw new Error("missing reference"); return encodeURIComponent(resolved); }); }
 function redactLifecycleUrl(value: string, secrets: Readonly<Record<string, string>>, captures: ReadonlyMap<string, string>): string { let redacted = redactSensitiveUrl(value); for (const secret of [...Object.values(secrets), ...captures.values()].filter(Boolean).sort((left, right) => right.length - left.length)) { redacted = redacted.split(secret).join("<redacted>").split(encodeURIComponent(secret)).join("%3Credacted%3E"); } return redacted; }
 function header(response: HttpResponse, name: string): string | undefined { const value = Object.entries(headersForAnalysis(response)).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]; return typeof value === "string" ? value : value?.join(", "); }
 function findHeader(headers: Record<string, string>, name: string): string | undefined { return Object.keys(headers).find((key) => key.toLowerCase() === name); }

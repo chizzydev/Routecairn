@@ -58,6 +58,20 @@ export class AuthenticationFixtureRuntime {
       if (action.captureCallbackEndpoint) { captures.set(action.captureCallbackEndpoint, started.callbackEndpoint); names.push(action.captureCallbackEndpoint); }
       return names;
     }
+    if (action.kind === "OIDC_AUTHORIZATION_CODE") {
+      const result = await this.oidcHarness(action.harnessId, secrets).completeAuthorizationCodeFlow({
+        state: this.secret(secrets, action.stateSecretRef),
+        nonce: this.secret(secrets, action.nonceSecretRef),
+        codeVerifier: this.secret(secrets, action.pkceVerifierSecretRef),
+        timeoutMs: action.timeoutMs,
+        ...(this.signal ? { signal: this.signal } : {})
+      });
+      const names: string[] = [];
+      if (action.captureAccessToken) { captures.set(action.captureAccessToken, result.accessToken); names.push(action.captureAccessToken); }
+      if (action.captureIdToken) { captures.set(action.captureIdToken, result.idToken); names.push(action.captureIdToken); }
+      if (action.captureSubject) { captures.set(action.captureSubject, result.subject); names.push(action.captureSubject); }
+      return names;
+    }
     const callback = await this.oidcHarness(action.harnessId, secrets).waitForCallback({ timeoutMs: action.timeoutMs, ...(this.signal ? { signal: this.signal } : {}) });
     const value = callback[action.parameter];
     if (!value) throw new Error("OIDC_CALLBACK_PARAMETER_MISSING");

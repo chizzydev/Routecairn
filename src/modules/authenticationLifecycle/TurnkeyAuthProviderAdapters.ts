@@ -97,21 +97,22 @@ export function resolveTurnkeyAuthRequest(config: TurnkeyAuthAdapterConfig, oper
 
   if (config.provider === "SUPABASE_AUTH") {
     const apiKey = secret("apiKeySecretRef");
-    const headers: Record<string, string> = { apikey: apiKey };
-    if (config.serviceKeySecretRef) headers.Authorization = `Bearer ${secret("serviceKeySecretRef")}`;
-    if (operation === "SIGN_UP") return json("POST", "/auth/v1/signup", fields, headers, { user_id: "user.id", access_token: "access_token", refresh_token: "refresh_token" });
-    if (operation === "SIGN_IN_PASSWORD") return json("POST", "/auth/v1/token?grant_type=password", fields, headers, { user_id: "user.id", access_token: "access_token", refresh_token: "refresh_token" });
-    if (operation === "REFRESH_TOKEN") return json("POST", "/auth/v1/token?grant_type=refresh_token", fields, headers, { access_token: "access_token", refresh_token: "refresh_token" });
-    if (operation === "SIGN_OUT") return json("POST", "/auth/v1/logout", fields, headers);
-    if (operation === "SEND_OTP") return json("POST", "/auth/v1/otp", fields, headers);
-    if (operation === "VERIFY_OTP") return json("POST", "/auth/v1/verify", fields, headers, { access_token: "access_token", refresh_token: "refresh_token" });
-    if (operation === "INVITE") return json("POST", "/auth/v1/invite", fields, headers, { user_id: "id" });
-    if (operation === "DELETE_USER") return json("DELETE", `/auth/v1/admin/users/${captureField(fields, "userId")}`, {}, headers);
-    if (operation === "MFA_ENROLL") return json("POST", "/auth/v1/factors", fields, headers, { factor_id: "id", totp_secret: "totp.secret", qr_code: "totp.qr_code" });
-    if (operation === "MFA_CHALLENGE") return json("POST", `/auth/v1/factors/${captureField(fields, "factorId")}/challenge`, fields, headers, { challenge_id: "id" });
-    if (operation === "MFA_VERIFY") return json("POST", `/auth/v1/factors/${captureField(fields, "factorId")}/verify`, fields, headers, { access_token: "access_token", refresh_token: "refresh_token" });
-    if (operation === "OAUTH_AUTHORIZE") return get("/auth/v1/authorize", fields, headers);
-    if (operation === "OAUTH_TOKEN") return json("POST", "/auth/v1/token?grant_type=pkce", fields, headers, { access_token: "access_token", refresh_token: "refresh_token" });
+    const anonHeaders: Record<string, string> = { apikey: apiKey, Authorization: `Bearer ${apiKey}` };
+    const userHeaders: Record<string, string> = { apikey: apiKey, Authorization: `Bearer ${referenceField(fields, "accessToken", "{{CAPTURE:access_token}}")}` };
+    const adminHeaders = (): Record<string, string> => ({ apikey: apiKey, Authorization: `Bearer ${secret("serviceKeySecretRef")}` });
+    if (operation === "SIGN_UP") return json("POST", "/auth/v1/signup", fields, anonHeaders, { user_id: "user.id", access_token: "access_token", refresh_token: "refresh_token" });
+    if (operation === "SIGN_IN_PASSWORD") return json("POST", "/auth/v1/token?grant_type=password", fields, anonHeaders, { user_id: "user.id", access_token: "access_token", refresh_token: "refresh_token" });
+    if (operation === "REFRESH_TOKEN") return json("POST", "/auth/v1/token?grant_type=refresh_token", fields, anonHeaders, { access_token: "access_token", refresh_token: "refresh_token" });
+    if (operation === "SIGN_OUT") return json("POST", "/auth/v1/logout", fields, userHeaders);
+    if (operation === "SEND_OTP") return json("POST", "/auth/v1/otp", fields, anonHeaders);
+    if (operation === "VERIFY_OTP") return json("POST", "/auth/v1/verify", fields, anonHeaders, { access_token: "access_token", refresh_token: "refresh_token" });
+    if (operation === "INVITE") return json("POST", "/auth/v1/invite", fields, adminHeaders(), { user_id: "id" });
+    if (operation === "DELETE_USER") return json("DELETE", `/auth/v1/admin/users/${captureField(fields, "userId")}`, {}, adminHeaders());
+    if (operation === "MFA_ENROLL") return json("POST", "/auth/v1/factors", fields, userHeaders, { factor_id: "id", totp_secret: "totp.secret", qr_code: "totp.qr_code" });
+    if (operation === "MFA_CHALLENGE") return json("POST", `/auth/v1/factors/${captureField(fields, "factorId")}/challenge`, fields, userHeaders, { challenge_id: "id" });
+    if (operation === "MFA_VERIFY") return json("POST", `/auth/v1/factors/${captureField(fields, "factorId")}/verify`, fields, userHeaders, { access_token: "access_token", refresh_token: "refresh_token" });
+    if (operation === "OAUTH_AUTHORIZE") return get("/auth/v1/authorize", fields, anonHeaders);
+    if (operation === "OAUTH_TOKEN") return json("POST", "/auth/v1/token?grant_type=pkce", fields, anonHeaders, { access_token: "access_token", refresh_token: "refresh_token" });
   }
 
   throw new Error(`AUTH_PROVIDER_OPERATION_UNSUPPORTED:${config.provider}:${operation}`);
@@ -127,6 +128,12 @@ function normalizedBase(value: string): string {
 function captureField(fields: Readonly<Record<string, unknown>>, name: string): string {
   const value = fields[name];
   if (typeof value !== "string" || !/^\{\{CAPTURE:[A-Za-z0-9._-]+\}\}$/.test(value)) throw new Error(`AUTH_PROVIDER_CAPTURE_REQUIRED:${name}`);
+  return value;
+}
+
+function referenceField(fields: Readonly<Record<string, unknown>>, name: string, fallback: string): string {
+  const value = fields[name] ?? fallback;
+  if (typeof value !== "string" || !/^\{\{(?:SECRET|CAPTURE):[A-Za-z0-9._-]+\}\}$/.test(value)) throw new Error(`AUTH_PROVIDER_REFERENCE_REQUIRED:${name}`);
   return value;
 }
 

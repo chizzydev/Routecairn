@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "name": "authorized authentication development acceptance",
+  "providers": [
+    {
+      "id": "auth0-development",
+      "environment": "DEVELOPMENT",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "adapter": {
+        "id": "auth0",
+        "provider": "AUTH0",
+        "baseUrl": "https://tenant.example.auth0.com",
+        "managementTokenSecretRef": "management_token"
+      },
+      "secretEnvironment": {
+        "management_token": "ROUTECAIRN_AUTH0_MANAGEMENT_TOKEN",
+        "client_id": "ROUTECAIRN_AUTH0_CLIENT_ID",
+        "client_secret": "ROUTECAIRN_AUTH0_CLIENT_SECRET",
+        "email": "ROUTECAIRN_AUTH0_TEST_EMAIL",
+        "password": "ROUTECAIRN_AUTH0_TEST_PASSWORD"
+      },
+      "operations": [
+        { "id": "signup", "phase": "SETUP", "operation": "SIGN_UP", "fields": { "client_id": "{{SECRET:client_id}}", "email": "{{SECRET:email}}", "password": "{{SECRET:password}}", "connection": "Username-Password-Authentication" } },
+        { "id": "signin", "phase": "ACTION", "operation": "SIGN_IN_PASSWORD", "fields": { "grant_type": "password", "client_id": "{{SECRET:client_id}}", "client_secret": "{{SECRET:client_secret}}", "username": "{{SECRET:email}}", "password": "{{SECRET:password}}", "scope": "openid offline_access" } },
+        { "id": "refresh", "phase": "VERIFY", "operation": "REFRESH_TOKEN", "fields": { "grant_type": "refresh_token", "client_id": "{{SECRET:client_id}}", "client_secret": "{{SECRET:client_secret}}", "refresh_token": "{{CAPTURE:refresh_token}}" } },
+        { "id": "logout", "phase": "VERIFY", "operation": "SIGN_OUT", "fields": { "client_id": "{{SECRET:client_id}}" }, "expectedStatuses": [200, 302] },
+        { "id": "delete", "phase": "CLEANUP", "operation": "DELETE_USER", "fields": { "userId": "{{CAPTURE:user_id}}" }, "expectedStatuses": [200, 204] }
+      ]
+    },
+    {
+      "id": "cognito-development",
+      "environment": "DEVELOPMENT",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "adapter": { "id": "cognito", "provider": "COGNITO", "baseUrl": "https://cognito-idp.us-east-1.amazonaws.com", "cognitoMode": "USER_POOLS_API" },
+      "secretEnvironment": { "client_id": "ROUTECAIRN_COGNITO_CLIENT_ID", "username": "ROUTECAIRN_COGNITO_TEST_USERNAME", "password": "ROUTECAIRN_COGNITO_TEST_PASSWORD" },
+      "operations": [
+        { "id": "signup", "phase": "SETUP", "operation": "SIGN_UP", "fields": { "ClientId": "{{SECRET:client_id}}", "Username": "{{SECRET:username}}", "Password": "{{SECRET:password}}" } },
+        { "id": "signin", "phase": "ACTION", "operation": "SIGN_IN_PASSWORD", "fields": { "ClientId": "{{SECRET:client_id}}", "AuthFlow": "USER_PASSWORD_AUTH", "AuthParameters": { "USERNAME": "{{SECRET:username}}", "PASSWORD": "{{SECRET:password}}" } } },
+        { "id": "refresh", "phase": "VERIFY", "operation": "REFRESH_TOKEN", "fields": { "ClientId": "{{SECRET:client_id}}", "AuthFlow": "REFRESH_TOKEN_AUTH", "AuthParameters": { "REFRESH_TOKEN": "{{CAPTURE:refresh_token}}" } } },
+        { "id": "logout", "phase": "VERIFY", "operation": "SIGN_OUT", "fields": { "AccessToken": "{{CAPTURE:access_token}}" } },
+        { "id": "delete", "phase": "CLEANUP", "operation": "DELETE_USER", "fields": { "AccessToken": "{{CAPTURE:access_token}}" } }
+      ]
+    },
+    {
+      "id": "clerk-development",
+      "environment": "DEVELOPMENT",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "adapter": { "id": "clerk", "provider": "CLERK", "baseUrl": "https://api.clerk.com", "serviceKeySecretRef": "service_key" },
+      "secretEnvironment": { "service_key": "ROUTECAIRN_CLERK_SECRET_KEY", "email": "ROUTECAIRN_CLERK_TEST_EMAIL", "password": "ROUTECAIRN_CLERK_TEST_PASSWORD" },
+      "operations": [
+        { "id": "signup", "phase": "SETUP", "operation": "SIGN_UP", "fields": { "email_address": ["{{SECRET:email}}"], "password": "{{SECRET:password}}" } },
+        { "id": "session", "phase": "ACTION", "operation": "SIGN_IN_PASSWORD", "fields": { "user_id": "{{CAPTURE:user_id}}" } },
+        { "id": "logout", "phase": "VERIFY", "operation": "SIGN_OUT", "fields": { "sessionId": "{{CAPTURE:session_id}}" } },
+        { "id": "delete", "phase": "CLEANUP", "operation": "DELETE_USER", "fields": { "userId": "{{CAPTURE:user_id}}" } }
+      ]
+    },
+    {
+      "id": "firebase-emulator",
+      "environment": "EMULATOR",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "adapter": { "id": "firebase", "provider": "FIREBASE", "baseUrl": "http://127.0.0.1:9099/identitytoolkit.googleapis.com", "tokenBaseUrl": "http://127.0.0.1:9099/securetoken.googleapis.com", "apiKeySecretRef": "api_key" },
+      "secretEnvironment": { "api_key": "ROUTECAIRN_FIREBASE_API_KEY", "email": "ROUTECAIRN_FIREBASE_TEST_EMAIL", "password": "ROUTECAIRN_FIREBASE_TEST_PASSWORD" },
+      "operations": [
+        { "id": "signup", "phase": "SETUP", "operation": "SIGN_UP", "fields": { "email": "{{SECRET:email}}", "password": "{{SECRET:password}}", "returnSecureToken": true } },
+        { "id": "signin", "phase": "ACTION", "operation": "SIGN_IN_PASSWORD", "fields": { "email": "{{SECRET:email}}", "password": "{{SECRET:password}}", "returnSecureToken": true } },
+        { "id": "refresh", "phase": "VERIFY", "operation": "REFRESH_TOKEN", "fields": { "grant_type": "refresh_token", "refresh_token": "{{CAPTURE:refresh_token}}" } },
+        { "id": "delete", "phase": "CLEANUP", "operation": "DELETE_USER", "fields": { "idToken": "{{CAPTURE:id_token}}" } }
+      ]
+    },
+    {
+      "id": "supabase-local",
+      "environment": "EMULATOR",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "adapter": { "id": "supabase", "provider": "SUPABASE_AUTH", "baseUrl": "http://127.0.0.1:54321", "apiKeySecretRef": "anon_key", "serviceKeySecretRef": "service_key" },
+      "secretEnvironment": { "anon_key": "ROUTECAIRN_SUPABASE_ANON_KEY", "service_key": "ROUTECAIRN_SUPABASE_SERVICE_ROLE_KEY", "email": "ROUTECAIRN_SUPABASE_TEST_EMAIL", "password": "ROUTECAIRN_SUPABASE_TEST_PASSWORD" },
+      "operations": [
+        { "id": "signup", "phase": "SETUP", "operation": "SIGN_UP", "fields": { "email": "{{SECRET:email}}", "password": "{{SECRET:password}}" } },
+        { "id": "signin", "phase": "ACTION", "operation": "SIGN_IN_PASSWORD", "fields": { "email": "{{SECRET:email}}", "password": "{{SECRET:password}}" } },
+        { "id": "refresh", "phase": "VERIFY", "operation": "REFRESH_TOKEN", "fields": { "refresh_token": "{{CAPTURE:refresh_token}}" } },
+        { "id": "logout", "phase": "VERIFY", "operation": "SIGN_OUT" },
+        { "id": "delete", "phase": "CLEANUP", "operation": "DELETE_USER", "fields": { "userId": "{{CAPTURE:user_id}}" } }
+      ]
+    }
+  ],
+  "oidc": [
+    {
+      "id": "oidc-development",
+      "environment": "DEVELOPMENT",
+      "authorizationConfirmed": true,
+      "issuer": "https://login.example.test",
+      "clientIdEnvironment": "ROUTECAIRN_OIDC_CLIENT_ID",
+      "clientSecretEnvironment": "ROUTECAIRN_OIDC_CLIENT_SECRET",
+      "expectedSubjectEnvironment": "ROUTECAIRN_OIDC_EXPECTED_SUBJECT",
+      "secretEnvironment": { "username": "ROUTECAIRN_OIDC_TEST_USERNAME", "password": "ROUTECAIRN_OIDC_TEST_PASSWORD" },
+      "callbackPort": 43119,
+      "callbackPath": "/callback",
+      "scopes": ["openid", "profile", "email"],
+      "tokenAuthMethod": "CLIENT_SECRET_POST",
+      "browserAllowedOrigins": ["http://127.0.0.1:43119"],
+      "browserSteps": [
+        { "action": "fill", "selector": "input[name=username]", "valueSecretRef": "username" },
+        { "action": "fill", "selector": "input[name=password]", "valueSecretRef": "password" },
+        { "action": "click", "selector": "button[type=submit]" }
+      ]
+    }
+  ],
+  "passkeys": [
+    {
+      "id": "passkey-development",
+      "environment": "DEVELOPMENT",
+      "authorizationConfirmed": true,
+      "disposableAccount": true,
+      "expectedRpId": "app.example.test",
+      "allowedOrigins": ["https://app.example.test"],
+      "enrollment": { "startUrl": "https://app.example.test/settings/passkeys", "steps": [{ "action": "click", "selector": "[data-testid=add-passkey]" }, { "action": "assertVisible", "selector": "[data-testid=passkey-added]" }] },
+      "login": { "startUrl": "https://app.example.test/login", "clearCookies": true, "steps": [{ "action": "click", "selector": "[data-testid=login-passkey]" }, { "action": "waitForUrl", "urlPrefix": "https://app.example.test/account" }, { "action": "assertVisible", "selector": "[data-testid=authenticated]" }] },
+      "cleanup": { "startUrl": "https://app.example.test/settings/passkeys", "steps": [{ "action": "click", "selector": "[data-testid=remove-passkey]" }, { "action": "assertVisible", "selector": "[data-testid=passkey-removed]" }] }
+    }
+  ]
+}
