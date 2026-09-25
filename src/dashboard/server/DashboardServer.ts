@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID, createHash } from "node:crypto";
-import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdirSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -69,7 +69,8 @@ import { CloudSyncAuthError, CloudSyncService } from "../operations/CloudSyncSer
 import { IntegrationExportService } from "../operations/IntegrationExportService.js";
 import { ThirdPartyModuleService } from "../operations/ThirdPartyModuleService.js";
 import { SsoService } from "../operations/SsoService.js";
-import { backupCreateSchema, backupRestoreSchema, cloudSyncPeerSchema, cloudSyncPushSchema, integrationExportSchema, notificationChannelSchema, notificationEnqueueSchema, organizationCreateSchema, organizationMemberSchema, remoteEnrollmentSchema, remoteHeartbeatSchema, remoteJobLeaseRenewSchema, remoteJobResultSchema, remoteJobSchema, remoteWorkerEnrollSchema, remoteWorkerStateSchema, ssoProviderSchema, thirdPartyModuleExecuteSchema, thirdPartyModuleRegisterSchema } from "../contracts/OperationalScaleSchemas.js";
+import { DistributedMutationCoordinatorError, DistributedMutationCoordinatorService } from "../operations/DistributedMutationCoordinatorService.js";
+import { backupCreateSchema, backupRestoreSchema, cloudSyncMembershipBindSchema, cloudSyncPeerSchema, cloudSyncPushSchema, integrationExportSchema, notificationChannelSchema, notificationEnqueueSchema, organizationCreateSchema, organizationMemberSchema, remoteEnrollmentSchema, remoteHeartbeatSchema, remoteJobLeaseRenewSchema, remoteJobResultSchema, remoteJobSchema, remoteWorkerEnrollSchema, remoteWorkerStateSchema, ssoProviderSchema, thirdPartyModuleExecuteSchema, thirdPartyModuleRegisterSchema } from "../contracts/OperationalScaleSchemas.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -82,6 +83,7 @@ export interface DashboardServerOptions {
   trustProxy?: boolean;
   masterKey?: string;
   masterKeyVersion?: string;
+  mutationCoordinatorSecret?: string;
 }
 
 export interface DashboardServerHandle {
@@ -121,7 +123,9 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const localSessions = mode === "local" ? new LocalSessionManager() : undefined;
   const serverSessions = mode === "server" && serverSecurity ? new ServerSessionManager(database, serverSecurity) : undefined;
   if (serverSessions && !serverSessions.hasEnabledOwner()) {
-    throw new Error("RouteCairn Dashboard server mode requires a first owner. Run routecairn dashboard user create-owner.");
+    const bootstrapOwner = serverBootstrapOwner();
+    if (bootstrapOwner) await serverSessions.createFirstOwner(bootstrapOwner.login, bootstrapOwner.password);
+    else throw new Error("RouteCairn Dashboard server mode requires a first owner. Run routecairn dashboard user create-owner or configure the one-time bootstrap owner environment variables.");
   }
   const scans = new ScanRepository(database);
   const projects = new ProjectRepository(database);
@@ -148,11 +152,13 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const organizations = new OrganizationService(database);
   const notifications = new NotificationService(database); notifications.start();
   const remoteWorkers = new RemoteWorkerService(database);
-  const cloudSync = new CloudSyncService(database);
+  const cloudSync = new CloudSyncService(database, vault); cloudSync.start();
   const backups = new BackupRestoreService(database, paths, vaultKey);
   const integrationExports = new IntegrationExportService(database, paths);
   const thirdPartyModules = new ThirdPartyModuleService(database, paths);
   const sso = new SsoService(database);
+  const mutationCoordinatorSecret = options.mutationCoordinatorSecret ?? environmentSecret("ROUTECAIRN_MUTATION_COORDINATOR_SECRET");
+  const mutationCoordinator = mutationCoordinatorSecret ? new DistributedMutationCoordinatorService(database, mutationCoordinatorSecret) : undefined;
   const importer = new HistoricalReportImporter(database, paths);
   const uiDistDir = options.uiDistDir ?? packagedDashboardUiDirectory();
 
@@ -160,6 +166,17 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     try {
       setSecurityHeaders(response);
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${options.port ?? 0}`}`);
+      if (request.method === "GET" && url.pathname === "/healthz") {
+        response.setHeader("cache-control", "no-store");
+        sendJson(response, 200, { status: "ok" });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/readyz") {
+        database.db.prepare("SELECT 1").get();
+        response.setHeader("cache-control", "no-store");
+        sendJson(response, 200, { status: "ready" });
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/session/bootstrap") {
         const body = await readJson(request);
         const token = typeof body === "object" && body !== null && "token" in body && typeof body.token === "string" ? body.token : undefined;
@@ -208,8 +225,16 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
         throw new HttpError(404, "Remote agent operation not found.");
       }
       if (request.method === "POST" && url.pathname === "/api/cloud-sync/receive") {
-        const body = cloudSyncPushSchema.parse(await readJson(request)); const peerName = String(request.headers["x-routecairn-sync-peer"] ?? ""); const signature = String(request.headers["x-routecairn-sync-signature"] ?? "");
+        const body = cloudSyncPushSchema.parse(await readJson(request, 16 * 1024 * 1024)); const peerName = String(request.headers["x-routecairn-sync-peer"] ?? ""); const signature = String(request.headers["x-routecairn-sync-signature"] ?? "");
         sendJson(response, 200, cloudSync.receiveFromPeer(peerName, body, signature)); return;
+      }
+      if (request.method === "POST" && url.pathname.startsWith("/api/mutation-coordination/")) {
+        if (!mutationCoordinator) throw new HttpError(404, "Distributed mutation coordination is not configured.");
+        const body = await readJson(request); mutationCoordinator.authenticate(request.method, url.pathname, body, request.headers);
+        if (url.pathname.endsWith("/acquire")) { sendJson(response, 201, mutationCoordinator.acquire(body)); return; }
+        if (url.pathname.endsWith("/renew")) { sendJson(response, 200, mutationCoordinator.renew(body)); return; }
+        if (url.pathname.endsWith("/release")) { sendJson(response, 200, mutationCoordinator.release(body)); return; }
+        throw new HttpError(404, "Mutation coordination operation not found.");
       }
       if (request.method === "POST" && url.pathname === "/api/continuous-assurance/deployments") {
         const parsed = deploymentTriggerSchema.parse(await readJson(request));
@@ -262,6 +287,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,integrationExports
           ,thirdPartyModules
           ,sso
+          ,mutationCoordinator
         });
         return;
       }
@@ -281,6 +307,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     ...(localSessions ? { bootstrapUrl: localSessions.bootstrapUrl(url) } : {}),
     close: async () => {
       continuousAssurance.shutdown();
+      await cloudSync.shutdown();
       await notifications.shutdown();
       await execution.shutdown();
       await mutationRecovery.shutdown();
@@ -294,7 +321,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
 function validateDashboardStartup(options: Required<Pick<DashboardServerOptions, "host" | "mode">> & DashboardServerOptions): ServerRuntimeSecurity | undefined {
   if (options.mode === "server") {
     const publicOrigin = options.publicOrigin ?? process.env.ROUTECAIRN_PUBLIC_ORIGIN;
-    const sessionSecret = options.sessionSecret ?? process.env.ROUTECAIRN_SESSION_SECRET;
+    const sessionSecret = options.sessionSecret ?? environmentSecret("ROUTECAIRN_SESSION_SECRET");
     const trustProxy = options.trustProxy ?? process.env.ROUTECAIRN_TRUST_PROXY === "true";
     const developmentInsecureHttp = process.env.ROUTECAIRN_DASHBOARD_INSECURE_HTTP === "true";
     if (!publicOrigin) throw new Error("RouteCairn Dashboard server mode requires ROUTECAIRN_PUBLIC_ORIGIN.");
@@ -310,6 +337,30 @@ function validateDashboardStartup(options: Required<Pick<DashboardServerOptions,
     return { publicOrigin: parsed.origin, sessionSecret, trustProxy, developmentInsecureHttp };
   }
   return undefined;
+}
+
+function serverBootstrapOwner(): { login: string; password: string } | undefined {
+  const login = process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN?.trim();
+  const hasPasswordSource = Boolean(process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD_FILE?.trim() || process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD);
+  if (!login && !hasPasswordSource) return undefined;
+  if (!login || !hasPasswordSource) {
+    throw new Error("One-time owner bootstrap requires ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN and exactly one password source.");
+  }
+  const password = environmentSecret("ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD", 16_384);
+  if (!password) throw new Error("The owner bootstrap password source is empty.");
+  return { login, password };
+}
+
+function environmentSecret(name: string, maxBytes = 65_536): string | undefined {
+  const inline = process.env[name];
+  const file = process.env[`${name}_FILE`]?.trim();
+  if (inline && file) throw new Error(`${name} and ${name}_FILE cannot both be configured.`);
+  if (!file) return inline;
+  const canonical = realpathSync(file);
+  const stats = statSync(canonical);
+  if (!stats.isFile() || stats.size > maxBytes) throw new Error(`${name}_FILE is invalid.`);
+  const value = readFileSync(canonical, "utf8").replace(/[\r\n]+$/, "");
+  return value || undefined;
 }
 
 interface ApiContext {
@@ -352,6 +403,7 @@ interface ApiContext {
   integrationExports: IntegrationExportService;
   thirdPartyModules: ThirdPartyModuleService;
   sso: SsoService;
+  mutationCoordinator?: DistributedMutationCoordinatorService | undefined;
 }
 
 async function handleApi(context: ApiContext): Promise<void> {
@@ -403,6 +455,13 @@ function operationalOrganization(context: ApiContext): string {
   return context.url.searchParams.get("organizationId") ?? context.organizations.defaultOrganizationId();
 }
 
+function resourceOrganization(context: ApiContext, permission: import("../operations/OrganizationService.js").OrganizationPermission = "org.read"): string {
+  const header = context.request.headers["x-routecairn-organization-id"];
+  const organizationId = (typeof header === "string" && header) || context.url.searchParams.get("organizationId") || context.organizations.defaultOrganizationId();
+  requireOrg(context, organizationId, permission);
+  return organizationId;
+}
+
 function requireOrg(context: ApiContext, organizationId: string, permission: import("../operations/OrganizationService.js").OrganizationPermission): void {
   context.organizations.require(organizationId, context.principal!.userId, permission, context.mode === "local");
 }
@@ -412,6 +471,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const assistedReview = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/assisted-review$/.exec(url.pathname);
   if (assistedReview?.groups?.id) {
     requirePermission(context, "findings.read");
+    requireSelectedResource(context,"scan",assistedReview.groups.id,"org.read");
     try { sendJson(response, 200, new AssistedReviewService(context.database, paths).get(assistedReview.groups.id)); }
     catch (error) { if (error instanceof Error && error.message === "ASSISTED_REVIEW_NOT_FOUND") sendJson(response, 404, { error: "No assisted review exists for this scan." }); else throw error; }
     return;
@@ -437,8 +497,12 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   if (url.pathname === "/api/operations/remote-workers") {
     requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, context.remoteWorkers.list(organizationId)); return;
   }
+  if (url.pathname === "/api/operations/mutation-coordination") {
+    requirePermission(context, "operations.read"); if (!context.mutationCoordinator) throw new HttpError(404, "Distributed mutation coordination is not configured.");
+    const namespace = url.searchParams.get("namespace") ?? ""; sendJson(response, 200, context.mutationCoordinator.status(namespace)); return;
+  }
   if (url.pathname === "/api/operations/cloud-sync") {
-    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { peers: context.cloudSync.list(organizationId) }); return;
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { peers: context.cloudSync.list(organizationId), replicas: context.cloudSync.replicas(organizationId), pendingMemberships: context.cloudSync.pendingMemberships(organizationId) }); return;
   }
   if (url.pathname === "/api/operations/backups") {
     requirePermission(context, "operations.read"); sendJson(response, 200, { backups: context.backups.list(), restorePending: existsSync(context.paths.restoreMarkerPath) }); return;
@@ -459,7 +523,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/overview") {
     requirePermission(context, "scans.read");
-    sendJson(response, 200, scans.overview());
+    sendJson(response, 200, scans.overview(resourceOrganization(context)));
     return;
   }
   if (url.pathname === "/api/capabilities") {
@@ -500,6 +564,8 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/provider-adapters") {
     requirePermission(context, "scans.read");
+    const targetId=url.searchParams.get("targetId");
+    if(targetId)requireSelectedResource(context,"target",targetId,"org.read");
     sendJson(response, 200, { available: context.providerAdapters.available(), adapters: context.providerAdapters.list(url.searchParams.get("targetId") ?? undefined) });
     return;
   }
@@ -511,6 +577,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const baselineCases = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/workflow-cases$/.exec(url.pathname);
   if (baselineCases?.groups?.id) {
     requirePermission(context, "scans.read");
+    requireSelectedResource(context,"scan",baselineCases.groups.id,"org.read");
     const cases=context.database.db.prepare("SELECT workflow_id workflowId,safe_case_alias safeCaseAlias,safe_case_fingerprint caseFingerprint,execution_state executionState,request_transmitted requestTransmitted,matched_expectation matchedExpectation,evidence_strength evidenceStrength FROM scan_workflow_case_executions WHERE scan_id=? ORDER BY workflow_id,safe_case_alias LIMIT 500").all(baselineCases.groups.id) as Array<Record<string,unknown>&{requestTransmitted:number;matchedExpectation:number|null}>;
     sendJson(response,200,{cases:cases.map(item=>({...item,requestTransmitted:Boolean(item.requestTransmitted),matchedExpectation:item.matchedExpectation===null?null:Boolean(item.matchedExpectation)}))});return;
   }
@@ -598,39 +665,42 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/credential-profiles") {
     requirePermission(context, "credentials.readSummary");
-    sendJson(response, 200, { profiles: context.vault.list() });
+    sendJson(response, 200, { profiles: context.vault.list(resourceOrganization(context)) });
     return;
   }
   const credentialDetail = /^\/api\/credential-profiles\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (credentialDetail?.groups?.id) {
     requirePermission(context, "credentials.readSummary");
-    const profile = context.vault.getSummary(credentialDetail.groups.id);
+    const organizationId = resourceOrganization(context);
+    const profile = context.vault.getSummary(credentialDetail.groups.id, organizationId);
     if (!profile) throw new HttpError(404, "Credential profile not found.");
     sendJson(response, 200, { profile, dependencies: context.vault.dependencies(credentialDetail.groups.id), healthTimeline: context.vault.healthTimeline(credentialDetail.groups.id) });
     return;
   }
   if (url.pathname === "/api/projects") {
     requirePermission(context, "scans.read");
-    sendJson(response, 200, { projects: projects.list(stringParam(url, "q"), booleanParam(url, "includeArchived") === true) });
+    sendJson(response, 200, { projects: projects.list(stringParam(url, "q"), booleanParam(url, "includeArchived") === true, resourceOrganization(context)) });
     return;
   }
   const project = /^\/api\/projects\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (project?.groups?.id) {
-    const item = projects.get(project.groups.id, booleanParam(url, "includeArchived") === true);
+    const organizationId = resourceOrganization(context);
+    const item = projects.get(project.groups.id, booleanParam(url, "includeArchived") === true, organizationId);
     if (!item) throw new HttpError(404, "Project not found.");
-    sendJson(response, 200, { project: item, targets: targets.list({ projectId: project.groups.id }), scans: scans.list(25, { projectId: project.groups.id }), comparisons: comparison.list({ projectId: project.groups.id, limit: 20 }), findingIntelligence: findingCommandCenter.intelligence({ projectId: project.groups.id }) });
+    sendJson(response, 200, { project: item, targets: targets.list({ organizationId, projectId: project.groups.id }), scans: scans.list(25, { organizationId, projectId: project.groups.id }), comparisons: comparison.list({ organizationId, projectId: project.groups.id, limit: 20 }), findingIntelligence: findingCommandCenter.intelligence({ projectId: project.groups.id }) });
     return;
   }
   if (url.pathname === "/api/targets") {
     requirePermission(context, "scans.read");
-    sendJson(response, 200, { targets: targets.list({ projectId: stringParam(url, "projectId"), search: stringParam(url, "q"), includeArchived: booleanParam(url, "includeArchived") === true }) });
+    sendJson(response, 200, { targets: targets.list({ organizationId: resourceOrganization(context), projectId: stringParam(url, "projectId"), search: stringParam(url, "q"), includeArchived: booleanParam(url, "includeArchived") === true }) });
     return;
   }
   const target = /^\/api\/targets\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (target?.groups?.id) {
-    const item = targets.get(target.groups.id, booleanParam(url, "includeArchived") === true);
+    const organizationId = resourceOrganization(context);
+    const item = targets.get(target.groups.id, booleanParam(url, "includeArchived") === true, organizationId);
     if (!item) throw new HttpError(404, "Target not found.");
-    sendJson(response, 200, { target: item, comparisons: comparison.list({ targetId: target.groups.id, limit: 20 }), findingIntelligence: findingCommandCenter.intelligence({ targetId: target.groups.id }) });
+    sendJson(response, 200, { target: item, comparisons: comparison.list({ organizationId, targetId: target.groups.id, limit: 20 }), findingIntelligence: findingCommandCenter.intelligence({ targetId: target.groups.id }) });
     return;
   }
   if (url.pathname === "/api/audit-events") {
@@ -640,8 +710,10 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/scans") {
     requirePermission(context, "scans.read");
+    const organizationId = resourceOrganization(context);
     sendJson(response, 200, {
       scans: scans.list(numberParam(url, "limit", 50), {
+        organizationId,
         search: stringParam(url, "q"),
         status: scanStatusParam(url),
         profile: stringParam(url, "profile"),
@@ -654,18 +726,24 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/comparisons/candidates") {
     requirePermission(context, "comparisons.read");
-    sendJson(response, 200, { scans: comparison.candidates(stringParam(url, "targetId")) });
+    const organizationId=resourceOrganization(context),targetId=stringParam(url,"targetId");
+    if(targetId)requireSelectedResource(context,"target",targetId,"org.read");
+    sendJson(response, 200, { scans: comparison.candidates(targetId,organizationId) });
     return;
   }
   if (url.pathname === "/api/comparisons") {
     requirePermission(context, "comparisons.read");
     const targetId = stringParam(url, "targetId"), projectId = stringParam(url, "projectId");
-    sendJson(response, 200, { comparisons: comparison.list({ ...(targetId ? { targetId } : {}), ...(projectId ? { projectId } : {}), limit: numberParam(url, "limit", 50) }) });
+    const organizationId=resourceOrganization(context);
+    if(targetId)requireSelectedResource(context,"target",targetId,"org.read");
+    if(projectId)requireSelectedResource(context,"project",projectId,"org.read");
+    sendJson(response, 200, { comparisons: comparison.list({ organizationId, ...(targetId ? { targetId } : {}), ...(projectId ? { projectId } : {}), limit: numberParam(url, "limit", 50) }) });
     return;
   }
   const comparisonDetail = /^\/api\/comparisons\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (comparisonDetail?.groups?.id) {
     requirePermission(context, "comparisons.read");
+    requireSelectedComparison(context,comparisonDetail.groups.id);
     const classification = enumParam(url, "classification", ["NEW", "PERSISTING", "CHANGED", "RESOLVED", "NOT_RETESTED", "INCOMPARABLE"] as const);
     const severity = enumParam(url, "severity", ["Critical", "High", "Medium", "Low", "Info"] as const);
     const sort = enumParam(url, "sort", ["classification", "severity", "module", "coverage", "title", "created"] as const);
@@ -677,6 +755,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const comparisonExport = /^\/api\/comparisons\/(?<id>[0-9a-f-]+)\/export\/(?<format>json|markdown)$/.exec(url.pathname);
   if (comparisonExport?.groups?.id && comparisonExport.groups.format) {
     requirePermission(context, "comparisons.export");
+    requireSelectedComparison(context,comparisonExport.groups.id);
     const format = comparisonExport.groups.format as "json" | "markdown";
     response.statusCode = 200;
     response.setHeader("content-type", format === "json" ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8");
@@ -686,12 +765,12 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/findings") {
     requirePermission(context, "findings.read");
-    sendJson(response, 200, findingCommandCenter.list(findingQuery(url)));
+    sendJson(response, 200, findingCommandCenter.list({ ...findingQuery(url), organizationId: resourceOrganization(context) }));
     return;
   }
   if (url.pathname === "/api/findings/queue") {
     requirePermission(context, "findings.read");
-    sendJson(response, 200, findingCommandCenter.queue(stringParam(url, "mode") ?? "UNREVIEWED", findingQuery(url)));
+    sendJson(response, 200, findingCommandCenter.queue(stringParam(url, "mode") ?? "UNREVIEWED", { ...findingQuery(url), organizationId: resourceOrganization(context) }));
     return;
   }
   if (url.pathname === "/api/finding-views") {
@@ -707,7 +786,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/proof-packs") {
     requirePermission(context, "proofPacks.read");
-    sendJson(response, 200, { proofPacks: context.proofPacks.list() });
+    sendJson(response, 200, { proofPacks: context.proofPacks.list(resourceOrganization(context)) });
     return;
   }
   if (url.pathname === "/api/settings") {
@@ -735,39 +814,42 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   }
   if (url.pathname === "/api/configurations") {
     requirePermission(context, "scans.create");
-    sendJson(response, 200, { configurations: context.configurations.list(stringParam(url, "q"), booleanParam(url, "includeArchived") === true) });
+    sendJson(response, 200, { configurations: context.configurations.list(stringParam(url, "q"), booleanParam(url, "includeArchived") === true,resourceOrganization(context)) });
     return;
   }
   const configuration = /^\/api\/configurations\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (configuration?.groups?.id) {
     requirePermission(context, "scans.create");
-    const item = context.configurations.get(configuration.groups.id, booleanParam(url, "includeArchived") === true);
+    const organizationId=resourceOrganization(context);
+    const item = context.configurations.get(configuration.groups.id, booleanParam(url, "includeArchived") === true,organizationId);
     if (!item) throw new HttpError(404, "Configuration not found.");
-    sendJson(response, 200, { configuration: item, history: context.configurations.history(configuration.groups.id) });
+    sendJson(response, 200, { configuration: item, history: context.configurations.history(configuration.groups.id,organizationId) });
     return;
   }
   const configurationDiff = /^\/api\/configurations\/(?<id>[0-9a-f-]+)\/diff$/.exec(url.pathname);
   if (configurationDiff?.groups?.id) {
     requirePermission(context, "scans.create");
-    sendJson(response, 200, context.configurations.diff(configurationDiff.groups.id, numberParam(url, "older", 1), numberParam(url, "newer", 1)));
+    sendJson(response, 200, context.configurations.diff(configurationDiff.groups.id, numberParam(url, "older", 1), numberParam(url, "newer", 1),resourceOrganization(context)));
     return;
   }
   const stream = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/stream$/.exec(url.pathname);
   if (stream?.groups?.id) {
     requirePermission(context, "scans.read");
+    if (!scans.get(stream.groups.id, resourceOrganization(context))) throw new HttpError(404, "Scan not found.");
     await serveEventStream(context, stream.groups.id);
     return;
   }
   const scanEvents = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/events$/.exec(url.pathname);
   if (scanEvents?.groups?.id) {
     requirePermission(context, "scans.read");
+    if (!scans.get(scanEvents.groups.id, resourceOrganization(context))) throw new HttpError(404, "Scan not found.");
     sendJson(response, 200, { events: events.list(scanEvents.groups.id, numberParam(url, "after", 0), numberParam(url, "limit", 200)) });
     return;
   }
   const scan = /^\/api\/scans\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (scan?.groups?.id) {
     requirePermission(context, "scans.read");
-    const item = scans.get(scan.groups.id);
+    const item = scans.get(scan.groups.id, resourceOrganization(context));
     if (!item) throw new HttpError(404, "Scan not found.");
     sendJson(response, 200, { scan: item });
     return;
@@ -775,7 +857,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const scanDetail = /^\/api\/scans\/(?<id>[0-9a-f-]+)\/detail$/.exec(url.pathname);
   if (scanDetail?.groups?.id) {
     requirePermission(context, "scans.read");
-    const item = scans.detail(scanDetail.groups.id);
+    const item = scans.detail(scanDetail.groups.id, resourceOrganization(context));
     if (!item) throw new HttpError(404, "Scan not found.");
     sendJson(response, 200, item);
     return;
@@ -783,25 +865,27 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const findingDetail = /^\/api\/findings\/(?<id>[0-9a-f-]+)$/.exec(url.pathname);
   if (findingDetail?.groups?.id) {
     requirePermission(context, "findings.read");
-    sendJson(response, 200, findingCommandCenter.detail(findingDetail.groups.id));
+    sendJson(response, 200, findingCommandCenter.detail(findingDetail.groups.id, resourceOrganization(context)));
     return;
   }
   const retestCandidates = /^\/api\/findings\/(?<id>[0-9a-f-]+)\/retest-candidates$/.exec(url.pathname);
   if (retestCandidates?.groups?.id) {
     requirePermission(context, "findings.read");
+    requireSelectedResource(context,"finding",retestCandidates.groups.id,"org.read");
     sendJson(response, 200, { scans: findingCommandCenter.retestCandidates(retestCandidates.groups.id) });
     return;
   }
   const retestDraft = /^\/api\/findings\/(?<id>[0-9a-f-]+)\/retest-draft$/.exec(url.pathname);
   if (retestDraft?.groups?.id) {
     requirePermission(context, "findings.linkRetest");
+    requireSelectedResource(context,"finding",retestDraft.groups.id,"org.read");
     sendJson(response, 200, findingCommandCenter.retestDraft(retestDraft.groups.id));
     return;
   }
   const artifact = /^\/api\/artifacts\/(?<id>[0-9a-f-]+)\/download$/.exec(url.pathname);
   if (artifact?.groups?.id) {
     requirePermission(context, "artifacts.download");
-    const item = artifacts.get(artifact.groups.id);
+    const item = artifacts.get(artifact.groups.id,resourceOrganization(context));
     if (!item) throw new HttpError(404, "Artifact not found.");
     serveArtifact(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
     return;
@@ -809,7 +893,7 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const artifactPreview = /^\/api\/artifacts\/(?<id>[0-9a-f-]+)\/preview$/.exec(url.pathname);
   if (artifactPreview?.groups?.id) {
     requirePermission(context, "artifacts.download");
-    const item = artifacts.get(artifactPreview.groups.id);
+    const item = artifacts.get(artifactPreview.groups.id,resourceOrganization(context));
     if (!item) throw new HttpError(404, "Artifact not found.");
     serveImagePreview(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
     return;
@@ -819,8 +903,15 @@ async function handleApiGet(context: ApiContext): Promise<void> {
 
 async function handleApiMutation(context: ApiContext): Promise<void> {
   const { request, response, url, execution, findingCommandCenter, comparison, proofPacks, importer, configurations, projects, targets, audit, mutationApprovals, mutationRecovery } = context;
+  enforceTenantMutationBoundary(context);
   if (request.method === "POST" && url.pathname === "/api/operations/organizations") {
     requirePermission(context, "organizations.manage"); const parsed = organizationCreateSchema.parse(await readJson(request)); const id = context.organizations.create(parsed, context.principal!.userId); context.cloudSync.record(id,"organization",id,"UPSERT",{name:parsed.name,slug:parsed.slug,status:"ACTIVE"}); audit.append({ actorLabel: context.principal?.userId, action: "ORGANIZATION_CREATED", resourceType: "ORGANIZATION", resourceId: id, summary: "Organization created." }); sendJson(response, 201, { organizationId: id }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/mutation-coordination/orphan") {
+    requirePermission(context, "controlledMutation.recover"); if (!context.mutationCoordinator) throw new HttpError(404, "Distributed mutation coordination is not configured."); const body=await readJson(request); const result=context.mutationCoordinator.orphan(body); audit.append({actorLabel:context.principal?.userId,action:"DISTRIBUTED_MUTATION_LEASE_ORPHANED",resourceType:"CONTROLLED_MUTATION",resourceId:result.caseId,summary:"A stale distributed mutation lease was marked state-uncertain; the namespace remains blocked pending recovery."}); sendJson(response,200,result); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/mutation-coordination/resolve") {
+    requirePermission(context, "controlledMutation.recover"); if (!context.mutationCoordinator) throw new HttpError(404, "Distributed mutation coordination is not configured."); const body=await readJson(request); const result=context.mutationCoordinator.resolve(body); audit.append({actorLabel:context.principal?.userId,action:"DISTRIBUTED_MUTATION_OBLIGATION_RESOLVED",resourceType:"CONTROLLED_MUTATION",resourceId:result.caseId,summary:"An operator explicitly verified distributed mutation state before clearing the coordination obligation."}); sendJson(response,200,result); return;
   }
   const orgMember = /^\/api\/operations\/organizations\/(?<id>[0-9a-f-]+)\/members$/.exec(url.pathname);
   if (request.method === "POST" && orgMember?.groups?.id) {
@@ -850,7 +941,16 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requirePermission(context, "operations.read"); const organizationId=context.remoteWorkers.organizationForWorker(remoteWorkerState.groups.id); requireOrg(context, organizationId, "workers.manage"); const parsed = remoteWorkerStateSchema.parse(await readJson(request)); context.remoteWorkers.setStatus(remoteWorkerState.groups.id, parsed.status); context.cloudSync.record(organizationId,"remote-worker",remoteWorkerState.groups.id,"UPSERT",{status:parsed.status}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_STATE_CHANGED", resourceType: "REMOTE_WORKER", resourceId: remoteWorkerState.groups.id, summary: `Remote worker changed to ${parsed.status}.` }); sendJson(response, 200, { ok: true }); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/cloud-sync/peers") {
-    requirePermission(context, "operations.read"); const parsed = cloudSyncPeerSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "org.manage"); const id = context.cloudSync.createPeer(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"cloud-sync-peer",id,"UPSERT",{name:parsed.name,enabled:parsed.enabled}); audit.append({ actorLabel: context.principal?.userId, action: "CLOUD_SYNC_PEER_CREATED", resourceType: "CLOUD_SYNC_PEER", resourceId: id, summary: "Signed cloud synchronization peer configured." }); sendJson(response, 201, { peerId: id }); return;
+    requirePermission(context, "operations.read"); const parsed = cloudSyncPeerSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "org.manage"); const id = context.cloudSync.createPeer({ organizationId: parsed.organizationId, ...(parsed.remoteOrganizationId ? { remoteOrganizationId: parsed.remoteOrganizationId } : {}), name: parsed.name, endpoint: parsed.endpoint, sharedSecretEnv: parsed.sharedSecretEnv, enabled: parsed.enabled, syncMode: parsed.syncMode }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"cloud-sync-peer",id,"UPSERT",{name:parsed.name,enabled:parsed.enabled,syncMode:parsed.syncMode,remoteOrganizationId:parsed.remoteOrganizationId??parsed.organizationId}); audit.append({ actorLabel: context.principal?.userId, action: "CLOUD_SYNC_PEER_CREATED", resourceType: "CLOUD_SYNC_PEER", resourceId: id, summary: "Signed cloud synchronization peer configured." }); sendJson(response, 201, { peerId: id }); return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/operations/cloud-sync/synchronize") {
+    requirePermission(context, "operations.read"); const organizationId=operationalOrganization(context); requireOrg(context,organizationId,"org.manage"); await readJson(request); const result=await context.cloudSync.synchronizeOrganization(organizationId); audit.append({actorLabel:context.principal?.userId,action:"CLOUD_SYNC_COMPLETED",resourceType:"ORGANIZATION",resourceId:organizationId,summary:"Automatic legacy snapshot and signed peer synchronization completed.",metadata:{snapshotEvents:result.snapshotEvents,pushedEvents:result.pushedEvents,failureCount:result.failures.length}});sendJson(response,result.failures.length?207:200,result);return;
+  }
+  if(request.method==="POST"&&url.pathname==="/api/operations/cloud-sync/memberships/bind"){
+    requirePermission(context,"operations.read");const parsed=cloudSyncMembershipBindSchema.parse(await readJson(request));requireOrg(context,parsed.organizationId,"members.manage");
+    context.cloudSync.bindMembership(parsed.organizationId,parsed.originInstallationId,parsed.sourceUserId,parsed.localUserId);
+    audit.append({actorLabel:context.principal?.userId,action:"CLOUD_SYNC_MEMBERSHIP_BOUND",resourceType:"ORGANIZATION",resourceId:parsed.organizationId,summary:"Operator bound a peer membership to a local user.",metadata:{originInstallationId:parsed.originInstallationId,sourceUserId:parsed.sourceUserId,localUserId:parsed.localUserId}});
+    sendJson(response,200,{ok:true});return;
   }
   const cloudPush = /^\/api\/operations\/cloud-sync\/(?<id>[0-9a-f-]+)\/push$/.exec(url.pathname);
   if (request.method === "POST" && cloudPush?.groups?.id) {
@@ -865,7 +965,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requirePermission(context, "backups.manage"); const parsed = backupRestoreSchema.parse(await readJson(request)); context.backups.stageRestore(parsed.backupId); audit.append({ actorLabel: context.principal?.userId, action: "BACKUP_RESTORE_STAGED", resourceType: "BACKUP", resourceId: parsed.backupId, summary: "Verified backup staged for restore on restart." }); sendJson(response, 202, { restartRequired: true }); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/integrations/exports") {
-    requirePermission(context, "integrations.manage"); const parsed = integrationExportSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "integrations.manage"); const result = context.integrationExports.create(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"integration-export",result.exportId,"UPSERT",{scanId:parsed.scanId,format:parsed.format,artifactId:result.artifactId}); audit.append({ actorLabel: context.principal?.userId, action: "INTEGRATION_EXPORT_CREATED", resourceType: "SCAN", resourceId: parsed.scanId, summary: `${parsed.format} integration export created.` }); sendJson(response, 201, result); return;
+    requirePermission(context, "integrations.manage"); const parsed = integrationExportSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "integrations.manage"); if(!context.scans.get(parsed.scanId,parsed.organizationId))throw new HttpError(404,"Scan not found in the selected organization."); const result = context.integrationExports.create(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"integration-export",result.exportId,"UPSERT",{scanId:parsed.scanId,format:parsed.format,artifactId:result.artifactId}); audit.append({ actorLabel: context.principal?.userId, action: "INTEGRATION_EXPORT_CREATED", resourceType: "SCAN", resourceId: parsed.scanId, summary: `${parsed.format} integration export created.` }); sendJson(response, 201, result); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/modules") {
     requirePermission(context, "operations.read"); const parsed = thirdPartyModuleRegisterSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "modules.manage"); const id = context.thirdPartyModules.register(parsed.organizationId, parsed.packageDirectory, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"third-party-module",id,"UPSERT",{status:"REGISTERED"}); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_REGISTERED", resourceType: "THIRD_PARTY_MODULE", resourceId: id, summary: "Third-party module package registered for separate approval." }); sendJson(response, 201, { moduleId: id }); return;
@@ -1024,7 +1124,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && adaptiveMaterialize?.groups?.id) {
     requirePermission(context, "scans.create");
     const materialized = context.adaptiveSecurity.materializeRecommendation(adaptiveMaterialize.groups.id);
-    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_READ_ONLY_CASE_MATERIALIZED", resourceType: "ADAPTIVE_RECOMMENDATION", resourceId: adaptiveMaterialize.groups.id, summary: "Evidence-bound read-only recommendation materialized into an executable Scan Studio case; no target request was sent.", metadata: { engineId: materialized.engineId, executionFingerprint: (materialized.binding as { executionFingerprint: string }).executionFingerprint } });
+    audit.append({ actorLabel: context.principal?.userId, action: "ADAPTIVE_CASE_MATERIALIZED", resourceType: "ADAPTIVE_RECOMMENDATION", resourceId: adaptiveMaterialize.groups.id, summary: "Evidence-bound recommendation materialized into an executable Scan Studio contract; no target request was sent.", metadata: { engineId: materialized.engineId, automationState: (materialized.automation as { state?: string }).state, executionFingerprint: (materialized.binding as { executionFingerprint: string }).executionFingerprint } });
     sendJson(response, 200, { materialized });
     return;
   }
@@ -1205,7 +1305,10 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/credential-profiles") {
     requirePermission(context, "credentials.create");
     const parsed = credentialProfileSchema.parse(await readJson(request));
-    const profileId = context.vault.create({ ...parsed, createdByUserId: context.principal?.userId });
+    const organizationId = resourceOrganization(context, "resources.use");
+    if (parsed.projectId && !context.projects.get(parsed.projectId, true, organizationId)) throw new HttpError(400, "Credential project is outside the selected organization.");
+    if (parsed.targetId && !context.targets.get(parsed.targetId, true, organizationId)) throw new HttpError(400, "Credential target is outside the selected organization.");
+    const profileId = context.vault.create({ ...parsed, organizationId, createdByUserId: context.principal?.userId });
     audit.append({ actorLabel: context.principal?.userId, action: "CREDENTIAL_PROFILE_CREATED", resourceType: "CREDENTIAL_PROFILE", resourceId: profileId, summary: `Credential profile created: ${parsed.safeAlias}.` });
     sendJson(response, 201, { profileId });
     return;
@@ -1361,7 +1464,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     if (parsed.studio?.retestContext) findingCommandCenter.validateRetestContext(parsed.studio.retestContext);
     await assertProviderAdapterExecution(context, parsed);
     context.adaptiveSecurity.assertExecutionBinding(parsed);
-    const scanId = await execution.enqueue(parsed);
+    const scanId = await execution.enqueue(parsed, undefined, undefined, resourceOrganization(context, "resources.use"));
     if (parsed.providerAdapterBinding) context.providerAdapters.bindScan(scanId, parsed.providerAdapterBinding);
     if (parsed.studio?.retestContext) {
       findingCommandCenter.recordRetestLaunch({ context: parsed.studio.retestContext, newScanId: scanId, principal: context.principal! });
@@ -1443,6 +1546,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && retest?.groups?.id) {
     requirePermission(context, "findings.linkRetest");
     const parsed = findingRetestSchema.parse(await readJson(request));
+    requireSelectedResource(context,"scan",parsed.scanId,"resources.use");
     const result = findingCommandCenter.linkRetest({ findingId: retest.groups.id, ...parsed, principal: context.principal! });
     audit.append({ actorLabel: context.principal?.userId, action: "FINDING_RETEST_LINKED", resourceType: "FINDING", resourceId: retest.groups.id, summary: `Retest linked with state ${result.state}.`, metadata: { scanId: parsed.scanId, compatible: result.compatible, reasonCount: result.reasons.length } });
     sendJson(response, 200, result);
@@ -1470,6 +1574,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/findings/bulk-review") {
     requirePermission(context, "findings.bulkReview");
     const parsed = findingBulkReviewSchema.parse(await readJson(request));
+    requireSelectedResources(context,"finding",parsed.findingIds,"resources.use");
     const result = findingCommandCenter.bulkReview({ ...parsed, principal: context.principal!, correlationId: correlationId(request) });
     audit.append({ actorLabel: context.principal?.userId, action: "FINDINGS_BULK_REVIEWED", resourceType: "FINDING_BATCH", summary: `Bulk review applied to ${result.succeeded.length} finding(s); ${result.failed.length} failed.`, metadata: { requested: parsed.findingIds.length, succeeded: result.succeeded.length, failed: result.failed.length, newStatus: parsed.newStatus } });
     sendJson(response, 200, result);
@@ -1478,6 +1583,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/findings/bulk-remediation") {
     requirePermission(context, "findings.remediate");
     const parsed = findingBulkRemediationSchema.parse(await readJson(request));
+    requireSelectedResources(context,"finding",parsed.findingIds,"resources.use");
     if (parsed.assigneeUserId !== undefined) requirePermission(context, "findings.assign");
     const result = findingCommandCenter.bulkRemediation({ ...parsed, principal: context.principal!, correlationId: correlationId(request) });
     audit.append({ actorLabel: context.principal?.userId, action: "FINDINGS_BULK_REMEDIATED", resourceType: "FINDING_BATCH", summary: `Bulk remediation updated ${result.succeeded.length} finding(s); ${result.failed.length} failed.`, metadata: { requested: parsed.findingIds.length, succeeded: result.succeeded.length, failed: result.failed.length, newState: parsed.newState } });
@@ -1487,6 +1593,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/findings/bulk-note") {
     requirePermission(context, "notes.create");
     const parsed = findingBulkNoteSchema.parse(await readJson(request));
+    requireSelectedResources(context,"finding",parsed.findingIds,"resources.use");
     const result = findingCommandCenter.bulkNote({ ...parsed, principal: context.principal! });
     audit.append({ actorLabel: context.principal?.userId, action: "FINDINGS_BULK_NOTE_ADDED", resourceType: "FINDING_BATCH", summary: `Bulk note added to ${result.succeeded.length} finding(s); ${result.failed.length} failed.`, metadata: { requested: parsed.findingIds.length, succeeded: result.succeeded.length, failed: result.failed.length } });
     sendJson(response, 200, result);
@@ -1519,6 +1626,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/compare") {
     requirePermission(context, "comparisons.create");
     const parsed = compareRequestSchema.parse(await readJson(request));
+    requireSelectedResources(context,"scan",[parsed.oldScanId,parsed.newScanId],"resources.use");
     if (parsed.recompute) requirePermission(context, "comparisons.recompute");
     const result = comparison.compare(parsed.oldScanId, parsed.newScanId, { ...(context.principal?.userId ? { createdByUserId: context.principal.userId } : {}), ...(parsed.recompute === undefined ? {} : { recompute: parsed.recompute }) });
     audit.append({ actorLabel: context.principal?.userId, action: parsed.recompute ? "COMPARISON_RECOMPUTED" : "COMPARISON_CREATED", resourceType: "SCAN_COMPARISON", resourceId: result.comparisonId, summary: parsed.recompute ? "Scan comparison recomputed with a traceable engine version." : "Scan comparison created.", metadata: { oldScanId: parsed.oldScanId, newScanId: parsed.newScanId, engineVersion: result.engineVersion } });
@@ -1528,6 +1636,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const comparisonDelete = /^\/api\/comparisons\/(?<id>[0-9a-f-]+)\/delete$/.exec(url.pathname);
   if (request.method === "POST" && comparisonDelete?.groups?.id) {
     requirePermission(context, "comparisons.delete");
+    requireSelectedComparison(context,comparisonDelete.groups.id);
     comparison.delete(comparisonDelete.groups.id);
     audit.append({ actorLabel: context.principal?.userId, action: "COMPARISON_DELETED", resourceType: "SCAN_COMPARISON", resourceId: comparisonDelete.groups.id, summary: "Scan comparison soft-deleted." });
     sendJson(response, 200, { ok: true });
@@ -1536,7 +1645,8 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/proof-packs") {
     requirePermission(context, "proofPacks.create");
     const parsed = proofPackCreateSchema.parse(await readJson(request));
-    const proofPackId = proofPacks.generate(parsed.title, parsed.description, parsed.findingIds);
+    requireSelectedResources(context,"finding",parsed.findingIds,"resources.use");
+    const proofPackId = proofPacks.generate(parsed.title, parsed.description, parsed.findingIds,resourceOrganization(context,"resources.use"));
     audit.append({ action: "PROOF_PACK_GENERATED", resourceType: "PROOF_PACK", resourceId: proofPackId, summary: `Generated proof pack with ${parsed.findingIds.length} finding(s).` });
     sendJson(response, 201, { proofPackId });
     return;
@@ -1544,7 +1654,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/import/report") {
     requirePermission(context, "imports.create");
     const parsed = importReportSchema.parse(await readJson(request));
-    const result = importer.importReport(parsed.reportPath);
+    const result = importer.importReport(parsed.reportPath,resourceOrganization(context,"resources.use"));
     audit.append({ action: "HISTORICAL_REPORT_IMPORTED", resourceType: "SCAN", resourceId: result.scanId, summary: "Imported historical report from approved report root.", metadata: { warningCount: result.warnings.length } });
     sendJson(response, 201, result);
     return;
@@ -1552,7 +1662,8 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/projects") {
     requirePermission(context, "projects.manage");
     const parsed = projectSchema.parse(await readJson(request));
-    const projectId = projects.create(parsed);
+    const organizationId = resourceOrganization(context, "resources.use");
+    const projectId = projects.create({ ...parsed, organizationId, createdBy: context.principal?.userId });
     audit.append({ action: "PROJECT_CREATED", resourceType: "PROJECT", resourceId: projectId, summary: `Project created: ${parsed.name}.` });
     sendJson(response, 201, { projectId });
     return;
@@ -1561,7 +1672,8 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "PATCH" && projectUpdate?.groups?.id) {
     requirePermission(context, "projects.manage");
     const parsed = projectSchema.parse(await readJson(request));
-    projects.update(projectUpdate.groups.id, parsed);
+    const organizationId = resourceOrganization(context, "resources.use");
+    projects.update(projectUpdate.groups.id, { ...parsed, organizationId });
     audit.append({ action: "PROJECT_UPDATED", resourceType: "PROJECT", resourceId: projectUpdate.groups.id, summary: `Project updated: ${parsed.name}.` });
     sendJson(response, 200, { ok: true });
     return;
@@ -1569,7 +1681,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const projectArchive = /^\/api\/projects\/(?<id>[0-9a-f-]+)\/archive$/.exec(url.pathname);
   if (request.method === "POST" && projectArchive?.groups?.id) {
     requirePermission(context, "projects.manage");
-    projects.archive(projectArchive.groups.id);
+    projects.archive(projectArchive.groups.id, resourceOrganization(context, "resources.use"));
     audit.append({ action: "PROJECT_ARCHIVED", resourceType: "PROJECT", resourceId: projectArchive.groups.id, summary: "Project archived." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1577,7 +1689,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const projectRestore = /^\/api\/projects\/(?<id>[0-9a-f-]+)\/restore$/.exec(url.pathname);
   if (request.method === "POST" && projectRestore?.groups?.id) {
     requirePermission(context, "projects.manage");
-    projects.restore(projectRestore.groups.id);
+    projects.restore(projectRestore.groups.id, resourceOrganization(context, "resources.use"));
     audit.append({ action: "PROJECT_RESTORED", resourceType: "PROJECT", resourceId: projectRestore.groups.id, summary: "Project restored." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1585,8 +1697,10 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/targets") {
     requirePermission(context, "targets.manage");
     const parsed = targetSchema.parse(await readJson(request));
+    const organizationId = resourceOrganization(context, "resources.use");
+    if (parsed.projectId && !projects.get(parsed.projectId, true, organizationId)) throw new HttpError(400, "Target project is outside the selected organization.");
     validateTargetDefaults(context, parsed);
-    const targetId = targets.create(parsed);
+    const targetId = targets.create({ ...parsed, organizationId, createdBy: context.principal?.userId });
     audit.append({ action: "TARGET_CREATED", resourceType: "TARGET", resourceId: targetId, summary: `Target created: ${parsed.displayName}.`, metadata: { projectId: parsed.projectId, authorizationType: parsed.authorizationType } });
     sendJson(response, 201, { targetId });
     return;
@@ -1595,8 +1709,10 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "PATCH" && targetUpdate?.groups?.id) {
     requirePermission(context, "targets.manage");
     const parsed = targetSchema.parse(await readJson(request));
+    const organizationId = resourceOrganization(context, "resources.use");
+    if (parsed.projectId && !projects.get(parsed.projectId, true, organizationId)) throw new HttpError(400, "Target project is outside the selected organization.");
     validateTargetDefaults(context, parsed);
-    targets.update(targetUpdate.groups.id, parsed);
+    targets.update(targetUpdate.groups.id, { ...parsed, organizationId });
     audit.append({ action: "TARGET_UPDATED", resourceType: "TARGET", resourceId: targetUpdate.groups.id, summary: `Target updated: ${parsed.displayName}.`, metadata: { projectId: parsed.projectId, authorizationType: parsed.authorizationType } });
     sendJson(response, 200, { ok: true });
     return;
@@ -1604,7 +1720,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const targetArchive = /^\/api\/targets\/(?<id>[0-9a-f-]+)\/archive$/.exec(url.pathname);
   if (request.method === "POST" && targetArchive?.groups?.id) {
     requirePermission(context, "targets.manage");
-    targets.archive(targetArchive.groups.id);
+    targets.archive(targetArchive.groups.id, resourceOrganization(context, "resources.use"));
     audit.append({ action: "TARGET_ARCHIVED", resourceType: "TARGET", resourceId: targetArchive.groups.id, summary: "Target archived." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1612,7 +1728,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const targetRestore = /^\/api\/targets\/(?<id>[0-9a-f-]+)\/restore$/.exec(url.pathname);
   if (request.method === "POST" && targetRestore?.groups?.id) {
     requirePermission(context, "targets.manage");
-    targets.restore(targetRestore.groups.id);
+    targets.restore(targetRestore.groups.id, resourceOrganization(context, "resources.use"));
     audit.append({ action: "TARGET_RESTORED", resourceType: "TARGET", resourceId: targetRestore.groups.id, summary: "Target restored." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1620,7 +1736,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "POST" && url.pathname === "/api/configurations") {
     requirePermission(context, "configurations.manage");
     const parsed = savedConfigurationSchema.parse(await readJson(request));
-    const configurationId = configurations.create(normalizeSavedConfiguration(parsed));
+    const configurationId = configurations.create({...normalizeSavedConfiguration(parsed),organizationId:resourceOrganization(context,"resources.use")});
     audit.append({ action: "CONFIGURATION_CHANGED", resourceType: "SAVED_CONFIGURATION", resourceId: configurationId, summary: `Configuration created: ${parsed.name}.` });
     sendJson(response, 201, { configurationId });
     return;
@@ -1629,7 +1745,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   if (request.method === "PATCH" && configUpdate?.groups?.id) {
     requirePermission(context, "configurations.manage");
     const parsed = savedConfigurationSchema.parse(await readJson(request));
-    configurations.update(configUpdate.groups.id, normalizeSavedConfiguration(parsed));
+    configurations.update(configUpdate.groups.id, normalizeSavedConfiguration(parsed),resourceOrganization(context,"resources.use"));
     audit.append({ action: "CONFIGURATION_CHANGED", resourceType: "SAVED_CONFIGURATION", resourceId: configUpdate.groups.id, summary: `Configuration updated: ${parsed.name}.` });
     sendJson(response, 200, { ok: true });
     return;
@@ -1637,7 +1753,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const configArchive = /^\/api\/configurations\/(?<id>[0-9a-f-]+)\/archive$/.exec(url.pathname);
   if (request.method === "POST" && configArchive?.groups?.id) {
     requirePermission(context, "configurations.manage");
-    configurations.archive(configArchive.groups.id);
+    configurations.archive(configArchive.groups.id,resourceOrganization(context,"resources.use"));
     audit.append({ action: "CONFIGURATION_ARCHIVED", resourceType: "SAVED_CONFIGURATION", resourceId: configArchive.groups.id, summary: "Configuration archived." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1645,7 +1761,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const configRestore = /^\/api\/configurations\/(?<id>[0-9a-f-]+)\/restore$/.exec(url.pathname);
   if (request.method === "POST" && configRestore?.groups?.id) {
     requirePermission(context, "configurations.manage");
-    configurations.restore(configRestore.groups.id);
+    configurations.restore(configRestore.groups.id,resourceOrganization(context,"resources.use"));
     audit.append({ action: "CONFIGURATION_RESTORED", resourceType: "SAVED_CONFIGURATION", resourceId: configRestore.groups.id, summary: "Configuration restored." });
     sendJson(response, 200, { ok: true });
     return;
@@ -1655,7 +1771,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requirePermission(context, "configurations.manage");
     const body = await readJson(request) as { name?: unknown };
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim().slice(0, 160) : "Configuration copy";
-    const configurationId = configurations.clone(configClone.groups.id, name);
+    const configurationId = configurations.clone(configClone.groups.id, name,resourceOrganization(context,"resources.use"));
     audit.append({ action: "CONFIGURATION_CLONED", resourceType: "SAVED_CONFIGURATION", resourceId: configurationId, summary: `Configuration cloned: ${name}.`, metadata: { sourceId: configClone.groups.id } });
     sendJson(response, 201, { configurationId });
     return;
@@ -1722,32 +1838,59 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   throw new HttpError(404, "API route not found.");
 }
 
+function enforceTenantMutationBoundary(context: ApiContext): void {
+  const match = /^\/api\/(?<kind>projects|targets|scans|findings|credential-profiles|configurations)\/(?<id>[0-9a-f-]{36})(?:\/|$)/i.exec(context.url.pathname);
+  if (!match?.groups?.kind || !match.groups.id) return;
+  const kind = ({ projects:"project", targets:"target", scans:"scan", findings:"finding", "credential-profiles":"credential", configurations:"configuration" } as const)[match.groups.kind.toLowerCase() as "projects"|"targets"|"scans"|"findings"|"credential-profiles"|"configurations"];
+  requireSelectedResource(context,kind,match.groups.id,"resources.use");
+}
+
+function requireSelectedResource(context:ApiContext,kind:"project"|"target"|"scan"|"finding"|"credential"|"configuration",id:string,permission:import("../operations/OrganizationService.js").OrganizationPermission):string{
+  const selected=resourceOrganization(context,permission),actual=context.organizations.resourceOrganization(kind,id);
+  if(!actual||actual!==selected)throw new HttpError(404,"Resource not found in the selected organization.");
+  return selected;
+}
+function requireSelectedResources(context:ApiContext,kind:"project"|"target"|"scan"|"finding"|"credential"|"configuration",ids:readonly string[],permission:import("../operations/OrganizationService.js").OrganizationPermission):void{for(const id of ids)requireSelectedResource(context,kind,id,permission);}
+function requireSelectedComparison(context:ApiContext,id:string):void{
+  const organizationId=resourceOrganization(context);
+  const row=context.database.db.prepare(`SELECT 1 FROM scan_comparisons c
+    JOIN scans older ON older.id=c.older_scan_id
+    JOIN scans newer ON newer.id=c.newer_scan_id
+    WHERE c.id=? AND c.deleted_at IS NULL AND older.organization_id=? AND newer.organization_id=?`).get(id,organizationId,organizationId);
+  if(!row)throw new HttpError(404,"Comparison not found in the selected organization.");
+}
+
 async function assertProviderAdapterExecution(context: ApiContext, request: DashboardScanCreateRequest): Promise<void> {
   try { await context.providerAdapters.assertExecutionBinding(request); }
   catch (error) { throw new HttpError(409, error instanceof Error ? error.message : "PROVIDER_ADAPTER_EXECUTION_REJECTED"); }
 }
 
-function requireCredentialUsePermission(context: ApiContext, request: { credentialProfileId?: string | undefined; credentialProfileAId?: string | undefined; credentialProfileBId?: string | undefined; studio?: { authentication: { mode: string; primary?: { source: string }; accountA?: { source: string }; accountB?: { source: string } } } | undefined }): void {
+function requireCredentialUsePermission(context: ApiContext, request: { credentialProfileId?: string | undefined; credentialProfileAId?: string | undefined; credentialProfileBId?: string | undefined; studio?: { authentication: { mode: string; primary?: { source: string; credentialProfileId?: string }; accountA?: { source: string; credentialProfileId?: string }; accountB?: { source: string; credentialProfileId?: string } } } | undefined }): void {
   const studioUsesSaved = request.studio?.authentication.primary?.source === "saved" || request.studio?.authentication.accountA?.source === "saved" || request.studio?.authentication.accountB?.source === "saved";
   if (request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId || studioUsesSaved) {
     requirePermission(context, "credentials.use");
+    const organizationId=resourceOrganization(context,"resources.use");
+    const ids=[request.credentialProfileId,request.credentialProfileAId,request.credentialProfileBId,request.studio?.authentication.primary?.credentialProfileId,request.studio?.authentication.accountA?.credentialProfileId,request.studio?.authentication.accountB?.credentialProfileId].filter((id):id is string=>Boolean(id));
+    for(const id of ids)if(!context.vault.getSummary(id,organizationId))throw new HttpError(404,"Credential profile not found in the selected organization.");
   }
 }
 
 function validateScanReferences(context: ApiContext, request: { projectId?: string | undefined; targetId?: string | undefined; target: string }): void {
-  if (request.projectId && !context.projects.get(request.projectId)) throw new HttpError(404, "TARGET_NOT_FOUND: Project not found.");
+  const organizationId=resourceOrganization(context,"resources.use");
+  if (request.projectId && !context.projects.get(request.projectId,true,organizationId)) throw new HttpError(404, "TARGET_NOT_FOUND: Project not found.");
   if (!request.targetId) return;
-  const target = context.targets.get(request.targetId);
+  const target = context.targets.get(request.targetId,true,organizationId);
   if (!target) throw new HttpError(404, "TARGET_NOT_FOUND: Target not found.");
   if (request.projectId && target.projectId !== request.projectId) throw new HttpError(400, "TARGET_INVALID: Target is not assigned to the selected project.");
   if (new URL(target.baseOrigin).origin !== new URL(request.target).origin) throw new HttpError(400, "TARGET_INVALID: Target URL does not match the selected target record.");
 }
 
 function validateTargetDefaults(context: ApiContext, request: { projectId?: string | undefined; defaultConfigurationId?: string | undefined; defaultCredentialProfileId?: string | undefined }): void {
-  if (request.projectId && !context.projects.get(request.projectId)) throw new HttpError(404, "Project not found.");
-  if (request.defaultConfigurationId && !context.configurations.get(request.defaultConfigurationId)) throw new HttpError(400, "Default configuration is unavailable or archived.");
+  const organizationId=resourceOrganization(context,"resources.use");
+  if (request.projectId && !context.projects.get(request.projectId,true,organizationId)) throw new HttpError(404, "Project not found.");
+  if (request.defaultConfigurationId && !context.configurations.get(request.defaultConfigurationId,false,organizationId)) throw new HttpError(400, "Default configuration is unavailable or archived.");
   if (request.defaultCredentialProfileId) {
-    const credential = context.vault.getSummary(request.defaultCredentialProfileId);
+    const credential = context.vault.getSummary(request.defaultCredentialProfileId,organizationId);
     if (!credential || !credential.enabled || ["EXPIRED", "INVALID", "IDENTITY_MISMATCH", "DISABLED"].includes(credential.health.classification)) throw new HttpError(400, "Default credential profile is unavailable or not scan-eligible.");
     if (credential.projectId && request.projectId && credential.projectId !== request.projectId) throw new HttpError(400, "Default credential profile is not assigned to the selected project.");
   }
@@ -1848,7 +1991,8 @@ function environmentSettings(context: ApiContext): Record<string, unknown> {
     publicOrigin: { classification: "restart-required", source: "environment", configured: Boolean(process.env.ROUTECAIRN_PUBLIC_ORIGIN) },
     trustProxy: { classification: "restart-required", source: "environment", configured: process.env.ROUTECAIRN_TRUST_PROXY === "true" },
     masterKey: { classification: "offline-sensitive", source: "environment", configured: context.vault.status().enabled },
-    masterKeyVersion: { classification: "offline-sensitive", source: "environment", value: context.vault.status().keyVersion ?? "not configured" }
+    masterKeyVersion: { classification: "offline-sensitive", source: "environment", value: context.vault.status().keyVersion ?? "not configured" },
+    distributedMutationCoordinator: { classification: "restart-required", source: "environment", configured: Boolean(context.mutationCoordinator) }
   };
 }
 
@@ -1870,13 +2014,13 @@ function resetSettings(context: ApiContext, keys: string[]): void {
   else context.database.transaction(() => { for (const key of keys) context.database.db.prepare("DELETE FROM dashboard_settings WHERE key = ?").run(key); });
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readJson(request: IncomingMessage, limit = maxJsonBodyBytes): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk);
     size += buffer.length;
-    if (size > maxJsonBodyBytes) throw new HttpError(413, "JSON body too large.");
+    if (size > limit) throw new HttpError(413, "JSON body too large.");
     chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf8") || "{}";
@@ -1899,7 +2043,8 @@ function redirect(response: ServerResponse, location: string): void {
 function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
   const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
-  const statusCode = conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
+  const statusCode = error instanceof DistributedMutationCoordinatorError ? error.statusCode : conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
+  if (error instanceof DistributedMutationCoordinatorError) { sendJson(response, statusCode, { error: "Mutation coordination request rejected.", code: error.code }); return; }
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
     sendJson(response, statusCode, { error: workflowError ? "Workflow validation failed." : "Request validation failed.", code: workflowError ? "WORKFLOW_CASE_INVALID" : "REQUEST_VALIDATION_FAILED", diagnostics: error.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message })) });

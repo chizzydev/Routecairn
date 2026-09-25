@@ -27,16 +27,17 @@ export class FindingNormalizer {
   }
 
   private normalizeFinding(scanId: string, targetOrigin: string, finding: Finding): void {
-    const fingerprint = this.fingerprints.fingerprint(targetOrigin, finding);
+    const scan = this.db.prepare("SELECT organization_id, project_id, target_id, source FROM scans WHERE id = ?").get(scanId) as
+      | { organization_id: string; project_id: string | null; target_id: string | null; source: string }
+      | undefined;
+    if (!scan?.organization_id) throw new Error("SCAN_ORGANIZATION_MISSING");
+    const fingerprint = `${scan.organization_id}:${this.fingerprints.fingerprint(targetOrigin, finding)}`;
     const now = nowIso();
     const existing = this.db.prepare("SELECT id, human_review_status, remediation_state_v2 FROM findings WHERE fingerprint = ?").get(fingerprint) as
       | { id: string; human_review_status: string; remediation_state_v2: string }
       | undefined;
     const findingId = existing?.id ?? randomUUID();
     const safeEndpoint = this.fingerprints.routeIdentity(finding.url);
-    const scan = this.db.prepare("SELECT project_id, target_id, source FROM scans WHERE id = ?").get(scanId) as
-      | { project_id: string | null; target_id: string | null; source: string }
-      | undefined;
 
     if (existing && this.db.prepare("SELECT 1 FROM finding_occurrences WHERE finding_id = ? AND scan_id = ? LIMIT 1").get(findingId, scanId)) {
       return;
@@ -45,18 +46,19 @@ export class FindingNormalizer {
     if (!existing) {
       this.db
         .prepare(
-          `INSERT INTO findings (id, fingerprint, target_identity, module, finding_category,
+          `INSERT INTO findings (id, organization_id, fingerprint, target_identity, module, finding_category,
            safe_endpoint_identity, safe_authorization_boundary_identity, canonical_title,
            current_scanner_severity, current_scanner_confidence, human_review_status,
            remediation_status, first_seen_at, last_seen_at, last_occurrence_scan_id,
            occurrence_count, project_id, target_id, http_method, canonical_description,
            first_scan_id, effective_severity, remediation_state_v2, proof_readiness,
            row_version, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNREVIEWED', 'OPEN', ?, ?, ?, 1,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNREVIEWED', 'OPEN', ?, ?, ?, 1,
            ?, ?, ?, ?, ?, ?, 'OPEN', 'MISSING_REVIEW', 1, ?, ?)`
         )
         .run(
           findingId,
+          scan.organization_id,
           fingerprint,
           targetOrigin,
           finding.sourceModule ?? "unknown-module",

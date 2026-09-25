@@ -47,8 +47,20 @@ export class DashboardDatabase {
     this.db.prepare("INSERT OR IGNORE INTO organizations (id, slug, name, status, created_by, created_at, updated_at) VALUES (?, 'default', 'Default organization', 'ACTIVE', 'SYSTEM', ?, ?)").run(defaultOrganizationId, timestamp, timestamp);
     this.db.prepare(`INSERT OR IGNORE INTO organization_memberships (organization_id,user_id,role,created_by,created_at,updated_at)
       SELECT ?, id, CASE role WHEN 'OWNER' THEN 'OWNER' WHEN 'ANALYST' THEN 'ANALYST' ELSE 'VIEWER' END, 'SYSTEM', ?, ? FROM dashboard_users`).run(defaultOrganizationId, timestamp, timestamp);
+    this.assignLegacyResources(defaultOrganizationId);
     metaUpsert.run("schema_version", String(dashboardSchemaVersion), nowIso());
     metaUpsert.run("last_migration_at", nowIso(), nowIso());
+  }
+
+  private assignLegacyResources(defaultOrganizationId: string): void {
+    this.transaction(() => {
+      this.db.prepare("UPDATE projects SET organization_id=? WHERE organization_id IS NULL").run(defaultOrganizationId);
+      this.db.prepare("UPDATE targets SET organization_id=COALESCE((SELECT organization_id FROM projects WHERE projects.id=targets.project_id),?) WHERE organization_id IS NULL").run(defaultOrganizationId);
+      this.db.prepare("UPDATE scans SET organization_id=COALESCE((SELECT organization_id FROM targets WHERE targets.id=scans.target_id),(SELECT organization_id FROM projects WHERE projects.id=scans.project_id),?) WHERE organization_id IS NULL").run(defaultOrganizationId);
+      this.db.prepare("UPDATE findings SET organization_id=COALESCE((SELECT organization_id FROM scans WHERE scans.id=findings.last_occurrence_scan_id),(SELECT organization_id FROM targets WHERE targets.id=findings.target_id),(SELECT organization_id FROM projects WHERE projects.id=findings.project_id),?) WHERE organization_id IS NULL").run(defaultOrganizationId);
+      this.db.prepare("UPDATE findings SET fingerprint=organization_id||':'||fingerprint WHERE fingerprint NOT LIKE organization_id||':%'").run();
+      this.db.prepare("UPDATE credential_profiles SET organization_id=COALESCE((SELECT organization_id FROM targets WHERE targets.id=credential_profiles.target_id),(SELECT organization_id FROM projects WHERE projects.id=credential_profiles.project_id),?) WHERE organization_id IS NULL").run(defaultOrganizationId);
+    });
   }
 
   private applyForeignKeyRebuildMigration(migration: { version: number; sql: string }): void {

@@ -28,8 +28,8 @@ interface DashboardCommandOptions {
 export function registerDashboardCommand(program: Command): void {
   const dashboard = program
     .command("dashboard")
-    .description("Launch the local RouteCairn Dashboard.")
-    .option("--host <host>", "Loopback host to bind.", "127.0.0.1")
+    .description("Launch the RouteCairn dashboard and self-hosted control plane.")
+    .option("--host <host>", "Host interface to bind (non-loopback requires secured server mode).", "127.0.0.1")
     .option("--port <port>", "Port to bind. Uses an available port by default.")
     .option("--data-dir <dir>", "Dashboard data directory.")
     .option("--mode <mode>", "Dashboard mode: local or server.", "local")

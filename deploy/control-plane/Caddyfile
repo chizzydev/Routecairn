@@ -1,0 +1,8 @@
+{$ROUTECAIRN_HOSTNAME} {
+  encode zstd gzip
+  reverse_proxy control-plane:4711
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    -Server
+  }
+}

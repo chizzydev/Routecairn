@@ -36,6 +36,7 @@ export interface CredentialProfileSecret {
 }
 
 export interface CredentialProfileInput {
+  organizationId?: string | undefined;
   name: string;
   description?: string | undefined;
   safeAlias: string;
@@ -80,6 +81,7 @@ export interface CredentialDependencyImpact {
 
 export interface CredentialProfileSummary {
   id: string;
+  organizationId: string;
   name: string;
   description?: string;
   safeAlias: string;
@@ -120,11 +122,12 @@ export class CredentialVault {
     const encrypted = this.encrypt(id, input.secret);
     this.database.db
       .prepare(
-        `INSERT INTO credential_profiles (id, name, description, safe_alias, enabled, project_id, target_id, credential_type_summary, safe_identity_summary_json, expires_at, created_by_user_id, created_at, updated_at, algorithm, key_version, nonce, ciphertext, auth_tag)
-         VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO credential_profiles (id, organization_id, name, description, safe_alias, enabled, project_id, target_id, credential_type_summary, safe_identity_summary_json, expires_at, created_by_user_id, created_at, updated_at, algorithm, key_version, nonce, ciphertext, auth_tag)
+         VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
+        input.organizationId ?? defaultOrganizationId(this.database),
         clamp(input.name, 160),
         input.description ? clamp(input.description, 2000) : null,
         clamp(input.safeAlias, 160),
@@ -226,15 +229,15 @@ export class CredentialVault {
     return actual;
   }
 
-  public list(): CredentialProfileSummary[] {
+  public list(organizationId?: string): CredentialProfileSummary[] {
     this.refreshDerivedHealth();
-    const rows = this.database.db.prepare("SELECT * FROM credential_profiles WHERE deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200").all() as CredentialProfileRow[];
+    const rows = this.database.db.prepare("SELECT * FROM credential_profiles WHERE organization_id=? AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 200").all(organizationId ?? defaultOrganizationId(this.database)) as CredentialProfileRow[];
     return rows.map(summaryFromRow);
   }
 
-  public getSummary(id: string): CredentialProfileSummary | undefined {
+  public getSummary(id: string, organizationId?: string): CredentialProfileSummary | undefined {
     this.refreshDerivedHealth(id);
-    const row = this.database.db.prepare("SELECT * FROM credential_profiles WHERE id = ? AND deleted_at IS NULL").get(id) as CredentialProfileRow | undefined;
+    const row = this.database.db.prepare(`SELECT * FROM credential_profiles WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`).get(id, ...(organizationId ? [organizationId] : [])) as CredentialProfileRow | undefined;
     return row ? summaryFromRow(row) : undefined;
   }
 
@@ -259,9 +262,9 @@ export class CredentialVault {
     }
   }
 
-  private decrypt(id: string, recordUse: boolean, requireEnabled: boolean): CredentialProfileSecret {
+  private decrypt(id: string, recordUse: boolean, requireEnabled: boolean, includeDeleted = false): CredentialProfileSecret {
     this.requireEnabled();
-    const row = this.database.db.prepare(`SELECT * FROM credential_profiles WHERE id = ? ${requireEnabled ? "AND enabled = 1" : ""} AND deleted_at IS NULL`).get(id) as CredentialProfileRow | undefined;
+    const row = this.database.db.prepare(`SELECT * FROM credential_profiles WHERE id = ? ${requireEnabled ? "AND enabled = 1" : ""} ${includeDeleted ? "" : "AND deleted_at IS NULL"}`).get(id) as CredentialProfileRow | undefined;
     if (!row) throw new Error("Credential profile unavailable.");
     if (row.algorithm !== credentialVaultAlgorithm) throw new Error("Unsupported credential profile algorithm.");
     const decipher = createDecipheriv(credentialVaultAlgorithm, this.key!.bytes, Buffer.from(row.nonce, "base64url"));
@@ -335,6 +338,25 @@ export class CredentialVault {
     return rotated;
   }
 
+  /** Internal federation boundary: caller must seal this value before transport. */
+  public exportForSynchronization(id: string, organizationId: string): { summary: CredentialProfileSummary; secret: CredentialProfileSecret } {
+    const row=this.database.db.prepare("SELECT * FROM credential_profiles WHERE id=? AND organization_id=?").get(id,organizationId) as CredentialProfileRow|undefined;
+    if (!row) throw new Error("CREDENTIAL_SYNC_SOURCE_NOT_FOUND");
+    return { summary: summaryFromRow(row), secret: this.decrypt(id, false, false, true) };
+  }
+
+  /** Imports a peer-unsealed credential and always re-encrypts it with this installation's vault key. */
+  public upsertFromSynchronization(input: CredentialProfileInput & { id: string; enabled: boolean; createdAt: string; updatedAt: string; deletedAt?: string | undefined }): void {
+    this.requireEnabled();
+    validateSecret(input.secret);
+    const encrypted = this.encrypt(input.id, input.secret);
+    this.database.db.prepare(`INSERT INTO credential_profiles
+      (id,organization_id,name,description,safe_alias,enabled,project_id,target_id,credential_type_summary,safe_identity_summary_json,expires_at,created_by_user_id,created_at,updated_at,algorithm,key_version,nonce,ciphertext,auth_tag,last_health_status,last_health_reason_code,deleted_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'UNVERIFIED','FEDERATED_IMPORT_RETEST_REQUIRED',?)
+      ON CONFLICT(id) DO UPDATE SET organization_id=excluded.organization_id,name=excluded.name,description=excluded.description,safe_alias=excluded.safe_alias,enabled=excluded.enabled,project_id=excluded.project_id,target_id=excluded.target_id,credential_type_summary=excluded.credential_type_summary,safe_identity_summary_json=excluded.safe_identity_summary_json,expires_at=excluded.expires_at,updated_at=excluded.updated_at,algorithm=excluded.algorithm,key_version=excluded.key_version,nonce=excluded.nonce,ciphertext=excluded.ciphertext,auth_tag=excluded.auth_tag,secret_version=credential_profiles.secret_version+1,secret_replaced_at=excluded.updated_at,last_health_status='UNVERIFIED',last_health_checked_at=NULL,last_health_reason_code='FEDERATED_IMPORT_RETEST_REQUIRED',last_principal_fingerprint=NULL,deleted_at=excluded.deleted_at`)
+      .run(input.id,input.organizationId ?? defaultOrganizationId(this.database),clamp(input.name,160),input.description?clamp(input.description,2000):null,clamp(input.safeAlias,160),input.enabled?1:0,input.projectId??null,input.targetId??null,credentialTypeSummary(input.secret),JSON.stringify(input.safeIdentitySummary),input.expiresAt??null,input.createdByUserId??null,input.createdAt,input.updatedAt,credentialVaultAlgorithm,this.key!.version,encrypted.nonce,encrypted.ciphertext,encrypted.authTag,input.deletedAt??null);
+  }
+
   private refreshDerivedHealth(id?: string): void {
     const rows = this.database.db.prepare(`SELECT * FROM credential_profiles WHERE deleted_at IS NULL AND enabled = 1 ${id ? "AND id = ?" : ""}`).all(...(id ? [id] : [])) as CredentialProfileRow[];
     const now = Date.now();
@@ -369,6 +391,12 @@ export function parseVaultKey(value: string | undefined, version = "1"): Credent
   if (bytes.length !== 32) throw new Error("ROUTECAIRN_MASTER_KEY must decode to exactly 32 bytes.");
   if (!/^[A-Za-z0-9_.-]{1,40}$/.test(version)) throw new Error("ROUTECAIRN_MASTER_KEY_VERSION is invalid.");
   return { bytes, version };
+}
+
+function defaultOrganizationId(database: DashboardDatabase): string {
+  const row = database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as { value: string } | undefined;
+  if (!row) throw new Error("DEFAULT_ORGANIZATION_MISSING");
+  return row.value;
 }
 
 function encryptWithKey(database: DashboardDatabase, key: CredentialVaultKey, id: string, secret: CredentialProfileSecret): { nonce: string; ciphertext: string; authTag: string } {
@@ -424,6 +452,7 @@ function summaryFromRow(row: CredentialProfileRow): CredentialProfileSummary {
   const health = effectiveCredentialHealth(row);
   return {
     id: row.id,
+    organizationId: row.organization_id,
     name: row.name,
     ...(row.description ? { description: row.description } : {}),
     safeAlias: row.safe_alias,
@@ -445,6 +474,7 @@ function summaryFromRow(row: CredentialProfileRow): CredentialProfileSummary {
 
 interface CredentialProfileRow {
   id: string;
+  organization_id: string;
   name: string;
   description: string | null;
   safe_alias: string;
@@ -468,6 +498,7 @@ interface CredentialProfileRow {
   auth_tag: string;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 }
 
 interface CredentialHealthEventRow {

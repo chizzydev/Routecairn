@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { apiGet, apiMutation, bootstrap, DashboardApiError, setCsrfToken, type AuditEvent, type FindingSummary, type PlanPreview, type ProjectSummary, type ScanSummary, type TargetSummary } from "./api";
+import { apiGet, apiMutation, bootstrap, DashboardApiError, getActiveOrganizationId, setActiveOrganizationId, setCsrfToken, type AuditEvent, type FindingSummary, type PlanPreview, type ProjectSummary, type ScanSummary, type TargetSummary } from "./api";
 import "./styles.css";
 import { AssistedReviewPanel } from "./AssistedReviewPanel";
 import { WorkflowRecoveryPanel } from "./WorkflowRecoveryPanel";
@@ -12,7 +12,7 @@ import { BrowserNetworkDiagnostics } from "./BrowserNetworkDiagnostics";
 import { CredentialHealthBadge, CredentialHealthTimeline, CredentialImpactPanel, credentialExpiryLabel, credentialUsable, type CredentialDetailResponse, type CredentialSummary } from "./CredentialLifecycle";
 import { ProductionMutationWorkspace } from "./ProductionMutationWorkspace";
 import { LiveAcceptanceWorkspace } from "./LiveAcceptanceWorkspace";
-import { AdaptiveSecurityWorkspace } from "./AdaptiveSecurityWorkspace";
+import { AdaptiveSecurityWorkspace, type AdaptiveBuilderDraft } from "./AdaptiveSecurityWorkspace";
 import type { AdvancedEngineId } from "./AdvancedEngineStudio";
 import { ProviderAdapterWorkspace } from "./ProviderAdapterWorkspace";
 import { ContinuousAssuranceWorkspace } from "./ContinuousAssuranceWorkspace";
@@ -29,9 +29,11 @@ export function App() {
   const [selectedId, setSelectedId] = useState("");
   const [findingFilters, setFindingFilters] = useState<Record<string, string>>({});
   const [retestDraft, setRetestDraft] = useState<RetestDraft>();
-  const [adaptiveDraft, setAdaptiveDraft] = useState<{ target: TargetSummary; engineId: AdvancedEngineId; engineConfiguration: Record<string, unknown>; binding: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 }; limits: { maxRequests: number; cleanupReservedRequests: number; evidenceLevel: "strong" } }>();
+  const [adaptiveDraft, setAdaptiveDraft] = useState<Omit<AdaptiveBuilderDraft, "engineId"> & { engineId: AdvancedEngineId }>();
   const [adapterDraft, setAdapterDraft] = useState<any>();
   const [error, setError] = useState("");
+  const [organizations,setOrganizations]=useState<Array<{id:string;name:string;role:string}>>([]);
+  const [organizationId,setOrganizationId]=useState(getActiveOrganizationId());
 
   useEffect(() => {
     let active = true;
@@ -42,6 +44,11 @@ export function App() {
           if (!active) return;
           setAuthenticated(true);
           setPrincipal(session.principal);
+          const organizationResponse=await apiGet<{organizations?:Array<{id:string;name:string;role:string}>}>("/api/operations/organizations");
+          const availableOrganizations=Array.isArray(organizationResponse.organizations)?organizationResponse.organizations:[];
+          if(!active)return;setOrganizations(availableOrganizations);
+          const selected=availableOrganizations.some((item)=>item.id===getActiveOrganizationId())?getActiveOrganizationId():availableOrganizations[0]?.id??"";
+          setActiveOrganizationId(selected);setOrganizationId(selected);
           setError("");
         })
         .catch((cause: unknown) => {
@@ -67,6 +74,7 @@ export function App() {
     <div className="shell">
       <aside>
         <h1>RouteCairn</h1>
+        {organizations.length>0&&<label className="organization-switcher">Organization<select aria-label="Active organization" value={organizationId} onChange={(event)=>{setActiveOrganizationId(event.target.value);setOrganizationId(event.target.value);setSelectedId("");setView("overview");}}>{organizations.map((organization)=><option key={organization.id} value={organization.id}>{organization.name} · {organization.role}</option>)}</select></label>}
         <button className={view === "overview" ? "active" : ""} onClick={() => setView("overview")}>Overview</button>
         <button className={view === "projects" ? "active" : ""} onClick={() => setView("projects")}>Projects</button>
         <button className={view === "targets" ? "active" : ""} onClick={() => setView("targets")}>Targets</button>
@@ -92,7 +100,7 @@ export function App() {
         <button onClick={() => { window.dispatchEvent(new Event("routecairn:session-expired")); void apiMutation("/api/session/logout", "POST", {}).finally(() => { setAuthenticated(false); setError("Signed out."); }); }}>Log Out</button>
         <small>{principal?.login ?? "local"} · {principal?.role ?? "OWNER"}</small>
       </aside>
-      <main><React.Suspense fallback={<p role="status">Loading workspace…</p>}>
+      <main key={organizationId}><React.Suspense fallback={<p role="status">Loading workspace…</p>}>
         {view === "overview" && <Overview onOpenScan={(id) => { setSelectedId(id); setView("scan-detail"); }} />}
         {view === "projects" && <Projects onOpen={(id) => { setSelectedId(id); setView("project-detail"); }} />}
         {view === "project-detail" && <ProjectDetail projectId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onTarget={(id) => { setSelectedId(id); setView("target-detail"); }} />}

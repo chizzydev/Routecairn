@@ -1,0 +1,12 @@
+.git
+.github
+.routecairn
+node_modules
+dist
+apps/dashboard-ui/dist
+coverage
+reports
+*.log
+*.tgz
+.env
+deploy/control-plane/secrets

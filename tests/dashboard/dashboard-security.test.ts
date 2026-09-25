@@ -76,4 +76,25 @@ describe("dashboard local API security", () => {
       url: "https://x.test/?token=<redacted>"
     });
   });
+
+  it("bootstraps the first hosted owner once from deployment environment", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "routecairn-dashboard-bootstrap-"));
+    const priorLogin = process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN;
+    const priorPassword = process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD;
+    process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN = "bootstrap-owner@example.test";
+    process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD = "Correct-Horse-Battery-Staple-2026!";
+    let handle: Awaited<ReturnType<typeof startDashboardServer>> | undefined;
+    try {
+      handle = await startDashboardServer({ mode: "server", host: "127.0.0.1", dataDir: dir, publicOrigin: "https://routecairn.example.test", sessionSecret: "s".repeat(48), trustProxy: true, uiDistDir: resolve(dir, "ui") });
+      delete process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN;
+      delete process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD;
+      const response = await fetch(`${handle.url}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json", origin: "https://routecairn.example.test", "x-forwarded-proto": "https" }, body: JSON.stringify({ login: "bootstrap-owner@example.test", password: "Correct-Horse-Battery-Staple-2026!" }) });
+      expect(response.status).toBe(200);
+    } finally {
+      if (handle) await handle.close();
+      if (priorLogin === undefined) delete process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN; else process.env.ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN = priorLogin;
+      if (priorPassword === undefined) delete process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD; else process.env.ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD = priorPassword;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

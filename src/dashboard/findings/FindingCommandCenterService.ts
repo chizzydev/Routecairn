@@ -30,6 +30,7 @@ export type FindingSort =
   | "project";
 
 export interface FindingQuery {
+  organizationId?: string | undefined;
   scanId?: string | undefined;
   search?: string | undefined;
   projectId?: string | undefined;
@@ -168,7 +169,7 @@ export class FindingCommandCenterService {
     return this.list(queueQuery);
   }
 
-  public detail(findingId: string): unknown {
+  public detail(findingId: string, organizationId?: string): unknown {
     this.refreshProofReadiness(findingId);
     const row = this.database.db
       .prepare(
@@ -179,9 +180,9 @@ export class FindingCommandCenterService {
          LEFT JOIN targets t ON t.id = f.target_id
          LEFT JOIN dashboard_users u ON u.id = f.assignee_user_id
          LEFT JOIN dashboard_users reviewer ON reviewer.id = f.reviewer_user_id
-         WHERE f.id = ? AND f.archived_at IS NULL`
+         WHERE f.id = ? AND f.archived_at IS NULL ${organizationId ? "AND f.organization_id = ?" : ""}`
       )
-      .get(findingId) as FindingRow | undefined;
+      .get(findingId, ...(organizationId ? [organizationId] : [])) as FindingRow | undefined;
     if (!row) throw new FindingCommandError("FINDING_NOT_FOUND", "Finding not found.", 404);
     const occurrences = this.database.db
       .prepare(
@@ -902,6 +903,7 @@ function findingWhere(query: FindingQuery): { where: string; values: SqlValue[] 
   validateFindingQuery(query);
   const clauses = ["f.archived_at IS NULL"];
   const values: SqlValue[] = [];
+  addEquality(clauses, values, "f.organization_id", query.organizationId);
   if (query.search) {
     clauses.push("(f.id LIKE ? OR f.canonical_title LIKE ? OR f.safe_endpoint_identity LIKE ? OR f.finding_category LIKE ? OR f.module LIKE ? OR EXISTS(SELECT 1 FROM projects sp WHERE sp.id = f.project_id AND sp.name LIKE ?) OR EXISTS(SELECT 1 FROM targets st WHERE st.id = f.target_id AND st.display_name LIKE ?))");
     const search = `%${clamp(query.search, 160)}%`;

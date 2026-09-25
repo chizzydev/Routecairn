@@ -1,0 +1,56 @@
+services:
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile
+    restart: unless-stopped
+    environment:
+      ROUTECAIRN_PUBLIC_ORIGIN: https://${ROUTECAIRN_HOSTNAME}
+      ROUTECAIRN_SESSION_SECRET_FILE: /run/secrets/session-secret
+      ROUTECAIRN_MUTATION_COORDINATOR_SECRET_FILE: /run/secrets/mutation-coordinator-secret
+      ROUTECAIRN_MASTER_KEY: ${ROUTECAIRN_MASTER_KEY:-}
+      ROUTECAIRN_MASTER_KEY_VERSION: ${ROUTECAIRN_MASTER_KEY_VERSION:-1}
+      ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN: ${ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN:-}
+      ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD_FILE: /run/secrets/bootstrap-owner-password
+      ROUTECAIRN_CLOUD_SYNC_INTERVAL_MS: ${ROUTECAIRN_CLOUD_SYNC_INTERVAL_MS:-30000}
+    secrets:
+      - session-secret
+      - mutation-coordinator-secret
+      - bootstrap-owner-password
+    volumes:
+      - routecairn-data:/var/lib/routecairn
+    networks: [control-plane]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    environment:
+      ROUTECAIRN_HOSTNAME: ${ROUTECAIRN_HOSTNAME}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [control-plane]
+
+networks:
+  control-plane:
+
+volumes:
+  routecairn-data:
+  caddy-data:
+  caddy-config:
+
+secrets:
+  session-secret:
+    file: ./secrets/session-secret.txt
+  bootstrap-owner-password:
+    file: ./secrets/bootstrap-owner-password.txt
+  mutation-coordinator-secret:
+    file: ./secrets/mutation-coordinator-secret.txt

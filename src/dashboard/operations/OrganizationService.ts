@@ -3,12 +3,12 @@ import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 
 export type OrganizationRole = "OWNER" | "ADMIN" | "ANALYST" | "VIEWER";
-export type OrganizationPermission = "org.read" | "org.manage" | "members.manage" | "sso.manage" | "notifications.manage" | "workers.manage" | "backups.manage" | "integrations.manage" | "modules.manage";
+export type OrganizationPermission = "org.read" | "org.manage" | "resources.use" | "members.manage" | "sso.manage" | "notifications.manage" | "workers.manage" | "backups.manage" | "integrations.manage" | "modules.manage";
 
 const permissions: Record<OrganizationRole, ReadonlySet<OrganizationPermission>> = {
-  OWNER: new Set(["org.read", "org.manage", "members.manage", "sso.manage", "notifications.manage", "workers.manage", "backups.manage", "integrations.manage", "modules.manage"]),
-  ADMIN: new Set(["org.read", "members.manage", "sso.manage", "notifications.manage", "workers.manage", "integrations.manage", "modules.manage"]),
-  ANALYST: new Set(["org.read", "integrations.manage"]),
+  OWNER: new Set(["org.read", "org.manage", "resources.use", "members.manage", "sso.manage", "notifications.manage", "workers.manage", "backups.manage", "integrations.manage", "modules.manage"]),
+  ADMIN: new Set(["org.read", "resources.use", "members.manage", "sso.manage", "notifications.manage", "workers.manage", "integrations.manage", "modules.manage"]),
+  ANALYST: new Set(["org.read", "resources.use", "integrations.manage"]),
   VIEWER: new Set(["org.read"])
 };
 
@@ -47,7 +47,7 @@ export class OrganizationService {
     if (!organization) throw new Error("ORGANIZATION_NOT_FOUND");
     const members = this.database.db.prepare(`SELECT m.user_id AS userId,u.login,m.role,m.created_at AS createdAt,m.updated_at AS updatedAt
       FROM organization_memberships m JOIN dashboard_users u ON u.id=m.user_id WHERE m.organization_id=? ORDER BY u.login`).all(organizationId);
-    return { organization: summary(organization), members };
+    return { organization: { ...summary(organization), resources: this.resourceCounts(organizationId) }, members };
   }
 
   public setMember(organizationId: string, input: { userId: string; role: OrganizationRole }, actor: string, localOwner = false): void {
@@ -81,6 +81,23 @@ export class OrganizationService {
     const membership = this.database.db.prepare("SELECT role FROM organization_memberships WHERE organization_id=? AND user_id=?").get(organizationId, userId) as { role: OrganizationRole } | undefined;
     if (!membership || !permissions[membership.role].has(permission)) throw new OrganizationPermissionError(permission);
     return membership.role;
+  }
+
+  public resourceCounts(organizationId: string): Record<string, number> {
+    const count = (table: string): number => (this.database.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE organization_id=?`).get(organizationId) as { count: number }).count;
+    return { projects: count("projects"), targets: count("targets"), scans: count("scans"), findings: count("findings"), credentials: count("credential_profiles"), configurations: count("saved_scan_configurations") };
+  }
+
+  public resourceOrganization(kind: "project" | "target" | "scan" | "finding" | "credential" | "configuration", id: string): string | undefined {
+    const table = { project: "projects", target: "targets", scan: "scans", finding: "findings", credential: "credential_profiles", configuration: "saved_scan_configurations" }[kind];
+    return (this.database.db.prepare(`SELECT organization_id FROM ${table} WHERE id=?`).get(id) as { organization_id: string } | undefined)?.organization_id;
+  }
+
+  public requireResource(kind: "project" | "target" | "scan" | "finding" | "credential" | "configuration", id: string, userId: string, permission: OrganizationPermission, localOwner = false): string {
+    const organizationId = this.resourceOrganization(kind, id);
+    if (!organizationId) throw new OrganizationPermissionError(permission);
+    this.require(organizationId, userId, permission, localOwner);
+    return organizationId;
   }
 
   private assertAnotherOwner(organizationId: string): void {

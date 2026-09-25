@@ -5,6 +5,7 @@ import type { DashboardFindingSummary, DashboardScanSource, DashboardScanStatus,
 import { FindingCommandCenterService } from "../findings/FindingCommandCenterService.js";
 
 export interface ScanListFilters {
+  organizationId?: string | undefined;
   search?: string | undefined;
   status?: DashboardScanStatus | undefined;
   profile?: string | undefined;
@@ -16,6 +17,7 @@ export interface ScanListFilters {
 }
 
 export interface FindingListFilters {
+  organizationId?: string | undefined;
   search?: string | undefined;
   reviewStatus?: ReviewStatus | undefined;
   severity?: string | undefined;
@@ -28,6 +30,7 @@ export interface FindingListFilters {
 
 export interface ProjectSummary {
   id: string;
+  organizationId: string;
   name: string;
   description?: string;
   tags: string[];
@@ -44,6 +47,7 @@ export interface ProjectSummary {
 
 export interface TargetSummary {
   id: string;
+  organizationId: string;
   projectId?: string;
   displayName: string;
   baseOrigin: string;
@@ -70,52 +74,53 @@ export interface TargetSummary {
 export class ProjectRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public list(search?: string, includeArchived = false): ProjectSummary[] {
+  public list(search?: string, includeArchived = false, organizationId?: string): ProjectSummary[] {
     const archived = includeArchived ? "1 = 1" : "archived_at IS NULL";
+    const organization = organizationId ?? defaultOrganizationId(this.database);
     const rows = search
-      ? this.database.db.prepare(`SELECT * FROM projects WHERE ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`).all(`%${search}%`, `%${search}%`)
-      : this.database.db.prepare(`SELECT * FROM projects WHERE ${archived} ORDER BY updated_at DESC LIMIT 100`).all();
+      ? this.database.db.prepare(`SELECT * FROM projects WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`).all(organization, `%${search}%`, `%${search}%`)
+      : this.database.db.prepare(`SELECT * FROM projects WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`).all(organization);
     return (rows as DbProjectRow[]).map((row) => projectFromRow(this.database, row));
   }
 
-  public get(id: string, includeArchived = false): ProjectSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM projects WHERE id = ? ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id) as DbProjectRow | undefined;
+  public get(id: string, includeArchived = false, organizationId?: string): ProjectSummary | undefined {
+    const row = this.database.db.prepare(`SELECT * FROM projects WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id, ...(organizationId ? [organizationId] : [])) as DbProjectRow | undefined;
     return row ? projectFromRow(this.database, row) : undefined;
   }
 
-  public create(input: { name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; createdBy?: string | undefined }): string {
+  public create(input: { organizationId?: string | undefined; name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; createdBy?: string | undefined }): string {
     const id = randomUUID();
     const now = nowIso();
     this.database.db
       .prepare(
-        "INSERT INTO projects (id, name, description, tags_json, default_profile, default_scope_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO projects (id, organization_id, name, description, tags_json, default_profile, default_scope_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(id, clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), input.createdBy ?? null, now, now);
+      .run(id, input.organizationId ?? defaultOrganizationId(this.database), clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), input.createdBy ?? null, now, now);
     return id;
   }
 
-  public update(id: string, input: { name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; expectedVersion?: number | undefined }): void {
+  public update(id: string, input: { organizationId?: string | undefined; name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; expectedVersion?: number | undefined }): void {
     const result = this.database.db
-      .prepare(`UPDATE projects SET name = ?, description = ?, tags_json = ?, default_profile = ?, default_scope_json = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`)
-      .run(clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), nowIso(), id, ...(input.expectedVersion === undefined ? [] : [input.expectedVersion]));
+      .prepare(`UPDATE projects SET name = ?, description = ?, tags_json = ?, default_profile = ?, default_scope_json = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`)
+      .run(clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), nowIso(), id, input.organizationId ?? defaultOrganizationId(this.database), ...(input.expectedVersion === undefined ? [] : [input.expectedVersion]));
     if (result.changes !== 1) throw new Error("PROJECT_CONFLICT: Project changed or is unavailable.");
   }
 
-  public archive(id: string): void {
-    this.database.db.prepare("UPDATE projects SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NULL").run(nowIso(), nowIso(), id);
+  public archive(id: string, organizationId?: string): void {
+    this.database.db.prepare("UPDATE projects SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 
-  public restore(id: string): void {
-    this.database.db.prepare("UPDATE projects SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NOT NULL").run(nowIso(), id);
+  public restore(id: string, organizationId?: string): void {
+    this.database.db.prepare("UPDATE projects SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 }
 
 export class TargetRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public list(filters: { projectId?: string | undefined; search?: string | undefined; includeArchived?: boolean | undefined } = {}): TargetSummary[] {
-    const clauses = [filters.includeArchived ? "1 = 1" : "archived_at IS NULL"];
-    const values: string[] = [];
+  public list(filters: { organizationId?: string | undefined; projectId?: string | undefined; search?: string | undefined; includeArchived?: boolean | undefined } = {}): TargetSummary[] {
+    const clauses = ["organization_id=?", filters.includeArchived ? "1 = 1" : "archived_at IS NULL"];
+    const values: string[] = [filters.organizationId ?? defaultOrganizationId(this.database)];
     if (filters.projectId) {
       clauses.push("project_id = ?");
       values.push(filters.projectId);
@@ -128,12 +133,13 @@ export class TargetRepository {
     return rows.map((row) => targetFromRow(this.database, row));
   }
 
-  public get(id: string, includeArchived = false): TargetSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM targets WHERE id = ? ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id) as DbTargetRow | undefined;
+  public get(id: string, includeArchived = false, organizationId?: string): TargetSummary | undefined {
+    const row = this.database.db.prepare(`SELECT * FROM targets WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id, ...(organizationId ? [organizationId] : [])) as DbTargetRow | undefined;
     return row ? targetFromRow(this.database, row) : undefined;
   }
 
   public create(input: {
+    organizationId?: string | undefined;
     projectId?: string | undefined;
     displayName: string;
     baseOrigin: string;
@@ -155,11 +161,12 @@ export class TargetRepository {
     const now = nowIso();
     this.database.db
       .prepare(
-        `INSERT INTO targets (id, project_id, display_name, base_origin, description, tags_json, classification, authorization_type, authorization_summary, approved_scope_json, default_profile, default_configuration_id, default_credential_profile_id, default_evidence_level, default_auth_template_json, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO targets (id, organization_id, project_id, display_name, base_origin, description, tags_json, classification, authorization_type, authorization_summary, approved_scope_json, default_profile, default_configuration_id, default_credential_profile_id, default_evidence_level, default_auth_template_json, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
+        input.organizationId ?? defaultOrganizationId(this.database),
         input.projectId ?? null,
         clamp(input.displayName, 160),
         originOnly(input.baseOrigin),
@@ -187,7 +194,7 @@ export class TargetRepository {
       .prepare(
         `UPDATE targets
          SET project_id = ?, display_name = ?, description = ?, tags_json = ?, classification = ?, authorization_type = ?, authorization_summary = ?, approved_scope_json = ?, default_profile = ?, default_configuration_id = ?, default_credential_profile_id = ?, default_evidence_level = ?, default_auth_template_json = ?, updated_at = ?, row_version = row_version + 1
-         WHERE id = ? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`
+         WHERE id = ? AND organization_id=? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`
       )
       .run(
         input.projectId ?? null,
@@ -205,18 +212,19 @@ export class TargetRepository {
         JSON.stringify(input.defaultAuthTemplate ?? {}),
         nowIso(),
         id,
+        input.organizationId ?? defaultOrganizationId(this.database),
         ...(input.expectedVersion === undefined ? [] : [input.expectedVersion])
       );
     if (result.changes !== 1) throw new Error("TARGET_CONFLICT: Target changed or is unavailable.");
     if (input.productionEnabled !== undefined) this.database.db.prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?").run(input.productionEnabled ? 1 : 0, id);
   }
 
-  public archive(id: string): void {
-    this.database.db.prepare("UPDATE targets SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NULL").run(nowIso(), nowIso(), id);
+  public archive(id: string, organizationId?: string): void {
+    this.database.db.prepare("UPDATE targets SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 
-  public restore(id: string): void {
-    this.database.db.prepare("UPDATE targets SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NOT NULL").run(nowIso(), id);
+  public restore(id: string, organizationId?: string): void {
+    this.database.db.prepare("UPDATE targets SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 }
 
@@ -257,6 +265,7 @@ export class ScanRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
   public create(input: {
+    organizationId?: string | undefined;
     id: string;
     source: DashboardScanSource;
     status: DashboardScanStatus;
@@ -272,11 +281,12 @@ export class ScanRepository {
   }): void {
     this.database.db
       .prepare(
-        `INSERT INTO scans (id, display_sequence, source, status, target_origin, safe_target_label, profile, evidence_level, created_at, queued_at, safe_configuration_summary, output_directory, project_id, target_id, authorization_declaration)
-         VALUES (?, (SELECT COALESCE(MAX(display_sequence), 0) + 1 FROM scans), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO scans (id, organization_id, display_sequence, source, status, target_origin, safe_target_label, profile, evidence_level, created_at, queued_at, safe_configuration_summary, output_directory, project_id, target_id, authorization_declaration)
+         VALUES (?, ?, (SELECT COALESCE(MAX(display_sequence), 0) + 1 FROM scans), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         input.id,
+        input.organizationId ?? organizationForReferences(this.database, input.projectId, input.targetId),
         input.source,
         input.status,
         input.targetOrigin,
@@ -343,8 +353,8 @@ export class ScanRepository {
 
   public list(limit: number, filters: ScanListFilters = {}): DashboardScanSummary[] {
     const boundedLimit = Math.min(Math.max(limit, 1), 100);
-    const clauses = ["deleted_at IS NULL"];
-    const values: Array<string | number> = [];
+    const clauses = ["organization_id = ?", "deleted_at IS NULL"];
+    const values: Array<string | number> = [filters.organizationId ?? defaultOrganizationId(this.database)];
     if (filters.search) {
       clauses.push("(safe_target_label LIKE ? OR profile LIKE ? OR status LIKE ?)");
       values.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
@@ -374,22 +384,22 @@ export class ScanRepository {
     return (rows as DbScanRow[]).map(scanSummaryFromRow);
   }
 
-  public get(id: string): DashboardScanSummary | undefined {
-    const row = this.database.db.prepare("SELECT * FROM scans WHERE id = ? AND deleted_at IS NULL").get(id) as DbScanRow | undefined;
+  public get(id: string, organizationId?: string): DashboardScanSummary | undefined {
+    const row = this.database.db.prepare(`SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`).get(id, ...(organizationId ? [organizationId] : [])) as DbScanRow | undefined;
     return row ? scanSummaryFromRow(row) : undefined;
   }
 
-  public getReportPath(id: string): string | undefined {
+  public getReportPath(id: string, organizationId?: string): string | undefined {
     const row = this.database.db
       .prepare(
-        "SELECT artifacts.canonical_path AS path FROM scans JOIN artifacts ON scans.json_report_artifact_id = artifacts.id WHERE scans.id = ?"
+        `SELECT artifacts.canonical_path AS path FROM scans JOIN artifacts ON scans.json_report_artifact_id = artifacts.id WHERE scans.id = ? ${organizationId ? "AND scans.organization_id = ?" : ""}`
       )
-      .get(id) as { path: string } | undefined;
+      .get(id, ...(organizationId ? [organizationId] : [])) as { path: string } | undefined;
     return row?.path;
   }
 
-  public detail(id: string): unknown {
-    const scan = this.database.db.prepare("SELECT * FROM scans WHERE id = ? AND deleted_at IS NULL").get(id);
+  public detail(id: string, organizationId?: string): unknown {
+    const scan = this.database.db.prepare(`SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`).get(id, ...(organizationId ? [organizationId] : []));
     if (!scan) return undefined;
     return {
       scan: scanSummaryFromRow(scan as DbScanRow),
@@ -412,12 +422,13 @@ export class ScanRepository {
     };
   }
 
-  public overview(): unknown {
-    const scanCounts = this.database.db.prepare("SELECT status, COUNT(*) AS count FROM scans WHERE deleted_at IS NULL GROUP BY status").all() as Array<{ status: string; count: number }>;
-    const findingCounts = this.database.db.prepare("SELECT human_review_status AS status, COUNT(*) AS count FROM findings WHERE archived_at IS NULL GROUP BY human_review_status").all() as Array<{ status: string; count: number }>;
+  public overview(organizationId?: string): unknown {
+    const organization = organizationId ?? defaultOrganizationId(this.database);
+    const scanCounts = this.database.db.prepare("SELECT status, COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL GROUP BY status").all(organization) as Array<{ status: string; count: number }>;
+    const findingCounts = this.database.db.prepare("SELECT human_review_status AS status, COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL GROUP BY human_review_status").all(organization) as Array<{ status: string; count: number }>;
     return {
       scans: {
-        total: scalarCount(this.database, "SELECT COUNT(*) AS count FROM scans WHERE deleted_at IS NULL"),
+        total: scalarCount(this.database, "SELECT COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL", organization),
         queued: countBy(scanCounts, "QUEUED"),
         running: countBy(scanCounts, "RUNNING") + countBy(scanCounts, "PLANNING") + countBy(scanCounts, "CANCEL_REQUESTED"),
         completed: countBy(scanCounts, "COMPLETED"),
@@ -425,7 +436,7 @@ export class ScanRepository {
         interrupted: countBy(scanCounts, "INTERRUPTED")
       },
       findings: {
-        open: scalarCount(this.database, "SELECT COUNT(*) AS count FROM findings WHERE archived_at IS NULL AND remediation_status != 'FIXED_VERIFIED'"),
+        open: scalarCount(this.database, "SELECT COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL AND remediation_status != 'FIXED_VERIFIED'", organization),
         unreviewed: countBy(findingCounts, "UNREVIEWED"),
         confirmed: countBy(findingCounts, "CONFIRMED"),
         falsePositive: countBy(findingCounts, "FALSE_POSITIVE"),
@@ -538,18 +549,18 @@ export class EventRepository {
 export class ArtifactRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public create(input: { scanId?: string; proofPackId?: string; type: string; name: string; path: string; size: number; contentType: string; hash: string; retentionState?: string }): string {
+  public create(input: { organizationId?: string; scanId?: string; proofPackId?: string; type: string; name: string; path: string; size: number; contentType: string; hash: string; retentionState?: string }): string {
     const id = randomUUID();
     this.database.db
       .prepare(
-        "INSERT INTO artifacts (id, scan_id, proof_pack_id, artifact_type, safe_display_name, canonical_path, size, content_type, scoped_or_full_safe_hash, created_at, retention_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO artifacts (id, organization_id, scan_id, proof_pack_id, artifact_type, safe_display_name, canonical_path, size, content_type, scoped_or_full_safe_hash, created_at, retention_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(id, input.scanId ?? null, input.proofPackId ?? null, input.type, clamp(input.name, 200), input.path, input.size, input.contentType, input.hash, nowIso(), input.retentionState ?? "RETAIN");
+      .run(id, input.organizationId ?? null,input.scanId ?? null, input.proofPackId ?? null, input.type, clamp(input.name, 200), input.path, input.size, input.contentType, input.hash, nowIso(), input.retentionState ?? "RETAIN");
     return id;
   }
 
-  public get(id: string): { id: string; path: string; contentType: string; name: string } | undefined {
-    const row = this.database.db.prepare("SELECT id, canonical_path, content_type, safe_display_name FROM artifacts WHERE id = ?").get(id) as
+  public get(id: string,organizationId?:string): { id: string; path: string; contentType: string; name: string } | undefined {
+    const row = this.database.db.prepare(`SELECT id, canonical_path, content_type, safe_display_name FROM artifacts WHERE id = ? ${organizationId?"AND organization_id=?":""}`).get(id,...(organizationId?[organizationId]:[])) as
       | { id: string; canonical_path: string; content_type: string; safe_display_name: string }
       | undefined;
     return row ? { id: row.id, path: row.canonical_path, contentType: row.content_type, name: row.safe_display_name } : undefined;
@@ -561,8 +572,8 @@ export class FindingRepository {
 
   public list(limit: number, filters: FindingListFilters = {}): DashboardFindingSummary[] {
     const boundedLimit = Math.min(Math.max(limit, 1), 100);
-    const clauses = ["archived_at IS NULL"];
-    const values: Array<string | number> = [];
+    const clauses = ["organization_id = ?", "archived_at IS NULL"];
+    const values: Array<string | number> = [filters.organizationId ?? defaultOrganizationId(this.database)];
     if (filters.search) {
       clauses.push("(canonical_title LIKE ? OR safe_endpoint_identity LIKE ? OR module LIKE ?)");
       values.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
@@ -592,13 +603,13 @@ export class FindingRepository {
     return rows.map(findingSummaryFromRow);
   }
 
-  public get(id: string): DashboardFindingSummary | undefined {
-    const row = this.database.db.prepare("SELECT * FROM findings WHERE id = ?").get(id) as DbFindingRow | undefined;
+  public get(id: string, organizationId?: string): DashboardFindingSummary | undefined {
+    const row = this.database.db.prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`).get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
     return row ? findingSummaryFromRow(row) : undefined;
   }
 
-  public detail(id: string): unknown {
-    const row = this.database.db.prepare("SELECT * FROM findings WHERE id = ?").get(id) as DbFindingRow | undefined;
+  public detail(id: string, organizationId?: string): unknown {
+    const row = this.database.db.prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`).get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
     if (!row) return undefined;
     return {
       finding: findingSummaryFromRow(row),
@@ -647,22 +658,23 @@ export class FindingRepository {
 export class SavedConfigurationRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public list(search?: string, includeArchived = false): unknown[] {
+  public list(search?: string, includeArchived = false, organizationId = defaultOrganizationId(this.database)): unknown[] {
     const archived = includeArchived ? "1 = 1" : "archived_at IS NULL";
     const rows = search
       ? this.database.db
-          .prepare(`SELECT * FROM saved_scan_configurations WHERE ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`)
-          .all(`%${search}%`, `%${search}%`)
-      : this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE ${archived} ORDER BY updated_at DESC LIMIT 100`).all();
+          .prepare(`SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`)
+          .all(organizationId,`%${search}%`, `%${search}%`)
+      : this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`).all(organizationId);
     return (rows as SavedConfigurationRow[]).map(configurationFromRow);
   }
 
-  public get(id: string, includeArchived = false): Record<string, unknown> | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE id = ? ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id) as SavedConfigurationRow | undefined;
+  public get(id: string, includeArchived = false, organizationId = defaultOrganizationId(this.database)): Record<string, unknown> | undefined {
+    const row = this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE id = ? AND organization_id=? ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id,organizationId) as SavedConfigurationRow | undefined;
     return row ? configurationFromRow(row) : undefined;
   }
 
   public create(input: {
+    organizationId?: string;
     name: string;
     description?: string | undefined;
     targetTemplate?: string | undefined;
@@ -678,11 +690,12 @@ export class SavedConfigurationRepository {
     const now = nowIso();
     this.database.db
       .prepare(
-        `INSERT INTO saved_scan_configurations (id, name, description, target_template, profile, modules_json, limits_json, scope_settings_json, browser_policy_settings_json, evidence_level, non_secret_controlled_workflow_refs_json, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO saved_scan_configurations (id, organization_id, name, description, target_template, profile, modules_json, limits_json, scope_settings_json, browser_policy_settings_json, evidence_level, non_secret_controlled_workflow_refs_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
+        input.organizationId ?? defaultOrganizationId(this.database),
         input.name,
         input.description ?? null,
         input.targetTemplate ?? null,
@@ -700,15 +713,15 @@ export class SavedConfigurationRepository {
     return id;
   }
 
-  public update(id: string, input: Parameters<SavedConfigurationRepository["create"]>[0] & { expectedVersion?: number | undefined; changeSummary?: string | undefined }): number {
-    const current = this.database.db.prepare("SELECT current_version, row_version FROM saved_scan_configurations WHERE id = ? AND archived_at IS NULL").get(id) as { current_version: number; row_version: number } | undefined;
+  public update(id: string, input: Parameters<SavedConfigurationRepository["create"]>[0] & { expectedVersion?: number | undefined; changeSummary?: string | undefined }, organizationId = defaultOrganizationId(this.database)): number {
+    const current = this.database.db.prepare("SELECT current_version, row_version FROM saved_scan_configurations WHERE id = ? AND organization_id=? AND archived_at IS NULL").get(id,organizationId) as { current_version: number; row_version: number } | undefined;
     if (!current || (input.expectedVersion !== undefined && input.expectedVersion !== current.row_version)) throw new Error("CONFIGURATION_CONFLICT: Configuration changed or is unavailable.");
     const nextVersion = current.current_version + 1;
     const result = this.database.db
       .prepare(
         `UPDATE saved_scan_configurations
          SET name = ?, description = ?, target_template = ?, profile = ?, modules_json = ?, limits_json = ?, scope_settings_json = ?, browser_policy_settings_json = ?, evidence_level = ?, non_secret_controlled_workflow_refs_json = ?, updated_at = ?, current_version = ?, row_version = row_version + 1
-         WHERE id = ? AND row_version = ?`
+         WHERE id = ? AND organization_id=? AND row_version = ?`
       )
       .run(
         input.name,
@@ -724,6 +737,7 @@ export class SavedConfigurationRepository {
         nowIso(),
         nextVersion,
         id,
+        organizationId,
         current.row_version
       );
     if (result.changes !== 1) throw new Error("CONFIGURATION_CONFLICT: Configuration changed concurrently.");
@@ -731,30 +745,32 @@ export class SavedConfigurationRepository {
     return nextVersion;
   }
 
-  public archive(id: string): void {
-    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NULL").run(nowIso(), nowIso(), id);
+  public archive(id: string, organizationId = defaultOrganizationId(this.database)): void {
+    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId);
   }
 
-  public restore(id: string): void {
-    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND archived_at IS NOT NULL").run(nowIso(), id);
+  public restore(id: string, organizationId = defaultOrganizationId(this.database)): void {
+    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId);
   }
 
-  public clone(id: string, name: string): string {
-    const item = this.get(id, true);
+  public clone(id: string, name: string, organizationId = defaultOrganizationId(this.database)): string {
+    const item = this.get(id, true, organizationId);
     if (!item) throw new Error("Configuration not found.");
     return this.create({
-      name, description: typeof item.description === "string" ? item.description : undefined,
+      organizationId, name, description: typeof item.description === "string" ? item.description : undefined,
       targetTemplate: typeof item.targetTemplate === "string" ? item.targetTemplate : undefined,
       profile: String(item.profile), modules: item.modules, limits: item.limits, scopeSettings: item.scopeSettings,
       browserPolicySettings: item.browserPolicySettings, evidenceLevel: String(item.evidenceLevel), workflowRefs: item.workflowRefs
     });
   }
 
-  public history(id: string): unknown[] {
+  public history(id: string, organizationId = defaultOrganizationId(this.database)): unknown[] {
+    if (!this.get(id,true,organizationId)) return [];
     return this.database.db.prepare("SELECT id, configuration_id AS configurationId, version, snapshot_json AS snapshotJson, change_summary AS changeSummary, created_by AS createdBy, created_at AS createdAt FROM saved_scan_configuration_versions WHERE configuration_id = ? ORDER BY version DESC").all(id);
   }
 
-  public diff(id: string, olderVersion: number, newerVersion: number): Record<string, unknown> {
+  public diff(id: string, olderVersion: number, newerVersion: number, organizationId = defaultOrganizationId(this.database)): Record<string, unknown> {
+    if (!this.get(id,true,organizationId)) throw new Error("Configuration not found.");
     const rows = this.database.db.prepare("SELECT version, snapshot_json FROM saved_scan_configuration_versions WHERE configuration_id = ? AND version IN (?, ?)").all(id, olderVersion, newerVersion) as Array<{ version: number; snapshot_json: string }>;
     if (rows.length !== 2) throw new Error("Both configuration versions are required for diff.");
     const older = JSON.parse(rows.find((row) => row.version === olderVersion)!.snapshot_json) as Record<string, unknown>;
@@ -813,8 +829,8 @@ function findingSort(sort: FindingListFilters["sort"]): string {
   }
 }
 
-function scalarCount(database: DashboardDatabase, sql: string): number {
-  return (database.db.prepare(sql).get() as { count: number }).count;
+function scalarCount(database: DashboardDatabase, sql: string, ...values: Array<string | number>): number {
+  return (database.db.prepare(sql).get(...values) as { count: number }).count;
 }
 
 function scalarCountPrepared(database: DashboardDatabase, sql: string, value: string): number {
@@ -825,8 +841,27 @@ function countBy(rows: readonly { status: string; count: number }[], status: str
   return rows.find((row) => row.status === status)?.count ?? 0;
 }
 
+function defaultOrganizationId(database: DashboardDatabase): string {
+  const row = database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as { value: string } | undefined;
+  if (!row) throw new Error("DEFAULT_ORGANIZATION_MISSING");
+  return row.value;
+}
+
+function organizationForReferences(database: DashboardDatabase, projectId?: string, targetId?: string): string {
+  if (targetId) {
+    const target = database.db.prepare("SELECT organization_id FROM targets WHERE id=?").get(targetId) as { organization_id: string } | undefined;
+    if (target?.organization_id) return target.organization_id;
+  }
+  if (projectId) {
+    const project = database.db.prepare("SELECT organization_id FROM projects WHERE id=?").get(projectId) as { organization_id: string } | undefined;
+    if (project?.organization_id) return project.organization_id;
+  }
+  return defaultOrganizationId(database);
+}
+
 interface DbScanRow {
   id: string;
+  organization_id: string;
   source: DashboardScanSource;
   status: DashboardScanStatus;
   safe_target_label: string;
@@ -845,6 +880,7 @@ interface DbScanRow {
 
 interface DbProjectRow {
   id: string;
+  organization_id: string;
   name: string;
   description: string | null;
   tags_json: string;
@@ -858,6 +894,7 @@ interface DbProjectRow {
 
 interface DbTargetRow {
   id: string;
+  organization_id: string;
   project_id: string | null;
   display_name: string;
   base_origin: string;
@@ -881,6 +918,7 @@ interface DbTargetRow {
 
 interface DbFindingRow {
   id: string;
+  organization_id: string;
   module: string;
   finding_category: string;
   safe_endpoint_identity: string;
@@ -903,6 +941,7 @@ interface DbFindingRow {
 function projectFromRow(database: DashboardDatabase, row: DbProjectRow): ProjectSummary {
   return {
     id: row.id,
+    organizationId: row.organization_id,
     name: row.name,
     ...(row.description ? { description: row.description } : {}),
     tags: safeJsonArray(row.tags_json),
@@ -921,6 +960,7 @@ function projectFromRow(database: DashboardDatabase, row: DbProjectRow): Project
 function targetFromRow(database: DashboardDatabase, row: DbTargetRow): TargetSummary {
   return {
     id: row.id,
+    organizationId: row.organization_id,
     ...(row.project_id ? { projectId: row.project_id } : {}),
     displayName: row.display_name,
     baseOrigin: row.base_origin,

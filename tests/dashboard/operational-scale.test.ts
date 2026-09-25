@@ -1,4 +1,6 @@
 import { createHash, generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,7 +63,10 @@ describe("operational scale services", () => {
     expect(claimed.job.id).toBe(jobId);
     expect(service.renew(workerRow,jobId,claimed.job.leaseToken).leaseExpiresAt).toBeTruthy();
     service.complete(workerRow, jobId, { leaseToken: claimed.job.leaseToken, status: "COMPLETED", result: { pong: true } });
-    expect(service.list(organizationId)).toEqual(expect.objectContaining({ jobs: [expect.objectContaining({ status: "COMPLETED" })] }));
+    expect(service.list(organizationId)).toEqual(expect.objectContaining({ jobs: [expect.objectContaining({ status: "COMPLETED", result: { pong: true } })] }));
+    const scanJobId = service.enqueue({ organizationId, kind: "SCAN", payload: {}, requiredCapabilities: [], priority: 5, maxAttempts: 2 }, "operator");
+    expect(service.claim(workerRow)).toEqual({ job: null });
+    expect(JSON.parse((database.db.prepare("SELECT required_capabilities_json AS capabilities FROM remote_jobs WHERE id=?").get(scanJobId) as { capabilities: string }).capabilities)).toEqual(["scan"]);
     database.close();
   });
 
@@ -72,11 +77,65 @@ describe("operational scale services", () => {
       const peerId = service.createPeer({ organizationId, name: "peer-a", endpoint: "https://sync.example.test", sharedSecretEnv: env, enabled: true }, "operator");
       service.record(organizationId, "finding", "finding-1", "UPSERT", { title: "Safe event" });
       const batch = service.batch(peerId);
-      const body = { organizationId, cursor: batch.cursor, events: batch.events } as Parameters<CloudSyncService["receive"]>[1];
+      const body = { organizationId: batch.organizationId, cursor: batch.cursor, events: batch.events } as Parameters<CloudSyncService["receive"]>[1];
       expect(service.receive(peerId, body, batch.signature)).toEqual({ accepted: 0, cursor: batch.cursor });
       expect(service.receive(peerId, body, batch.signature)).toEqual({ accepted: 0, cursor: batch.cursor });
       expect(() => service.receive(peerId, { ...body, cursor: body.cursor + 1 }, batch.signature)).toThrow("CLOUD_SYNC_AUTH_REJECTED");
     } finally { delete process.env[env]; database.close(); }
+  });
+
+  it("pushes signed events between installations with different organization IDs", async () => {
+    const left = fixture(); const right = fixture();
+    const leftOrganizationId = defaultOrganization(left.database); const rightOrganizationId = defaultOrganization(right.database);
+    const env = `ROUTECAIRN_TEST_SYNC_${randomUUID().replaceAll("-", "_")}`; process.env[env] = "y".repeat(48);
+    const rightService = new CloudSyncService(right.database);
+    const rightPeer = rightService.createPeer({ organizationId: rightOrganizationId, remoteOrganizationId: leftOrganizationId, name: "federation", endpoint: "https://left.example.test", sharedSecretEnv: env, enabled: true }, "operator");
+    const receiver = createServer(async (request, response) => {
+      try {
+        const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Parameters<CloudSyncService["receive"]>[1];
+        const result = rightService.receiveFromPeer(String(request.headers["x-routecairn-sync-peer"] ?? ""), body, String(request.headers["x-routecairn-sync-signature"] ?? ""));
+        response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(result));
+      } catch { response.writeHead(401).end(); }
+    });
+    await new Promise<void>((resolveListen) => receiver.listen(0, "127.0.0.1", resolveListen));
+    try {
+      expect(rightPeer).toBeTruthy();
+      const leftService = new CloudSyncService(left.database);
+      const leftPeer = leftService.createPeer({ organizationId: leftOrganizationId, remoteOrganizationId: rightOrganizationId, name: "federation", endpoint: `http://127.0.0.1:${(receiver.address() as AddressInfo).port}`, sharedSecretEnv: env, enabled: true }, "operator");
+      leftService.record(leftOrganizationId, "finding", "finding-remote", "UPSERT", { title: "Safe remote event" });
+      await expect(leftService.push(leftPeer)).resolves.toEqual(expect.objectContaining({ sent: 1 }));
+      expect(rightService.replicas(rightOrganizationId)).toEqual(expect.arrayContaining([expect.objectContaining({ entityType: "finding", entityId: "finding-remote", payload: { title: "Safe remote event" } })]));
+    } finally { delete process.env[env]; await new Promise<void>((resolveClose) => receiver.close(() => resolveClose())); left.database.close(); right.database.close(); }
+  });
+
+  it("automatically snapshots legacy collaboration rows into idempotent replicas", () => {
+    const { database } = fixture(); const organizationId = defaultOrganization(database); const service = new CloudSyncService(database); const projectId = randomUUID(); const now = new Date().toISOString();
+    database.db.prepare("INSERT INTO projects (id,name,description,tags_json,default_scope_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(projectId,"Legacy project",null,"[]","{}",now,now);
+    expect(service.reconcileLegacy(organizationId)).toBe(1);
+    expect(service.reconcileLegacy(organizationId)).toBe(0);
+    expect(service.replicas(organizationId)).toEqual(expect.arrayContaining([expect.objectContaining({ entityType: "legacy.project", entityId: projectId, operation: "UPSERT", payload: expect.objectContaining({ displayName: "Legacy project" }) })]));
+    database.db.prepare("UPDATE projects SET name='Renamed project',updated_at=? WHERE id=?").run(new Date(Date.now()+1).toISOString(),projectId);
+    expect(service.reconcileLegacy(organizationId)).toBe(1);
+    database.db.prepare("DELETE FROM projects WHERE id=?").run(projectId);
+    expect(service.reconcileLegacy(organizationId)).toBe(1);
+    expect(service.replicas(organizationId)).toEqual(expect.arrayContaining([expect.objectContaining({ entityType: "legacy.project", entityId: projectId, operation: "DELETE" })]));
+    database.close();
+  });
+
+  it("keeps unscoped legacy rows in the default organization", () => {
+    const { database } = fixture();
+    const service = new CloudSyncService(database);
+    const organizations = new OrganizationService(database);
+    const defaultId = defaultOrganization(database);
+    const secondaryId = organizations.create({ name: "Secondary", slug: `secondary-${randomUUID().slice(0, 8)}` }, "local-operator");
+    const projectId = randomUUID();
+    const now = new Date().toISOString();
+    database.db.prepare("INSERT INTO projects (id,name,description,tags_json,default_scope_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?)").run(projectId, "Legacy project", null, "[]", "{}", now, now);
+    expect(service.reconcileLegacy(secondaryId)).toBe(0);
+    expect(service.replicas(secondaryId)).toEqual([]);
+    expect(service.reconcileLegacy(defaultId)).toBe(1);
+    database.close();
   });
 
   it("creates, verifies, stages, and atomically applies an encrypted backup", async () => {
@@ -147,6 +206,8 @@ describe("operational scale services", () => {
     const directory = mkdtempSync(join(tmpdir(), "routecairn-operations-api-")); temporaryDirectories.push(directory);
     const server = await startDashboardServer({ dataDir: directory, uiDistDir: join(directory, "ui") });
     try {
+      await expect(fetch(`${server.url}/healthz`).then((response) => response.json())).resolves.toEqual({ status: "ok" });
+      await expect(fetch(`${server.url}/readyz`).then((response) => response.json())).resolves.toEqual({ status: "ready" });
       const auth = await bootstrap(server.url, server.bootstrapUrl!);
       const organizations = await apiGet<{ organizations: Array<{ id: string }> }>(server.url, "/api/operations/organizations", auth.cookie); const organizationId = organizations.organizations[0]!.id;
       const enrollment = await apiPost<{ token: string }>(server.url, "/api/operations/remote-workers/enrollments", auth, { organizationId, expiresInMinutes: 60 });

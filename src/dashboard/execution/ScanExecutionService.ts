@@ -191,7 +191,7 @@ export class ScanExecutionService {
     return redactDashboardValue({ ok: assessment.classification === "HEALTHY" || assessment.classification === "NEAR_EXPIRY", health: this.vault.getSummary(profileId)!.health, identity: report.primary, structuralValidation: credentialStructureSummary(secret), requestAudit: context.state.getRequestAudit() }) as Record<string, unknown>;
   }
 
-  public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[], approvalId?: string): Promise<string> {
+  public async enqueue(request: DashboardScanCreateRequest, mutationContracts?: readonly ControlledMutationContract[], approvalId?: string, organizationId?: string): Promise<string> {
     if (this.queue.length >= maxQueuedScans) {
       throw new Error(`Scan queue is full. Maximum queued scans: ${maxQueuedScans}.`);
     }
@@ -214,6 +214,7 @@ export class ScanExecutionService {
     let executablePlan!: BoundExecutablePlan;
     this.database.transaction(() => {
       this.scans.create({
+        organizationId,
         id: scanId,
         source: "DASHBOARD",
         status: "QUEUED",

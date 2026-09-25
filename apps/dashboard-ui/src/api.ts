@@ -169,6 +169,14 @@ export function setCsrfToken(value: string): void {
   else window.sessionStorage.removeItem(csrfStorageKey);
 }
 
+const organizationStorageKey = "routecairn.active-organization";
+let activeOrganizationId = readStoredOrganizationId();
+export function setActiveOrganizationId(value: string): void {
+  activeOrganizationId=value;
+  try { if(value)window.sessionStorage.setItem(organizationStorageKey,value);else window.sessionStorage.removeItem(organizationStorageKey); } catch { /* storage may be unavailable */ }
+}
+export function getActiveOrganizationId():string{return activeOrganizationId;}
+
 export async function bootstrap(): Promise<boolean> {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const token = params.get("bootstrap");
@@ -187,7 +195,7 @@ export async function bootstrap(): Promise<boolean> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin" });
+  const response = await fetch(path, { credentials: "same-origin", headers: activeOrganizationId ? { "x-routecairn-organization-id": activeOrganizationId } : undefined });
   if (response.status === 401) window.dispatchEvent(new Event("routecairn:session-expired"));
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as T;
@@ -197,7 +205,7 @@ export async function apiMutation<T>(path: string, method: "POST" | "PATCH", bod
   const effectiveCsrfToken = csrfToken || readStoredCsrfToken();
   const response = await fetch(path, {
     method,
-    headers: { "content-type": "application/json", "x-csrf-token": effectiveCsrfToken },
+    headers: { "content-type": "application/json", "x-csrf-token": effectiveCsrfToken, ...(activeOrganizationId ? { "x-routecairn-organization-id": activeOrganizationId } : {}) },
     credentials: "same-origin",
     body: JSON.stringify(body)
   });
@@ -213,6 +221,8 @@ function readStoredCsrfToken(): string {
     return "";
   }
 }
+
+function readStoredOrganizationId():string{try{return window.sessionStorage.getItem(organizationStorageKey)??"";}catch{return"";}}
 
 async function responseError(response: Response): Promise<DashboardApiError> {
   const body = await response.json().catch(() => ({})) as { error?: string; code?: string; coreCode?: string; diagnostics?: ApiDiagnostic[] };

@@ -21,10 +21,10 @@ export class ProofPackService {
     this.artifacts = new ArtifactRepository(database);
   }
 
-  public generate(title: string, description: string | undefined, findingIds: readonly string[]): string {
+  public generate(title: string, description: string | undefined, findingIds: readonly string[], organizationId = this.defaultOrganizationId()): string {
     const findings = this.database.db
-      .prepare(`SELECT * FROM findings WHERE id IN (${findingIds.map(() => "?").join(",")})`)
-      .all(...findingIds) as ProofFindingRow[];
+      .prepare(`SELECT * FROM findings WHERE organization_id=? AND id IN (${findingIds.map(() => "?").join(",")})`)
+      .all(organizationId,...findingIds) as ProofFindingRow[];
     if (findings.length !== findingIds.length) throw new Error("One or more findings were not found.");
     const excluded = findings.filter((finding) => finding.human_review_status !== "CONFIRMED");
     if (excluded.length > 0) throw new Error("Proof packs include confirmed findings only by default.");
@@ -62,18 +62,15 @@ export class ProofPackService {
     writeFileSync(markdownPath, markdown, "utf8");
     writeFileSync(htmlPath, html, "utf8");
     writePdfProofPack(pdfPath, markdown);
-    const markdownArtifact = this.recordArtifact(proofPackId, markdownPath, "PROOF_PACK_MARKDOWN", "text/markdown; charset=utf-8");
-    const htmlArtifact = this.recordArtifact(proofPackId, htmlPath, "PROOF_PACK_HTML", "text/html; charset=utf-8");
-    const pdfArtifact = this.recordArtifact(proofPackId, pdfPath, "PROOF_PACK_PDF", "application/pdf");
-
-    const versionRow = this.database.db.prepare("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM proof_packs WHERE safe_title = ?").get(title) as { version: number };
+    const versionRow = this.database.db.prepare("SELECT COALESCE(MAX(version), 0) + 1 AS version FROM proof_packs WHERE organization_id=? AND safe_title = ?").get(organizationId,title) as { version: number };
     this.database.transaction(() => {
       this.database.db
         .prepare(
-          "INSERT INTO proof_packs (id, safe_title, description, status, version, created_at, generated_at, source_scan_ids_json, scope_summary, included_finding_count, output_artifact_ids_json, immutable_snapshot_metadata_json) VALUES (?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT INTO proof_packs (id, organization_id, safe_title, description, status, version, created_at, generated_at, source_scan_ids_json, scope_summary, included_finding_count, output_artifact_ids_json, immutable_snapshot_metadata_json) VALUES (?, ?, ?, ?, 'READY', ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         .run(
           proofPackId,
+          organizationId,
           title,
           description ?? null,
           versionRow.version,
@@ -82,9 +79,13 @@ export class ProofPackService {
           JSON.stringify([...new Set(selected.map((item) => item.occurrence.scan_id))]),
           "Generated from confirmed local dashboard findings.",
           findings.length,
-          JSON.stringify([markdownArtifact, htmlArtifact, pdfArtifact]),
+          "[]",
           JSON.stringify({ findingIds, valuePresenceAttestationCount: selected.reduce((total, item) => total + item.attestations.length, 0) })
         );
+      const markdownArtifact = this.recordArtifact(proofPackId, markdownPath, "PROOF_PACK_MARKDOWN", "text/markdown; charset=utf-8",organizationId);
+      const htmlArtifact = this.recordArtifact(proofPackId, htmlPath, "PROOF_PACK_HTML", "text/html; charset=utf-8",organizationId);
+      const pdfArtifact = this.recordArtifact(proofPackId, pdfPath, "PROOF_PACK_PDF", "application/pdf",organizationId);
+      this.database.db.prepare("UPDATE proof_packs SET output_artifact_ids_json=? WHERE id=?").run(JSON.stringify([markdownArtifact,htmlArtifact,pdfArtifact]),proofPackId);
       const insert = this.database.db.prepare(
         "INSERT INTO proof_pack_findings (proof_pack_id, finding_id, selected_occurrence_id, sort_order, included_evidence_ids_json, snapshot_content_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       );
@@ -103,10 +104,10 @@ export class ProofPackService {
     return proofPackId;
   }
 
-  public list(): Array<{ id: string; title: string; status: string; version: number; generatedAt?: string; includedFindingCount: number; artifacts: string[] }> {
+  public list(organizationId = this.defaultOrganizationId()): Array<{ id: string; title: string; status: string; version: number; generatedAt?: string; includedFindingCount: number; artifacts: string[] }> {
     const rows = this.database.db
-      .prepare("SELECT id, safe_title, status, version, generated_at, included_finding_count, output_artifact_ids_json FROM proof_packs ORDER BY created_at DESC LIMIT 100")
-      .all() as Array<{ id: string; safe_title: string; status: string; version: number; generated_at: string | null; included_finding_count: number; output_artifact_ids_json: string }>;
+      .prepare("SELECT id, safe_title, status, version, generated_at, included_finding_count, output_artifact_ids_json FROM proof_packs WHERE organization_id=? ORDER BY created_at DESC LIMIT 100")
+      .all(organizationId) as Array<{ id: string; safe_title: string; status: string; version: number; generated_at: string | null; included_finding_count: number; output_artifact_ids_json: string }>;
     return rows.map((row) => ({
       id: row.id,
       title: row.safe_title,
@@ -118,10 +119,11 @@ export class ProofPackService {
     }));
   }
 
-  private recordArtifact(proofPackId: string, path: string, type: string, contentType: string): string {
+  private recordArtifact(proofPackId: string, path: string, type: string, contentType: string, organizationId:string): string {
     const stat = statSync(path);
-    return this.artifacts.create({ proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: stat.size, contentType, hash: createHash("sha256").update(readFileSync(path)).digest("hex") });
+    return this.artifacts.create({ organizationId,proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: stat.size, contentType, hash: createHash("sha256").update(readFileSync(path)).digest("hex") });
   }
+  private defaultOrganizationId():string { return (this.database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as {value:string}).value; }
 }
 
 interface ProofFindingRow {

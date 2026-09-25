@@ -24,14 +24,14 @@ export class HistoricalReportImporter {
     this.normalizer = new FindingNormalizer(database.db, new FindingFingerprintService(paths.fingerprintKeyPath));
   }
 
-  public importReport(reportPath: string): ImportResult {
+  public importReport(reportPath: string, organizationId?: string): ImportResult {
     const canonical = safeContainedPath(reportPath, [resolve("reports"), this.paths.reportsDir]);
     const stat = statSync(canonical);
     if (stat.size > maxImportBytes) throw new Error("Report file is too large to import safely.");
     const raw = readFileSync(canonical, "utf8");
     const report = JSON.parse(raw) as RouteCairnReport;
     const reportFingerprint = safeHash(raw);
-    const sourceFingerprint = safeHash(canonical);
+    const sourceFingerprint = safeHash(`${organizationId ?? "default"}\0${canonical}`);
     const existing = this.database.db
       .prepare("SELECT imported_scan_id FROM import_records WHERE source_path_fingerprint = ? AND report_fingerprint = ?")
       .get(sourceFingerprint, reportFingerprint) as { imported_scan_id: string } | undefined;
@@ -41,6 +41,7 @@ export class HistoricalReportImporter {
     const targetOrigin = new URL(report.target).origin;
     this.database.transaction(() => {
       this.scans.create({
+        organizationId,
         id: scanId,
         source: "REPORT_IMPORTED",
         status: report.execution?.partial ? report.execution.status === "CANCELLED" ? "CANCELLED" : report.execution.status === "FAILED" ? "FAILED" : "INTERRUPTED" : "IMPORTED",
