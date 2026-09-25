@@ -47,9 +47,9 @@ export class RemoteWorkerService {
   }
 
   public enqueue(input: { organizationId: string; kind: string; payload: Record<string, unknown>; requiredCapabilities: string[]; priority: number; maxAttempts: number }, actor: string): string {
-    ensureSafeObject(input.payload); const id = randomUUID();
+    ensureSafeObject(input.payload); const id = randomUUID(); const requiredCapabilities = [...new Set([input.kind.toLowerCase(), ...input.requiredCapabilities])].sort();
     this.database.db.prepare(`INSERT INTO remote_jobs (id,organization_id,kind,safe_payload_json,required_capabilities_json,status,priority,max_attempts,created_by,created_at)
-      VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`).run(id, input.organizationId, input.kind, canonical(input.payload), JSON.stringify([...new Set(input.requiredCapabilities)].sort()), input.priority, input.maxAttempts, actor, nowIso());
+      VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`).run(id, input.organizationId, input.kind, canonical(input.payload), JSON.stringify(requiredCapabilities), input.priority, input.maxAttempts, actor, nowIso());
     return id;
   }
 
@@ -82,7 +82,10 @@ export class RemoteWorkerService {
 
   public list(organizationId: string): { workers: unknown[]; jobs: unknown[] } {
     const workers = (this.database.db.prepare("SELECT * FROM remote_workers WHERE organization_id=? ORDER BY created_at DESC").all(organizationId) as WorkerRow[]).map((row) => ({ id: row.id, name: row.name, fingerprint: row.public_key_fingerprint, capabilities: JSON.parse(row.capabilities_json), labels: JSON.parse(row.labels_json), resources: row.resources_json ? JSON.parse(row.resources_json) : null, status: effectiveStatus(row), generation: row.generation, lastSeenAt: row.last_seen_at, createdAt: row.created_at }));
-    const jobs = this.database.db.prepare("SELECT id,kind,status,priority,assigned_worker_id AS assignedWorkerId,attempt_count AS attemptCount,max_attempts AS maxAttempts,safe_error AS safeError,created_at AS createdAt,started_at AS startedAt,completed_at AS completedAt FROM remote_jobs WHERE organization_id=? ORDER BY created_at DESC LIMIT 200").all(organizationId);
+    const jobs = (this.database.db.prepare("SELECT id,kind,status,priority,assigned_worker_id AS assignedWorkerId,attempt_count AS attemptCount,max_attempts AS maxAttempts,safe_result_json AS safeResultJson,safe_error AS safeError,created_at AS createdAt,started_at AS startedAt,completed_at AS completedAt FROM remote_jobs WHERE organization_id=? ORDER BY created_at DESC LIMIT 200").all(organizationId) as Array<Record<string, unknown>>).map((row) => {
+      const { safeResultJson, ...summary } = row;
+      return { ...summary, result: typeof safeResultJson === "string" ? JSON.parse(safeResultJson) : null };
+    });
     return { workers, jobs };
   }
 
@@ -97,7 +100,7 @@ function digest(value: string): string { return createHash("sha256").update("rou
 function canonical(value: unknown): string { return JSON.stringify(sort(value)); }
 function sort(value: unknown): unknown { if (Array.isArray(value)) return value.map(sort); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sort(item)])); return value; }
 function validateEd25519(pem: string): KeyObject { let key: KeyObject; try { key = createPublicKey(pem); } catch { throw new RemoteWorkerAuthError("REMOTE_WORKER_KEY_REJECTED"); } if (key.asymmetricKeyType !== "ed25519") throw new RemoteWorkerAuthError("REMOTE_WORKER_KEY_TYPE_REJECTED"); return key; }
-function ensureSafeObject(value: Record<string, unknown>): void { const raw = canonical(value); if (Buffer.byteLength(raw) > 256 * 1024) throw new Error("REMOTE_JOB_PAYLOAD_TOO_LARGE"); const inspect=(item:unknown,depth:number):void=>{if(depth>12)throw new Error("REMOTE_JOB_PAYLOAD_TOO_DEEP");if(Array.isArray(item)){for(const child of item)inspect(child,depth+1);return;}if(item&&typeof item==="object")for(const [key,child] of Object.entries(item as Record<string,unknown>)){if(/(password|passwd|secret|token|cookie|authorization|private[_-]?key|api[_-]?key|credential|session|jwt|signature|signed)/i.test(key))throw new Error("REMOTE_JOB_SECRET_FIELD_REJECTED");inspect(child,depth+1);}};inspect(value,0); }
+function ensureSafeObject(value: Record<string, unknown>): void { const raw = canonical(value); if (Buffer.byteLength(raw) > 256 * 1024) throw new Error("REMOTE_JOB_PAYLOAD_TOO_LARGE"); const inspect=(item:unknown,depth:number):void=>{if(depth>12)throw new Error("REMOTE_JOB_PAYLOAD_TOO_DEEP");if(Array.isArray(item)){for(const child of item)inspect(child,depth+1);return;}if(item&&typeof item==="object")for(const [key,child] of Object.entries(item as Record<string,unknown>)){if(/(password|passwd|secret|token|cookie|authorization|private[_-]?key|api[_-]?key|credential|session|jwt|signature|signed)/i.test(key)&&!/(?:path|ref|env)$/i.test(key))throw new Error("REMOTE_JOB_SECRET_FIELD_REJECTED");inspect(child,depth+1);}};inspect(value,0); }
 function effectiveStatus(row: WorkerRow): string { return row.status === "ONLINE" && (!row.last_seen_at || Date.parse(row.last_seen_at) < Date.now() - 90_000) ? "OFFLINE" : row.status; }
 function safeRemoteError(value: string): string { return value.replace(/https?:\/\/[^\s]+/gi, "<endpoint>").replace(/\b(password|secret|token|cookie|authorization|private[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>").replace(/[\r\n]+/g, " ").slice(0, 1000); }
 interface EnrollmentRow { id: string; organization_id: string; expires_at: string; consumed_at: string | null }
