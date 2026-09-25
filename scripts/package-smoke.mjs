@@ -139,12 +139,16 @@ function run(command, args, cwd, environment) {
 }
 
 function parsePackResult(stdout) {
-  const start = stdout.indexOf("[");
   const end = stdout.lastIndexOf("]");
-  assert(start >= 0 && end > start, `npm pack did not return JSON: ${stdout}`);
-  const parsed = JSON.parse(stdout.slice(start, end + 1));
-  assert(Array.isArray(parsed) && parsed.length === 1 && parsed[0]?.filename && Array.isArray(parsed[0]?.files), "npm pack returned an unexpected result.");
-  return parsed[0];
+  for (let start = stdout.indexOf("["); start >= 0 && end > start; start = stdout.indexOf("[", start + 1)) {
+    try {
+      const parsed = JSON.parse(stdout.slice(start, end + 1));
+      if (Array.isArray(parsed) && parsed.length === 1 && parsed[0]?.filename && Array.isArray(parsed[0]?.files)) return parsed[0];
+    } catch {
+      // Lifecycle output may contain terminal control sequences before npm's JSON result.
+    }
+  }
+  throw new Error(`npm pack did not return the expected JSON result: ${stdout}`);
 }
 
 function optionValue(name) {

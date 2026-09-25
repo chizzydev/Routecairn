@@ -51,6 +51,7 @@ jobs:
           name: effectiveness-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-benchmarks/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
       - name: Capability, migration, worker-fault, and browser-boundary gates
         run: npx vitest run tests/dashboard/admin/capability-parity.test.ts tests/dashboard/worker-governance.test.ts tests/dashboard/worker-governance-api.test.ts tests/unit/browser-network-boundary.test.ts tests/dashboard/dashboard-closure-workflows.test.ts
@@ -77,6 +78,7 @@ jobs:
           name: authentication-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-authentication-acceptance/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
       - name: WebSocket, GraphQL, multipart, gRPC, HTTP/2, and native HTTP/3 acceptance
         run: node dist/cli/index.js validate-protocol-fixtures --output .routecairn-protocol-acceptance
@@ -87,6 +89,7 @@ jobs:
           name: protocol-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-protocol-acceptance/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   release-package:
@@ -153,6 +156,7 @@ jobs:
           name: broader-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-validation/
           if-no-files-found: error
+          include-hidden-files: true
           retention-days: 30
 
   assurance-gate:
