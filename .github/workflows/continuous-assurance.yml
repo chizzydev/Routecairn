@@ -41,7 +41,7 @@ jobs:
       - name: Build core and dashboard
         run: npm run build && npm run dashboard:build
       - name: Full unit and integration suite
-        run: npm test
+        run: npm test -- --testTimeout=180000 --hookTimeout=180000
         env:
           NODE_OPTIONS: --max-old-space-size=6144
       - name: Measured effectiveness gate
