@@ -1,0 +1,13 @@
+{
+  "program": "Authorized live inventory acquisition",
+  "allowedDomains": ["app.example.com", "project-ref.supabase.co"],
+  "disallowedPaths": ["/logout", "/delete", "/checkout", "/payment", "/api/admin"],
+  "allowedMethods": ["GET", "HEAD", "OPTIONS", "POST"],
+  "rateLimitPerSecond": 2,
+  "concurrency": 3,
+  "maxDepth": 1,
+  "sameOriginOnly": false,
+  "includeSubdomains": false,
+  "respectRobotsTxt": false,
+  "userAgent": "RouteCairn/0.1"
+}

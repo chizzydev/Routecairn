@@ -1,18 +1,63 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { AppError } from "../../core/errors/AppError.js";
+import type { RouteCairnScope } from "../../config/ConfigSchema.js";
+import { ScopeMatcher } from "../../core/scope/ScopeMatcher.js";
 import { apiGraphqlInputSchema, type ApiGraphqlInput } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
 import { collectionAuthorizationInputSchema, type CollectionAuthorizationInput } from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
 import { fileAuthorizationInputSchema, type FileAuthorizationInput } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
 import { supabaseAuthorizationInputSchema, type SupabaseAuthorizationInput } from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
+import type { ObjectPairInput } from "../../modules/objectPairTesting/ObjectPairPlanner.js";
 
 const maxImportBytes = 4 * 1024 * 1024;
 const sourceBase = z.object({ id: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/) });
 const openApiSource = sourceBase.extend({ kind: z.literal("OPENAPI"), document: z.unknown() }).strict();
-const postmanSource = sourceBase.extend({ kind: z.literal("POSTMAN"), document: z.unknown() }).strict();
+const inventoryVariableSchema = z.union([z.string().max(2048), z.number(), z.boolean()]);
+const postmanSource = sourceBase.extend({
+  kind: z.literal("POSTMAN"),
+  document: z.unknown(),
+  environment: z.unknown().optional(),
+  variables: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/), inventoryVariableSchema).optional()
+}).strict();
 const harSource = sourceBase.extend({ kind: z.literal("HAR"), document: z.unknown() }).strict();
 const graphqlSource = sourceBase.extend({ kind: z.literal("GRAPHQL_SCHEMA"), endpoint: z.string().url().max(2048), document: z.unknown() }).strict();
 const supabaseSource = sourceBase.extend({ kind: z.literal("SUPABASE_CATALOG"), projectUrl: z.string().url().max(2048), anonKeyEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/).default("SUPABASE_ANON_KEY"), document: z.unknown() }).strict();
+const acquisitionActor = z.enum(["anonymous", "primary", "account_a", "account_b"]).default("anonymous");
+const liveSourceBase = sourceBase.extend({ actor: acquisitionActor });
+const openApiUrlSource = liveSourceBase.extend({ kind: z.literal("OPENAPI_URL"), url: z.string().url().max(2048) }).strict();
+const postmanUrlSource = liveSourceBase.extend({
+  kind: z.literal("POSTMAN_URL"),
+  collectionUrl: z.string().url().max(2048),
+  environmentUrl: z.string().url().max(2048).optional(),
+  environment: z.unknown().optional(),
+  variables: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,127}$/), inventoryVariableSchema).optional()
+}).strict();
+const harUrlSource = liveSourceBase.extend({ kind: z.literal("HAR_URL"), url: z.string().url().max(2048) }).strict();
+const graphqlIntrospectionSource = liveSourceBase.extend({ kind: z.literal("GRAPHQL_INTROSPECTION"), endpoint: z.string().url().max(2048) }).strict();
+const safeDiscoveryPath = z.string().min(1).max(500).refine((value) => value.startsWith("/") && !/[?#\\\r\n]/.test(value) && !value.split("/").some((part) => part === ".."), "Discovery paths must be canonical absolute paths.");
+const serviceDiscoverySource = liveSourceBase.extend({
+  kind: z.literal("SERVICE_DISCOVERY"),
+  baseUrl: z.string().url().max(2048).optional(),
+  paths: z.array(safeDiscoveryPath).min(1).max(20).optional(),
+  graphqlEndpoints: z.array(safeDiscoveryPath).max(8).default([])
+}).strict();
+const supabaseLiveSource = liveSourceBase.extend({
+  kind: z.literal("SUPABASE_LIVE"),
+  projectUrl: z.string().url().max(2048),
+  anonKeyEnv: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/).default("SUPABASE_ANON_KEY"),
+  openApiPath: safeDiscoveryPath.default("/rest/v1/"),
+  bucketsPath: safeDiscoveryPath.default("/storage/v1/bucket"),
+  objectListPathTemplate: safeDiscoveryPath.refine((value) => (value.match(/\{bucket\}/g) ?? []).length === 1, "Object-list path must contain exactly one {bucket} placeholder.").default("/storage/v1/object/list/{bucket}"),
+  catalogUrl: z.string().url().max(2048).optional(),
+  includeBuckets: z.boolean().default(true),
+  enumeratePublicObjects: z.boolean().default(false),
+  maxObjectsPerBucket: z.number().int().min(1).max(100).default(25)
+}).strict();
+
+const inventorySourceSchema = z.discriminatedUnion("kind", [
+  openApiSource, postmanSource, harSource, graphqlSource, supabaseSource,
+  openApiUrlSource, postmanUrlSource, harUrlSource, graphqlIntrospectionSource, serviceDiscoverySource, supabaseLiveSource
+]);
 
 export const safeInventoryImportInputSchema = z.object({
   schemaVersion: z.literal(1).default(1),
@@ -20,7 +65,30 @@ export const safeInventoryImportInputSchema = z.object({
   maxGraphqlOperations: z.number().int().min(1).max(50).default(20),
   maxFiles: z.number().int().min(1).max(40).default(20),
   maxCollections: z.number().int().min(1).max(5).default(3),
-  sources: z.array(z.discriminatedUnion("kind", [openApiSource, postmanSource, harSource, graphqlSource, supabaseSource])).min(1).max(20)
+  acquisition: z.object({
+    maxFetches: z.number().int().min(1).max(100).default(24),
+    maxDocumentBytes: z.number().int().min(1024).max(1024 * 1024).default(512 * 1024),
+    timeoutMs: z.number().int().min(1000).max(30000).default(10000),
+    concurrency: z.number().int().min(1).max(4).default(2),
+    rateLimitPerSecond: z.number().positive().max(5).default(2),
+    authorizationDiscovery: z.object({
+      enabled: z.boolean().default(false),
+      seedPaths: z.array(safeDiscoveryPath).max(30).default([]),
+      maxRoutes: z.number().int().min(1).max(20).default(8),
+      maxPages: z.number().int().min(1).max(5).default(3),
+      maxObjectsPerActor: z.number().int().min(1).max(30).default(10),
+      idFields: z.array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$.-]{0,79}$/)).min(1).max(16).default(["id", "uuid", "objectId", "object_id"]),
+      ownerFields: z.array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$.-]{0,79}$/)).min(1).max(16).default(["ownerId", "owner_id", "userId", "user_id", "accountId", "account_id", "createdBy", "created_by"]),
+      tenantFields: z.array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$.-]{0,79}$/)).min(1).max(16).default(["tenantId", "tenant_id", "organizationId", "organization_id", "orgId", "org_id", "workspaceId", "workspace_id"]),
+      fileFields: z.array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$.-]{0,79}$/)).min(1).max(16).default(["url", "downloadUrl", "download_url", "fileUrl", "file_url", "path", "key", "objectKey", "object_key"]),
+      resultArrayPaths: z.array(z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*){0,5}$/)).max(16).default(["data", "items", "results", "records", "nodes", "edges"]),
+      requiredParameterValues: z.record(
+        z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,79}$/).refine((value) => !sensitiveVariableName(value), "Credential-like parameter names are not allowed."),
+        z.string().max(256).refine((value) => !/[\r\n\0]/.test(value), "Parameter values contain invalid characters.")
+      ).default({})
+    }).strict().default({})
+  }).strict().default({}),
+  sources: z.array(inventorySourceSchema).min(1).max(20)
 }).strict();
 
 export type SafeInventoryImportInput = z.infer<typeof safeInventoryImportInputSchema>;
@@ -30,6 +98,7 @@ export interface SafeInventoryImportResult {
   collectionAuthorization?: CollectionAuthorizationInput;
   fileAuthorization?: FileAuthorizationInput;
   supabaseAuthorization?: SupabaseAuthorizationInput;
+  objectPairTesting?: ObjectPairInput;
   summary: {
     sources: number;
     routes: number;
@@ -40,6 +109,7 @@ export interface SafeInventoryImportResult {
     blockedMutations: number;
     skipped: number;
     warnings: string[];
+    acquisition?: { fetches: number; authenticatedFetches: number; discoveredItems: number; resolvedEnvironments: number };
   };
 }
 
@@ -60,6 +130,7 @@ interface GraphqlEndpoint {
 
 interface HarFile { sourceId: string; url: string; method: "GET" | "HEAD"; mimeType?: string }
 interface HarCollection { sourceId: string; url: string; pagination: NonNullable<CollectionAuthorizationInput["collections"][number]["pagination"]> }
+type InventoryUrlPolicy = (url: string, method: "GET" | "HEAD" | "OPTIONS" | "POST") => boolean;
 
 export async function loadSafeInventoryImport(filePath: string): Promise<SafeInventoryImportInput> {
   const raw = await readFile(filePath);
@@ -72,9 +143,11 @@ export async function loadSafeInventoryImport(filePath: string): Promise<SafeInv
   return parsed.data;
 }
 
-export function compileSafeInventoryImport(rawInput: SafeInventoryImportInput, target: string): SafeInventoryImportResult {
+export function compileSafeInventoryImport(rawInput: SafeInventoryImportInput, target: string, options: { scope?: RouteCairnScope } = {}): SafeInventoryImportResult {
   const input = safeInventoryImportInputSchema.parse(rawInput);
   const origin = new URL(target).origin;
+  const matcher = options.scope ? new ScopeMatcher(target, options.scope) : undefined;
+  const urlPolicy: InventoryUrlPolicy = (url, method) => matcher ? matcher.decide(url, method).allowed : new URL(url).origin === origin;
   const routes: ImportedRoute[] = [];
   const graphql: GraphqlEndpoint[] = [];
   const files: HarFile[] = [];
@@ -86,24 +159,26 @@ export function compileSafeInventoryImport(rawInput: SafeInventoryImportInput, t
 
   for (const source of input.sources) {
     if (source.kind === "OPENAPI") {
-      const result = importOpenApi(source.id, source.document, origin);
+      const result = importOpenApi(source.id, source.document, origin, urlPolicy);
       routes.push(...result.routes); blockedMutations += result.blockedMutations; skipped += result.skipped;
     } else if (source.kind === "POSTMAN") {
-      const result = importPostman(source.id, source.document, origin);
+      const result = importPostman(source.id, resolvePostmanDocument(source.document, source.environment, source.variables), origin, urlPolicy);
       routes.push(...result.routes); blockedMutations += result.blockedMutations; skipped += result.skipped;
     } else if (source.kind === "HAR") {
-      const result = importHar(source.id, source.document, origin);
+      const result = importHar(source.id, source.document, origin, urlPolicy);
       routes.push(...result.routes); files.push(...result.files); collections.push(...result.collections); blockedMutations += result.blockedMutations; skipped += result.skipped;
     } else if (source.kind === "GRAPHQL_SCHEMA") {
-      const endpoint = importGraphql(source.id, source.endpoint, source.document, origin);
+      const endpoint = importGraphql(source.id, source.endpoint, source.document, origin, urlPolicy);
       if (endpoint) { graphql.push(endpoint); blockedMutations += endpoint.mutationCount; } else skipped += 1;
-    } else {
+    } else if (source.kind === "SUPABASE_CATALOG") {
       if (supabase) { warnings.push(`Supabase source ${source.id} was skipped because one catalog is already active.`); skipped += 1; continue; }
       const compiled = importSupabase(source, origin);
       files.push(...compiled.files);
       blockedMutations += compiled.blockedOperations;
       if (compiled.input) supabase = compiled.input;
       if (!compiled.input && !compiled.files.length) skipped += 1;
+    } else {
+      throw new AppError(`Live inventory source ${source.kind} must be acquired before compilation.`, "INVENTORY_LIVE_SOURCE_UNRESOLVED");
     }
   }
 
@@ -126,9 +201,47 @@ export function compileSafeInventoryImport(rawInput: SafeInventoryImportInput, t
   };
 }
 
-function importOpenApi(sourceId: string, document: unknown, origin: string): { routes: ImportedRoute[]; blockedMutations: number; skipped: number } {
+/** Resolves non-secret Postman collection/environment variables without ever
+ * accepting embedded credential variables as executable inventory. */
+export function resolvePostmanDocument(document: unknown, environment?: unknown, overrides?: Record<string, string | number | boolean>): unknown {
+  const variables = new Map<string, string>();
+  const addVariables = (values: unknown): void => {
+    for (const item of arrayRecords(values)) {
+      const key = string(item.key ?? item.name);
+      const value = item.value;
+      if (!key || item.enabled === false || sensitiveVariableName(key) || !["string", "number", "boolean"].includes(typeof value)) continue;
+      const rendered = String(value);
+      if (rendered.length <= 2048 && !/[\r\n\0]/.test(rendered)) variables.set(key, rendered);
+    }
+  };
+  if (record(document)) addVariables(document.variable);
+  const effectiveEnvironment = record(environment) && record(environment.environment) ? environment.environment : environment;
+  if (record(effectiveEnvironment)) addVariables(effectiveEnvironment.values ?? effectiveEnvironment.variable);
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    if (!sensitiveVariableName(key)) variables.set(key, String(value));
+  }
+  let visited = 0;
+  const resolveValue = (value: unknown, depth: number): unknown => {
+    if (++visited > 10000 || depth > 40) return value;
+    if (typeof value === "string") {
+      let resolved = value;
+      for (let pass = 0; pass < 5; pass += 1) {
+        const next = resolved.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_.-]{0,127})\s*\}\}/g, (token, name: string) => variables.get(name) ?? token);
+        if (next === resolved) break;
+        resolved = next;
+      }
+      return resolved;
+    }
+    if (Array.isArray(value)) return value.map((item) => resolveValue(item, depth + 1));
+    if (record(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveValue(item, depth + 1)]));
+    return value;
+  };
+  return resolveValue(document, 0);
+}
+
+function importOpenApi(sourceId: string, document: unknown, origin: string, urlPolicy: InventoryUrlPolicy): { routes: ImportedRoute[]; blockedMutations: number; skipped: number } {
   if (!record(document) || !record(document.paths)) return { routes: [], blockedMutations: 0, skipped: 1 };
-  const base = openApiBase(document, origin);
+  const base = openApiBase(document, origin, urlPolicy);
   const routes: ImportedRoute[] = [];
   let blockedMutations = 0; let skipped = 0;
   for (const [path, pathItem] of Object.entries(document.paths)) {
@@ -138,14 +251,14 @@ function importOpenApi(sourceId: string, document: unknown, origin: string): { r
       if (!["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"].includes(method) || !record(operation)) continue;
       if (!["GET", "HEAD", "OPTIONS"].includes(method)) { blockedMutations += 1; continue; }
       if (path.includes("{") || requiredParameters(pathItem, operation) || requiresAuthentication(document, operation)) { skipped += 1; continue; }
-      const url = safeSameOriginUrl(path, base, origin); if (!url) { skipped += 1; continue; }
+      const url = safeInventoryUrl(path, base, urlPolicy, method as ImportedRoute["method"]); if (!url) { skipped += 1; continue; }
       routes.push({ sourceId, url, method: method as ImportedRoute["method"], safeAlias: string(operation.summary) ?? string(operation.operationId) ?? `${method} ${path}`, fields: responseFields(operation) });
     }
   }
   return { routes, blockedMutations, skipped };
 }
 
-function importPostman(sourceId: string, document: unknown, origin: string): { routes: ImportedRoute[]; blockedMutations: number; skipped: number } {
+function importPostman(sourceId: string, document: unknown, origin: string, urlPolicy: InventoryUrlPolicy): { routes: ImportedRoute[]; blockedMutations: number; skipped: number } {
   if (!record(document) || !Array.isArray(document.item)) return { routes: [], blockedMutations: 0, skipped: 1 };
   const routes: ImportedRoute[] = []; let blockedMutations = 0; let skipped = 0;
   const visit = (items: unknown[]): void => { for (const item of items) {
@@ -157,14 +270,14 @@ function importPostman(sourceId: string, document: unknown, origin: string): { r
     if (hasSensitiveHeaders(request.header) || (record(request.auth) && request.auth.type !== "noauth")) { skipped += 1; continue; }
     const rawUrl = typeof request.url === "string" ? request.url : record(request.url) ? string(request.url.raw) : undefined;
     if (!rawUrl || /\{\{|\}\}/.test(rawUrl)) { skipped += 1; continue; }
-    const url = safeSameOriginUrl(rawUrl, origin, origin); if (!url) { skipped += 1; continue; }
+    const url = safeInventoryUrl(rawUrl, origin, urlPolicy, method as ImportedRoute["method"]); if (!url) { skipped += 1; continue; }
     routes.push({ sourceId, url, method: method as ImportedRoute["method"], safeAlias: string(item.name) ?? `${method} ${new URL(url).pathname}`, fields: [] });
   } };
   visit(document.item);
   return { routes, blockedMutations, skipped };
 }
 
-function importHar(sourceId: string, document: unknown, origin: string): { routes: ImportedRoute[]; files: HarFile[]; collections: HarCollection[]; blockedMutations: number; skipped: number } {
+function importHar(sourceId: string, document: unknown, origin: string, urlPolicy: InventoryUrlPolicy): { routes: ImportedRoute[]; files: HarFile[]; collections: HarCollection[]; blockedMutations: number; skipped: number } {
   const entries = record(document) && record(document.log) && Array.isArray(document.log.entries) ? document.log.entries : [];
   const routes: ImportedRoute[] = []; const files: HarFile[] = []; const collections: HarCollection[] = [];
   let blockedMutations = 0; let skipped = 0;
@@ -173,7 +286,7 @@ function importHar(sourceId: string, document: unknown, origin: string): { route
     const method = String(entry.request.method ?? "GET").toUpperCase();
     if (!["GET", "HEAD", "OPTIONS"].includes(method)) { blockedMutations += 1; continue; }
     if (hasSensitiveHeaders(entry.request.headers)) { skipped += 1; continue; }
-    const url = safeSameOriginUrl(string(entry.request.url) ?? "", origin, origin); const status = number(entry.response.status);
+    const url = safeInventoryUrl(string(entry.request.url) ?? "", origin, urlPolicy, method as ImportedRoute["method"]); const status = number(entry.response.status);
     if (!url || !status || status < 200 || status >= 300) { skipped += 1; continue; }
     const content = record(entry.response.content) ? entry.response.content : {};
     const mimeType = string(content.mimeType) ?? headerValue(entry.response.headers, "content-type");
@@ -185,8 +298,8 @@ function importHar(sourceId: string, document: unknown, origin: string): { route
   return { routes, files, collections, blockedMutations, skipped };
 }
 
-function importGraphql(sourceId: string, endpoint: string, document: unknown, origin: string): GraphqlEndpoint | undefined {
-  const url = safeSameOriginUrl(endpoint, origin, origin); if (!url) return undefined;
+function importGraphql(sourceId: string, endpoint: string, document: unknown, origin: string, urlPolicy: InventoryUrlPolicy): GraphqlEndpoint | undefined {
+  const url = safeInventoryUrl(endpoint, origin, urlPolicy, "POST"); if (!url) return undefined;
   const root = record(document) && record(document.data) && record(document.data.__schema) ? document.data.__schema : record(document) && record(document.__schema) ? document.__schema : undefined;
   if (!root || !Array.isArray(root.types)) return { sourceId, url, fields: [], mutationCount: 0 };
   const queryName = record(root.queryType) ? string(root.queryType.name) : undefined;
@@ -253,7 +366,7 @@ function compileCollections(collections: HarCollection[]): CollectionAuthorizati
   return collectionAuthorizationInputSchema.parse({ schemaVersion: 1, maxCollections: values.length, maxCasesPerCollection: 1, maxRequests, collections: values });
 }
 
-function openApiBase(document: Record<string, unknown>, origin: string): string { const server = Array.isArray(document.servers) && record(document.servers[0]) ? string(document.servers[0].url) : undefined; return server && !/[{}]/.test(server) ? safeSameOriginUrl(server, origin, origin) ?? origin : origin; }
+function openApiBase(document: Record<string, unknown>, origin: string, urlPolicy: InventoryUrlPolicy): string { const server = Array.isArray(document.servers) && record(document.servers[0]) ? string(document.servers[0].url) : undefined; return server && !/[{}]/.test(server) ? safeInventoryUrl(server, origin, urlPolicy, "GET") ?? origin : origin; }
 function requiredParameters(pathItem: Record<string, unknown>, operation: Record<string, unknown>): boolean { return [...(Array.isArray(pathItem.parameters) ? pathItem.parameters : []), ...(Array.isArray(operation.parameters) ? operation.parameters : [])].filter(record).some((item) => item.required === true); }
 function requiresAuthentication(document: Record<string, unknown>, operation: Record<string, unknown>): boolean { const security = operation.security ?? document.security; return Array.isArray(security) && security.length > 0; }
 function responseFields(operation: Record<string, unknown>): string[] { const responses = record(operation.responses); const success = responses ? Object.entries(responses).find(([key]) => /^2\d\d$/.test(key) || key === "default")?.[1] : undefined; const content = record(success) ? record(success.content) : undefined; const media = content ? Object.values(content).find(record) : undefined; let schema = media ? media.schema : undefined; if (record(schema) && schema.type === "array") schema = schema.items; return record(schema) && record(schema.properties) ? Object.keys(schema.properties).filter((key) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)).slice(0, 100) : []; }
@@ -262,8 +375,8 @@ function headerValue(headers: unknown, name: string): string | undefined { const
 function hasSensitiveHeaders(headers: unknown): boolean { return arrayRecords(headers).some((header) => /^(?:authorization|cookie|proxy-authorization|x-api-key|x-csrf-token|x-xsrf-token)$/i.test(String(header.name))); }
 function fileLike(url: string, mimeType?: string): boolean { if (mimeType && !/^(?:application\/(?:json|xml|javascript)|text\/|image\/svg\+xml)/i.test(mimeType)) return true; return /\.(?:pdf|zip|docx?|xlsx?|pptx?|csv|png|jpe?g|gif|webp|mp[34]|wav|mov|avi|tar|gz)(?:$|[?#])/i.test(url); }
 function jsonFields(text: unknown): string[] { const parsed = parseJson(text); if (record(parsed)) return Object.keys(parsed).filter((key) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)).slice(0, 100); const first = Array.isArray(parsed) ? parsed.find(record) : undefined; return first ? Object.keys(first).filter((key) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)).slice(0, 100) : []; }
-function safeSameOriginUrl(value: string, base: string, origin: string): string | undefined { try { const url = new URL(value, base); if (!["http:", "https:"].includes(url.protocol) || url.origin !== origin || url.username || url.password || url.hash || [...url.searchParams.keys()].some((key) => /(?:token|secret|password|api.?key|signature|jwt)/i.test(key))) return undefined; return url.toString(); } catch { return undefined; } }
-function safeProjectOrigin(value: string, targetOrigin: string): string | undefined { try { const url = new URL(value); if (url.origin !== targetOrigin || url.username || url.password || (url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) return undefined; return url.origin; } catch { return undefined; } }
+function safeInventoryUrl(value: string, base: string, urlPolicy: InventoryUrlPolicy, method: "GET" | "HEAD" | "OPTIONS" | "POST"): string | undefined { try { const url = new URL(value, base); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash || [...url.searchParams.keys()].some((key) => /(?:token|secret|password|api.?key|signature|jwt)/i.test(key)) || !urlPolicy(url.toString(), method)) return undefined; return url.toString(); } catch { return undefined; } }
+function safeProjectOrigin(value: string, _targetOrigin: string): string | undefined { try { const url = new URL(value); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || (url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) return undefined; return url.origin; } catch { return undefined; } }
 function nonNullType(value: unknown): boolean { return record(value) && value.kind === "NON_NULL"; }
 function objectType(value: unknown): boolean { let current = value; while (record(current) && (current.kind === "NON_NULL" || current.kind === "LIST")) current = current.ofType; return record(current) && (current.kind === "OBJECT" || current.kind === "INTERFACE" || current.kind === "UNION"); }
 function parseJson(value: unknown): unknown { if (typeof value !== "string" || value.length > 512 * 1024) return undefined; try { return JSON.parse(value); } catch { return undefined; } }
@@ -273,4 +386,5 @@ function string(value: unknown): string | undefined { return typeof value === "s
 function number(value: unknown): number | undefined { return typeof value === "number" && Number.isFinite(value) ? value : undefined; }
 function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 24) : []; }
 function identifier(value: unknown): string | undefined { return typeof value === "string" && /^[A-Za-z_][A-Za-z0-9_$.-]{0,127}$/.test(value) ? value : undefined; }
+function sensitiveVariableName(value: string): boolean { return /(?:password|passwd|secret|token|api.?key|authorization|cookie|session|jwt|signature|private.?key|client.?secret|csrf|xsrf)/i.test(value); }
 function dedupe<T>(values: T[], key: (value: T) => string): T[] { const seen = new Set<string>(); return values.filter((value) => { const item = key(value); if (seen.has(item)) return false; seen.add(item); return true; }); }

@@ -24,7 +24,7 @@ describe("AdaptiveSecurityWorkspace read-only automation", () => {
     const open = vi.fn();
     render(<AdaptiveSecurityWorkspace onOpenBuilder={open} canApprove={false} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Open automated read-only case" }));
+    await user.click(await screen.findByRole("button", { name: "Open compiled case" }));
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ target, engineId: "api-graphql-authorization", engineConfiguration: configuration, binding, limits: { maxRequests: 10, cleanupReservedRequests: 0, evidenceLevel: "strong" } }));
     expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
   });

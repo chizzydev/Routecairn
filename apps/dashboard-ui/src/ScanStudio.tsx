@@ -120,7 +120,7 @@ type StudioState = {
   workflows: WorkflowDraft[];
   advancedEngines: AdvancedEngineDraft[];
   providerAdapterBinding?: { profileId: string; versionId: string; adapterDigest: string };
-  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 };
+  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 | 2 };
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;
@@ -223,7 +223,7 @@ export function ScanStudio({
 }: {
   onLaunched: (scanId: string) => void;
   initialDraft?: RetestDraft;
-  initialAdaptiveDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration?: Record<string, unknown>; binding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 }; limits?: { maxRequests: number; cleanupReservedRequests: number; evidenceLevel: "strong" } };
+  initialAdaptiveDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration?: Record<string, unknown>; binding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 | 2 }; authentication?: { mode: "public" } | { mode: "primary"; primary: { source: "saved"; credentialProfileId: string } } | { mode: "account-pair"; accountA: { source: "saved"; credentialProfileId: string }; accountB: { source: "saved"; credentialProfileId: string } }; limits?: { maxRequests: number; cleanupReservedRequests: number; evidenceLevel: "strong" } };
   initialAdapterDraft?: { target: TargetSummary; engineId: AdvancedEngineDraft["id"]; engineConfiguration: Record<string, unknown>; authentication: { mode: "public" } | { mode: "primary"; credentialProfileId: string } | { mode: "account-pair"; accountAProfileId: string; accountBProfileId: string }; binding: { profileId: string; versionId: string; adapterDigest: string }; limits: { maxRequests: number; cleanupReservedRequests: number; rateLimitPerSecond: number; concurrency: number; evidenceLevel: "minimal" | "normal" | "strong" } };
 }) {
   const savedConfiguration = initialDraft || initialAdaptiveDraft || initialAdapterDraft ? undefined : readPendingConfiguration();
@@ -293,10 +293,10 @@ export function ScanStudio({
       maxRequestsPerConnection: 1000,
       dnsCacheTtlMs: 0,
     },
-    authMode: initialAdapterDraft?.authentication.mode ?? (initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public"),
-    primary: initialAdapterDraft?.authentication.mode === "primary" ? { ...emptyActor("primary"), source: "saved", savedId: initialAdapterDraft.authentication.credentialProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
-    accountA: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account A"), source: "saved", savedId: initialAdapterDraft.authentication.accountAProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
-    accountB: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account B"), source: "saved", savedId: initialAdapterDraft.authentication.accountBProfileId } : initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
+    authMode: initialAdapterDraft?.authentication.mode ?? initialAdaptiveDraft?.authentication?.mode ?? (initialDraft?.historicalAuthenticationMode === "account-pair" ? "account-pair" : initialDraft?.historicalAuthenticationMode === "primary" ? "primary" : "public"),
+    primary: initialAdapterDraft?.authentication.mode === "primary" ? { ...emptyActor("primary"), source: "saved", savedId: initialAdapterDraft.authentication.credentialProfileId } : initialAdaptiveDraft?.authentication?.mode === "primary" ? { ...emptyActor("primary"), source: "saved", savedId: initialAdaptiveDraft.authentication.primary.credentialProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("primary"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("primary"),
+    accountA: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account A"), source: "saved", savedId: initialAdapterDraft.authentication.accountAProfileId } : initialAdaptiveDraft?.authentication?.mode === "account-pair" ? { ...emptyActor("Account A"), source: "saved", savedId: initialAdaptiveDraft.authentication.accountA.credentialProfileId } : initialDraft?.savedCredentialReferences[0] ? { ...emptyActor("Account A"), source: "saved", savedId: initialDraft.savedCredentialReferences[0] } : emptyActor("Account A"),
+    accountB: initialAdapterDraft?.authentication.mode === "account-pair" ? { ...emptyActor("Account B"), source: "saved", savedId: initialAdapterDraft.authentication.accountBProfileId } : initialAdaptiveDraft?.authentication?.mode === "account-pair" ? { ...emptyActor("Account B"), source: "saved", savedId: initialAdaptiveDraft.authentication.accountB.credentialProfileId } : initialDraft?.savedCredentialReferences[1] ? { ...emptyActor("Account B"), source: "saved", savedId: initialDraft.savedCredentialReferences[1] } : emptyActor("Account B"),
     evidenceLevel: initialAdapterDraft?.limits.evidenceLevel ?? initialAdaptiveDraft?.limits?.evidenceLevel ?? (initialDraft?.evidenceLevel === "strong" || initialDraft?.evidenceLevel === "normal" ? initialDraft.evidenceLevel : savedConfiguration?.evidenceLevel ?? "minimal"),
     maxRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.maxRequests) : initialAdaptiveDraft?.limits ? String(initialAdaptiveDraft.limits.maxRequests) : "",
     cleanupReservedRequestsOverride: initialAdapterDraft ? String(initialAdapterDraft.limits.cleanupReservedRequests) : initialAdaptiveDraft?.limits ? String(initialAdaptiveDraft.limits.cleanupReservedRequests) : "",

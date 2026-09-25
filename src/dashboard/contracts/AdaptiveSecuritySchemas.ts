@@ -24,7 +24,7 @@ export const adaptiveExecutionBindingSchema = z.object({
   recommendationId: z.string().uuid(),
   sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   executionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  compilerVersion: z.literal(1)
+  compilerVersion: z.union([z.literal(1), z.literal(2)])
 }).strict();
 
 export type AdaptivePolicyInput = z.infer<typeof adaptivePolicyInputSchema>;

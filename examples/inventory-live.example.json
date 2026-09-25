@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "maxRoutes": 60,
+  "maxGraphqlOperations": 20,
+  "maxFiles": 20,
+  "maxCollections": 3,
+  "acquisition": {
+    "maxFetches": 24,
+    "maxDocumentBytes": 524288,
+    "timeoutMs": 10000,
+    "concurrency": 2,
+    "rateLimitPerSecond": 2,
+    "authorizationDiscovery": {
+      "enabled": true,
+      "seedPaths": ["/api/me/projects"],
+      "maxRoutes": 8,
+      "maxPages": 3,
+      "maxObjectsPerActor": 10,
+      "idFields": ["id", "uuid", "objectId", "object_id"],
+      "ownerFields": ["ownerId", "owner_id", "userId", "user_id", "accountId", "account_id"],
+      "tenantFields": ["tenantId", "tenant_id", "organizationId", "organization_id", "workspaceId", "workspace_id"],
+      "fileFields": ["downloadUrl", "download_url", "fileUrl", "file_url", "path", "key"],
+      "resultArrayPaths": ["data", "items", "results", "records", "nodes", "edges"],
+      "requiredParameterValues": {
+        "apiVersion": "v1"
+      }
+    }
+  },
+  "sources": [
+    {
+      "id": "service-schemas",
+      "kind": "SERVICE_DISCOVERY",
+      "baseUrl": "https://app.example.com",
+      "paths": ["/openapi.json", "/api/openapi.json", "/v3/api-docs"],
+      "graphqlEndpoints": ["/graphql"],
+      "actor": "primary"
+    },
+    {
+      "id": "postman-service",
+      "kind": "POSTMAN_URL",
+      "collectionUrl": "https://app.example.com/testing/postman/collection.json",
+      "environmentUrl": "https://app.example.com/testing/postman/environment.json",
+      "variables": { "apiVersion": "v1" },
+      "actor": "primary"
+    },
+    {
+      "id": "supabase-service",
+      "kind": "SUPABASE_LIVE",
+      "projectUrl": "https://project-ref.supabase.co",
+      "anonKeyEnv": "SUPABASE_ANON_KEY",
+      "openApiPath": "/rest/v1/",
+      "bucketsPath": "/storage/v1/bucket",
+      "includeBuckets": true,
+      "enumeratePublicObjects": false,
+      "maxObjectsPerBucket": 25,
+      "actor": "account_a"
+    }
+  ]
+}

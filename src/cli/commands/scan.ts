@@ -39,11 +39,12 @@ import { controlledMutationContractSchema } from "../../core/offensive/Controlle
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
 import { loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
-import { compileSafeInventoryImport, loadSafeInventoryImport } from "../../intelligence/inventory/SafeInventoryImporter.js";
+import { loadSafeInventoryImport } from "../../intelligence/inventory/SafeInventoryImporter.js";
+import { reserveInventoryAcquisitionBudget, resolveSafeInventoryImport } from "../../intelligence/inventory/LiveInventoryResolver.js";
 
 const logger = createLogger();
 
-interface ScanCommandOptions {
+export interface ScanCommandOptions {
   scope?: string;
   mode?: string;
   profile?: string;
@@ -81,6 +82,14 @@ interface ScanCommandOptions {
   targetAuthorization?: string;
   activeVulnerability?: string;
   inventoryImport?: string;
+  /** Internal bounded module selection used by the signed native worker. */
+  includeModules?: ModuleId[];
+  /** Internal flag for module jobs that must not inherit a profile's module set. */
+  replaceProfileModules?: boolean;
+  /** Internal directory for the scan-history index. Used to contain remote-worker writes. */
+  historyDirectory?: string;
+  /** Internal flag for embedded callers that own their own process lifecycle. */
+  suppressProcessExitCode?: boolean;
 }
 
 export function registerScanCommand(program: Command): void {
@@ -124,7 +133,7 @@ export function registerScanCommand(program: Command): void {
     .option("--pre-handover <file>", "Run an explicit disposable pre-handover registry and sequence; requires the pre-handover profile.")
     .option("--target-authorization <file>", "Exact target authorization mode and, for bug bounty, enforceable program permissions.")
     .option("--active-vulnerability <file>", "Path to a bounded active-vulnerability validation manifest (dashboard builder is preferred).")
-    .option("--inventory-import <file>", "Import bounded read-only OpenAPI, Postman, HAR, GraphQL schema, and Supabase catalog inventory.")
+    .option("--inventory-import <file>", "Import or safely acquire bounded OpenAPI, Postman, HAR, GraphQL, Supabase, and live service inventory.")
     .action(async (target: string, options: ScanCommandOptions) => {
       const controller = new AbortController();
       let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -165,7 +174,6 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const engine = new RouteCairnEngine();
   const outputDir = resolveOutputDir(options.output, config.reportsDir, target, profile);
   const authProfile = options.auth ? await loadAuthProfile(resolve(options.auth)) : undefined;
-  const importedInventory = options.inventoryImport ? compileSafeInventoryImport(await loadSafeInventoryImport(resolve(options.inventoryImport)), target) : undefined;
   const targetAuthorization = options.targetAuthorization ? targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8"))) : undefined;
   if (options.authenticationLifecycle && options.authenticationLifecycleAuto) throw new AppError("Use either --authentication-lifecycle or --authentication-lifecycle-auto, not both.", "AUTH_LIFECYCLE_INPUT_CONFLICT");
   if (options.authenticationLifecycleAuto && !authProfile) throw new AppError("Browser-learned lifecycle automation requires --auth with an authenticated browser bootstrap.", "AUTH_LIFECYCLE_AUTOMATION_AUTH_REQUIRED");
@@ -175,8 +183,20 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   }
 
   const authProfileSet = options.authA && options.authB ? await loadAuthProfileSet(resolve(options.authA), resolve(options.authB)) : undefined;
-  const objectPairTesting = options.objectPairs
-    ? planObjectPairTesting(await loadObjectPairInput(resolve(options.objectPairs)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+  const importedInventory = options.inventoryImport
+    ? await resolveSafeInventoryImport(await loadSafeInventoryImport(resolve(options.inventoryImport)), target, {
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(targetAuthorization ? { targetAuthorization } : {}),
+        ...(abortSignal ? { abortSignal } : {}),
+        userAgent: finalScope.userAgent
+      })
+    : undefined;
+  const executionTargetAuthorization = reserveInventoryAcquisitionBudget(targetAuthorization, importedInventory);
+  if (importedInventory?.objectPairTesting && options.objectPairs) throw new AppError("Use either --inventory-import discovered object pairs or --object-pairs, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
+  const objectPairTesting = options.objectPairs || importedInventory?.objectPairTesting
+    ? planObjectPairTesting(options.objectPairs ? await loadObjectPairInput(resolve(options.objectPairs)) : importedInventory!.objectPairTesting!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const fieldExposureTesting = options.fieldExposure
     ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
@@ -230,7 +250,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     ? planBillingEntitlement(await loadBillingEntitlementInput(resolve(options.billingEntitlement)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
     : undefined;
   const activeVulnerability = options.activeVulnerability
-    ? planActiveVulnerabilityValidation(await loadActiveVulnerabilityInput(resolve(options.activeVulnerability)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(targetAuthorization ? { targetAuthorization } : {}) })
+    ? planActiveVulnerabilityValidation(await loadActiveVulnerabilityInput(resolve(options.activeVulnerability)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}) })
     : undefined;
   const privilegeMutationTesting = options.privilegeMutation
     ? planPrivilegeMutationTesting(privilegeMutationInputSchema.parse(JSON.parse(await readFile(resolve(options.privilegeMutation), "utf8"))), { target, maxCases: 10 })
@@ -239,10 +259,11 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const parsedMutationContracts = mutationContractSource ? (Array.isArray(mutationContractSource) ? mutationContractSource : [mutationContractSource]).map((value) => controlledMutationContractSchema.parse(value)) : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
   let includeModules =
-    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting || supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || options.secretBoundary
+    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting || supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || options.secretBoundary || options.includeModules?.length
       ? [
           ...new Set([
-            ...(translated.includeModules ?? []),
+            ...(options.replaceProfileModules ? [] : (translated.includeModules ?? [])),
+            ...(options.includeModules ?? []),
             ...(objectPairTesting ? (["object-pair-testing"] as ModuleId[]) : []),
             ...(fieldExposureTesting ? (["field-exposure-testing"] as ModuleId[]) : []),
             ...(authorizationMatrixTesting ? (["authorization-matrix-testing"] as ModuleId[]) : []),
@@ -270,7 +291,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   if (assistedReview) includeModules = [...new Set([...(includeModules ?? resolveScanProfile(translated.profileName).enabledModules), "assisted-review" as ModuleId])];
   const plan = planner.resolve({
     ...(options.preHandover ? { preHandover: planPreHandover(JSON.parse(await readFile(resolve(options.preHandover), "utf8"))) } : {}),
-    ...(targetAuthorization ? { targetAuthorization } : {}),
+    ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
     ...(assistedReview ? { assistedReview } : {}),
     requestedProfile: translated.profileName,
     scope: finalScope,
@@ -283,7 +304,7 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
       ...(options.maxRequests ? { maxRequests: parsePositiveInteger(options.maxRequests, "--max-requests") } : {}),
       ...(options.cleanupReservedRequests !== undefined ? { cleanupReservedRequests: parseNonNegativeInteger(options.cleanupReservedRequests, "--cleanup-reserved-requests") } : {}),
       ...(includeModules ? { includeModules } : {}),
-      ...(translated.excludeModules ? { excludeModules: translated.excludeModules } : {}),
+      ...(!options.replaceProfileModules && translated.excludeModules ? { excludeModules: translated.excludeModules } : {}),
       ...((translated.moduleSettings || finalConfig.nextJsReview) ? { moduleSettings: {
         ...(translated.moduleSettings ?? {}),
         ...(finalConfig.nextJsReview ? { "nextjs-review": { ...(translated.moduleSettings?.["nextjs-review"] ?? {}), ...Object.fromEntries(Object.entries(finalConfig.nextJsReview).filter(([, value]) => value !== undefined)) } as ModuleSettings } : {})
@@ -324,9 +345,9 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   });
 
   const report = await loadReport(result.reportPath);
-  if (result.status !== "COMPLETED") process.exitCode = result.status === "CANCELLED" ? 130 : 1;
+  if (result.status !== "COMPLETED" && !options.suppressProcessExitCode) process.exitCode = result.status === "CANCELLED" ? 130 : 1;
   await recordScan(
-    scanIndexPath(config.reportsDir),
+    scanIndexPath(options.historyDirectory ?? config.reportsDir),
     entryFromReport(report, {
       outputDir: dirname(result.reportPath),
       reportPath: result.reportPath,

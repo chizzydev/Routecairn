@@ -40,7 +40,8 @@ import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthor
 import { approvedMutationPlan } from "./ApprovedMutationPlan.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 import { activeVulnerabilityInputSchema, loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
-import { compileSafeInventoryImport, loadSafeInventoryImport, safeInventoryImportInputSchema } from "../../intelligence/inventory/SafeInventoryImporter.js";
+import { loadSafeInventoryImport, safeInventoryImportInputSchema } from "../../intelligence/inventory/SafeInventoryImporter.js";
+import { reserveInventoryAcquisitionBudget, resolveSafeInventoryImport } from "../../intelligence/inventory/LiveInventoryResolver.js";
 
 export interface DashboardResolvedAuth {
   authProfile?: AuthProfile | undefined;
@@ -61,18 +62,27 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
   const studioEphemeralAuth = authFromStudioEphemeral(request);
   const authProfile = resolvedAuth?.authProfile ?? studioEphemeralAuth?.authProfile ?? (request.authFile ? await loadAuthProfile(resolve(request.authFile)) : undefined);
   const authProfileSet = resolvedAuth?.authProfileSet ?? studioEphemeralAuth?.authProfileSet ?? (request.authAFile && request.authBFile ? await loadAuthProfileSet(resolve(request.authAFile), resolve(request.authBFile)) : undefined);
+  const targetAuthorization = request.targetAuthorization || request.targetAuthorizationFile ? targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) : undefined;
   const importedInventoryInput = request.inventoryImport ? safeInventoryImportInputSchema.parse(request.inventoryImport) : (request.inventoryImportFile ? await loadSafeInventoryImport(resolve(request.inventoryImportFile)) : undefined);
-  const importedInventory = importedInventoryInput ? compileSafeInventoryImport(importedInventoryInput, request.target) : undefined;
+  const importedInventory = importedInventoryInput ? await resolveSafeInventoryImport(importedInventoryInput, request.target, {
+    scope,
+    ...(authProfile ? { authProfile } : {}),
+    ...(authProfileSet ? { authProfileSet } : {}),
+    ...(targetAuthorization ? { targetAuthorization } : {}),
+    userAgent: scope.userAgent
+  }) : undefined;
+  const executionTargetAuthorization = reserveInventoryAcquisitionBudget(targetAuthorization, importedInventory);
   const workflowPlans = resolveStudioWorkflowPlans(request, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) });
+  if (importedInventory?.objectPairTesting && workflowPlans.objectPairTesting) throw new Error("Inventory import conflicts with the configured object-pair workflow.");
   if (importedInventory?.collectionAuthorization && workflowPlans.collectionAuthorizationTesting) throw new Error("Inventory import conflicts with the configured collection workflow.");
   if (importedInventory?.fileAuthorization && workflowPlans.fileAuthorizationTesting) throw new Error("Inventory import conflicts with the configured file workflow.");
   const importedWorkflowPlans = {
     ...workflowPlans,
+    ...(importedInventory?.objectPairTesting ? { objectPairTesting: planObjectPairTesting(importedInventory.objectPairTesting, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {}),
     ...(importedInventory?.collectionAuthorization ? { collectionAuthorizationTesting: planCollectionAuthorizationTesting(importedInventory.collectionAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {}),
     ...(importedInventory?.fileAuthorization ? { fileAuthorizationTesting: planFileAuthorizationTesting(importedInventory.fileAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {})
   };
-  const targetAuthorization = request.targetAuthorization || request.targetAuthorizationFile ? targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) : undefined;
-  const planningOptions = { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(targetAuthorization ? { targetAuthorization } : {}) };
+  const planningOptions = { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}) };
   if (importedInventory?.supabaseAuthorization && (request.supabaseAuthorization || request.supabaseAuthorizationFile)) throw new Error("Inventory import conflicts with explicit Supabase authorization input.");
   const supabaseInput = request.supabaseAuthorization ? supabaseAuthorizationInputSchema.parse(request.supabaseAuthorization) : (request.supabaseAuthorizationFile ? await loadSupabaseAuthorizationInput(resolve(request.supabaseAuthorizationFile)) : importedInventory?.supabaseAuthorization);
   const supabaseAuthorization = supabaseInput ? planSupabaseAuthorization(supabaseInput, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) : undefined;
@@ -102,11 +112,11 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
   const activeVulnerabilityInput = request.activeVulnerability ? activeVulnerabilityInputSchema.parse(request.activeVulnerability) : (request.activeVulnerabilityFile ? await loadActiveVulnerabilityInput(resolve(request.activeVulnerabilityFile)) : undefined);
   const activeVulnerability = activeVulnerabilityInput ? planActiveVulnerabilityValidation(activeVulnerabilityInput, planningOptions) : undefined;
   const requestedModules = request.includeModules && request.includeModules.length > 0 ? request.includeModules as ModuleId[] : undefined;
-  const includeModules = supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || importedInventory ? [...new Set([...(requestedModules ?? []), ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(protocolSecurity ? ["protocol-security" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(activeVulnerability ? ["active-vulnerability-validation" as ModuleId] : []), ...(activeVulnerability ? ["api-mapper" as ModuleId, "parameter-analysis" as ModuleId] : []), ...(importedInventory?.collectionAuthorization ? ["collection-authorization-testing" as ModuleId] : []), ...(importedInventory?.fileAuthorization ? ["file-authorization-testing" as ModuleId] : []), ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
+  const includeModules = supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || importedInventory ? [...new Set([...(requestedModules ?? []), ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(protocolSecurity ? ["protocol-security" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(activeVulnerability ? ["active-vulnerability-validation" as ModuleId] : []), ...(activeVulnerability ? ["api-mapper" as ModuleId, "parameter-analysis" as ModuleId] : []), ...(importedInventory?.objectPairTesting ? ["object-pair-testing" as ModuleId] : []), ...(importedInventory?.collectionAuthorization ? ["collection-authorization-testing" as ModuleId] : []), ...(importedInventory?.fileAuthorization ? ["file-authorization-testing" as ModuleId] : []), ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
   const input: ScanPlannerInput = {
     ...(request.includeModules?.includes("privilege-mutation-testing") && mutationContracts.length ? { privilegeMutationTesting: approvedMutationPlan(mutationContracts) } : {}),
     ...(request.preHandover || request.preHandoverFile ? { preHandover: planPreHandover(request.preHandover ?? JSON.parse(await readFile(resolve(request.preHandoverFile!), "utf8"))) } : {}),
-    ...(targetAuthorization ? { targetAuthorization } : {}),
+    ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
     ...(request.assistedReview || request.assistedReviewFile ? { assistedReview: planAssistedReview(request.assistedReview ?? await loadAssistedReviewInput(resolve(request.assistedReviewFile!))) } : {}),
     requestedProfile: request.profile,
     scope,

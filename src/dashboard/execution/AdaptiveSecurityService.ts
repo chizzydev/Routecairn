@@ -9,6 +9,7 @@ import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
 import { validateAdvancedEngineInput, advancedEngineCatalog, type AdvancedEngineId } from "../contracts/AdvancedEngineSchemas.js";
 import { adaptiveExecutionBindingSchema, type AdaptiveExecutionBinding } from "../contracts/AdaptiveSecuritySchemas.js";
 import { compileBillingReadOnlyCase, compileBusinessInvariantReadOnlyCase, compileGraphqlIntrospectionCase, compileOperationalHealthCase, compileRouteReadOnlyCase, compileSupabaseReadOnlyCase, type AdaptiveCompiledReadOnlyCase } from "./AdaptiveReadOnlyCompiler.js";
+import { authorizeConfiguration, compileExecutedContracts, type AdaptiveCompiledContract, type AdaptiveAuthenticationRequirement } from "./AdaptiveContractCompiler.js";
 
 const defaultRequiredLanes = ["PUBLIC_BASELINE", "AUTHENTICATED_IDENTITY", "ACCOUNT_PAIR_AUTHORIZATION", "BROWSER_LEARNING", "AUTHENTICATION_LIFECYCLE", "API_GRAPHQL_AUTHORIZATION", "DATA_AUTHORIZATION", "BUSINESS_LOGIC", "OPERATIONAL_ENDPOINTS", "BILLING_ENTITLEMENTS", "MUTATION_ACCEPTANCE", "RECOVERY_ACCEPTANCE"] as const;
 const terminalScans = new Set(["COMPLETED", "IMPORTED", "FAILED", "CANCELLED", "INTERRUPTED"]);
@@ -124,13 +125,14 @@ export class AdaptiveSecurityService {
 
   public materializeRecommendation(id: string): Record<string, unknown> {
     const row = this.recommendationRow(id);
-    const materialized = this.readOnlyMaterialization(row);
+    const materialized = this.materialization(row);
     return {
       targetId: row.target_id,
       engineId: row.engine_id,
       engineConfiguration: materialized.engineConfiguration,
       binding: materialized.binding,
-      limits: { maxRequests: Math.max(10, materialized.requestCount + 4), cleanupReservedRequests: 0, evidenceLevel: "strong" },
+      authentication: materialized.authentication,
+      limits: { maxRequests: Math.max(10, materialized.requestCount + materialized.cleanupRequestCount + 4), cleanupReservedRequests: materialized.cleanupRequestCount, evidenceLevel: "strong" },
       automation: materialized.automation
     };
   }
@@ -143,7 +145,7 @@ export class AdaptiveSecurityService {
     if (!request.adaptiveExecutionBinding) return;
     const binding = adaptiveExecutionBindingSchema.parse(request.adaptiveExecutionBinding);
     const row = this.recommendationRow(binding.recommendationId);
-    const materialized = this.readOnlyMaterialization(row);
+    const materialized = this.materialization(row);
     if (binding.sourceFingerprint !== row.source_fingerprint || binding.executionFingerprint !== materialized.binding.executionFingerprint || binding.compilerVersion !== materialized.binding.compilerVersion) throw new Error("ADAPTIVE_EXECUTION_BINDING_MISMATCH");
     if (request.targetId !== row.target_id) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
     const target = this.database.db.prepare("SELECT base_origin FROM targets WHERE id=?").get(row.target_id) as { base_origin: string } | undefined;
@@ -154,8 +156,8 @@ export class AdaptiveSecurityService {
     if (digest(configured) !== digest(materialized.engineConfiguration)) throw new Error("ADAPTIVE_EXECUTION_CONFIGURATION_CHANGED");
     const configuredAdvancedEngines = advancedEngineCatalog.filter((entry) => (request as unknown as Record<string, unknown>)[entry.requestField] !== undefined);
     if (configuredAdvancedEngines.length !== 1 || configuredAdvancedEngines[0]?.id !== row.engine_id) throw new Error("ADAPTIVE_EXECUTION_ADDITIONAL_ENGINE_FORBIDDEN");
-    if (request.studio?.authentication.mode !== "public") throw new Error("ADAPTIVE_READ_ONLY_EXECUTION_REQUIRES_PUBLIC_ACTOR");
-    if ((request.cleanupReservedRequests ?? 0) !== 0) throw new Error("ADAPTIVE_READ_ONLY_EXECUTION_CLEANUP_RESERVE_INVALID");
+    if (digest(request.studio?.authentication) !== digest(materialized.authentication)) throw new Error("ADAPTIVE_EXECUTION_AUTHENTICATION_CHANGED");
+    if ((request.cleanupReservedRequests ?? 0) !== materialized.cleanupRequestCount) throw new Error("ADAPTIVE_EXECUTION_CLEANUP_RESERVE_INVALID");
   }
 
   public state(targetId: string): Record<string, unknown> {
@@ -163,7 +165,7 @@ export class AdaptiveSecurityService {
     const policy = this.policy(targetId);
     const snapshots = (this.database.db.prepare("SELECT id,source_scan_id,status,model_digest,target_row_version,build_fingerprint,created_at,accepted_at FROM adaptive_security_snapshots WHERE target_id=? ORDER BY created_at DESC LIMIT 30").all(targetId) as SnapshotListRow[]).map(snapshotSummary);
     const drifts = this.database.db.prepare("SELECT id,snapshot_id,baseline_snapshot_id,drift_type,severity,semantic_key,semantic_fingerprint,safe_summary,status,created_at FROM adaptive_security_drifts WHERE target_id=? ORDER BY created_at DESC LIMIT 200").all(targetId);
-    const recommendations = (this.database.db.prepare("SELECT r.id,r.target_id,r.snapshot_id,r.category,r.engine_id,r.lane_kind,r.source_fingerprint,r.status,r.mutation_hypothesis,r.operator_approval_required,r.safe_draft_json,r.required_bindings_json,r.operator_rationale,r.reviewed_at,r.linked_scan_id,r.linked_case_fingerprint,r.execution_outcome,r.created_at,r.updated_at,b.profile_id AS adapter_profile_id,b.version_id AS adapter_version_id FROM adaptive_security_recommendations r LEFT JOIN provider_adapter_recommendation_bindings b ON b.recommendation_id=r.id WHERE r.target_id=? ORDER BY r.created_at DESC LIMIT 200").all(targetId) as RecommendationListRow[]).map((row) => ({ ...recommendationSummary(row), executionCandidates: this.executionCandidates(row) }));
+    const recommendations = (this.database.db.prepare("SELECT r.id,r.target_id,r.snapshot_id,r.category,r.engine_id,r.lane_kind,r.source_fingerprint,r.status,r.mutation_hypothesis,r.operator_approval_required,r.safe_draft_json,r.required_bindings_json,r.operator_rationale,r.reviewed_by,r.reviewed_at,r.linked_scan_id,r.linked_case_fingerprint,r.execution_outcome,r.created_at,r.updated_at,b.profile_id AS adapter_profile_id,b.version_id AS adapter_version_id FROM adaptive_security_recommendations r LEFT JOIN provider_adapter_recommendation_bindings b ON b.recommendation_id=r.id WHERE r.target_id=? ORDER BY r.created_at DESC LIMIT 200").all(targetId) as RecommendationListRow[]).map((row) => ({ ...recommendationSummary(row), executionCandidates: this.executionCandidates(row) }));
     return { targetId, policy, coverage: this.coverage(targetId, policy), snapshots, drifts, recommendations };
   }
 
@@ -220,10 +222,10 @@ export class AdaptiveSecurityService {
       ORDER BY s.created_at DESC LIMIT 30`).all(row.target_id, eligibleAfter, workflowId) as ExecutionCandidateRow[]).map((item) => ({ scanId: item.scan_id, caseAlias: item.safe_case_alias, caseFingerprint: item.safe_case_fingerprint, executionState: item.execution_state, matchedExpectation: item.matched_expectation === null ? undefined : Boolean(item.matched_expectation), evidenceStrength: item.evidence_strength, scanStatus: item.scan_status, createdAt: item.created_at }));
   }
 
-  private readOnlyMaterialization(row: RecommendationRow): { engineConfiguration: Record<string, unknown>; requestCount: number; binding: AdaptiveExecutionBinding; automation: Record<string, unknown> } {
-    if (row.mutation_hypothesis || row.operator_approval_required || row.status === "DISMISSED") throw new Error("ADAPTIVE_READ_ONLY_AUTOMATION_UNAVAILABLE");
+  private materialization(row: RecommendationRow): { engineConfiguration: Record<string, unknown>; requestCount: number; cleanupRequestCount: number; authentication: NonNullable<DashboardScanCreateRequest["studio"]>["authentication"]; binding: AdaptiveExecutionBinding; automation: Record<string, unknown> } {
+    if (row.status === "DISMISSED") throw new Error("ADAPTIVE_AUTOMATION_UNAVAILABLE");
     const snapshot = this.database.db.prepare("SELECT target_row_version,source_scan_id FROM adaptive_security_snapshots WHERE id=? AND target_id=?").get(row.snapshot_id, row.target_id) as { target_row_version: number; source_scan_id: string } | undefined;
-    const target = this.database.db.prepare("SELECT row_version FROM targets WHERE id=?").get(row.target_id) as { row_version: number } | undefined;
+    const target = this.database.db.prepare("SELECT row_version,classification,production_mutation_enabled,default_credential_profile_id,default_auth_template_json FROM targets WHERE id=?").get(row.target_id) as { row_version: number; classification: string; production_mutation_enabled: number; default_credential_profile_id: string | null; default_auth_template_json: string } | undefined;
     const scan = snapshot ? this.database.db.prepare("SELECT status FROM scans WHERE id=? AND target_id=? AND deleted_at IS NULL").get(snapshot.source_scan_id, row.target_id) as { status: string } | undefined : undefined;
     if (!snapshot || !target || snapshot.target_row_version !== target.row_version || !scan || !["COMPLETED", "IMPORTED"].includes(scan.status)) throw new Error("ADAPTIVE_EXECUTION_SOURCE_STALE");
     const draft = JSON.parse(row.safe_draft_json) as Record<string, unknown>;
@@ -231,12 +233,23 @@ export class AdaptiveSecurityService {
     const configuration = draft.engineConfiguration;
     if (!automation || typeof automation !== "object" || !configuration || typeof configuration !== "object" || Array.isArray(configuration) || draft.executable !== true) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
     const state = automation as Record<string, unknown>;
-    if (state.state !== "READY_READ_ONLY" || state.compilerVersion !== 1 || typeof state.requestCount !== "number" || typeof state.evidenceFingerprint !== "string") throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
-    const validated = validateAdvancedEngineInput(row.engine_id as AdvancedEngineId, configuration);
-    if (!validated.valid || !validated.value || typeof validated.value !== "object" || Array.isArray(validated.value) || !isReadOnlyConfiguration(row.engine_id, validated.value as Record<string, unknown>)) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_NOT_READ_ONLY");
-    const expected = executionFingerprint(row.engine_id, row.source_fingerprint, String(state.evidenceFingerprint), validated.value, 1);
-    if (draft.executionFingerprint !== expected) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_FINGERPRINT_MISMATCH");
-    return { engineConfiguration: validated.value as Record<string, unknown>, requestCount: state.requestCount, binding: { recommendationId: row.id, sourceFingerprint: row.source_fingerprint, executionFingerprint: expected, compilerVersion: 1 }, automation: state };
+    if (!["READY_READ_ONLY", "READY_APPROVAL_GATED"].includes(String(state.state)) || ![1, 2].includes(Number(state.compilerVersion)) || typeof state.requestCount !== "number" || typeof state.evidenceFingerprint !== "string") throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
+    const compilerVersion = state.compilerVersion as 1 | 2;
+    const templateExpected = executionFingerprint(row.engine_id, row.source_fingerprint, String(state.evidenceFingerprint), configuration, compilerVersion);
+    if (draft.executionFingerprint !== templateExpected) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_FINGERPRINT_MISMATCH");
+    const approvalRequired = state.mutationApprovalRequired === true;
+    if (approvalRequired && (row.status !== "APPROVED" || !row.reviewed_at || !row.reviewed_by || !row.operator_rationale)) throw new Error("ADAPTIVE_MUTATION_APPROVAL_REQUIRED");
+    if (approvalRequired && target.classification === "PRODUCTION" && target.production_mutation_enabled !== 1) throw new Error("ADAPTIVE_PRODUCTION_MUTATION_DISABLED");
+    const expiresAt = row.reviewed_at ? new Date(Date.parse(row.reviewed_at) + 4 * 60 * 60 * 1000).toISOString() : "";
+    if (approvalRequired && Date.parse(expiresAt) <= Date.now()) throw new Error("ADAPTIVE_MUTATION_APPROVAL_EXPIRED");
+    const authorized = approvalRequired ? authorizeConfiguration(configuration as Record<string, unknown>, { reviewedAt: row.reviewed_at!, reviewedBy: row.reviewed_by!, rationale: row.operator_rationale!, expiresAt }) : configuration as Record<string, unknown>;
+    const validated = validateAdvancedEngineInput(row.engine_id as AdvancedEngineId, authorized);
+    if (!validated.valid || !validated.value || typeof validated.value !== "object" || Array.isArray(validated.value)) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_INVALID");
+    if (compilerVersion === 1 && !isReadOnlyConfiguration(row.engine_id, validated.value as Record<string, unknown>)) throw new Error("ADAPTIVE_EXECUTABLE_DRAFT_NOT_READ_ONLY");
+    const authentication = resolveAuthentication(String(state.authentication ?? "public") as AdaptiveAuthenticationRequirement, target);
+    const expected = digest({ templateExpected, authorizedConfiguration: validated.value, authentication });
+    const cleanupRequestCount = Number(state.cleanupRequestCount ?? 0);
+    return { engineConfiguration: validated.value as Record<string, unknown>, requestCount: state.requestCount, cleanupRequestCount, authentication, binding: { recommendationId: row.id, sourceFingerprint: row.source_fingerprint, executionFingerprint: expected, compilerVersion }, automation: { ...state, approvalExpiresAt: approvalRequired ? expiresAt : undefined } };
   }
 
   private recommendationRow(id: string): RecommendationRow { const row = this.database.db.prepare("SELECT * FROM adaptive_security_recommendations WHERE id=?").get(id) as RecommendationRow | undefined; if (!row) throw new Error("ADAPTIVE_RECOMMENDATION_NOT_FOUND"); return row; }
@@ -329,12 +342,26 @@ function compareInventory(before: AdaptiveInventory, after: AdaptiveInventory, i
 
 function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory, drifts: Drift[]): Recommendation[] {
   const result = new Map<string, Recommendation>();
-  const add = (item: Omit<Recommendation, "sourceFingerprint" | "operatorApprovalRequired"> & { source: unknown; compiled?: AdaptiveCompiledReadOnlyCase | undefined }) => {
+  type Compiled = AdaptiveCompiledReadOnlyCase | AdaptiveCompiledContract;
+  const add = (item: Omit<Recommendation, "sourceFingerprint" | "operatorApprovalRequired"> & { source: unknown; compiled?: Compiled | undefined }) => {
     const sourceFingerprint = digest(item.source);
     const key = `${item.category}:${sourceFingerprint}`;
     const draft = item.compiled ? executableDraft(item.draft, item.compiled, sourceFingerprint) : { ...item.draft, automation: { state: "REQUIRES_BINDINGS", compilerVersion: 1, mutationApprovalRequired: item.mutationHypothesis, unresolvedBindings: item.requiredBindings } };
-    result.set(key, { category: item.category, engineId: item.engineId, laneKind: item.laneKind, mutationHypothesis: item.mutationHypothesis, sourceFingerprint, operatorApprovalRequired: !item.compiled, draft, requiredBindings: item.compiled ? [] : item.requiredBindings });
+    const approvalRequired = item.compiled ? "mutationApprovalRequired" in item.compiled && item.compiled.mutationApprovalRequired : true;
+    result.set(key, { category: item.category, engineId: item.engineId, laneKind: item.laneKind, mutationHypothesis: item.mutationHypothesis, sourceFingerprint, operatorApprovalRequired: approvalRequired, draft, requiredBindings: item.compiled ? [] : item.requiredBindings });
   };
+  for (const compiled of compileExecutedContracts(report)) {
+    add({
+      category: `EXACT_CONTRACT_REPLAY_${compiled.engineId.toUpperCase().replaceAll("-", "_")}`,
+      engineId: compiled.engineId,
+      laneKind: engineLane(compiled.engineId),
+      mutationHypothesis: compiled.mutationApprovalRequired,
+      source: { engineId: compiled.engineId, evidenceFingerprint: compiled.evidenceFingerprint, sourceCaseFingerprints: compiled.sourceCaseFingerprints },
+      draft: { exactExecutedContract: true, sourceCaseFingerprints: compiled.sourceCaseFingerprints },
+      requiredBindings: [],
+      compiled
+    });
+  }
   for (const candidate of report.browserCrawl?.authentication?.learnedTestCases ?? []) {
     for (const category of candidate.suggestedLifecycleCategories) add({ category: `LIFECYCLE_${category}`, engineId: "authentication-lifecycle", laneKind: "AUTHENTICATION_LIFECYCLE", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { category, method: candidate.method, endpoint: safePath(new URL(candidate.endpoint).pathname), fields: candidate.observedFieldNames.map(safeName).sort(), bodyFormat: candidate.requestBodyFormat ?? "NONE", authorizationContext: candidate.authorizationContext, classification: candidate.classification }, draft: learnedDraft(candidate, category), requiredBindings: lifecycleBindings(category) });
     const path = safePath(new URL(candidate.endpoint).pathname);
@@ -380,8 +407,8 @@ function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory,
 }
 
 function learnedDraft(candidate: BrowserLearnedTestCase, category: string): Record<string, unknown> { return { sourceCandidateId: candidate.id, category, method: candidate.method, pathTemplate: safePath(new URL(candidate.endpoint).pathname), requestBodyFormat: candidate.requestBodyFormat ?? "UNKNOWN", observedFieldNames: candidate.observedFieldNames.map(safeName).sort(), observedStatusCodes: [...candidate.observedStatusCodes].sort(), state: "DRAFT_REQUIRES_OPERATOR_CASE", executable: false }; }
-function executableDraft(summary: Record<string, unknown>, compiled: AdaptiveCompiledReadOnlyCase, sourceFingerprint: string): Record<string, unknown> { const automation = { state: "READY_READ_ONLY", compilerVersion: 1, evidenceStrength: compiled.evidenceStrength, evidenceFingerprint: compiled.evidenceFingerprint, requestCount: compiled.requestCount, mutationApprovalRequired: false, summary: compiled.summary }; const executionFingerprintValue = executionFingerprint(compiled.engineId, sourceFingerprint, compiled.evidenceFingerprint, compiled.engineConfiguration, 1); return { ...summary, executable: true, automation, engineConfiguration: compiled.engineConfiguration, executionFingerprint: executionFingerprintValue }; }
-function executionFingerprint(engineId: string, sourceFingerprint: string, evidenceFingerprint: string, engineConfiguration: unknown, compilerVersion: number): string { return digest({ purpose: "adaptive-read-only-execution", engineId, sourceFingerprint, evidenceFingerprint, engineConfiguration, compilerVersion }); }
+function executableDraft(summary: Record<string, unknown>, compiled: AdaptiveCompiledReadOnlyCase | AdaptiveCompiledContract, sourceFingerprint: string): Record<string, unknown> { const exactContract = "mutationApprovalRequired" in compiled; const compilerVersion = exactContract ? 2 : 1; const mutationApprovalRequired = exactContract && compiled.mutationApprovalRequired; const automation = { state: mutationApprovalRequired ? "READY_APPROVAL_GATED" : "READY_READ_ONLY", compilerVersion, evidenceStrength: compiled.evidenceStrength, evidenceFingerprint: compiled.evidenceFingerprint, requestCount: compiled.requestCount, cleanupRequestCount: exactContract ? compiled.cleanupRequestCount : 0, authentication: exactContract ? compiled.authentication : "public", mutationApprovalRequired, summary: compiled.summary }; const executionFingerprintValue = executionFingerprint(compiled.engineId, sourceFingerprint, compiled.evidenceFingerprint, compiled.engineConfiguration, compilerVersion); return { ...summary, executable: true, automation, engineConfiguration: compiled.engineConfiguration, executionFingerprint: executionFingerprintValue }; }
+function executionFingerprint(engineId: string, sourceFingerprint: string, evidenceFingerprint: string, engineConfiguration: unknown, compilerVersion: number): string { return digest({ purpose: compilerVersion === 1 ? "adaptive-read-only-execution" : "adaptive-exact-contract-execution", engineId, sourceFingerprint, evidenceFingerprint, engineConfiguration, compilerVersion }); }
 function isReadOnlyConfiguration(engineId: string, value: Record<string, unknown>): boolean {
   if (engineId === "api-graphql-authorization") { const routes = Array.isArray(value.routes) ? value.routes as Array<Record<string, unknown>> : []; const checks = Array.isArray(value.checks) ? value.checks as Array<Record<string, unknown>> : []; return routes.length > 0 && checks.length > 0 && routes.every((route) => route.protocol === "GRAPHQL" || (Array.isArray(route.documentedMethods) && (route.documentedMethods as unknown[]).every((method) => ["GET", "HEAD", "OPTIONS"].includes(String(method))))) && checks.every((check) => check.kind === "GRAPHQL_INTROSPECTION" || !containsUnsafeMethod(check)); }
   if (engineId === "operational-endpoint-security") return !containsUnsafeMethod(value) && !containsTrueStateChanging(value);
@@ -392,9 +419,26 @@ function isReadOnlyConfiguration(engineId: string, value: Record<string, unknown
 }
 function containsUnsafeMethod(value: unknown): boolean { if (Array.isArray(value)) return value.some(containsUnsafeMethod); if (!value || typeof value !== "object") return false; const item = value as Record<string, unknown>; if (typeof item.method === "string" && !["GET", "HEAD", "OPTIONS"].includes(item.method)) return true; return Object.values(item).some(containsUnsafeMethod); }
 function containsTrueStateChanging(value: unknown): boolean { if (Array.isArray(value)) return value.some(containsTrueStateChanging); if (!value || typeof value !== "object") return false; const item = value as Record<string, unknown>; if (item.stateChanging === true || item.cleanupRequired === true) return true; return Object.values(item).some(containsTrueStateChanging); }
+function resolveAuthentication(requirement: AdaptiveAuthenticationRequirement, target: { default_credential_profile_id: string | null; default_auth_template_json: string }): NonNullable<DashboardScanCreateRequest["studio"]>["authentication"] {
+  if (requirement === "public") return { mode: "public" };
+  let template: Record<string, unknown> = {};
+  try { const parsed = JSON.parse(target.default_auth_template_json) as unknown; if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) template = parsed as Record<string, unknown>; } catch { /* target templates are validated elsewhere; fail closed below */ }
+  const savedId = (value: unknown): string | undefined => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : undefined;
+  const actorId = (value: unknown): string | undefined => value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).source === "saved" ? savedId((value as Record<string, unknown>).credentialProfileId) : undefined;
+  if (requirement === "primary") {
+    const id = target.default_credential_profile_id ?? savedId(template.credentialProfileId) ?? actorId(template.primary);
+    if (!id) throw new Error("ADAPTIVE_PRIMARY_AUTHENTICATION_FIXTURE_REQUIRED");
+    return { mode: "primary", primary: { source: "saved", credentialProfileId: id } };
+  }
+  const left = savedId(template.accountAProfileId) ?? savedId(template.accountACredentialProfileId) ?? actorId(template.accountA);
+  const right = savedId(template.accountBProfileId) ?? savedId(template.accountBCredentialProfileId) ?? actorId(template.accountB);
+  if (!left || !right || left === right) throw new Error("ADAPTIVE_ACCOUNT_PAIR_AUTHENTICATION_FIXTURE_REQUIRED");
+  return { mode: "account-pair", accountA: { source: "saved", credentialProfileId: left }, accountB: { source: "saved", credentialProfileId: right } };
+}
 function lifecycleBindings(category: string): string[] { const common = ["disposable actor", "exact assertions", "expiring authorization", "verified cleanup"]; if (/RESET|INVITATION|MFA|PASSKEY|RECOVERY|LINKING|VERIFICATION/.test(category)) common.push("single-use token/fixture binding"); if (/EXPIRATION/.test(category)) common.push("bounded wait contract"); return common; }
 function driftEngine(type: string): string { return type.includes("COOKIE") || type.includes("AUTH") ? "authentication-lifecycle" : type.includes("DATA") ? "supabase-authorization" : type.includes("WRITABLE") ? "business-invariant" : "api-graphql-authorization"; }
 function driftLane(type: string): LiveAcceptanceLane["kind"] { return type.includes("COOKIE") || type.includes("AUTH") ? "AUTHENTICATION_LIFECYCLE" : type.includes("DATA") ? "DATA_AUTHORIZATION" : type.includes("WRITABLE") ? "BUSINESS_LOGIC" : "API_GRAPHQL_AUTHORIZATION"; }
+function engineLane(engineId: string): LiveAcceptanceLane["kind"] { return engineId === "api-graphql-authorization" ? "API_GRAPHQL_AUTHORIZATION" : engineId === "supabase-authorization" || engineId === "link-portal-export-security" ? "DATA_AUTHORIZATION" : engineId === "billing-entitlement-security" ? "BILLING_ENTITLEMENTS" : "BUSINESS_LOGIC"; }
 function compareSet<T extends Record<string, unknown>>(before: T[], after: T[], key: keyof T, added: string, removed: string, output: Drift[], includeRemoved: boolean, severity: (item: T) => Drift["severity"]): void { const old = new Map(before.map((item) => [String(item[key]), item])); const next = new Map(after.map((item) => [String(item[key]), item])); for (const [id, item] of next) if (!old.has(id)) output.push(drift(added, severity(item), id, `${added.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); if (includeRemoved) for (const id of old.keys()) if (!next.has(id)) output.push(drift(removed, "MEDIUM", id, `${removed.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); }
 function drift(type: string, severity: Drift["severity"], semanticKey: string, summary: string): Drift { return { type, severity, semanticKey, summary }; }
 function verifyRecommendation(database: DashboardDatabase, engineId: string, scanId: string, scanStatus: string, caseFingerprint: string): "RUNNING" | "VERIFIED" | "INCONCLUSIVE" { if (!terminalScans.has(scanStatus)) return "RUNNING"; if (!["COMPLETED","IMPORTED"].includes(scanStatus)) return "INCONCLUSIVE"; const module = engineModule(engineId); const workflow = engineWorkflow(engineId); if (!module || !workflow) return "INCONCLUSIVE"; const moduleRow = database.db.prepare("SELECT status FROM scan_module_executions WHERE scan_id=? AND module_id=?").get(scanId, module) as { status: string } | undefined; const caseRow = database.db.prepare("SELECT execution_state FROM scan_workflow_case_executions WHERE scan_id=? AND workflow_id=? AND safe_case_fingerprint=?").get(scanId, workflow, caseFingerprint) as { execution_state: string } | undefined; return moduleRow?.status === "COMPLETED" && caseRow?.execution_state === "COMPLETED" ? "VERIFIED" : "INCONCLUSIVE"; }
@@ -413,7 +457,7 @@ interface Recommendation { category: string; engineId: string; laneKind: LiveAcc
 interface PolicyRow { required_lanes_json: string; require_na_evidence: number; detect_removed_surfaces: number; row_version: number }
 interface SnapshotListRow { id: string; source_scan_id: string; status: string; model_digest: string; target_row_version: number; build_fingerprint: string; created_at: string; accepted_at: string | null }
 interface SnapshotRow extends SnapshotListRow { target_id: string; inventory_json: string }
-interface RecommendationListRow { id: string; target_id: string; snapshot_id: string; category: string; engine_id: string; lane_kind: string; source_fingerprint: string; status: string; mutation_hypothesis: number; operator_approval_required: number; safe_draft_json: string; required_bindings_json: string; operator_rationale: string | null; reviewed_at: string | null; linked_scan_id: string | null; linked_case_fingerprint: string | null; execution_outcome: string | null; adapter_profile_id?: string | null; adapter_version_id?: string | null; created_at: string; updated_at: string }
+interface RecommendationListRow { id: string; target_id: string; snapshot_id: string; category: string; engine_id: string; lane_kind: string; source_fingerprint: string; status: string; mutation_hypothesis: number; operator_approval_required: number; safe_draft_json: string; required_bindings_json: string; operator_rationale: string | null; reviewed_by: string | null; reviewed_at: string | null; linked_scan_id: string | null; linked_case_fingerprint: string | null; execution_outcome: string | null; adapter_profile_id?: string | null; adapter_version_id?: string | null; created_at: string; updated_at: string }
 interface RecommendationRow extends RecommendationListRow { target_id: string }
 interface CoverageLaneRow { kind: string; disposition: string; configured_outcome: string | null; safe_reason: string | null; scan_id: string | null; evidence_scan_id: string | null; scan_status: string | null; evidence_scan_status: string | null }
 interface ExecutionCandidateRow { scan_id: string; safe_case_alias: string; safe_case_fingerprint: string; execution_state: string; matched_expectation: number | null; evidence_strength: string; scan_status: string; created_at: string }
