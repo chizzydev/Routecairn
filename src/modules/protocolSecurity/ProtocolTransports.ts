@@ -3,11 +3,12 @@ import { spawn } from "node:child_process";
 import { connect as connectHttp2, constants as h2, type ClientHttp2Session } from "node:http2";
 import { connect as connectTcp, isIP, type Socket } from "node:net";
 import { connect as connectTls, type TLSSocket } from "node:tls";
+import { fileURLToPath } from "node:url";
 import { Agent, request as undiciRequest } from "undici";
 import { createPinnedConnector, resolvePinnedDestination } from "../../core/http/PinnedHttpTransport.js";
 import type { DnsResolver } from "../../core/http/HttpTypes.js";
 
-export interface ProtocolTransportOptions { allowedPrivateOrigins: readonly string[]; timeoutMs: number; maxBytes: number; abortSignal?: AbortSignal; dnsResolver?: DnsResolver; }
+export interface ProtocolTransportOptions { allowedPrivateOrigins: readonly string[]; timeoutMs: number; maxBytes: number; abortSignal?: AbortSignal; dnsResolver?: DnsResolver; tlsCa?: string | Buffer; }
 export interface StreamMessage { type?: string; value: unknown; }
 export interface WebSocketResult { statusCode: number; protocol?: string; messages: StreamMessage[]; }
 export interface Http2Result { statusCode?: number; protocol: "h2" | "h2c"; headers: Record<string, string | string[]>; body: Buffer; grpcStatus?: number; grpcMessages: Buffer[]; errorCode?: string; }
@@ -16,21 +17,21 @@ export interface SseResult { statusCode: number; body: string; eventCount: numbe
 export interface BoundedHttpResult { statusCode: number; headers: Record<string, string | string[]>; body: Buffer; }
 export interface Http3Result { statusCode: number; protocol: "h3"; body: Buffer; }
 export interface Http3DesyncResult { probeStatus?: number; sentinelStatus?: number; protocol: "h3"; sameConnectionProcess: true; probeAccepted: boolean; sentinelClean: boolean; }
-let curlHttp3Capability: boolean | undefined;
 
-export async function ensureHttp3Runtime(options: ProtocolTransportOptions): Promise<void> { await requireCurlHttp3(options); }
+export async function ensureHttp3Runtime(options: ProtocolTransportOptions): Promise<void> { await runNativeHttp3Worker({ hostname: "127.0.0.1", port: 9, pinnedAddress: "127.0.0.1", family: 4, timeoutMs: Math.min(options.timeoutMs, 1000), maxBytes: 1024, requests: [], ...(options.tlsCa ? { ca: Buffer.isBuffer(options.tlsCa) ? options.tlsCa.toString("utf8") : options.tlsCa } : {}) }); }
 
 export async function runHttp3Authorization(urlValue: string, method: "GET" | "HEAD" | "OPTIONS", headers: Readonly<Record<string, string>>, options: ProtocolTransportOptions): Promise<Http3Result> {
-  const url = new URL(urlValue); if (url.protocol !== "https:") throw new Error("HTTP3_HTTPS_REQUIRED"); await requireCurlHttp3(options); const pin = await resolvePinnedDestination({ hostname: url.hostname, protocol: "https:", port: url.port || "443" }, { allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) });
-  const nonce = `ROUTECAIRN_${randomBytes(12).toString("hex")}`; const config = ["silent", "show-error", "http3-only", `noproxy = ${quoteCurl("*")}`, `max-time = ${Math.max(1, Math.ceil(options.timeoutMs / 1000))}`, `request = ${quoteCurl(method)}`, `url = ${quoteCurl(url.href)}`, `resolve = ${quoteCurl(`${url.hostname}:${url.port || "443"}:${pin.address.address}`)}`, ...Object.entries(headers).map(([name, value]) => `header = ${quoteCurl(`${name}: ${value}`)}`), `write-out = ${quoteCurl(`\n${nonce}:%{http_code}:%{http_version}:%{remote_ip}\n`)}`].join("\n");
-  const result = await runCurl(["--config", "-"], `${config}\n`, options.maxBytes + 4096, options.timeoutMs, options.abortSignal); const marker = Buffer.from(`\n${nonce}:`); const index = result.stdout.lastIndexOf(marker); if (index < 0) throw new Error("HTTP3_METADATA_MISSING"); const metadata = result.stdout.subarray(index + marker.length).toString("utf8").trim().split(":"); const statusCode = Number(metadata[0]); const httpVersion = metadata[1]; const remoteIp = metadata.slice(2).join(":"); if (!Number.isInteger(statusCode) || httpVersion !== "3") throw new Error("HTTP3_NEGOTIATION_FAILED"); if (!sameIpValue(remoteIp, pin.address.address)) throw new Error("PINNED_REMOTE_ADDRESS_MISMATCH"); const body = result.stdout.subarray(0, index); if (body.length > options.maxBytes) throw new Error("HTTP3_RESPONSE_LIMIT_EXCEEDED"); return { statusCode, protocol: "h3", body };
+  const url = new URL(urlValue); if (url.protocol !== "https:") throw new Error("HTTP3_HTTPS_REQUIRED"); const pin = await resolvePinnedDestination({ hostname: url.hostname, protocol: "https:", port: url.port || "443" }, { allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) });
+  const result = await nativeHttp3(url, pin.address.address, pin.address.family, [{ method, path: `${url.pathname}${url.search}`, headers }], options); const response = result.responses[0]; if (!response) throw new Error("HTTP3_RESPONSE_MISSING"); return { statusCode: response.statusCode, protocol: "h3", body: Buffer.from(response.bodyBase64, "base64") };
 }
 
 export async function runHttp3Desync(urlValue: string, headers: Readonly<Record<string, string>>, body: Buffer, declaredLength: number, sentinelPath: string, allowedStatuses: readonly number[], options: ProtocolTransportOptions): Promise<Http3DesyncResult> {
-  const url = new URL(urlValue); if (url.protocol !== "https:") throw new Error("HTTP3_HTTPS_REQUIRED"); const sentinel = new URL(sentinelPath, url); if (sentinel.origin !== url.origin) throw new Error("HTTP3_SENTINEL_ORIGIN_MISMATCH"); await requireCurlHttp3(options); const pin = await resolvePinnedDestination({ hostname: url.hostname, protocol: "https:", port: url.port || "443" }, { allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) });
-  const first = `ROUTECAIRN_PROBE_${randomBytes(10).toString("hex")}`, second = `ROUTECAIRN_SENTINEL_${randomBytes(10).toString("hex")}`; const common = ["silent", "show-error", "http3-only", `noproxy = ${quoteCurl("*")}`, `max-time = ${Math.max(1, Math.ceil(options.timeoutMs / 1000))}`, `resolve = ${quoteCurl(`${url.hostname}:${url.port || "443"}:${pin.address.address}`)}`, ...Object.entries(headers).map(([name, value]) => `header = ${quoteCurl(`${name}: ${value}`)}`)]; const encoded = body.toString("base64");
-  const config = [...common, `request = ${quoteCurl("POST")}`, `url = ${quoteCurl(url.href)}`, `header = ${quoteCurl(`content-length: ${declaredLength}`)}`, `header = ${quoteCurl("content-type: application/octet-stream")}`, `data-binary = ${quoteCurl(encoded)}`, `write-out = ${quoteCurl(`\n${first}:%{http_code}:%{http_version}:%{remote_ip}\n`)}`, "next", ...common, `request = ${quoteCurl("GET")}`, `url = ${quoteCurl(sentinel.href)}`, `write-out = ${quoteCurl(`\n${second}:%{http_code}:%{http_version}:%{remote_ip}\n`)}`].join("\n");
-  const result = await runCurl(["--config", "-"], `${config}\n`, options.maxBytes * 2 + 8192, options.timeoutMs * 2, options.abortSignal, true); const probe = curlMetadata(result.stdout, first); const sentinelResult = curlMetadata(result.stdout, second); if (!probe || !sentinelResult) throw new Error("HTTP3_SENTINEL_NOT_EXECUTED"); for (const item of [probe, sentinelResult]) { if (item.version !== "3") throw new Error("HTTP3_NEGOTIATION_FAILED"); if (!sameIpValue(item.remoteIp, pin.address.address)) throw new Error("PINNED_REMOTE_ADDRESS_MISMATCH"); } const probeAccepted = allowedStatuses.includes(probe.statusCode) && result.exitCode === 0; const sentinelClean = allowedStatuses.includes(sentinelResult.statusCode); return { probeStatus: probe.statusCode, sentinelStatus: sentinelResult.statusCode, protocol: "h3", sameConnectionProcess: true, probeAccepted, sentinelClean };
+  const url = new URL(urlValue); if (url.protocol !== "https:") throw new Error("HTTP3_HTTPS_REQUIRED"); const sentinel = new URL(sentinelPath, url); if (sentinel.origin !== url.origin) throw new Error("HTTP3_SENTINEL_ORIGIN_MISMATCH"); const pin = await resolvePinnedDestination({ hostname: url.hostname, protocol: "https:", port: url.port || "443" }, { allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) });
+  const result = await nativeHttp3(url, pin.address.address, pin.address.family, [
+    { method: "POST", path: `${url.pathname}${url.search}`, headers: { ...headers, "content-length": String(declaredLength), "content-type": "application/octet-stream" }, bodyBase64: body.toString("base64") },
+    { method: "GET", path: `${sentinel.pathname}${sentinel.search}`, headers }
+  ], { ...options, timeoutMs: options.timeoutMs * 2, maxBytes: options.maxBytes * 2 });
+  const probe = result.responses[0], sentinelResult = result.responses[1]; if (!probe || !sentinelResult) throw new Error("HTTP3_SENTINEL_NOT_EXECUTED"); if (!result.sameConnection) throw new Error("HTTP3_CONNECTION_REUSE_FAILED"); return { probeStatus: probe.statusCode, sentinelStatus: sentinelResult.statusCode, protocol: "h3", sameConnectionProcess: true, probeAccepted: allowedStatuses.includes(probe.statusCode), sentinelClean: allowedStatuses.includes(sentinelResult.statusCode) };
 }
 
 export async function runBoundedHttp(urlValue: string, method: string, headers: Readonly<Record<string, string>>, body: Buffer | undefined, options: ProtocolTransportOptions): Promise<BoundedHttpResult> {
@@ -114,7 +115,7 @@ async function pinnedSocket(url: URL, options: ProtocolTransportOptions, alpn?: 
   return await new Promise<Socket | TLSSocket>((resolve, reject) => {
     let settled = false; const finish = (error?: Error, socket?: Socket | TLSSocket) => { if (settled) return; settled = true; clearTimeout(timer); options.abortSignal?.removeEventListener("abort", abort); if (error) { socket?.destroy(); reject(error); } else resolve(socket!); };
     const timer = setTimeout(() => finish(new Error("PROTOCOL_CONNECT_TIMEOUT"), socket), options.timeoutMs); const abort = () => finish(new Error("PROTOCOL_CONNECT_ABORTED"), socket); let socket: Socket | TLSSocket;
-    if (secure) socket = connectTls({ host: pin.address.address, port: Number(pin.port), servername: isIP(pin.hostname) ? undefined : pin.hostname, ALPNProtocols: alpn ?? ["http/1.1"], rejectUnauthorized: true }, () => remoteMatches(socket, pin.address.address) ? finish(undefined, socket) : finish(new Error("PINNED_REMOTE_ADDRESS_MISMATCH"), socket));
+    if (secure) socket = connectTls({ host: pin.address.address, port: Number(pin.port), servername: isIP(pin.hostname) ? undefined : pin.hostname, ALPNProtocols: alpn ?? ["http/1.1"], rejectUnauthorized: true, ...(options.tlsCa ? { ca: options.tlsCa } : {}) }, () => remoteMatches(socket, pin.address.address) ? finish(undefined, socket) : finish(new Error("PINNED_REMOTE_ADDRESS_MISMATCH"), socket));
     else socket = connectTcp({ host: pin.address.address, port: Number(pin.port), family: pin.address.family }, () => remoteMatches(socket, pin.address.address) ? finish(undefined, socket) : finish(new Error("PINNED_REMOTE_ADDRESS_MISMATCH"), socket));
     socket.once("error", (e) => finish(e, socket)); options.abortSignal?.addEventListener("abort", abort, { once: true });
   });
@@ -131,8 +132,54 @@ function grpcStatus(headers: Record<string, string | string[]>): number | undefi
 function remoteMatches(socket: Socket | TLSSocket, expected: string): boolean { const actual = socket.remoteAddress?.toLowerCase(); const wanted = expected.toLowerCase(); return actual === wanted || actual === `::ffff:${wanted}` || (actual?.replace(/^::ffff:/, "") === wanted); }
 function completeSseEvents(value: string): number { return value.split(/\r?\n\r?\n/).slice(0, -1).filter((block) => block.split(/\r?\n/).some((line) => line.startsWith("data:") || line.startsWith("event:"))).length; }
 function normalizeUndiciHeaders(value: Record<string, string | string[] | undefined>): Record<string, string | string[]> { return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)); }
-function quoteCurl(value: string): string { return `"${value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r/g, "").replace(/\n/g, "\\n")}"`; }
-function sameIpValue(actual: string, expected: string): boolean { const left = actual.toLowerCase().replace(/^\[|\]$/g, ""); const right = expected.toLowerCase().replace(/^\[|\]$/g, ""); return left === right || left === `::ffff:${right}` || left.replace(/^::ffff:/, "") === right; }
-async function requireCurlHttp3(options: ProtocolTransportOptions): Promise<void> { if (curlHttp3Capability === undefined) { try { const version = await runCurl(["--version"], undefined, 64 * 1024, Math.min(options.timeoutMs, 5000), options.abortSignal); curlHttp3Capability = /\bHTTP3\b/i.test(version.stdout.toString("utf8")); } catch (error) { if (options.abortSignal?.aborted) throw error; curlHttp3Capability = false; } } if (!curlHttp3Capability) throw new Error("HTTP3_RUNTIME_UNAVAILABLE"); }
-function curlMetadata(stdout: Buffer, nonce: string): { statusCode: number; version: string; remoteIp: string } | undefined { const marker = Buffer.from(`\n${nonce}:`); const index = stdout.lastIndexOf(marker); if (index < 0) return; const line = stdout.subarray(index + marker.length).toString("utf8").split(/\r?\n/, 1)[0]?.trim() ?? ""; const parts = line.split(":"); const statusCode = Number(parts[0]); if (!Number.isInteger(statusCode)) return; return { statusCode, version: parts[1] ?? "", remoteIp: parts.slice(2).join(":") }; }
-function runCurl(args: string[], stdin: string | undefined, maxOutput: number, timeoutMs: number, signal?: AbortSignal, allowNonzero = false): Promise<{ stdout: Buffer; stderr: Buffer; exitCode: number }> { return new Promise((resolve, reject) => { const child = spawn(process.platform === "win32" ? "curl.exe" : "curl", args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }); const out: Buffer[] = [], err: Buffer[] = []; let size = 0, errorSize = 0, settled = false; const timer = setTimeout(() => finish(new Error("HTTP3_RUNTIME_TIMEOUT")), timeoutMs); const abort = () => finish(new Error("HTTP3_RUNTIME_ABORTED")); const finish = (error?: Error, exitCode = -1) => { if (settled) return; settled = true; clearTimeout(timer); signal?.removeEventListener("abort", abort); if (error) { child.kill(); reject(error); } else resolve({ stdout: Buffer.concat(out), stderr: Buffer.concat(err), exitCode }); }; child.once("error", finish); child.stdout.on("data", (chunk: Buffer) => { size += chunk.length; if (size > maxOutput) finish(new Error("HTTP3_RESPONSE_LIMIT_EXCEEDED")); else out.push(Buffer.from(chunk)); }); child.stderr.on("data", (chunk: Buffer) => { errorSize += chunk.length; if (errorSize <= 64 * 1024) err.push(Buffer.from(chunk)); }); child.once("close", (code) => code === 0 || allowNonzero ? finish(undefined, code ?? -1) : finish(new Error(`HTTP3_RUNTIME_EXIT_${code ?? "UNKNOWN"}`))); signal?.addEventListener("abort", abort, { once: true }); if (stdin !== undefined) child.stdin.end(stdin); else child.stdin.end(); }); }
+
+interface NativeHttp3Request { method: string; path: string; headers: Readonly<Record<string, string>>; bodyBase64?: string; }
+interface NativeHttp3Response { statusCode: number; protocol: "h3"; headers: Record<string, string | string[]>; bodyBase64: string; }
+
+async function nativeHttp3(url: URL, pinnedAddress: string, family: 4 | 6, requests: readonly NativeHttp3Request[], options: ProtocolTransportOptions): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean }> {
+  return runNativeHttp3Worker({ hostname: url.hostname, port: Number(url.port || "443"), pinnedAddress, family, timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, requests: requests.map((item) => ({ ...item, headers: { ...item.headers } })), ...(options.tlsCa ? { ca: Buffer.isBuffer(options.tlsCa) ? options.tlsCa.toString("utf8") : options.tlsCa } : {}) }, options.abortSignal);
+}
+
+function runNativeHttp3Worker(input: { hostname: string; port: number; pinnedAddress: string; family: 4 | 6; timeoutMs: number; maxBytes: number; ca?: string; requests: Array<{ method: string; path: string; headers: Record<string, string>; bodyBase64?: string }> }, signal?: AbortSignal): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean }> {
+  return new Promise((resolve, reject) => {
+    const javascriptEntry = new URL("./NativeHttp3Worker.js", import.meta.url);
+    const typescriptEntry = new URL("./NativeHttp3Worker.ts", import.meta.url);
+    const sourceMode = fileURLToPath(import.meta.url).endsWith(".ts");
+    const entry = fileURLToPath(sourceMode ? typescriptEntry : javascriptEntry);
+    const childEnvironment = { ...(process.env.SYSTEMROOT ? { SYSTEMROOT: process.env.SYSTEMROOT } : {}), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) };
+    const child = spawn(process.execPath, [...(sourceMode ? ["--import", "tsx"] : []), entry], { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env: childEnvironment });
+    let settled = false;
+    const output: Buffer[] = [], errorOutput: Buffer[] = [];
+    let outputSize = 0, errorSize = 0;
+    const outputLimit = Math.max(64 * 1024, input.maxBytes * Math.max(1, input.requests.length) * 2 + 64 * 1024);
+    const timer = setTimeout(() => finish(new Error("HTTP3_NATIVE_TIMEOUT")), Math.max(1000, input.timeoutMs * Math.max(1, input.requests.length) + 1000));
+    const abort = () => finish(new Error("HTTP3_NATIVE_ABORTED"));
+    const finish = (error?: Error, value?: { responses: NativeHttp3Response[]; sameConnection: boolean }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      if (!child.killed) child.kill();
+      error ? reject(error) : resolve(value!);
+    };
+    child.stdout.on("data", (chunk: Buffer) => {
+      outputSize += chunk.length;
+      if (outputSize > outputLimit) finish(new Error("HTTP3_NATIVE_OUTPUT_LIMIT"));
+      else output.push(Buffer.from(chunk));
+    });
+    child.stderr.on("data", (chunk: Buffer) => { errorSize += chunk.length; if (errorSize <= 64 * 1024) errorOutput.push(Buffer.from(chunk)); });
+    child.once("error", (error) => finish(error));
+    child.once("close", (code) => {
+      if (settled) return;
+      if (code !== 0) return finish(new Error(`HTTP3_NATIVE_EXIT_${code ?? "UNKNOWN"}`));
+      let message: unknown;
+      try { message = JSON.parse(Buffer.concat(output).toString("utf8")); } catch { return finish(new Error("HTTP3_NATIVE_INVALID_RESULT")); }
+      if (!message || typeof message !== "object") return finish(new Error("HTTP3_NATIVE_INVALID_RESULT"));
+      const result = message as { ok?: boolean; error?: string; responses?: NativeHttp3Response[]; sameConnection?: boolean };
+      if (!result.ok || !Array.isArray(result.responses)) return finish(new Error(result.error ?? `HTTP3_NATIVE_FAILURE${errorOutput.length ? ":RUNTIME" : ""}`));
+      finish(undefined, { responses: result.responses, sameConnection: result.sameConnection === true });
+    });
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stdin.end(JSON.stringify(input));
+  });
+}

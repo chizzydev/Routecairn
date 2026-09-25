@@ -50,6 +50,9 @@ export interface HttpRequest {
   streamLimitBytes?: number;
   maxStreamContentLength?: number;
   retainBodyPreview?: boolean;
+  /** Synchronous, in-memory access to the unsanitized bounded body before the
+   * broker redacts evidence. It must not persist, log, or return the body. */
+  transientBodyConsumer?: (body: string) => void;
   disableRetries?: boolean;
   disableRedirects?: boolean;
 }

@@ -119,7 +119,7 @@ export async function resolvePinnedDestination(connectOptions: ConnectorOptions,
   const port = connectOptions.port || (protocol === "https:" ? "443" : "80");
   const origin = `${protocol}//${hostForOrigin(hostname, port, protocol)}`;
   const privateOriginAllowed = policy.allowedPrivateOrigins.includes(origin);
-  const answers = await resolveAddresses(hostname, policy);
+  const answers = await resolveAddresses(hostname, policy, privateOriginAllowed);
   if (answers.length === 0) throw new PinnedConnectionError("DNS resolution returned no addresses.", "DNS_NO_ADDRESSES");
   if (answers.length > policy.maxDnsAnswers) throw new PinnedConnectionError("DNS resolution returned too many addresses.", "DNS_TOO_MANY_ADDRESSES");
 
@@ -151,10 +151,10 @@ export class PinnedConnectionError extends Error {
   }
 }
 
-async function resolveAddresses(hostname: string, policy: DestinationPolicyOptions): Promise<readonly DnsAddress[]> {
+async function resolveAddresses(hostname: string, policy: DestinationPolicyOptions, privateOriginAllowed: boolean): Promise<readonly DnsAddress[]> {
   const literal = normalizeIp(hostname);
   if (literal) return [{ address: literal.address, family: literal.family }];
-  if (isInternalHostname(hostname)) throw new PinnedConnectionError("Internal hostname was blocked by destination policy.", "DNS_PROHIBITED_ADDRESS");
+  if (isInternalHostname(hostname) && !privateOriginAllowed) throw new PinnedConnectionError("Internal hostname was blocked by destination policy.", "DNS_PROHIBITED_ADDRESS");
 
   const resolver = policy.dnsResolver ?? defaultResolver;
   let timer: ReturnType<typeof setTimeout> | undefined;

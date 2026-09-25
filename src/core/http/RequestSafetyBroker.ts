@@ -200,6 +200,9 @@ export class RequestSafetyBroker {
       const rawResponse = scopedRequest.disableRetries || isMutationMethod(scopedRequest.method)
         ? await this.sendWithRedirects(scopedRequest, scopedRequest.url, [], bypassRateLimit, onDispatch)
         : await this.retryPolicy.run(() => this.sendWithRedirects(scopedRequest, scopedRequest.url, [], false, onDispatch));
+      if (scopedRequest.transientBodyConsumer && rawResponse.bodyPreview !== undefined) {
+        scopedRequest.transientBodyConsumer(rawResponse.bodyPreview);
+      }
       return attachTransientResponseAnalysis(sanitizeResponse(rawResponse, observation), rawResponse);
     });
 

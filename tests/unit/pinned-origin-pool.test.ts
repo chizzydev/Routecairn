@@ -29,6 +29,17 @@ describe("origin-isolated pinned connection pool", () => {
     } finally { await pool.close(); }
   });
 
+  it("permits an internal hostname only through its exact private-origin exception", async () => {
+    const fixture = await start((_request, response) => response.end("ok"));
+    const origin = `http://localhost:${fixture.port}`;
+    const deniedPool = new PinnedOriginPool(); const denied = httpClient(deniedPool, [], async () => ["127.0.0.1"]);
+    const allowedPool = new PinnedOriginPool(); const allowed = httpClient(allowedPool, [origin], async () => ["127.0.0.1"]);
+    try {
+      expect((await denied.send({ url: `${origin}/`, method: "GET" })).error?.name).toBe("DNS_PROHIBITED_ADDRESS");
+      expect((await allowed.send({ url: `${origin}/`, method: "GET" })).statusCode).toBe(200);
+    } finally { await Promise.all([deniedPool.close(), allowedPool.close()]); }
+  });
+
   it("blocks a rebinding answer instead of sending over an already pooled socket", async () => {
     let resolutions = 0; let requests = 0; const fixture = await start((_request, response) => { requests += 1; response.end("ok"); });
     const origin = `http://rebind.test:${fixture.port}`; const pool = new PinnedOriginPool();

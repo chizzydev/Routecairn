@@ -22,6 +22,7 @@ try {
     "dist/cli/index.js",
     "dist/dashboard/server/DashboardServer.js",
     "dist/core/plugins/ThirdPartyModuleRunner.mjs",
+    "dist/modules/protocolSecurity/NativeHttp3Worker.js",
     "apps/dashboard-ui/dist/index.html",
     "examples/protocol-security.example.json",
     "examples/active-vulnerability-validation.example.json",
@@ -82,6 +83,21 @@ try {
 `);
   const installed = runNode([installedAcceptance], consumerDirectory);
   assert(installed.stdout.includes("INSTALLED_PACKAGE_ACCEPTED"), "Installed package acceptance did not complete.");
+
+  const protocolOutput = join(consumerDirectory, "protocol-acceptance");
+  const protocolAcceptance = runNode([
+    join(installedRoot, "dist", "cli", "index.js"),
+    "validate-protocol-fixtures",
+    "--output",
+    protocolOutput
+  ], consumerDirectory);
+  const protocolSummary = JSON.parse(protocolAcceptance.stdout);
+  assert(protocolSummary?.status === "PASSED", "Installed package protocol acceptance did not pass.");
+  assert(protocolSummary?.nativeHttp3 === true, "Installed package did not execute native HTTP/3 acceptance.");
+  assert(protocolSummary?.externalCurlRequired === false, "Installed package protocol acceptance still depends on curl.");
+  assert(Array.isArray(protocolSummary?.lanes) && protocolSummary.lanes.every((lane) => lane.status === "PASSED"), "Installed package protocol acceptance reported a failed lane.");
+  const protocolEvidence = JSON.parse(await readFile(join(protocolSummary.outputDirectory, "protocol-acceptance.json"), "utf8"));
+  assert(protocolEvidence?.evidenceSha256 === protocolSummary.evidenceSha256, "Installed package protocol evidence digest does not match its summary.");
 
   if (retainedDestination) {
     const destination = resolve(packageRoot, retainedDestination);

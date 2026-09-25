@@ -10,6 +10,10 @@ import { registerShowCommand } from "./commands/show.js";
 import { registerTriageCommand } from "./commands/triage.js";
 import { registerOffensiveCommand } from "./commands/offensive.js";
 import { registerValidateLocalCommand } from "./commands/validateLocal.js";
+import { registerValidateBroaderLocalCommand } from "./commands/validateBroaderLocal.js";
+import { registerValidateAuthenticationFixturesCommand } from "./commands/validateAuthenticationFixtures.js";
+import { registerValidateAuthenticationSandboxesCommand } from "./commands/validateAuthenticationSandboxes.js";
+import { registerValidateProtocolFixturesCommand } from "./commands/validateProtocolFixtures.js";
 import { registerBenchmarkCommand } from "./commands/benchmark.js";
 import { registerAgentCommand } from "./commands/agent.js";
 import { AppError } from "../core/errors/AppError.js";
@@ -35,6 +39,10 @@ export function createCli(): Command {
   registerTriageCommand(program);
   registerOffensiveCommand(program);
   registerValidateLocalCommand(program);
+  registerValidateBroaderLocalCommand(program);
+  registerValidateAuthenticationFixturesCommand(program);
+  registerValidateAuthenticationSandboxesCommand(program);
+  registerValidateProtocolFixturesCommand(program);
   registerBenchmarkCommand(program);
   registerAgentCommand(program);
 
