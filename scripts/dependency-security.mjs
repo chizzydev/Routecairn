@@ -52,6 +52,7 @@ function generateSbom(npmArguments, outputPath, scope, packageManifest) {
   if (result.status !== 0) fail(commandFailure(result, `npm ${npmArguments.join(" ")} failed.`));
   const document = parseJson(result.stdout, `${scope} SBOM`);
   canonicalizeRootComponent(document, packageManifest);
+  normalizeDuplicateReferences(document, scope);
   validateSbom(document, scope, packageManifest);
   const serialized = `${JSON.stringify(document, null, 2)}\n`;
   atomicText(outputPath, serialized);
@@ -63,6 +64,62 @@ function generateSbom(npmArguments, outputPath, scope, packageManifest) {
     componentCount: document.components.length,
     digest: createHash("sha256").update(serialized).digest("hex")
   };
+}
+
+function normalizeDuplicateReferences(document, scope) {
+  if (!Array.isArray(document?.components) || !Array.isArray(document?.dependencies)) return;
+
+  const components = new Map();
+  const invalidComponents = [];
+  for (const component of document.components) {
+    const reference = component?.["bom-ref"];
+    if (typeof reference !== "string") {
+      invalidComponents.push(component);
+      continue;
+    }
+    const existing = components.get(reference);
+    if (!existing) {
+      components.set(reference, component);
+      continue;
+    }
+    if (existing.name !== component.name || existing.version !== component.version || existing.purl !== component.purl) {
+      fail(`${scope} SBOM reuses a component reference for different packages: ${reference}.`);
+    }
+    existing.properties = mergeObjects(existing.properties, component.properties);
+    existing.hashes = mergeObjects(existing.hashes, component.hashes);
+    existing.licenses = mergeObjects(existing.licenses, component.licenses);
+    existing.externalReferences = mergeObjects(existing.externalReferences, component.externalReferences);
+  }
+  document.components = [...components.values(), ...invalidComponents];
+
+  const dependencies = new Map();
+  const invalidDependencies = [];
+  for (const dependency of document.dependencies) {
+    if (typeof dependency?.ref !== "string" || !Array.isArray(dependency.dependsOn)) {
+      invalidDependencies.push(dependency);
+      continue;
+    }
+    const existing = dependencies.get(dependency.ref);
+    if (!existing) {
+      dependencies.set(dependency.ref, { ...dependency, dependsOn: [...new Set(dependency.dependsOn ?? [])] });
+      continue;
+    }
+    existing.dependsOn = [...new Set([...existing.dependsOn, ...(dependency.dependsOn ?? [])])];
+    existing.provides = [...new Set([...(existing.provides ?? []), ...(dependency.provides ?? [])])];
+    if (existing.provides.length === 0) delete existing.provides;
+  }
+  document.dependencies = [...dependencies.values(), ...invalidDependencies];
+}
+
+function mergeObjects(left, right) {
+  const values = [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])];
+  const seen = new Set();
+  return values.filter((value) => {
+    const key = JSON.stringify(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function canonicalizeRootComponent(document, packageManifest) {
