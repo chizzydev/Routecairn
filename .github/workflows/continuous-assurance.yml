@@ -43,7 +43,7 @@ jobs:
       - name: Full unit and integration suite
         run: npm test
       - name: Measured effectiveness gate
-        run: node dist/cli/index.js benchmark local --repetitions 1 --baseline benchmarks/routecairn-read-only-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
+        run: node dist/cli/index.js benchmark local --repetitions 3 --baseline benchmarks/routecairn-comprehensive-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
       - name: Preserve measured-effectiveness evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -68,6 +68,26 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx vitest run tests/unit/browser-crawler.test.ts tests/integration/browser-crawler.test.ts tests/unit/browser-network-boundary.test.ts
+      - name: Provider emulator, OIDC callback, and passkey acceptance
+        run: npm run build && node dist/cli/index.js validate-authentication-fixtures --output .routecairn-authentication-acceptance
+      - name: Preserve authentication-fixture acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: authentication-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-authentication-acceptance/
+          if-no-files-found: error
+          retention-days: 30
+      - name: WebSocket, GraphQL, multipart, gRPC, HTTP/2, and native HTTP/3 acceptance
+        run: node dist/cli/index.js validate-protocol-fixtures --output .routecairn-protocol-acceptance
+      - name: Preserve protocol acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: protocol-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-protocol-acceptance/
+          if-no-files-found: error
+          retention-days: 30
 
   release-package:
     name: Published package acceptance
@@ -83,10 +103,62 @@ jobs:
       - name: Build, pack, install, and exercise the published artifact
         run: npm run package:smoke
 
+  control-plane-image:
+    name: Self-hosted control-plane image acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create ephemeral bootstrap secrets
+        run: |
+          mkdir -p deploy/control-plane/secrets
+          openssl rand -hex 48 > deploy/control-plane/secrets/session-secret.txt
+          openssl rand -hex 48 > deploy/control-plane/secrets/mutation-coordinator-secret.txt
+          openssl rand -base64 48 > deploy/control-plane/secrets/bootstrap-owner-password.txt
+      - name: Validate and start the release control plane
+        working-directory: deploy/control-plane
+        env:
+          ROUTECAIRN_HOSTNAME: routecairn.example.test
+          ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN: ci-owner@example.test
+        run: |
+          docker compose config --quiet
+          docker compose up --build --detach --wait control-plane
+          docker compose exec -T control-plane node -e "fetch('http://127.0.0.1:4711/readyz').then(async response => { if (!response.ok || (await response.json()).status !== 'ready') process.exit(1) })"
+      - name: Preserve control-plane logs
+        if: always()
+        working-directory: deploy/control-plane
+        run: docker compose logs --no-color control-plane
+      - name: Stop control plane
+        if: always()
+        working-directory: deploy/control-plane
+        run: docker compose down --volumes --remove-orphans
+
+  broader-acceptance:
+    name: Eight-lane broader acceptance laboratory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build and execute the complete broader-acceptance grid
+        run: npm run build && node dist/cli/index.js validate-broader-local --output .routecairn-validation
+      - name: Preserve broader-acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: broader-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-validation/
+          if-no-files-found: error
+          retention-days: 30
+
   assurance-gate:
     name: Required assurance gate
     if: always()
-    needs: [cross-platform, browser-chromium, release-package]
+    needs: [cross-platform, browser-chromium, release-package, control-plane-image, broader-acceptance]
     runs-on: ubuntu-latest
     steps:
       - name: Reject incomplete assurance
@@ -94,4 +166,6 @@ jobs:
           CROSS_PLATFORM: ${{ needs.cross-platform.result }}
           BROWSER: ${{ needs.browser-chromium.result }}
           RELEASE_PACKAGE: ${{ needs.release-package.result }}
-        run: test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success
+          CONTROL_PLANE_IMAGE: ${{ needs.control-plane-image.result }}
+          BROADER_ACCEPTANCE: ${{ needs.broader-acceptance.result }}
+        run: test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success && test "$CONTROL_PLANE_IMAGE" = success && test "$BROADER_ACCEPTANCE" = success

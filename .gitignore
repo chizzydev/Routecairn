@@ -16,3 +16,7 @@ data/dashboard*/
 .hermes/
 .routecairn-security/
 .routecairn-benchmarks/
+.routecairn-authentication-acceptance/
+.routecairn-auth-test/
+.routecairn-protocol-acceptance/
+/deploy/control-plane/secrets/
