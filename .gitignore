@@ -19,6 +19,9 @@ data/dashboard*/
 .routecairn-credibility*/
 .routecairn-credibility-*.txt
 .routecairn-authentication-acceptance/
+.routecairn-external-acceptance/
+.routecairn-release/
+.acceptance-keys/
 .routecairn-auth-test/
 .routecairn-protocol-acceptance/
 /deploy/control-plane/secrets/

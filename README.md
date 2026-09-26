@@ -1187,7 +1187,35 @@ node dist/cli/index.js validate-broader-local --output .routecairn-validation
 
 The laboratory provisions two isolated tenants and executes positive and negative controls for tenant authorization, Supabase-compatible table/storage/RPC access, OIDC discovery and signed ID tokens with state/nonce/PKCE binding, TOTP and passkey lifecycles, GraphQL object authorization, signed portals and exports, synthetic checkout/webhook/refund flows, webhook and cron authentication, and an exact vulnerable-to-fixed remediation rerun. It enforces loopback-only transport, bounded requests and responses, one-use tokens and challenges, explicit cleanup, stable case identities, and secret-free request evidence. Each run emits a signed JSON summary, bounded request transcript and Markdown report; continuous assurance preserves these artifacts and fails unless every lane and cleanup check passes.
 
-This laboratory proves the grid implementation against an owned disposable target. It does not claim third-party or production acceptance: completing that separate proof still requires an operator-supplied authorized product, approved scope, disposable identities and feature-specific fixtures through Live Acceptance.
+This laboratory proves the grid implementation against an owned disposable target. It does not claim third-party or production acceptance. RouteCairn also provides a separate external-attestation runner for an independent operator using authorized disposable targets:
+
+```powershell
+npm pack --pack-destination .routecairn-release
+node dist/cli/index.js external-acceptance keygen `
+  --private-key .acceptance-keys/operator.private.pem `
+  --public-key .acceptance-keys/operator.public.pem
+
+# Copy and replace every placeholder, release digest, target URL and action in the example.
+$env:ROUTECAIRN_ACCEPTANCE_SIGNING_KEY = Get-Content .acceptance-keys/operator.private.pem -Raw
+node dist/cli/index.js external-acceptance run `
+  --manifest examples/external-acceptance.example.json `
+  --release-artifact .routecairn-release/routecairn-0.1.0.tgz `
+  --signing-key-env ROUTECAIRN_ACCEPTANCE_SIGNING_KEY `
+  --output .routecairn-external-acceptance
+
+$run = Get-ChildItem .routecairn-external-acceptance -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+node dist/cli/index.js external-acceptance verify `
+  --bundle (Join-Path $run.FullName external-acceptance-bundle.json) `
+  --release-artifact .routecairn-release/routecairn-0.1.0.tgz `
+  --manifest (Join-Path $run.FullName external-acceptance-manifest.json) `
+  --trusted-public-key .acceptance-keys/operator.public.pem
+```
+
+The external manifest is an exact executable contract, not a checklist. It requires one lane for a conventional multi-tenant SaaS target, genuine Supabase table RLS/storage/RPC, a GraphQL application including query/mutation/subscription authorization, an Auth0-or-Cognito-style OIDC/MFA/passkey lifecycle, signed portal/export workflows, synthetic payment-provider traffic, webhook/cron infrastructure, and a vulnerable-to-fixed remediation rerun. Each required semantic must have a stable case identity and executable status/body/header assertions. Every lane binds a target/deployment fingerprint plus the digest and URL of its independent reproduction procedure. Baseline, fixed rerun and comparison actions must share the same identity. State-changing cases declare that intent and reserve an explicit cleanup action; payment actions must all be marked synthetic. Real payments, non-disposable accounts and destructive administration cannot be enabled by this schema.
+
+Transport is DNS-pinned and origin-isolated, does not follow redirects, bounds response sizes and timeouts, rate-limits the complete run, and continues reserved cleanup after a primary failure. Credentials are environment references expanded only in memory. Evidence retains methods, path templates, status codes, timings and cryptographic request/response fingerprints rather than credentials or raw bodies. The exact credential-free manifest, summary, lane evidence digests, Markdown report, operator public key and SHA-256 inventory are published together.
+
+The final bundle is an in-toto v1 statement in a DSSE envelope signed with the independent operator's Ed25519 key. Its subject is the exact npm release tarball digest; its predicate binds the RouteCairn version and commit, authorization proof, operator identity, complete eight-lane result, cleanup outcomes, reproducibility references, manifest digest and evidence digest. Verification requires the exact release artifact and an operator public key obtained independently of the bundle. A locally generated key or self-run target remains useful engineering evidence but is not represented as third-party acceptance: the external schema requires an explicit independent-operator declaration, and the published organization and key ID remain visible.
 
 External validation is recorded per product and per lane; it is never inferred from the local fixture. RouteCairn has completed its first authorized external acceptance against disposable accounts on the owned Decide production web/API target. That run covered public scanning, authenticated Account A/B API authorization, login and browser traffic learning, authentication lifecycle assertions, a reversible profile mutation, authoritative rollback, forced worker interruption, partial-evidence ingestion, dashboard restart, encrypted-checkpoint recovery with a fresh credential, and stable comparison evidence. Every disposable user and session was removed after its case. The run did not claim tenant isolation because Decide has no tenant model, and webhook/synthetic-billing validation remained `NOT_ASSESSED` because no test-provider fixture was available; no real payment was attempted. Retained evidence lives in the operator's dashboard data directory and is not a general security certification of Decide or another target.
 

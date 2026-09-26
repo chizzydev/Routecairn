@@ -151,6 +151,8 @@ jobs:
       - run: npm ci
       - name: Build and execute the complete broader-acceptance grid
         run: npm run build && node dist/cli/index.js validate-broader-local --output .routecairn-validation
+      - name: Release-bound external attestation contract
+        run: npx vitest run tests/integration/external-acceptance.test.ts
       - name: Preserve broader-acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

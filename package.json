@@ -31,6 +31,7 @@
     "benchmark:local": "tsx src/cli/index.ts benchmark local",
     "benchmark:credibility": "tsx src/cli/index.ts benchmark credibility",
     "acceptance:broader": "tsx src/cli/index.ts validate-broader-local",
+    "acceptance:external": "tsx src/cli/index.ts external-acceptance",
     "acceptance:authentication": "tsx src/cli/index.ts validate-authentication-fixtures",
     "acceptance:authentication:sandbox": "tsx src/cli/index.ts validate-authentication-sandboxes",
     "acceptance:protocols": "tsx src/cli/index.ts validate-protocol-fixtures",

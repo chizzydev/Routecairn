@@ -25,6 +25,18 @@ After downloading a release package, verify its repository identity with GitHub 
 gh attestation verify .\routecairn-*.tgz --repo <owner>/RouteCairn
 ```
 
+Independent acceptance laboratories can additionally publish RouteCairn's DSSE-wrapped in-toto external-acceptance statement. Treat the public key embedded in the bundle as informational only. Obtain the operator's Ed25519 public key through an independently authenticated channel, then bind the bundle to the exact release tarball:
+
+```powershell
+routecairn external-acceptance verify `
+  --bundle .\external-acceptance-bundle.json `
+  --release-artifact .\routecairn-0.1.0.tgz `
+  --manifest .\external-acceptance-manifest.json `
+  --trusted-public-key .\independent-lab.public.pem
+```
+
+Verification checks the trusted key ID and signature, canonical statement payload, release subject digest, manifest/evidence predicate binding, eight lane count, every lane evidence digest, and the complete summary digest. A passing cryptographic verification authenticates the publisher and evidence integrity; it does not independently prove that the publisher's target or authorization statements are truthful. Consumers should review the authorization reference, target versions, reproduction references, case-level outcomes and cleanup status before relying on an attestation.
+
 ## Reporting a vulnerability
 
 Do not place credentials, target evidence, or exploit details in a public issue. Use the repository's private security-advisory reporting channel when available. Include the affected version, a minimal reproduction using synthetic data, impact, and any known mitigation.

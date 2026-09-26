@@ -14,6 +14,7 @@ import { registerValidateBroaderLocalCommand } from "./commands/validateBroaderL
 import { registerValidateAuthenticationFixturesCommand } from "./commands/validateAuthenticationFixtures.js";
 import { registerValidateAuthenticationSandboxesCommand } from "./commands/validateAuthenticationSandboxes.js";
 import { registerValidateProtocolFixturesCommand } from "./commands/validateProtocolFixtures.js";
+import { registerValidateBroaderExternalCommand } from "./commands/validateBroaderExternal.js";
 import { registerBenchmarkCommand } from "./commands/benchmark.js";
 import { registerAgentCommand } from "./commands/agent.js";
 import { AppError } from "../core/errors/AppError.js";
@@ -43,6 +44,7 @@ export function createCli(): Command {
   registerValidateAuthenticationFixturesCommand(program);
   registerValidateAuthenticationSandboxesCommand(program);
   registerValidateProtocolFixturesCommand(program);
+  registerValidateBroaderExternalCommand(program);
   registerBenchmarkCommand(program);
   registerAgentCommand(program);
 

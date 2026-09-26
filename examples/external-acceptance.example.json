@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "name": "Independent RouteCairn full-grid acceptance",
+  "operator": {
+    "organization": "REPLACE_WITH_INDEPENDENT_LAB",
+    "contact": "security-lab@example.test",
+    "independentOfRouteCairnAuthors": true,
+    "publicKeyId": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "release": {
+    "name": "routecairn",
+    "version": "0.1.0",
+    "gitCommit": "0000000000000000000000000000000000000000",
+    "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "sourceRepository": "https://github.com/chizzydev/Routecairn"
+  },
+  "authorization": {
+    "proofReference": "REPLACE_WITH_TARGET_OWNER_APPROVAL",
+    "proofSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "authorizedBy": "REPLACE_WITH_TARGET_OWNER",
+    "startsAt": "2026-01-01T00:00:00.000Z",
+    "expiresAt": "2027-01-01T00:00:00.000Z",
+    "disposableAccountsOnly": true,
+    "syntheticPaymentsOnly": true,
+    "controlledStateChangesAllowed": true,
+    "destructiveAdministrationAllowed": false,
+    "allowedOrigins": {
+      "saas": "https://saas.example.test",
+      "supabase": "https://project.supabase.co",
+      "graphql": "https://graphql.example.test",
+      "auth": "https://auth.example.test",
+      "portal": "https://portal.example.test",
+      "payments": "https://payments.example.test",
+      "operations": "https://operations.example.test",
+      "remediation": "https://fixed.example.test"
+    },
+    "secretEnvironment": {
+      "actorA": "ACCEPTANCE_ACTOR_A_TOKEN",
+      "actorB": "ACCEPTANCE_ACTOR_B_TOKEN",
+      "service": "ACCEPTANCE_SERVICE_TOKEN"
+    },
+    "maxRequests": 250,
+    "rateLimitPerSecond": 3
+  },
+  "lanes": [
+    {
+      "id": "multi-tenant-saas",
+      "kind": "MULTI_TENANT_SAAS",
+      "targetProduct": "REPLACE_WITH_SAAS_PRODUCT",
+      "targetVersion": "REPLACE_WITH_DEPLOYMENT_VERSION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/multi-tenant",
+      "reproductionSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "targetFingerprint": "2111111111111111111111111111111111111111111111111111111111111111",
+      "actions": [
+        { "id": "tenant-owner", "phase": "EXERCISE", "semantic": "TENANT_OWNER_ALLOWED", "caseIdentity": "1111111111111111111111111111111111111111111111111111111111111111", "request": { "origin": "saas", "method": "GET", "path": "/api/tenant-a/documents/document-a", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [200], "jsonEquals": { "tenantId": "tenant-a" } } },
+        { "id": "tenant-foreign", "phase": "EXERCISE", "semantic": "TENANT_FOREIGN_DENIED", "caseIdentity": "2222222222222222222222222222222222222222222222222222222222222222", "request": { "origin": "saas", "method": "GET", "path": "/api/tenant-b/documents/document-b", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [403, 404] } }
+      ]
+    },
+    {
+      "id": "supabase",
+      "kind": "SUPABASE_RLS_STORAGE_RPC",
+      "targetProduct": "Supabase",
+      "targetVersion": "REPLACE_WITH_PROJECT_REVISION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/supabase",
+      "reproductionSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "targetFingerprint": "3222222222222222222222222222222222222222222222222222222222222222",
+      "actions": [
+        { "id": "table-owner", "phase": "EXERCISE", "semantic": "SUPABASE_TABLE_OWNER_ALLOWED", "caseIdentity": "0333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "GET", "path": "/rest/v1/private_documents?tenant_id=eq.tenant-a", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" } }, "assertions": { "statuses": [200], "jsonPresent": ["0.id"] } },
+        { "id": "table-foreign", "phase": "EXERCISE", "semantic": "SUPABASE_TABLE_FOREIGN_DENIED", "caseIdentity": "1333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "GET", "path": "/rest/v1/private_documents?tenant_id=eq.tenant-b", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" } }, "assertions": { "statuses": [200], "jsonEquals": { "length": 0 } } },
+        { "id": "storage-owner", "phase": "EXERCISE", "semantic": "SUPABASE_STORAGE_OWNER_ALLOWED", "caseIdentity": "2333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "GET", "path": "/storage/v1/object/private/tenant-a/report.pdf", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" } }, "assertions": { "statuses": [200] } },
+        { "id": "storage-foreign", "phase": "EXERCISE", "semantic": "SUPABASE_STORAGE_FOREIGN_DENIED", "caseIdentity": "3333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "GET", "path": "/storage/v1/object/private/tenant-b/report.pdf", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" } }, "assertions": { "statuses": [400, 403, 404] } },
+        { "id": "rpc-owner", "phase": "EXERCISE", "semantic": "SUPABASE_RPC_OWNER_ALLOWED", "caseIdentity": "4333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "POST", "path": "/rest/v1/rpc/tenant_stats", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" }, "body": { "tenant_id": "tenant-a" } }, "assertions": { "statuses": [200], "jsonPresent": ["tenant_id"] } },
+        { "id": "rpc-foreign", "phase": "EXERCISE", "semantic": "SUPABASE_RPC_FOREIGN_DENIED", "caseIdentity": "5333333333333333333333333333333333333333333333333333333333333333", "request": { "origin": "supabase", "method": "POST", "path": "/rest/v1/rpc/tenant_stats", "headers": { "authorization": "Bearer {{SECRET:actorA}}", "apikey": "{{SECRET:service}}" }, "body": { "tenant_id": "tenant-b" } }, "assertions": { "statuses": [401, 403, 404] } }
+      ]
+    },
+    {
+      "id": "graphql",
+      "kind": "GRAPHQL_APPLICATION",
+      "targetProduct": "REPLACE_WITH_GRAPHQL_PRODUCT",
+      "targetVersion": "REPLACE_WITH_SCHEMA_REVISION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/graphql",
+      "reproductionSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "targetFingerprint": "4333333333333333333333333333333333333333333333333333333333333333",
+      "actions": [
+        { "id": "graphql-query-owner", "phase": "EXERCISE", "semantic": "GRAPHQL_QUERY_OWNER_ALLOWED", "caseIdentity": "0666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/graphql", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "query": "query($id: ID!) { document(id: $id) { id } }", "variables": { "id": "owned-object" } } }, "assertions": { "statuses": [200], "jsonPresent": ["data.document.id"], "jsonAbsent": ["errors.0"] } },
+        { "id": "graphql-query-foreign", "phase": "EXERCISE", "semantic": "GRAPHQL_QUERY_FOREIGN_DENIED", "caseIdentity": "1666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/graphql", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "query": "query($id: ID!) { document(id: $id) { id } }", "variables": { "id": "foreign-object" } } }, "assertions": { "statuses": [200], "jsonPresent": ["errors.0"] } },
+        { "id": "graphql-mutation-owner", "phase": "EXERCISE", "semantic": "GRAPHQL_MUTATION_OWNER_ALLOWED", "caseIdentity": "2666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/graphql", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "query": "mutation { updateOwnedFixture { id } }" } }, "assertions": { "statuses": [200], "jsonPresent": ["data.updateOwnedFixture.id"], "jsonAbsent": ["errors.0"] }, "stateChange": true },
+        { "id": "graphql-mutation-foreign", "phase": "EXERCISE", "semantic": "GRAPHQL_MUTATION_FOREIGN_DENIED", "caseIdentity": "3666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/graphql", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "query": "mutation { updateForeignFixture { id } }" } }, "assertions": { "statuses": [200], "jsonPresent": ["errors.0"] } },
+        { "id": "graphql-subscription-owner", "phase": "EXERCISE", "semantic": "GRAPHQL_SUBSCRIPTION_OWNER_ALLOWED", "caseIdentity": "4666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/acceptance/subscription-authorization", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "tenant": "tenant-a" } }, "assertions": { "statuses": [200], "jsonEquals": { "negotiated": true, "eventReceived": true } } },
+        { "id": "graphql-subscription-foreign", "phase": "EXERCISE", "semantic": "GRAPHQL_SUBSCRIPTION_FOREIGN_DENIED", "caseIdentity": "5666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "POST", "path": "/acceptance/subscription-authorization", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "tenant": "tenant-b" } }, "assertions": { "statuses": [401, 403, 404] } },
+        { "id": "graphql-cleanup", "phase": "CLEANUP", "semantic": "GRAPHQL_MUTATION_OWNER_ALLOWED", "caseIdentity": "6666666666666666666666666666666666666666666666666666666666666666", "request": { "origin": "graphql", "method": "DELETE", "path": "/acceptance/fixtures/graphql", "headers": { "authorization": "Bearer {{SECRET:service}}" } }, "assertions": { "statuses": [200, 204, 404] }, "stateChange": true }
+      ]
+    },
+    {
+      "id": "authentication",
+      "kind": "AUTH_PROVIDER_MFA_PASSKEY",
+      "targetProduct": "REPLACE_WITH_AUTH0_OR_COGNITO",
+      "targetVersion": "REPLACE_WITH_TENANT_REVISION",
+      "authProvider": "AUTH0",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/authentication",
+      "reproductionSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "targetFingerprint": "5444444444444444444444444444444444444444444444444444444444444444",
+      "actions": [
+        { "id": "oidc", "phase": "EXERCISE", "semantic": "OIDC_LIFECYCLE", "caseIdentity": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "request": { "origin": "auth", "method": "GET", "path": "/acceptance/oidc-lifecycle", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [200], "jsonEquals": { "stateVerified": true, "nonceVerified": true, "pkceVerified": true, "replayRejected": true } } },
+        { "id": "mfa", "phase": "EXERCISE", "semantic": "MFA_LIFECYCLE", "caseIdentity": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "request": { "origin": "auth", "method": "POST", "path": "/acceptance/mfa-lifecycle", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "disposable": true } }, "assertions": { "statuses": [200], "jsonEquals": { "enrolled": true, "verified": true } }, "stateChange": true },
+        { "id": "passkey", "phase": "EXERCISE", "semantic": "PASSKEY_LIFECYCLE", "caseIdentity": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "request": { "origin": "auth", "method": "POST", "path": "/acceptance/passkey-browser-lifecycle", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "disposable": true } }, "assertions": { "statuses": [200], "jsonEquals": { "browserEnrollment": true, "browserLogin": true, "rpBound": true, "counterAdvanced": true } }, "stateChange": true },
+        { "id": "auth-cleanup", "phase": "CLEANUP", "semantic": "PASSKEY_LIFECYCLE", "caseIdentity": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "request": { "origin": "auth", "method": "DELETE", "path": "/acceptance/disposable-user", "headers": { "authorization": "Bearer {{SECRET:service}}" } }, "assertions": { "statuses": [200, 204] }, "stateChange": true }
+      ]
+    },
+    {
+      "id": "signed-workflows",
+      "kind": "SIGNED_PORTAL_EXPORT",
+      "targetProduct": "REPLACE_WITH_PORTAL_PRODUCT",
+      "targetVersion": "REPLACE_WITH_DEPLOYMENT_VERSION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/signed-workflows",
+      "reproductionSha256": "5555555555555555555555555555555555555555555555555555555555555555",
+      "targetFingerprint": "6555555555555555555555555555555555555555555555555555555555555555",
+      "actions": [
+        { "id": "portal-owner", "phase": "EXERCISE", "semantic": "SIGNED_PORTAL_OWNER_ALLOWED", "caseIdentity": "0eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "request": { "origin": "portal", "method": "GET", "path": "/acceptance/owned-signed-portal", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [200] } },
+        { "id": "portal-foreign", "phase": "EXERCISE", "semantic": "SIGNED_PORTAL_FOREIGN_DENIED", "caseIdentity": "1eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "request": { "origin": "portal", "method": "GET", "path": "/acceptance/foreign-signed-portal", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [401, 403, 404] } },
+        { "id": "export-owner", "phase": "EXERCISE", "semantic": "SIGNED_EXPORT_OWNER_ALLOWED", "caseIdentity": "2eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "request": { "origin": "portal", "method": "GET", "path": "/acceptance/owned-signed-export", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [200] } },
+        { "id": "export-foreign", "phase": "EXERCISE", "semantic": "SIGNED_EXPORT_FOREIGN_DENIED", "caseIdentity": "3eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "request": { "origin": "portal", "method": "GET", "path": "/acceptance/foreign-signed-export", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [401, 403, 404] } }
+      ]
+    },
+    {
+      "id": "payments",
+      "kind": "SYNTHETIC_PAYMENT",
+      "targetProduct": "Stripe test mode",
+      "targetVersion": "REPLACE_WITH_API_VERSION",
+      "paymentProvider": "STRIPE",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/payments",
+      "reproductionSha256": "6666666666666666666666666666666666666666666666666666666666666666",
+      "targetFingerprint": "7666666666666666666666666666666666666666666666666666666666666666",
+      "actions": [
+        { "id": "checkout", "phase": "SETUP", "semantic": "SYNTHETIC_CHECKOUT", "caseIdentity": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "request": { "origin": "payments", "method": "POST", "path": "/acceptance/test-mode/checkout", "headers": { "authorization": "Bearer {{SECRET:actorA}}" }, "body": { "testMode": true } }, "assertions": { "statuses": [200, 201], "jsonPresent": ["checkoutId"] }, "captures": { "checkoutId": "checkoutId" }, "synthetic": true, "stateChange": true },
+        { "id": "provider-event", "phase": "EXERCISE", "semantic": "SYNTHETIC_PROVIDER_EVENT", "caseIdentity": "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", "request": { "origin": "payments", "method": "POST", "path": "/acceptance/test-mode/events/{{CAPTURE:checkoutId}}", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": { "type": "checkout.session.completed", "testMode": true } }, "assertions": { "statuses": [200, 202] }, "synthetic": true, "stateChange": true },
+        { "id": "provider-replay", "phase": "VERIFY", "semantic": "SYNTHETIC_PROVIDER_REPLAY_REJECTED", "caseIdentity": "1f3456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", "request": { "origin": "payments", "method": "POST", "path": "/acceptance/test-mode/events/{{CAPTURE:checkoutId}}/replay", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": { "testMode": true } }, "assertions": { "statuses": [400, 409] }, "synthetic": true },
+        { "id": "payment-cleanup", "phase": "CLEANUP", "semantic": "SYNTHETIC_PAYMENT_CLEANUP", "caseIdentity": "23456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01", "request": { "origin": "payments", "method": "POST", "path": "/acceptance/test-mode/refund/{{CAPTURE:checkoutId}}", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": { "testMode": true } }, "assertions": { "statuses": [200, 202] }, "synthetic": true, "stateChange": true }
+      ]
+    },
+    {
+      "id": "operations",
+      "kind": "WEBHOOK_CRON",
+      "targetProduct": "REPLACE_WITH_OPERATIONS_PRODUCT",
+      "targetVersion": "REPLACE_WITH_DEPLOYMENT_VERSION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/operations",
+      "reproductionSha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "targetFingerprint": "8777777777777777777777777777777777777777777777777777777777777777",
+      "actions": [
+        { "id": "webhook-valid", "phase": "EXERCISE", "semantic": "WEBHOOK_VALID_SIGNATURE", "caseIdentity": "2456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012", "request": { "origin": "operations", "method": "POST", "path": "/acceptance/valid-webhook", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": { "id": "disposable-valid" } }, "assertions": { "statuses": [200, 202] }, "stateChange": true },
+        { "id": "webhook-invalid", "phase": "EXERCISE", "semantic": "WEBHOOK_INVALID_SIGNATURE", "caseIdentity": "3456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012", "request": { "origin": "operations", "method": "POST", "path": "/webhooks/provider", "headers": { "x-provider-signature": "invalid" }, "body": { "id": "disposable-invalid" } }, "assertions": { "statuses": [400, 401, 403] } },
+        { "id": "webhook-replay", "phase": "EXERCISE", "semantic": "WEBHOOK_REPLAY", "caseIdentity": "456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123", "request": { "origin": "operations", "method": "POST", "path": "/acceptance/replayed-webhook", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": { "disposable": true } }, "assertions": { "statuses": [400, 409] } },
+        { "id": "cron-authorized", "phase": "EXERCISE", "semantic": "CRON_AUTHORIZED", "caseIdentity": "56789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234", "request": { "origin": "operations", "method": "POST", "path": "/cron/reconcile", "headers": { "authorization": "Bearer {{SECRET:service}}" }, "body": {} }, "assertions": { "statuses": [200, 202, 204] }, "stateChange": true },
+        { "id": "cron-unauthorized", "phase": "EXERCISE", "semantic": "CRON_UNAUTHORIZED", "caseIdentity": "66789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234", "request": { "origin": "operations", "method": "POST", "path": "/cron/reconcile", "body": {} }, "assertions": { "statuses": [401, 403] } },
+        { "id": "operations-cleanup", "phase": "CLEANUP", "semantic": "WEBHOOK_VALID_SIGNATURE", "caseIdentity": "76789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234", "request": { "origin": "operations", "method": "DELETE", "path": "/acceptance/operations-fixtures", "headers": { "authorization": "Bearer {{SECRET:service}}" } }, "assertions": { "statuses": [200, 204, 404] }, "stateChange": true }
+      ]
+    },
+    {
+      "id": "remediation",
+      "kind": "REMEDIATION_LIFECYCLE",
+      "targetProduct": "REPLACE_WITH_REMEDIATED_PRODUCT",
+      "targetVersion": "REPLACE_WITH_FIXED_VERSION",
+      "environment": "SANDBOX",
+      "independentlyReproducible": true,
+      "reproductionReference": "https://example.test/acceptance/remediation",
+      "reproductionSha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "targetFingerprint": "9888888888888888888888888888888888888888888888888888888888888888",
+      "actions": [
+        { "id": "vulnerable-baseline", "phase": "VERIFY", "semantic": "REMEDIATION_VULNERABLE_BASELINE", "caseIdentity": "6789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345", "request": { "origin": "remediation", "method": "GET", "path": "/acceptance/remediation/baseline-evidence", "headers": { "authorization": "Bearer {{SECRET:service}}" } }, "assertions": { "statuses": [200], "jsonEquals": { "vulnerabilityPreviouslyReproduced": true } } },
+        { "id": "fixed-rerun", "phase": "EXERCISE", "semantic": "REMEDIATION_FIXED_RERUN", "caseIdentity": "6789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345", "request": { "origin": "remediation", "method": "GET", "path": "/api/foreign-object", "headers": { "authorization": "Bearer {{SECRET:actorA}}" } }, "assertions": { "statuses": [401, 403, 404] } },
+        { "id": "identity-match", "phase": "VERIFY", "semantic": "REMEDIATION_IDENTITY_MATCH", "caseIdentity": "6789abcdef0123456789abcdef0123456789abcdef0123456789abcdef012345", "request": { "origin": "remediation", "method": "GET", "path": "/acceptance/remediation/comparison", "headers": { "authorization": "Bearer {{SECRET:service}}" } }, "assertions": { "statuses": [200], "jsonEquals": { "compatible": true, "unretestedCases": 0 } } }
+      ]
+    }
+  ]
+}

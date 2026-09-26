@@ -26,6 +26,7 @@ try {
     "apps/dashboard-ui/dist/index.html",
     "examples/protocol-security.example.json",
     "examples/active-vulnerability-validation.example.json",
+    "examples/external-acceptance.example.json",
     "LICENSE",
     "README.md",
     "SECURITY.md",
@@ -60,11 +61,16 @@ try {
   const installedRoot = join(consumerDirectory, "node_modules", "routecairn");
   const cli = runNode([join(installedRoot, "dist", "cli", "index.js"), "--help"], consumerDirectory);
   assert(/Usage:\s+routecairn/i.test(cli.stdout), "Installed CLI did not render its help output.");
+  assert(cli.stdout.includes("external-acceptance"), "Installed CLI did not expose the external-acceptance workflow.");
 
   const installedAcceptance = join(consumerDirectory, "installed-package-acceptance.mjs");
   await writeFile(installedAcceptance, `
 import { fileURLToPath } from "node:url";
+import { readFile } from "node:fs/promises";
 const packageRoot = new URL("./node_modules/routecairn/", import.meta.url);
+const externalAcceptance = await import(new URL("dist/validation/ExternalAcceptance.js", packageRoot));
+const externalManifest = JSON.parse(await readFile(new URL("examples/external-acceptance.example.json", packageRoot), "utf8"));
+externalAcceptance.externalAcceptanceManifestSchema.parse(externalManifest);
 const catalogModule = await import(new URL("dist/dashboard/contracts/AdvancedEngineSchemas.js", packageRoot));
 const catalog = await catalogModule.loadAdvancedEngineCatalog("https://authorized-target.invalid");
 if (!Array.isArray(catalog) || catalog.length < 14) throw new Error("Installed dashboard could not load its packaged engine templates.");

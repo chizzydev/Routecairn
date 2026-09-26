@@ -23,6 +23,7 @@ const requiredFiles = [
   "examples/pre-handover.example.json",
   "examples/bug-bounty-authorization.example.json",
   "examples/active-vulnerability-validation.example.json",
+  "examples/external-acceptance.example.json",
   "benchmarks/routecairn-credibility-corpus-v1.json",
   "LICENSE",
   "README.md",
