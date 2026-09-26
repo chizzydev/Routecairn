@@ -19,7 +19,7 @@ export class MutationJournalRegistry {
     for (let attempt = 0; ; attempt += 1) {
       try { await writer.acquire("journal-registration", true); break; }
       catch (error) {
-        if (!(error instanceof Error) || !error.message.startsWith("MUTATION_LOCK_HELD") || attempt >= 100) throw error;
+        if (!(error instanceof Error) || !error.message.startsWith("MUTATION_LOCK_HELD") || attempt >= 500) throw error;
         await new Promise((done) => setTimeout(done, 20));
       }
     }
