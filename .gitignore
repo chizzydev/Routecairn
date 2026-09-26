@@ -16,6 +16,8 @@ data/dashboard*/
 .hermes/
 .routecairn-security/
 .routecairn-benchmarks/
+.routecairn-credibility*/
+.routecairn-credibility-*.txt
 .routecairn-authentication-acceptance/
 .routecairn-auth-test/
 .routecairn-protocol-acceptance/

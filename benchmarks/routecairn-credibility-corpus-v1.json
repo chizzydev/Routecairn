@@ -1,0 +1,7257 @@
+{
+  "schemaVersion": 1,
+  "id": "routecairn-public-credibility-corpus",
+  "label": "RouteCairn multi-language detection credibility corpus",
+  "description": "Versioned public corpus with executable positive, secure, near-miss, multi-step, second-order, and deterministic mutant cases across independent Node and Python HTTP implementations.",
+  "cases": [
+    {
+      "id": "nh-obj-v-00",
+      "label": "node:http object vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-00"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-01",
+      "label": "node:http object vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-01"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-02",
+      "label": "node:http object vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-02"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-03",
+      "label": "node:http object vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-03"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-04",
+      "label": "node:http object vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-04"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-05",
+      "label": "node:http object vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-05"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-06",
+      "label": "node:http object vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-06"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-07",
+      "label": "node:http object vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-07"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-08",
+      "label": "node:http object vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-08"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-v-09",
+      "label": "node:http object vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-v-09"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-s-10",
+      "label": "node:http object secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-s-10"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "response-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-s-11",
+      "label": "node:http object secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-s-11"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-s-12",
+      "label": "node:http object secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-s-12"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "denial-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-s-13",
+      "label": "node:http object secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-s-13"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "response-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-s-14",
+      "label": "node:http object secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-s-14"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-n-15",
+      "label": "node:http object near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-n-15"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "denial-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-n-16",
+      "label": "node:http object near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-n-16"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "response-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-n-17",
+      "label": "node:http object near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-n-17"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-n-18",
+      "label": "node:http object near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-n-18"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "denial-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-obj-n-19",
+      "label": "node:http object near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-obj-n-19"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/object/secure",
+        "operator": "response-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-00",
+      "label": "node:http function vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-00"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-01",
+      "label": "node:http function vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-01"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-02",
+      "label": "node:http function vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-02"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-03",
+      "label": "node:http function vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-03"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-04",
+      "label": "node:http function vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-04"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-05",
+      "label": "node:http function vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-05"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-06",
+      "label": "node:http function vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-06"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-07",
+      "label": "node:http function vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-07"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-08",
+      "label": "node:http function vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-08"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-v-09",
+      "label": "node:http function vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-v-09"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-s-10",
+      "label": "node:http function secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-s-10"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-s-11",
+      "label": "node:http function secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-s-11"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-s-12",
+      "label": "node:http function secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-s-12"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "denial-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-s-13",
+      "label": "node:http function secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-s-13"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-s-14",
+      "label": "node:http function secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-s-14"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-n-15",
+      "label": "node:http function near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-n-15"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "denial-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-n-16",
+      "label": "node:http function near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-n-16"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-n-17",
+      "label": "node:http function near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-n-17"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-n-18",
+      "label": "node:http function near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-n-18"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "denial-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-fn-n-19",
+      "label": "node:http function near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "nh-fn-n-19"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-00",
+      "label": "node:http sql vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-00"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-01",
+      "label": "node:http sql vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-01"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-02",
+      "label": "node:http sql vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-02"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-03",
+      "label": "node:http sql vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-03"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-04",
+      "label": "node:http sql vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-04"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-05",
+      "label": "node:http sql vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-05"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-06",
+      "label": "node:http sql vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-06"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-07",
+      "label": "node:http sql vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-07"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-08",
+      "label": "node:http sql vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-08"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-v-09",
+      "label": "node:http sql vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-v-09"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-s-10",
+      "label": "node:http sql secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-s-10"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "error-status",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-s-11",
+      "label": "node:http sql secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-s-11"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-s-12",
+      "label": "node:http sql secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-s-12"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-s-13",
+      "label": "node:http sql secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-s-13"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "error-status",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-s-14",
+      "label": "node:http sql secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-s-14"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-n-15",
+      "label": "node:http sql near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-n-15"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-n-16",
+      "label": "node:http sql near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-n-16"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "error-status",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-n-17",
+      "label": "node:http sql near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-n-17"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-n-18",
+      "label": "node:http sql near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-n-18"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-sql-n-19",
+      "label": "node:http sql near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-sql-n-19"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/sql/secure",
+        "operator": "error-status",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-00",
+      "label": "node:http redirect vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-00"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-01",
+      "label": "node:http redirect vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-01"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-02",
+      "label": "node:http redirect vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-02"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-03",
+      "label": "node:http redirect vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-03"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-04",
+      "label": "node:http redirect vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-04"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-05",
+      "label": "node:http redirect vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-05"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-06",
+      "label": "node:http redirect vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-06"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-07",
+      "label": "node:http redirect vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-07"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-08",
+      "label": "node:http redirect vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-08"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-v-09",
+      "label": "node:http redirect vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-v-09"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-s-10",
+      "label": "node:http redirect secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-s-10"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-s-11",
+      "label": "node:http redirect secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-s-11"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-s-12",
+      "label": "node:http redirect secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-s-12"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-s-13",
+      "label": "node:http redirect secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-s-13"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-s-14",
+      "label": "node:http redirect secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-s-14"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-n-15",
+      "label": "node:http redirect near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-n-15"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-n-16",
+      "label": "node:http redirect near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-n-16"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-n-17",
+      "label": "node:http redirect near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-n-17"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-n-18",
+      "label": "node:http redirect near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-n-18"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-red-n-19",
+      "label": "node:http redirect near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "nh-red-n-19"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "node-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-00",
+      "label": "node:http authentication vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-00"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-01",
+      "label": "node:http authentication vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-01"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-02",
+      "label": "node:http authentication vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-02"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-03",
+      "label": "node:http authentication vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-03"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-04",
+      "label": "node:http authentication vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-04"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-05",
+      "label": "node:http authentication vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-05"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-06",
+      "label": "node:http authentication vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-06"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-07",
+      "label": "node:http authentication vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-07"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-08",
+      "label": "node:http authentication vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-08"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-v-09",
+      "label": "node:http authentication vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-v-09"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-s-10",
+      "label": "node:http authentication secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-s-10"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-s-11",
+      "label": "node:http authentication secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-s-11"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-s-12",
+      "label": "node:http authentication secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-s-12"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-s-13",
+      "label": "node:http authentication secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-s-13"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-s-14",
+      "label": "node:http authentication secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-s-14"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-n-15",
+      "label": "node:http authentication near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-n-15"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-n-16",
+      "label": "node:http authentication near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-n-16"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-n-17",
+      "label": "node:http authentication near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-n-17"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-n-18",
+      "label": "node:http authentication near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-n-18"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-auth-n-19",
+      "label": "node:http authentication near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-auth-n-19"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "node-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-00",
+      "label": "node:http second-order vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-00"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-01",
+      "label": "node:http second-order vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-01"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-02",
+      "label": "node:http second-order vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-02"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-03",
+      "label": "node:http second-order vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-03"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-04",
+      "label": "node:http second-order vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-04"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-05",
+      "label": "node:http second-order vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-05"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-06",
+      "label": "node:http second-order vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-06"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-07",
+      "label": "node:http second-order vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-07"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-08",
+      "label": "node:http second-order vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-08"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-v-09",
+      "label": "node:http second-order vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-v-09"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-s-10",
+      "label": "node:http second-order secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-s-10"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-s-11",
+      "label": "node:http second-order secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-s-11"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-s-12",
+      "label": "node:http second-order secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-s-12"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-s-13",
+      "label": "node:http second-order secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-s-13"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-s-14",
+      "label": "node:http second-order secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-s-14"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-n-15",
+      "label": "node:http second-order near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-n-15"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-n-16",
+      "label": "node:http second-order near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-n-16"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-n-17",
+      "label": "node:http second-order near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-n-17"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-n-18",
+      "label": "node:http second-order near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-n-18"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "nh-so-n-19",
+      "label": "node:http second-order near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "nh-so-n-19"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "TypeScript",
+        "node:http",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "TypeScript",
+      "framework": "node:http",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "node-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-00",
+      "label": "http.server object vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-00"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-01",
+      "label": "http.server object vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-01"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-02",
+      "label": "http.server object vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-02"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-03",
+      "label": "http.server object vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-03"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-04",
+      "label": "http.server object vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-04"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-05",
+      "label": "http.server object vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-05"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-06",
+      "label": "http.server object vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-06"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-07",
+      "label": "http.server object vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-07"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "response-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-08",
+      "label": "http.server object vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-08"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "nested-public-lookalike",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-v-09",
+      "label": "http.server object vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-v-09"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/vulnerable",
+        "operator": "denial-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-s-10",
+      "label": "http.server object secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-s-10"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "response-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-s-11",
+      "label": "http.server object secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-s-11"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-s-12",
+      "label": "http.server object secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-s-12"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "denial-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-s-13",
+      "label": "http.server object secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-s-13"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "response-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-s-14",
+      "label": "http.server object secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-s-14"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-n-15",
+      "label": "http.server object near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-n-15"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "denial-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-n-16",
+      "label": "http.server object near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-n-16"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "response-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-n-17",
+      "label": "http.server object near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-n-17"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "nested-public-lookalike",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-n-18",
+      "label": "http.server object near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-n-18"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "denial-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-obj-n-19",
+      "label": "http.server object near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-obj-n-19"
+        }
+      ],
+      "category": "OBJECT_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "object",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-639",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/object/secure",
+        "operator": "response-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-00",
+      "label": "http.server function vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-00"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-01",
+      "label": "http.server function vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-01"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-02",
+      "label": "http.server function vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-02"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-03",
+      "label": "http.server function vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-03"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-04",
+      "label": "http.server function vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-04"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-05",
+      "label": "http.server function vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-05"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-06",
+      "label": "http.server function vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-06"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-07",
+      "label": "http.server function vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-07"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "capability-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-08",
+      "label": "http.server function vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-08"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "nested-boolean-lookalike",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-v-09",
+      "label": "http.server function vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-v-09"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/vulnerable",
+        "operator": "denial-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-s-10",
+      "label": "http.server function secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-s-10"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-s-11",
+      "label": "http.server function secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-s-11"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-s-12",
+      "label": "http.server function secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-s-12"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "denial-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-s-13",
+      "label": "http.server function secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-s-13"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-s-14",
+      "label": "http.server function secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-s-14"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-n-15",
+      "label": "http.server function near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-n-15"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "denial-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-n-16",
+      "label": "http.server function near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-n-16"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-n-17",
+      "label": "http.server function near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-n-17"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "nested-boolean-lookalike",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-n-18",
+      "label": "http.server function near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-n-18"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "denial-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-fn-n-19",
+      "label": "http.server function near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "api-graphql-authorization",
+          "caseId": "ph-fn-n-19"
+        }
+      ],
+      "category": "FUNCTION_AUTHORIZATION",
+      "tags": [
+        "Python",
+        "http.server",
+        "function",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-862",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/function/secure",
+        "operator": "capability-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-00",
+      "label": "http.server sql vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-00"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-01",
+      "label": "http.server sql vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-01"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-02",
+      "label": "http.server sql vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-02"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-03",
+      "label": "http.server sql vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-03"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-04",
+      "label": "http.server sql vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-04"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-05",
+      "label": "http.server sql vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-05"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-06",
+      "label": "http.server sql vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-06"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-07",
+      "label": "http.server sql vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-07"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "error-status",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-08",
+      "label": "http.server sql vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-08"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "literal-canary-neutralization",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-v-09",
+      "label": "http.server sql vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-v-09"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/vulnerable",
+        "operator": "database-error-dialect",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-s-10",
+      "label": "http.server sql secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-s-10"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "error-status",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-s-11",
+      "label": "http.server sql secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-s-11"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-s-12",
+      "label": "http.server sql secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-s-12"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-s-13",
+      "label": "http.server sql secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-s-13"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "error-status",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-s-14",
+      "label": "http.server sql secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-s-14"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-n-15",
+      "label": "http.server sql near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-n-15"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-n-16",
+      "label": "http.server sql near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-n-16"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "error-status",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-n-17",
+      "label": "http.server sql near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-n-17"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "literal-canary-neutralization",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-n-18",
+      "label": "http.server sql near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-n-18"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "database-error-dialect",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-sql-n-19",
+      "label": "http.server sql near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-sql-n-19"
+        }
+      ],
+      "category": "SQL_INJECTION",
+      "tags": [
+        "Python",
+        "http.server",
+        "sql",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-89",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/sql/secure",
+        "operator": "error-status",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-00",
+      "label": "http.server redirect vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-00"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-01",
+      "label": "http.server redirect vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-01"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-02",
+      "label": "http.server redirect vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-02"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-03",
+      "label": "http.server redirect vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-03"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-04",
+      "label": "http.server redirect vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-04"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-05",
+      "label": "http.server redirect vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-05"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-06",
+      "label": "http.server redirect vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-06"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-07",
+      "label": "http.server redirect vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-07"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "origin-lookalike",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-08",
+      "label": "http.server redirect vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-08"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "relative-location",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-v-09",
+      "label": "http.server redirect vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-v-09"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "VULNERABLE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/vulnerable",
+        "operator": "redirect-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-s-10",
+      "label": "http.server redirect secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-s-10"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-s-11",
+      "label": "http.server redirect secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-s-11"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-s-12",
+      "label": "http.server redirect secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-s-12"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-s-13",
+      "label": "http.server redirect secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-s-13"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-s-14",
+      "label": "http.server redirect secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-s-14"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "SECURE",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-n-15",
+      "label": "http.server redirect near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-n-15"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-n-16",
+      "label": "http.server redirect near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-n-16"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-n-17",
+      "label": "http.server redirect near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-n-17"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "relative-location",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-n-18",
+      "label": "http.server redirect near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-n-18"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "redirect-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-red-n-19",
+      "label": "http.server redirect near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "active-vulnerability-validation",
+          "caseId": "ph-red-n-19"
+        }
+      ],
+      "category": "OPEN_REDIRECT",
+      "tags": [
+        "Python",
+        "http.server",
+        "redirect",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-601",
+      "control": "NEAR_MISS",
+      "complexity": "SINGLE_STEP",
+      "mutation": {
+        "lineage": "python-http/redirect/secure",
+        "operator": "origin-lookalike",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-00",
+      "label": "http.server authentication vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-00"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-01",
+      "label": "http.server authentication vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-01"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-02",
+      "label": "http.server authentication vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-02"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-03",
+      "label": "http.server authentication vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-03"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-04",
+      "label": "http.server authentication vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-04"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-05",
+      "label": "http.server authentication vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-05"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-06",
+      "label": "http.server authentication vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-06"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-07",
+      "label": "http.server authentication vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-07"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "response-shape",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-08",
+      "label": "http.server authentication vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-08"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "equal-error-control",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-v-09",
+      "label": "http.server authentication vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-v-09"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "VULNERABLE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/vulnerable",
+        "operator": "account-error-status",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-s-10",
+      "label": "http.server authentication secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-s-10"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-s-11",
+      "label": "http.server authentication secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-s-11"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-s-12",
+      "label": "http.server authentication secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-s-12"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-s-13",
+      "label": "http.server authentication secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-s-13"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-s-14",
+      "label": "http.server authentication secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-s-14"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "SECURE",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-n-15",
+      "label": "http.server authentication near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-n-15"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-n-16",
+      "label": "http.server authentication near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-n-16"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-n-17",
+      "label": "http.server authentication near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-n-17"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "equal-error-control",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-n-18",
+      "label": "http.server authentication near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-n-18"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "account-error-status",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-auth-n-19",
+      "label": "http.server authentication near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-auth-n-19"
+        }
+      ],
+      "category": "AUTHENTICATION_LIFECYCLE",
+      "tags": [
+        "Python",
+        "http.server",
+        "authentication",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-204",
+      "control": "NEAR_MISS",
+      "complexity": "MULTI_STEP",
+      "mutation": {
+        "lineage": "python-http/authentication/secure",
+        "operator": "response-shape",
+        "generation": 20
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-00",
+      "label": "http.server second-order vulnerable mutant 0",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-00"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 1
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-01",
+      "label": "http.server second-order vulnerable mutant 1",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-01"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 2
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-02",
+      "label": "http.server second-order vulnerable mutant 2",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-02"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 3
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-03",
+      "label": "http.server second-order vulnerable mutant 3",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-03"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 4
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-04",
+      "label": "http.server second-order vulnerable mutant 4",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-04"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 5
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-05",
+      "label": "http.server second-order vulnerable mutant 5",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-05"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 6
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-06",
+      "label": "http.server second-order vulnerable mutant 6",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-06"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 7
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-07",
+      "label": "http.server second-order vulnerable mutant 7",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-07"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "state-key-layout",
+        "generation": 8
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-08",
+      "label": "http.server second-order vulnerable mutant 8",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-08"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "cleanup-path",
+        "generation": 9
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-v-09",
+      "label": "http.server second-order vulnerable mutant 9",
+      "expected": "FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-v-09"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "positive",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "VULNERABLE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/vulnerable",
+        "operator": "stored-value-encoding",
+        "generation": 10
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-s-10",
+      "label": "http.server second-order secure mutant 10",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-s-10"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 11
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-s-11",
+      "label": "http.server second-order secure mutant 11",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-s-11"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 12
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-s-12",
+      "label": "http.server second-order secure mutant 12",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-s-12"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 13
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-s-13",
+      "label": "http.server second-order secure mutant 13",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-s-13"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 14
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-s-14",
+      "label": "http.server second-order secure mutant 14",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-s-14"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "SECURE",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 15
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-n-15",
+      "label": "http.server second-order near-miss mutant 15",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-n-15"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 16
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-n-16",
+      "label": "http.server second-order near-miss mutant 16",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-n-16"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 17
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-n-17",
+      "label": "http.server second-order near-miss mutant 17",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-n-17"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "cleanup-path",
+        "generation": 18
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-n-18",
+      "label": "http.server second-order near-miss mutant 18",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-n-18"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "stored-value-encoding",
+        "generation": 19
+      },
+      "required": true
+    },
+    {
+      "id": "ph-so-n-19",
+      "label": "http.server second-order near-miss mutant 19",
+      "expected": "NO_FINDING",
+      "selectors": [
+        {
+          "workflowId": "authentication-lifecycle",
+          "caseId": "ph-so-n-19"
+        }
+      ],
+      "category": "SECOND_ORDER_STATE",
+      "tags": [
+        "Python",
+        "http.server",
+        "second-order",
+        "negative-control-near-miss",
+        "mutant"
+      ],
+      "language": "Python",
+      "framework": "http.server",
+      "weaknessId": "CWE-116",
+      "control": "NEAR_MISS",
+      "complexity": "SECOND_ORDER",
+      "mutation": {
+        "lineage": "python-http/second-order/secure",
+        "operator": "state-key-layout",
+        "generation": 20
+      },
+      "required": true
+    }
+  ],
+  "thresholds": {
+    "minRecall": 1,
+    "maxFalsePositiveRate": 0,
+    "maxInconclusiveRate": 0,
+    "minCoverageCompleteness": 1,
+    "minRepetitions": 1,
+    "minCasesPerCategory": 40,
+    "requireBalancedCategories": true,
+    "minCleanupObservationsPerRun": 80,
+    "maxCleanupFailures": 0,
+    "maxP95RuntimeMs": 240000,
+    "maxPeakRssBytes": 2500000000,
+    "maxRequestsPerAssessedCase": 8,
+    "minCorpusCases": 240,
+    "minPositiveCases": 120,
+    "minNegativeCases": 120,
+    "minLanguages": 2,
+    "minFrameworks": 2,
+    "minNearMissControls": 60,
+    "minMultiStepCases": 40,
+    "minSecondOrderCases": 40,
+    "minMutantCases": 240,
+    "minYoudenIndex": 1
+  },
+  "regression": {
+    "maxRecallDrop": 0,
+    "maxFalsePositiveRateIncrease": 0,
+    "maxInconclusiveRateIncrease": 0,
+    "maxCoverageDrop": 0,
+    "maxYoudenIndexDrop": 0,
+    "maxRuntimeIncreaseRatio": 1,
+    "maxMemoryIncreaseRatio": 0.75,
+    "maxRequestIncreaseRatio": 0.2,
+    "failOnCaseRegression": true
+  },
+  "corpus": {
+    "version": "1.0.0",
+    "publisher": "RouteCairn public benchmark laboratory",
+    "publishedAt": "2026-09-26T00:00:00.000Z",
+    "license": "MIT",
+    "independence": "SELF_MAINTAINED",
+    "blinded": false
+  },
+  "metadata": {
+    "fixture": true,
+    "deterministicMutants": true,
+    "externalTargetsTested": false,
+    "caseCount": 240
+  }
+}

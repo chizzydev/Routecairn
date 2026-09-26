@@ -6,18 +6,21 @@ import { benchmarkManifestSchema, benchmarkTelemetrySchema, type BenchmarkClassi
 
 export interface BenchmarkRunInput { report: RouteCairnReport; telemetry: BenchmarkTelemetry; reportDigest?: string }
 export interface BenchmarkCaseRun { run: number; classification: BenchmarkClassification; observed: "FINDING" | "NO_FINDING" | "INCONCLUSIVE" | "UNCOVERED"; matchedFindingIds: string[] }
-export interface BenchmarkCaseResult { id: string; label: string; expected: "FINDING" | "NO_FINDING"; category?: string; tags: string[]; required: boolean; runs: BenchmarkCaseRun[]; aggregate: BenchmarkClassification; stable: boolean }
+export interface BenchmarkCaseResult { id: string; label: string; expected: "FINDING" | "NO_FINDING"; category?: string; tags: string[]; language?: string; framework?: string; weaknessId?: string; control?: "VULNERABLE" | "SECURE" | "NEAR_MISS"; complexity: "SINGLE_STEP" | "MULTI_STEP" | "SECOND_ORDER"; mutation?: { lineage: string; operator: string; generation: number }; blindId?: string; required: boolean; runs: BenchmarkCaseRun[]; aggregate: BenchmarkClassification; stable: boolean }
 export interface BenchmarkGate { id: string; passed: boolean; actual: number | boolean; expected: string }
 export interface BenchmarkRegression { id: string; passed: boolean; actual: number | boolean; expected: string }
-export interface BenchmarkCategoryResult { category: string; caseCount: number; positiveCases: number; negativeCases: number; confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number }; metrics: { recall: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; stabilityRate: number } }
+export interface BenchmarkCategoryResult { category: string; caseCount: number; positiveCases: number; negativeCases: number; confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number }; metrics: { recall: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; stabilityRate: number; youdenIndex: number } }
+export interface BenchmarkSliceResult extends BenchmarkCategoryResult { dimension: "language" | "framework" | "weakness" | "complexity" | "control"; value: string }
 export interface BenchmarkResult {
   schemaVersion: 1; kind: "ROUTECAIRN_BENCHMARK_RESULT"; benchmarkId: string; label: string; generatedAt: string; release: { label?: string; build?: string; routeCairnVersion: string };
   manifestDigest: string; reportDigests: string[]; repetitions: number;
   runTelemetry: BenchmarkTelemetry[];
   confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number; unexpectedFindings: number };
-  metrics: { recall: number; precision: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; conclusiveCoverage: number; stabilityRate: number };
+  metrics: { recall: number; precision: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; conclusiveCoverage: number; stabilityRate: number; youdenIndex: number };
   cleanup: { observed: number; passed: number; failed: number; successRate: number };
   categories: BenchmarkCategoryResult[];
+  slices: BenchmarkSliceResult[];
+  corpus: { cases: number; positiveCases: number; negativeCases: number; nearMissControls: number; multiStepCases: number; secondOrderCases: number; mutantCases: number; languages: string[]; frameworks: string[]; blindedCases: number };
   efficiency: { runtimeMs: Distribution; peakRssBytes: Distribution; requestCount: Distribution; transmittedRequestCount: Distribution; requestsPerAssessedCase: Distribution; runtimePerRequestMs: Distribution };
   cases: BenchmarkCaseResult[]; unexpectedFindings: Array<{ run: number; findingId: string; sourceModule: string; findingType: string; workflowId?: string; caseId?: string }>;
   gates: BenchmarkGate[]; regressions: BenchmarkRegression[]; status: "PASSED" | "FAILED";
@@ -34,7 +37,7 @@ export function evaluateBenchmark(rawManifest: unknown, rawRuns: readonly Benchm
   const unexpectedFindings: BenchmarkResult["unexpectedFindings"] = [];
   const cases = manifest.cases.map((truth): BenchmarkCaseResult => {
     const caseRuns = runs.map((run, index): BenchmarkCaseRun => classifyRun(truth.expected, truth.selectors, run.report, index + 1));
-    return { id: truth.id, label: truth.label, expected: truth.expected, ...(truth.category ? { category: truth.category } : {}), tags: truth.tags, required: truth.required, runs: caseRuns, aggregate: aggregateClass(caseRuns.map((item) => item.classification)), stable: new Set(caseRuns.map((item) => item.classification)).size === 1 };
+    return { id: truth.id, label: truth.label, expected: truth.expected, ...(truth.category ? { category: truth.category } : {}), tags: truth.tags, ...(truth.language ? { language: truth.language } : {}), ...(truth.framework ? { framework: truth.framework } : {}), ...(truth.weaknessId ? { weaknessId: truth.weaknessId } : {}), ...(truth.control ? { control: truth.control } : {}), complexity: truth.complexity ?? "SINGLE_STEP", ...(truth.mutation ? { mutation: truth.mutation } : {}), ...(truth.blindId ? { blindId: truth.blindId } : {}), required: truth.required, runs: caseRuns, aggregate: aggregateClass(caseRuns.map((item) => item.classification)), stable: new Set(caseRuns.map((item) => item.classification)).size === 1 };
   });
   runs.forEach((run, index) => {
     for (const finding of run.report.findings ?? []) if (manifest.cases.some((truth) => truth.selectors.some((selector) => findingInSelectorDomain(finding, selector))) && !manifest.cases.some((truth) => truth.selectors.some((selector) => findingMatches(finding, selector)))) unexpectedFindings.push({ run: index + 1, findingId: finding.id, sourceModule: finding.sourceModule, findingType: finding.type, ...(finding.workflow?.workflowId ? { workflowId: finding.workflow.workflowId } : {}), ...(finding.workflow?.caseId ? { caseId: finding.workflow.caseId } : {}) });
@@ -44,16 +47,21 @@ export function evaluateBenchmark(rawManifest: unknown, rawRuns: readonly Benchm
   const confusion = { truePositive: count("TRUE_POSITIVE"), falseNegative: count("FALSE_NEGATIVE"), falsePositive: count("FALSE_POSITIVE") + unexpectedFindings.length, trueNegative: count("TRUE_NEGATIVE"), inconclusive: count("INCONCLUSIVE"), uncovered: count("UNCOVERED"), unexpectedFindings: unexpectedFindings.length };
   const total = all.length;
   const assessed = total - confusion.inconclusive - confusion.uncovered;
+  const falsePositiveRate = ratio(confusion.falsePositive, confusion.falsePositive + confusion.trueNegative);
+  const recall = ratio(confusion.truePositive, confusion.truePositive + confusion.falseNegative + positiveUnresolved(cases));
   const metrics = {
-    recall: ratio(confusion.truePositive, confusion.truePositive + confusion.falseNegative + positiveUnresolved(cases)),
+    recall,
     precision: ratio(confusion.truePositive, confusion.truePositive + confusion.falsePositive),
-    falsePositiveRate: ratio(confusion.falsePositive, confusion.falsePositive + confusion.trueNegative),
+    falsePositiveRate,
     inconclusiveRate: ratio(confusion.inconclusive, total),
     coverageCompleteness: ratio(total - confusion.uncovered, total),
     conclusiveCoverage: ratio(assessed, total),
-    stabilityRate: ratio(cases.filter((item) => item.stable).length, cases.length)
+    stabilityRate: ratio(cases.filter((item) => item.stable).length, cases.length),
+    youdenIndex: recall - falsePositiveRate
   };
   const categories = categoryResults(cases);
+  const slices = sliceResults(cases);
+  const corpus = corpusSummary(cases);
   const cleanupCases = runs.flatMap((run) => collectReportAssistedCases(run.report).filter((observed) => observed.cleanupOutcome !== undefined && observed.cleanupOutcome !== "NOT_REQUIRED" && manifest.cases.some((truth) => truth.selectors.some((selector) => caseMatches(observed.workflowId, observed.caseId, selector)))));
   const cleanup = { observed: cleanupCases.length, passed: cleanupCases.filter((item) => !item.cleanupFailed).length, failed: cleanupCases.filter((item) => item.cleanupFailed).length, successRate: ratio(cleanupCases.filter((item) => !item.cleanupFailed).length, cleanupCases.length) };
   const assessedByRun = runs.map((_, i) => cases.filter((item) => !["INCONCLUSIVE", "UNCOVERED"].includes(item.runs[i]!.classification)).length);
@@ -61,8 +69,8 @@ export function evaluateBenchmark(rawManifest: unknown, rawRuns: readonly Benchm
   const requests = runs.map((run) => run.telemetry.requestCount);
   const transmitted = runs.map((run) => run.telemetry.transmittedRequestCount ?? run.telemetry.requestCount);
   const efficiency = { runtimeMs: distribution(runtime), peakRssBytes: distribution(runs.map((run) => run.telemetry.peakRssBytes)), requestCount: distribution(requests), transmittedRequestCount: distribution(transmitted), requestsPerAssessedCase: distribution(requests.map((value, i) => ratio(value, assessedByRun[i]!))), runtimePerRequestMs: distribution(runtime.map((value, i) => ratio(value, transmitted[i]!))) };
-  const gates = thresholdGates(manifest, metrics, cleanup, efficiency, cases, categories, runs.length);
-  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, cleanup, categories, efficiency, cases, unexpectedFindings, gates };
+  const gates = thresholdGates(manifest, metrics, cleanup, efficiency, cases, categories, corpus, runs.length);
+  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, cleanup, categories, slices, corpus, efficiency, cases, unexpectedFindings, gates };
   const regressions = options.baseline ? regressionGates(manifest, partial, options.baseline) : [];
   return { ...partial, regressions, status: [...gates, ...regressions].every((item) => item.passed) ? "PASSED" : "FAILED" };
 }
@@ -92,12 +100,35 @@ function distribution(values: readonly number[]): Distribution { const sorted = 
 function percentile(sorted: readonly number[], quantile: number): number { if (!sorted.length) return 0; const index = (sorted.length - 1) * quantile; const low = Math.floor(index); const high = Math.ceil(index); return sorted[low]! + (sorted[high]! - sorted[low]!) * (index - low); }
 function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function categoryResults(cases: readonly BenchmarkCaseResult[]): BenchmarkCategoryResult[] {
-  return [...new Set(cases.map((item) => item.category ?? "UNCATEGORIZED"))].sort().map((category) => {
-    const selected = cases.filter((item) => (item.category ?? "UNCATEGORIZED") === category); const runs = selected.flatMap((item) => item.runs);
-    const count = (classification: BenchmarkClassification) => runs.filter((item) => item.classification === classification).length;
-    const confusion = { truePositive: count("TRUE_POSITIVE"), falseNegative: count("FALSE_NEGATIVE"), falsePositive: count("FALSE_POSITIVE"), trueNegative: count("TRUE_NEGATIVE"), inconclusive: count("INCONCLUSIVE"), uncovered: count("UNCOVERED") }; const total = runs.length;
-    return { category, caseCount: selected.length, positiveCases: selected.filter((item) => item.expected === "FINDING").length, negativeCases: selected.filter((item) => item.expected === "NO_FINDING").length, confusion, metrics: { recall: ratio(confusion.truePositive, confusion.truePositive + confusion.falseNegative + selected.filter((item) => item.expected === "FINDING").flatMap((item) => item.runs).filter((item) => ["INCONCLUSIVE", "UNCOVERED"].includes(item.classification)).length), falsePositiveRate: ratio(confusion.falsePositive, confusion.falsePositive + confusion.trueNegative), inconclusiveRate: ratio(confusion.inconclusive, total), coverageCompleteness: ratio(total - confusion.uncovered, total), stabilityRate: ratio(selected.filter((item) => item.stable).length, selected.length) } };
+  return [...new Set(cases.map((item) => item.category ?? "UNCATEGORIZED"))].sort().map((category) => summarizeCases(category, cases.filter((item) => (item.category ?? "UNCATEGORIZED") === category)));
+}
+
+function summarizeCases(category: string, selected: readonly BenchmarkCaseResult[]): BenchmarkCategoryResult {
+  const runs = selected.flatMap((item) => item.runs); const count = (classification: BenchmarkClassification) => runs.filter((item) => item.classification === classification).length;
+  const confusion = { truePositive: count("TRUE_POSITIVE"), falseNegative: count("FALSE_NEGATIVE"), falsePositive: count("FALSE_POSITIVE"), trueNegative: count("TRUE_NEGATIVE"), inconclusive: count("INCONCLUSIVE"), uncovered: count("UNCOVERED") }; const total = runs.length;
+  const recall = ratio(confusion.truePositive, confusion.truePositive + confusion.falseNegative + selected.filter((item) => item.expected === "FINDING").flatMap((item) => item.runs).filter((item) => ["INCONCLUSIVE", "UNCOVERED"].includes(item.classification)).length); const falsePositiveRate = ratio(confusion.falsePositive, confusion.falsePositive + confusion.trueNegative);
+  return { category, caseCount: selected.length, positiveCases: selected.filter((item) => item.expected === "FINDING").length, negativeCases: selected.filter((item) => item.expected === "NO_FINDING").length, confusion, metrics: { recall, falsePositiveRate, inconclusiveRate: ratio(confusion.inconclusive, total), coverageCompleteness: ratio(total - confusion.uncovered, total), stabilityRate: ratio(selected.filter((item) => item.stable).length, selected.length), youdenIndex: recall - falsePositiveRate } };
+}
+
+function sliceResults(cases: readonly BenchmarkCaseResult[]): BenchmarkSliceResult[] {
+  const dimensions: Array<[BenchmarkSliceResult["dimension"], (item: BenchmarkCaseResult) => string | undefined]> = [
+    ["language", (item) => item.language], ["framework", (item) => item.framework], ["weakness", (item) => item.weaknessId],
+    ["complexity", (item) => item.complexity], ["control", (item) => item.control]
+  ];
+  return dimensions.flatMap(([dimension, select]) => {
+    const values = [...new Set(cases.map(select).filter((value): value is string => Boolean(value)))].sort();
+    return values.map((value) => ({ ...summarizeCases(`${dimension}:${value}`, cases.filter((item) => select(item) === value)), dimension, value }));
   });
+}
+
+function corpusSummary(cases: readonly BenchmarkCaseResult[]): BenchmarkResult["corpus"] {
+  return {
+    cases: cases.length, positiveCases: cases.filter((item) => item.expected === "FINDING").length, negativeCases: cases.filter((item) => item.expected === "NO_FINDING").length,
+    nearMissControls: cases.filter((item) => item.control === "NEAR_MISS").length, multiStepCases: cases.filter((item) => item.complexity === "MULTI_STEP").length,
+    secondOrderCases: cases.filter((item) => item.complexity === "SECOND_ORDER").length, mutantCases: cases.filter((item) => item.mutation !== undefined).length,
+    languages: [...new Set(cases.map((item) => item.language).filter((value): value is string => Boolean(value)))].sort(), frameworks: [...new Set(cases.map((item) => item.framework).filter((value): value is string => Boolean(value)))].sort(),
+    blindedCases: cases.filter((item) => item.blindId !== undefined).length
+  };
 }
 
 function assertUnambiguousSelectors(manifest: BenchmarkManifest, reports: readonly RouteCairnReport[]): void {
@@ -113,7 +144,7 @@ function assertUnambiguousSelectors(manifest: BenchmarkManifest, reports: readon
   }
 }
 
-function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["metrics"], cleanup: BenchmarkResult["cleanup"], efficiency: BenchmarkResult["efficiency"], cases: readonly BenchmarkCaseResult[], categories: readonly BenchmarkCategoryResult[], repetitions: number): BenchmarkGate[] {
+function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["metrics"], cleanup: BenchmarkResult["cleanup"], efficiency: BenchmarkResult["efficiency"], cases: readonly BenchmarkCaseResult[], categories: readonly BenchmarkCategoryResult[], corpus: BenchmarkResult["corpus"], repetitions: number): BenchmarkGate[] {
   const t = manifest.thresholds; const gates: BenchmarkGate[] = [
     { id: "recall", passed: metrics.recall >= t.minRecall, actual: metrics.recall, expected: `>= ${t.minRecall}` },
     { id: "false-positive-rate", passed: metrics.falsePositiveRate <= t.maxFalsePositiveRate, actual: metrics.falsePositiveRate, expected: `<= ${t.maxFalsePositiveRate}` },
@@ -123,6 +154,13 @@ function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["m
     { id: "cleanup-observations", passed: cleanup.observed >= t.minCleanupObservationsPerRun * repetitions, actual: cleanup.observed, expected: `>= ${t.minCleanupObservationsPerRun * repetitions}` },
     { id: "cleanup-failures", passed: cleanup.failed <= t.maxCleanupFailures, actual: cleanup.failed, expected: `<= ${t.maxCleanupFailures}` }
   ];
+  const minimums: Array<[string, number | undefined, number]> = [
+    ["corpus-cases", t.minCorpusCases, corpus.cases], ["positive-cases", t.minPositiveCases, corpus.positiveCases], ["negative-cases", t.minNegativeCases, corpus.negativeCases],
+    ["languages", t.minLanguages, corpus.languages.length], ["frameworks", t.minFrameworks, corpus.frameworks.length], ["near-miss-controls", t.minNearMissControls, corpus.nearMissControls],
+    ["multi-step-cases", t.minMultiStepCases, corpus.multiStepCases], ["second-order-cases", t.minSecondOrderCases, corpus.secondOrderCases], ["mutant-cases", t.minMutantCases, corpus.mutantCases]
+  ];
+  for (const [id, expected, actual] of minimums) if (expected !== undefined) gates.push({ id, passed: actual >= expected, actual, expected: `>= ${expected}` });
+  if (t.minYoudenIndex !== undefined) gates.push({ id: "youden-index", passed: metrics.youdenIndex >= t.minYoudenIndex, actual: metrics.youdenIndex, expected: `>= ${t.minYoudenIndex}` });
   if (t.maxMedianRuntimeMs !== undefined) gates.push({ id: "median-runtime", passed: efficiency.runtimeMs.median <= t.maxMedianRuntimeMs, actual: efficiency.runtimeMs.median, expected: `<= ${t.maxMedianRuntimeMs} ms` });
   if (t.maxP95RuntimeMs !== undefined) gates.push({ id: "p95-runtime", passed: efficiency.runtimeMs.p95 <= t.maxP95RuntimeMs, actual: efficiency.runtimeMs.p95, expected: `<= ${t.maxP95RuntimeMs} ms` });
   if (t.maxPeakRssBytes !== undefined) gates.push({ id: "peak-rss", passed: efficiency.peakRssBytes.max <= t.maxPeakRssBytes, actual: efficiency.peakRssBytes.max, expected: `<= ${t.maxPeakRssBytes} bytes` });
@@ -144,6 +182,7 @@ function regressionGates(manifest: BenchmarkManifest, current: Omit<BenchmarkRes
     { id: "false-positive-rate-increase", passed: current.metrics.falsePositiveRate - baseline.metrics.falsePositiveRate <= p.maxFalsePositiveRateIncrease, actual: current.metrics.falsePositiveRate - baseline.metrics.falsePositiveRate, expected: `<= ${p.maxFalsePositiveRateIncrease}` },
     { id: "inconclusive-rate-increase", passed: current.metrics.inconclusiveRate - baseline.metrics.inconclusiveRate <= p.maxInconclusiveRateIncrease, actual: current.metrics.inconclusiveRate - baseline.metrics.inconclusiveRate, expected: `<= ${p.maxInconclusiveRateIncrease}` },
     { id: "coverage-drop", passed: baseline.metrics.coverageCompleteness - current.metrics.coverageCompleteness <= p.maxCoverageDrop, actual: baseline.metrics.coverageCompleteness - current.metrics.coverageCompleteness, expected: `<= ${p.maxCoverageDrop}` },
+    { id: "youden-index-drop", passed: ((baseline.metrics.youdenIndex ?? baseline.metrics.recall - baseline.metrics.falsePositiveRate) - current.metrics.youdenIndex) <= (p.maxYoudenIndexDrop ?? 0), actual: (baseline.metrics.youdenIndex ?? baseline.metrics.recall - baseline.metrics.falsePositiveRate) - current.metrics.youdenIndex, expected: `<= ${p.maxYoudenIndexDrop ?? 0}` },
     { id: "runtime-increase", passed: ratioIncrease(current.efficiency.runtimeMs.median, baseline.efficiency.runtimeMs.median) <= p.maxRuntimeIncreaseRatio, actual: ratioIncrease(current.efficiency.runtimeMs.median, baseline.efficiency.runtimeMs.median), expected: `<= ${p.maxRuntimeIncreaseRatio}` },
     { id: "memory-increase", passed: ratioIncrease(current.efficiency.peakRssBytes.max, baseline.efficiency.peakRssBytes.max) <= p.maxMemoryIncreaseRatio, actual: ratioIncrease(current.efficiency.peakRssBytes.max, baseline.efficiency.peakRssBytes.max), expected: `<= ${p.maxMemoryIncreaseRatio}` },
     { id: "request-increase", passed: ratioIncrease(current.efficiency.requestCount.mean, baseline.efficiency.requestCount.mean) <= p.maxRequestIncreaseRatio, actual: ratioIncrease(current.efficiency.requestCount.mean, baseline.efficiency.requestCount.mean), expected: `<= ${p.maxRequestIncreaseRatio}` },

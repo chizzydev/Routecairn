@@ -7,6 +7,7 @@ const requiredFiles = [
   "dist/cli/index.js",
   "dist/dashboard/server/DashboardServer.js",
   "dist/core/plugins/ThirdPartyModuleRunner.mjs",
+  "dist/benchmark/fixtures/credibility-python.py",
   "apps/dashboard-ui/dist/index.html",
   "examples/supabase-authorization.example.json",
   "examples/authentication-lifecycle.example.json",
@@ -22,6 +23,7 @@ const requiredFiles = [
   "examples/pre-handover.example.json",
   "examples/bug-bounty-authorization.example.json",
   "examples/active-vulnerability-validation.example.json",
+  "benchmarks/routecairn-credibility-corpus-v1.json",
   "LICENSE",
   "README.md",
   "SECURITY.md"

@@ -16,8 +16,22 @@ export const benchmarkTruthCaseSchema = z.object({
   selectors: z.array(benchmarkSelectorSchema).min(1).max(20),
   category: z.string().min(1).max(120).optional(),
   tags: z.array(z.string().min(1).max(80)).max(30).default([]),
+  language: z.string().min(1).max(80).optional(),
+  framework: z.string().min(1).max(120).optional(),
+  weaknessId: z.string().regex(/^(?:CWE-[1-9][0-9]{0,4}|[A-Z][A-Z0-9._-]{1,79})$/).optional(),
+  control: z.enum(["VULNERABLE", "SECURE", "NEAR_MISS"]).optional(),
+  complexity: z.enum(["SINGLE_STEP", "MULTI_STEP", "SECOND_ORDER"]).optional(),
+  mutation: z.object({
+    lineage: identifier,
+    operator: z.string().min(1).max(120),
+    generation: z.number().int().min(1).max(1000)
+  }).strict().optional(),
+  blindId: z.string().regex(/^[A-Fa-f0-9]{32,128}$/).optional(),
   required: z.boolean().default(true)
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.expected === "FINDING" && value.control !== undefined && value.control !== "VULNERABLE") context.addIssue({ code: z.ZodIssueCode.custom, path: ["control"], message: "FINDING cases must use the VULNERABLE control." });
+  if (value.expected === "NO_FINDING" && value.control === "VULNERABLE") context.addIssue({ code: z.ZodIssueCode.custom, path: ["control"], message: "NO_FINDING cases must use SECURE or NEAR_MISS controls." });
+});
 
 export const benchmarkThresholdsSchema = z.object({
   minRecall: z.number().min(0).max(1).default(0),
@@ -32,7 +46,17 @@ export const benchmarkThresholdsSchema = z.object({
   maxMedianRuntimeMs: z.number().nonnegative().optional(),
   maxP95RuntimeMs: z.number().nonnegative().optional(),
   maxPeakRssBytes: z.number().int().nonnegative().optional(),
-  maxRequestsPerAssessedCase: z.number().nonnegative().optional()
+  maxRequestsPerAssessedCase: z.number().nonnegative().optional(),
+  minCorpusCases: z.number().int().min(1).max(5000).optional(),
+  minPositiveCases: z.number().int().min(0).max(5000).optional(),
+  minNegativeCases: z.number().int().min(0).max(5000).optional(),
+  minLanguages: z.number().int().min(1).max(100).optional(),
+  minFrameworks: z.number().int().min(1).max(500).optional(),
+  minNearMissControls: z.number().int().min(0).max(5000).optional(),
+  minMultiStepCases: z.number().int().min(0).max(5000).optional(),
+  minSecondOrderCases: z.number().int().min(0).max(5000).optional(),
+  minMutantCases: z.number().int().min(0).max(5000).optional(),
+  minYoudenIndex: z.number().min(-1).max(1).optional()
 }).strict().default({});
 
 export const benchmarkRegressionPolicySchema = z.object({
@@ -40,6 +64,7 @@ export const benchmarkRegressionPolicySchema = z.object({
   maxFalsePositiveRateIncrease: z.number().min(0).max(1).default(0),
   maxInconclusiveRateIncrease: z.number().min(0).max(1).default(0),
   maxCoverageDrop: z.number().min(0).max(1).default(0),
+  maxYoudenIndexDrop: z.number().min(0).max(2).optional(),
   maxRuntimeIncreaseRatio: z.number().nonnegative().default(0.25),
   maxMemoryIncreaseRatio: z.number().nonnegative().default(0.25),
   maxRequestIncreaseRatio: z.number().nonnegative().default(0.25),
@@ -54,6 +79,17 @@ export const benchmarkManifestSchema = z.object({
   cases: z.array(benchmarkTruthCaseSchema).min(1).max(5000),
   thresholds: benchmarkThresholdsSchema,
   regression: benchmarkRegressionPolicySchema,
+  corpus: z.object({
+    version: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$/),
+    publisher: z.string().min(1).max(240),
+    publishedAt: z.string().datetime({ offset: true }),
+    source: z.string().url().max(2048).optional(),
+    commit: z.string().regex(/^[A-Fa-f0-9]{7,64}$/).optional(),
+    license: z.string().min(1).max(120),
+    independence: z.enum(["SELF_MAINTAINED", "SEPARATE_REVIEWERS", "EXTERNAL"]),
+    blinded: z.boolean(),
+    signature: z.object({ algorithm: z.literal("Ed25519"), keyId: identifier, value: z.string().min(40).max(512) }).strict().optional()
+  }).strict().optional(),
   metadata: z.record(z.union([z.string().max(1000), z.number().finite(), z.boolean(), z.null()])).default({})
 }).strict().superRefine((value, context) => {
   const seen = new Set<string>();

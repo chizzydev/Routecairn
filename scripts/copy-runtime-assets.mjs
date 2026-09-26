@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const assets = [
-  ["src/core/plugins/ThirdPartyModuleRunner.mjs", "dist/core/plugins/ThirdPartyModuleRunner.mjs"]
+  ["src/core/plugins/ThirdPartyModuleRunner.mjs", "dist/core/plugins/ThirdPartyModuleRunner.mjs"],
+  ["src/benchmark/fixtures/credibility-python.py", "dist/benchmark/fixtures/credibility-python.py"]
 ];
 
 for (const [sourceRelative, destinationRelative] of assets) {

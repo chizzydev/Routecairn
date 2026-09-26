@@ -9,8 +9,10 @@
   "files": [
     "dist/**/*.js",
     "dist/**/*.mjs",
+    "dist/benchmark/fixtures/*.py",
     "apps/dashboard-ui/dist/**",
     "examples/**/*.json",
+    "benchmarks/routecairn-credibility-corpus-v1.json",
     "LICENSE",
     "README.md",
     "SECURITY.md"
@@ -27,6 +29,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "benchmark:local": "tsx src/cli/index.ts benchmark local",
+    "benchmark:credibility": "tsx src/cli/index.ts benchmark credibility",
     "acceptance:broader": "tsx src/cli/index.ts validate-broader-local",
     "acceptance:authentication": "tsx src/cli/index.ts validate-authentication-fixtures",
     "acceptance:authentication:sandbox": "tsx src/cli/index.ts validate-authentication-sandboxes",
