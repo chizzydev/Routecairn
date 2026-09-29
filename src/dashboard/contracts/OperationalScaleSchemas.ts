@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { scopeSchema } from "../../config/ConfigSchema.js";
+import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
 
 const safeName = z.string().trim().min(1).max(160);
 const envName = z.string().regex(/^[A-Z][A-Z0-9_]{1,126}$/);
@@ -14,6 +16,7 @@ export const organizationMemberSchema = z.object({
 }).strict();
 
 const httpsUrl = z.string().url().refine((value) => new URL(value).protocol === "https:", "HTTPS is required.");
+const httpOrigin = z.string().url().refine((value) => { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) && url.origin === value; }, "An exact HTTP(S) origin is required.");
 
 export const ssoProviderSchema = z.object({
   organizationId: z.string().uuid(),
@@ -74,7 +77,7 @@ export const notificationEnqueueSchema = z.object({
 export const remoteEnrollmentSchema = z.object({ organizationId: z.string().uuid(), nameHint: safeName.optional(), expiresInMinutes: z.number().int().min(5).max(10080).default(60) }).strict();
 export const remoteWorkerEnrollSchema = z.object({ token: z.string().min(32).max(300), name: safeName, publicKeyPem: z.string().min(100).max(4000), capabilities: z.array(z.string().regex(/^[a-z0-9][a-z0-9:._-]{0,99}$/)).min(1).max(100), labels: z.record(z.string().max(100)).default({}) }).strict();
 export const remoteHeartbeatSchema = z.object({ status: z.enum(["ONLINE", "DRAINING"]), resources: z.object({ cpuPercent: z.number().min(0).max(100), memoryBytes: z.number().int().nonnegative(), activeJobs: z.number().int().min(0).max(100) }).strict() }).strict();
-export const remoteJobSchema = z.object({ organizationId: z.string().uuid(), kind: z.enum(["SCAN", "EXPORT", "MODULE", "PING"]), payload: z.record(z.unknown()), requiredCapabilities: z.array(z.string().regex(/^[a-z0-9][a-z0-9:._-]{0,99}$/)).max(100).default([]), priority: z.number().int().min(-100).max(100).default(0), maxAttempts: z.number().int().min(1).max(10).default(3) }).strict();
+export const remoteJobSchema = z.object({ organizationId: z.string().uuid(), kind: z.enum(["SCAN", "EXPORT", "MODULE", "PING"]), payload: z.record(z.unknown()), requiredCapabilities: z.array(z.string().regex(/^[a-z0-9][a-z0-9:._-]{0,99}$/)).max(100).default([]), networkZone: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).optional(), priority: z.number().int().min(-100).max(100).default(0), maxAttempts: z.number().int().min(1).max(10).default(3) }).strict();
 export const remoteJobResultSchema = z.object({ leaseToken: z.string().min(32).max(300), status: z.enum(["COMPLETED", "FAILED"]), result: z.record(z.unknown()).optional(), error: z.string().max(1000).optional() }).strict().refine((value) => value.status !== "FAILED" || Boolean(value.error), { message: "Failed jobs require a safe error." });
 export const remoteJobLeaseRenewSchema = z.object({ leaseToken: z.string().min(32).max(300) }).strict();
 
@@ -95,11 +98,46 @@ export const thirdPartyModuleManifestSchema = z.object({
   entrypoint: z.string().regex(/^[a-zA-Z0-9_./-]+\.m?js$/).refine((value) => !value.includes("..") && !value.startsWith("/")),
   description: z.string().min(1).max(500),
   permissions: z.object({ network: z.literal(false), childProcess: z.literal(false), filesystem: z.enum(["NONE", "PACKAGE_READ_ONLY"]), maxRuntimeMs: z.number().int().min(100).max(30000), maxMemoryMb: z.number().int().min(16).max(256) }).strict(),
+  capabilities: z.object({
+    requestBroker: z.object({
+      maxRequests: z.number().int().min(1).max(50),
+      riskClass: z.enum(["LOW", "MODERATE"]).default("LOW"),
+      methods: z.array(z.enum(["GET", "HEAD", "OPTIONS", "POST"])).min(1).max(4),
+      pathPrefixes: z.array(z.string().min(1).max(500).refine((value) => value.startsWith("/") && !/[?#%\\]/.test(value) && !value.split("/").some((part) => part === "." || part === ".."), "A canonical path prefix is required.")).min(1).max(50),
+      allowNonMutatingPost: z.boolean().default(false),
+      maxRequestBytes: z.number().int().min(0).max(256 * 1024).default(16 * 1024),
+      maxResponseBytes: z.number().int().min(1024).max(2 * 1024 * 1024).default(256 * 1024),
+      bodyPreviewBytes: z.number().int().min(0).max(64 * 1024).default(16 * 1024),
+      timeoutMs: z.number().int().min(100).max(15000).default(5000),
+      concurrency: z.number().int().min(1).max(5).default(2)
+    }).strict().superRefine((value, ctx) => {
+      if (value.methods.includes("POST") && !value.allowNonMutatingPost) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["allowNonMutatingPost"], message: "POST requires an explicit non-mutating declaration." });
+      if (value.methods.includes("POST") && value.riskClass !== "MODERATE") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["riskClass"], message: "POST requires MODERATE broker risk classification." });
+      if (!value.methods.includes("POST") && value.allowNonMutatingPost) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["allowNonMutatingPost"], message: "The non-mutating POST declaration requires POST in methods." });
+      if (new Set(value.pathPrefixes).size !== value.pathPrefixes.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pathPrefixes"], message: "Duplicate path prefixes are not allowed." });
+    }).optional()
+  }).strict().default({}),
   inputSchema: z.record(z.unknown()).default({}),
   outputLimit: z.number().int().min(1).max(1000).default(100)
 }).strict();
 export const thirdPartyModuleRegisterSchema = z.object({ organizationId: z.string().uuid(), packageDirectory: z.string().min(1).max(2000) }).strict();
-export const thirdPartyModuleExecuteSchema = z.object({ input: z.record(z.unknown()) }).strict();
+const brokerApprovalSchema = z.object({
+  targetOrigin: httpOrigin,
+  packageDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  authorizedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  operator: z.string().min(1).max(160),
+  reference: z.string().min(1).max(240),
+  nonMutatingPosts: z.array(z.object({ path: z.string().min(1).max(1000).refine((value) => value.startsWith("/") && !/[?#%\\]/.test(value) && !value.split("/").some((part) => part === "." || part === ".."), "A canonical path is required."), bodySha256: z.string().regex(/^[a-f0-9]{64}$/), headersSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).max(50).default([]),
+  confirmation: z.literal("I_AUTHORIZE_BROKERED_MODULE_REQUESTS")
+}).strict().superRefine((value, ctx) => {
+  const start = Date.parse(value.authorizedAt), end = Date.parse(value.expiresAt);
+  if (start >= end || end - start > 60 * 60 * 1000) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expiresAt"], message: "Broker approval must use a positive window of at most one hour." });
+  if (new Set(value.nonMutatingPosts.map((item) => item.path)).size !== value.nonMutatingPosts.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["nonMutatingPosts"], message: "Duplicate approved POST paths are not allowed." });
+});
+export const thirdPartyModuleBrokerBindingSchema = z.object({ target: httpOrigin, scope: scopeSchema.strict(), targetAuthorization: targetAuthorizationSchema.optional(), approval: brokerApprovalSchema }).strict();
+export const thirdPartyModuleExecuteSchema = z.object({ input: z.record(z.unknown()), broker: thirdPartyModuleBrokerBindingSchema.optional() }).strict();
 export const remoteWorkerStateSchema = z.object({ status: z.enum(["ONLINE", "DRAINING", "QUARANTINED", "REVOKED"]) }).strict();
 
 export type ThirdPartyModuleManifest = z.infer<typeof thirdPartyModuleManifestSchema>;
+export type ThirdPartyModuleBrokerBinding = z.infer<typeof thirdPartyModuleBrokerBindingSchema>;

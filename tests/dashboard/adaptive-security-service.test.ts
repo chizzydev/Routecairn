@@ -14,8 +14,11 @@ describe("adaptive security model and recommendation loop", () => {
     const firstScan = scan(database, targetId);
     const service = new AdaptiveSecurityService(database);
     const initial = service.observeCompletedScan(firstScan, report(false)) as any;
+    expect(initial.inventory).toMatchObject({ schemaVersion: 2, attackGraph: { schemaVersion: 1, bounds: { truncated: false } } });
+    expect(initial.state.attackGraph.graphFingerprint).toBe(initial.inventory.attackGraph.graphFingerprint);
+    expect(initial.state.attackGraph.coverage.STATE_CHANGING_PATHS).toBeGreaterThan(0);
     expect(initial.inventory.routes.map((item: any) => item.pathTemplate)).toContain("/api/logout");
-    expect(initial.state.recommendations.some((item: any) => item.category === "LIFECYCLE_LOGOUT_INVALIDATION")).toBe(true);
+    expect(initial.state.recommendations.find((item: any) => item.category === "LIFECYCLE_LOGOUT_INVALIDATION")).toMatchObject({ operatorApprovalRequired: true, draft: { attackGraphBinding: { graphFingerprint: initial.inventory.attackGraph.graphFingerprint } } });
     expect(JSON.stringify(initial)).not.toContain("disposable@example.test");
     const initialRecommendationFingerprint = initial.state.recommendations.find((item: any) => item.category === "LIFECYCLE_LOGOUT_INVALIDATION").sourceFingerprint;
     service.acceptBaseline(initial.id, initial.modelDigest, "owner");
@@ -24,7 +27,9 @@ describe("adaptive security model and recommendation loop", () => {
     const changed = service.observeCompletedScan(secondScan, report(true)) as any;
     expect(changed.state.drifts).toEqual(expect.arrayContaining([
       expect.objectContaining({ drift_type: "FIELD_ACCESS_CHANGED", severity: "HIGH" }),
-      expect.objectContaining({ drift_type: "COOKIE_SECURITY_CHANGED", severity: "HIGH" })
+      expect.objectContaining({ drift_type: "COOKIE_SECURITY_CHANGED", severity: "HIGH" }),
+      expect.objectContaining({ drift_type: "NEW_GRAPH_OPERATION", severity: "HIGH" }),
+      expect.objectContaining({ drift_type: "GRAPH_PATH_CONTRACT_CHANGED", severity: "HIGH" })
     ]));
     const recommendation = changed.state.recommendations.find((item: any) => item.category === "LIFECYCLE_LOGOUT_INVALIDATION");
     expect(recommendation.sourceFingerprint).toBe(initialRecommendationFingerprint);

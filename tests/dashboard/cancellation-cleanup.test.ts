@@ -37,7 +37,7 @@ describe("dashboard cancellation and partial evidence", () => {
           const database = new DashboardDatabase(resolveDashboardPaths(dataDir).databasePath);
           try {
             expect(database.db.prepare("SELECT status FROM scans WHERE id = ?").get(scanId)).toMatchObject({ status: "CANCELLED" });
-            expect(database.db.prepare("SELECT COUNT(*) AS total FROM artifacts WHERE scan_id = ?").get(scanId)).toMatchObject({ total: 3 });
+            expect(database.db.prepare("SELECT COUNT(*) AS total FROM artifacts WHERE scan_id = ?").get(scanId)).toMatchObject({ total: 5 });
           } finally { database.close(); }
           return;
         }
@@ -52,9 +52,17 @@ describe("dashboard cancellation and partial evidence", () => {
           } finally { database.close(); }
         }
         const detail = async () => (await (await fetch(`${handle.url}/api/scans/${scanId}/detail`, { headers })).json()) as any;
-        await expect.poll(async () => (await detail()).scan.status, { timeout: 20000 }).toBe(mode === "forced-termination" ? "INTERRUPTED" : "CANCELLED");
+        if (mode === "forced-termination" && process.platform === "win32") {
+          // Windows can deliver the already-requested cancellation result before the
+          // external hard-kill exit event; both terminal states retain the same
+          // partial checkpoint and unresolved-cleanup evidence.
+          await expect.poll(async () => ["INTERRUPTED", "CANCELLED"].includes((await detail()).scan.status), { timeout: 20000 }).toBe(true);
+        } else {
+          await expect.poll(async () => (await detail()).scan.status, { timeout: 20000 }).toBe(mode === "forced-termination" ? "INTERRUPTED" : "CANCELLED");
+        }
         const final = await detail();
-        expect(final.artifacts).toHaveLength(3);
+        expect(final.artifacts).toHaveLength(5);
+        expect(final.artifacts.map((artifact: any) => artifact.artifact_type)).toEqual(expect.arrayContaining(["STANDARDS_COVERAGE_JSON", "STANDARDS_COVERAGE_CSV"]));
         expect(final.findings.length).toBeGreaterThan(0);
         const json = final.artifacts.find((artifact: any) => artifact.artifact_type === "JSON_REPORT");
         const download = await fetch(`${handle.url}/api/artifacts/${json.id}/download`, { headers });
@@ -86,7 +94,7 @@ describe("dashboard cancellation and partial evidence", () => {
           try {
             const restartedHeaders = await authenticate(restarted.url, restarted.bootstrapUrl!);
             const restartedDetail = async () => (await (await fetch(`${restarted.url}/api/scans/${scanId}/detail`, { headers: restartedHeaders })).json()) as any;
-            await expect.poll(async () => (await restartedDetail()).artifacts.length, { timeout: 10000 }).toBe(3);
+            await expect.poll(async () => (await restartedDetail()).artifacts.length, { timeout: 10000 }).toBe(5);
             expect((await restartedDetail()).findings).toHaveLength(originalFindingCount);
           } finally { await restarted.close(); }
         }

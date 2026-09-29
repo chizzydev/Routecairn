@@ -1,4 +1,4 @@
-export const dashboardSchemaVersion = 42;
+export const dashboardSchemaVersion = 43;
 
 export const dashboardMigrations: readonly {
   version: number;
@@ -1937,6 +1937,13 @@ CREATE TABLE cloud_sync_artifact_chunks (
     version: 42,
     sql: `
 ALTER TABLE cloud_sync_peers ADD COLUMN state_cursor_digest TEXT;
+`
+  },
+  {
+    version: 43,
+    sql: `
+ALTER TABLE remote_jobs ADD COLUMN network_zone TEXT;
+CREATE INDEX idx_remote_jobs_zone_claim ON remote_jobs(organization_id,status,network_zone,priority,created_at);
 `
   }
 ];

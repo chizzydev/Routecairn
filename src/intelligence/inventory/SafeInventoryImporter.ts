@@ -310,7 +310,7 @@ function importGraphql(sourceId: string, endpoint: string, document: unknown, or
   const fields = (query && Array.isArray(query.fields) ? query.fields : []).filter(record).flatMap((field) => {
     const name = string(field.name); if (!name || name.startsWith("__")) return [];
     const args = Array.isArray(field.args) ? field.args.filter(record) : [];
-    if (args.some((arg) => nonNullType(arg.type) && arg.defaultValue == null)) return [];
+    if (args.some((arg) => nonNullType(arg.type) && (arg.defaultValue === null || arg.defaultValue === undefined))) return [];
     return [{ name, objectResult: objectType(field.type) }];
   });
   return { sourceId, url, fields, mutationCount: mutation && Array.isArray(mutation.fields) ? mutation.fields.length : 0 };

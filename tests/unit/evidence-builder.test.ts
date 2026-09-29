@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { evidenceFromResponse, redactBodyPreview, redactHeaders } from "../../src/core/evidence/EvidenceBuilder.js";
 import type { HttpResponse } from "../../src/core/http/HttpTypes.js";
 

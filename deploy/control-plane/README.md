@@ -13,3 +13,17 @@ The application container is not published directly. Caddy terminates HTTPS and 
 Remote workers enroll over the public HTTPS origin, keep target credentials and input manifests in their own workspace, and run with `routecairn agent run --state <file> --workspace <directory>`. Back up the `routecairn-data` volume and the master-key material together.
 
 Mutation-capable workers must also set `ROUTECAIRN_MUTATION_COORDINATOR_URL` to this public origin, set one shared `ROUTECAIRN_MUTATION_COORDINATOR_NAMESPACE` for the target environment, and mount the same coordinator secret through `ROUTECAIRN_MUTATION_COORDINATOR_SECRET_FILE`. Read-only workers do not need coordinator credentials.
+
+## Distributed infrastructure profile
+
+`compose.distributed.yaml` adds PostgreSQL durable worker queues, S3-compatible evidence storage, and an OTLP collector while retaining the original Compose file as the single-node default. Create the four additional secret files referenced by the overlay. `database-url.txt` must contain the full PostgreSQL URL using the password in `postgres-password.txt`.
+
+The bundled profile reads MinIO credentials through `AWS_ACCESS_KEY_ID_FILE` and `AWS_SECRET_ACCESS_KEY_FILE`. Production Kubernetes deployments should omit static credentials and use workload identity.
+
+Run the overlay with:
+
+```console
+docker compose -f compose.yaml -f compose.distributed.yaml up --build -d
+```
+
+For multiple control-plane replicas, use the Helm chart in `deploy/helm/routecairn`. Compose remains a single-host deployment.

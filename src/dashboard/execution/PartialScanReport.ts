@@ -6,6 +6,8 @@ import { JsonReportWriter } from "../../reports/JsonReportWriter.js";
 import { MarkdownReportWriter } from "../../reports/MarkdownReportWriter.js";
 import { HtmlReportWriter } from "../../reports/HtmlReportWriter.js";
 import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
+import { buildStandardsCoverage } from "../../standards/StandardsCoverage.js";
+import { StandardsCoverageWriter } from "../../standards/StandardsCoverageWriter.js";
 
 export interface ScanReportPaths { reportPath: string; markdownReportPath: string; htmlReportPath: string }
 
@@ -43,11 +45,15 @@ export async function preservePartialScanReport(paths: DashboardPaths, scanId: s
     const cleanup = await readMutationCleanupStatus(paths.mutationJournalDir, paths.mutationJournalRegistryPath);
     report.execution.cleanup = { state: cleanup.cases.length ? "REQUIRED" : "CLEAR", cases: cleanup.cases.map(({ caseId, stage, recoveryBundleAvailable }) => ({ caseId, stage, recoveryBundleAvailable })) };
   } catch { report.execution.cleanup = { state: "UNKNOWN", cases: [] }; }
+  const { standardsCoverage: _staleCoverage, ...coverageInput } = report;
+  const standardsCoverage = buildStandardsCoverage(coverageInput);
+  report = { ...coverageInput, standardsCoverage };
   // Never rewrite the last durable checkpoint. It remains available if report
   // rendering or ingestion itself is interrupted and retried after restart.
   await new JsonReportWriter().write(directory, report);
   await new MarkdownReportWriter().write(directory, report);
   await new HtmlReportWriter().write(directory, report);
+  await new StandardsCoverageWriter().write(directory, standardsCoverage);
   return expected;
 }
 

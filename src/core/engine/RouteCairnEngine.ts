@@ -14,6 +14,8 @@ import { legacyModeForProfile, profileSummary } from "../../config/ScanProfiles.
 import { verifyScanIdentities } from "../auth/IdentityVerification.js";
 import { ScanCancelledError } from "./ScanEvents.js";
 import { verifyPreHandoverSetup } from "../../modules/preHandover/PreHandoverRuntime.js";
+import { buildStandardsCoverage } from "../../standards/StandardsCoverage.js";
+import { StandardsCoverageWriter } from "../../standards/StandardsCoverageWriter.js";
 
 export interface ScanResult {
   status: "COMPLETED" | "CANCELLED" | "FAILED";
@@ -27,6 +29,7 @@ export class RouteCairnEngine {
   private readonly jsonReportWriter = new JsonReportWriter();
   private readonly markdownReportWriter = new MarkdownReportWriter();
   private readonly htmlReportWriter = new HtmlReportWriter();
+  private readonly standardsCoverageWriter = new StandardsCoverageWriter();
 
   public async scan(options: ScanContextOptions): Promise<ScanResult> {
     const deadlineController = new AbortController();
@@ -56,7 +59,7 @@ export class RouteCairnEngine {
         // subsequent mutation workflows even when another job created them.
         cleanup = { state: pending.cases.length ? "REQUIRED" : "CLEAR", cases: pending.cases.map(({ caseId, stage, recoveryBundleAvailable }) => ({ caseId, stage, recoveryBundleAvailable })) };
       } catch { cleanup = { state: "UNKNOWN", cases: [] }; }
-      return {
+      const baseReport = {
         routeCairnVersion: "0.1.0", target: options.target,
         mode: options.plan.metadata.legacyMode ?? legacyModeForProfile(options.plan.profile),
         profile: profileSummary(options.plan), scanPlan: safePlanForReport(options.plan), program: options.scope.program,
@@ -68,7 +71,8 @@ export class RouteCairnEngine {
         transport: context.transportDiagnostics(),
         ...safeStateReportForReport(stateReport, options.plan),
         execution: { status, partial: status !== "COMPLETED", reason, checkpointAt: new Date().toISOString(), cleanup }
-      };
+      } satisfies Omit<RouteCairnReport, "standardsCoverage">;
+      return { ...baseReport, standardsCoverage: buildStandardsCoverage(baseReport) };
     };
     const checkpoint = (): Promise<void> => {
       checkpointQueue = checkpointQueue.then(async () => {
@@ -105,6 +109,7 @@ export class RouteCairnEngine {
     const reportPath = await this.jsonReportWriter.write(options.outputDir, report);
     const markdownReportPath = await this.markdownReportWriter.write(options.outputDir, report);
     const htmlReportPath = await this.htmlReportWriter.write(options.outputDir, report);
+    if (report.standardsCoverage) await this.standardsCoverageWriter.write(options.outputDir, report.standardsCoverage);
     await options.eventSink?.emit({ type: "REPORT_WRITTEN", message: report.execution?.partial ? "Partial reports written." : "Reports written.", metadata: { reportPath, markdownReportPath, htmlReportPath, partial: report.execution?.partial } });
     return { status, reportPath, markdownReportPath, htmlReportPath };
   }
@@ -277,12 +282,13 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
 }
 
 function redactProtocolSecurityPlan(plan: NonNullable<ScanContextOptions["plan"]["protocolSecurity"]>): NonNullable<ScanContextOptions["plan"]["protocolSecurity"]> {
-  return { ...plan, cases: plan.cases.map((item) => ({ ...item, url: `redacted://protocol/${item.id}`, headers: {}, expectation: { ...item.expectation, ...(item.expectation.equals !== undefined ? { equals: "<redacted>" } : {}) }, ...(item.kind === "WEBSOCKET" ? { messages: item.messages.map(() => "<redacted>") } : {}), ...(item.kind === "SSE" && item.body !== undefined ? { body: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_MUTATION" || item.kind === "GRAPHQL_SUBSCRIPTION" ? { document: `<redacted-operation:${hashValue(item.document)}>`, variables: {}, ...(item.kind === "GRAPHQL_SUBSCRIPTION" && item.connectionPayload !== undefined ? { connectionPayload: "<redacted>" } : {}) } : {}), ...(item.kind === "MULTIPART_UPLOAD" ? { fields: {}, files: item.files.map((file) => ({ ...file, contentSecretRef: "<redacted-ref>" })) } : {}), ...(item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM" ? { payloadSecretRef: "<redacted-ref>" } : {}), ...(item.kind.startsWith("HTTP") && "bodySecretRef" in item && item.bodySecretRef ? { bodySecretRef: "<redacted-ref>" } : {}), ...("authorization" in item && item.authorization ? { authorization: { ...item.authorization, operator: "<redacted>", ticket: "<redacted>" } } : {}), ...("cleanup" in item && item.cleanup ? { cleanup: { ...item.cleanup, url: "redacted://protocol-cleanup", headers: {}, ...(item.cleanup.body !== undefined ? { body: "<redacted>" } : {}) } } : {}) })) as typeof plan.cases };
+  return { ...plan, cases: plan.cases.map((item) => ({ ...item, url: `redacted://protocol/${item.id}`, headers: {}, expectation: { ...item.expectation, ...(item.expectation.equals !== undefined ? { equals: "<redacted>" } : {}) }, ...(item.kind === "WEBSOCKET" ? { messages: item.messages.map(() => "<redacted>") } : {}), ...(item.kind === "WEBSOCKET_AUTH_STATE_MACHINE" ? { states: item.states.map((state) => ({ ...state, ...(state.send !== undefined ? { send: "<redacted>" } : {}), ...(state.equals !== undefined ? { equals: "<redacted>" } : {}) })) } : {}), ...(item.kind === "SSE" && item.body !== undefined ? { body: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_MUTATION" || item.kind === "GRAPHQL_SUBSCRIPTION" || item.kind === "GRAPHQL_INCREMENTAL" || item.kind === "GRAPHQL_PERSISTED_QUERY" || item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH" ? { document: `<redacted-operation:${hashValue(item.document)}>`, variables: {}, ...(item.kind === "GRAPHQL_SUBSCRIPTION" && item.connectionPayload !== undefined ? { connectionPayload: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH" ? { initialConnectionPayload: "<redacted>", reauthConnectionPayload: "<redacted>" } : {}) } : {}), ...(item.kind === "GRAPHQL_FEDERATION" ? { representations: [] } : {}), ...(item.kind === "MULTIPART_UPLOAD" ? { fields: {}, files: item.files.map((file) => ({ ...file, contentSecretRef: "<redacted-ref>" })) } : {}), ...(item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM" || item.kind === "GRPC_CLIENT_STREAM" || item.kind === "GRPC_BIDI_STREAM" ? { ...(item.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {}), ...(item.payloadSecretRefs ? { payloadSecretRefs: item.payloadSecretRefs.map(() => "<redacted-ref>") } : {}) } : {}), ...(item.kind === "WEBTRANSPORT_DATAGRAM" ? { datagramSecretRefs: item.datagramSecretRefs.map(() => "<redacted-ref>") } : {}), ...("bodySecretRef" in item && item.bodySecretRef ? { bodySecretRef: "<redacted-ref>" } : {}), ...(item.kind === "STREAMING_UPLOAD_INTERRUPT" ? { verificationUrl: "redacted://protocol-verification" } : {}), ...(item.kind === "CROSS_PROTOCOL_IDENTITY" ? { legs: item.legs.map((leg) => ({ ...leg, url: "redacted://protocol-leg", headers: {}, ...(leg.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {}) })) } : {}), ...(item.kind === "PROXY_CHAIN_DESYNCHRONIZATION" ? { proxyChain: item.proxyChain.map((hop) => ({ ...hop, origin: "redacted://protocol-proxy" })) } : {}), ...("authorization" in item && item.authorization ? { authorization: { ...item.authorization, operator: "<redacted>", ticket: "<redacted>" } } : {}), ...("cleanup" in item && item.cleanup ? { cleanup: { ...item.cleanup, url: "redacted://protocol-cleanup", headers: {}, ...(item.cleanup.body !== undefined ? { body: "<redacted>" } : {}) } } : {}) })) as typeof plan.cases };
 }
 
 function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["plan"]["activeVulnerability"]>): NonNullable<ScanContextOptions["plan"]["activeVulnerability"]> {
   return {
     ...plan,
+    ...(plan.oast ? { oast: { ...plan.oast, apiBaseUrl: "redacted://oast-api", tenantId: "<redacted-binding>", workerId: "<redacted-binding>", jobId: "<redacted-binding>" } } : {}),
     cases: plan.cases.map((testCase) => ({
       ...testCase,
       request: {
@@ -290,13 +296,20 @@ function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["pla
         url: `redacted://active-vulnerability/${testCase.id}`,
         headers: Object.fromEntries(Object.keys(testCase.request.headers).map((name) => [name, "<redacted>"])),
         ...(testCase.request.body !== undefined ? { body: "<redacted>" } : {}),
-        injection: { ...testCase.request.injection, originalValue: "<redacted>" }
+        injection: { ...testCase.request.injection, originalValue: "<redacted>", ...(testCase.request.injection.pathTemplate ? { pathTemplate: "<redacted>" } : {}) }
       },
       proof: {
         ...testCase.proof,
         ...(testCase.proof.marker ? { marker: "<redacted-canary>" } : {}),
         ...(testCase.proof.callbackUrl ? { callbackUrl: "redacted://active-callback" } : {}),
-        ...(testCase.proof.callbackPollUrl ? { callbackPollUrl: "redacted://active-callback-poll" } : {})
+        ...(testCase.proof.callbackPollUrl ? { callbackPollUrl: "redacted://active-callback-poll" } : {}),
+        ...(testCase.proof.desyncSentinelPath ? { desyncSentinelPath: "<redacted>" } : {}),
+        ...(testCase.proof.verificationUrl ? { verificationUrl: "redacted://active-verification" } : {}),
+        ...(testCase.proof.cleanupUrl ? { cleanupUrl: "redacted://active-cleanup" } : {}),
+        ...(testCase.proof.cleanupBody ? { cleanupBody: "<redacted>" } : {}),
+        ...(testCase.proof.cleanupHeaders ? { cleanupHeaders: Object.fromEntries(Object.keys(testCase.proof.cleanupHeaders).map((name) => [name, "<redacted>"])) } : {}),
+        ...(testCase.proof.expectedSubject ? { expectedSubject: "<redacted>" } : {}),
+        ...(testCase.proof.oauthExpectedAccount ? { oauthExpectedAccount: "<redacted>" } : {})
       }
     }))
   };

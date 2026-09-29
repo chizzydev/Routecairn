@@ -253,7 +253,7 @@ export class ScanContext {
    * scan-wide ledger, disable mutation escalation, redirects, and retries at
    * call sites, and retain raw bodies only through the transient analysis
    * channel. */
-  public createActiveVulnerabilityHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
+  public createActiveVulnerabilityHttpClient(maxRequests: number, maxResponseBytes: number, controlledMutationEnabled = false): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker({
       userAgent: this.options.scope.userAgent,
@@ -265,6 +265,7 @@ export class ScanContext {
       retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
       maxRequests,
       connectionPool: this.connectionPool,
+      controlledMutationEnabled,
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
       ...entry,

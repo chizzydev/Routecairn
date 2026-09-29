@@ -1,4 +1,4 @@
-﻿import type { ApiEndpointAnalysis } from "../../reports/ReportTypes.js";
+import type { ApiEndpointAnalysis } from "../../reports/ReportTypes.js";
 
 export type StateAwareApiCandidateReason = "object-id" | "export-download" | "graphql" | "auth-relevant" | "sensitive-data" | "admin-like";
 

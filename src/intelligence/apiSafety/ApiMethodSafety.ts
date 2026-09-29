@@ -1,4 +1,4 @@
-﻿import type { HttpMethod } from "../../core/http/HttpTypes.js";
+import type { HttpMethod } from "../../core/http/HttpTypes.js";
 
 export const safeApiMethods = ["GET", "HEAD", "OPTIONS"] as const satisfies readonly HttpMethod[];
 export const destructiveApiMethods = ["POST", "PUT", "PATCH", "DELETE"] as const;

@@ -24,8 +24,12 @@ export const adaptiveExecutionBindingSchema = z.object({
   recommendationId: z.string().uuid(),
   sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   executionFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-  compilerVersion: z.union([z.literal(1), z.literal(2)])
-}).strict();
+  compilerVersion: z.union([z.literal(1), z.literal(2)]),
+  graphFingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  graphPathIds: z.array(z.string().regex(/^[a-f0-9]{64}$/)).min(1).max(32).optional()
+}).strict().superRefine((value, ctx) => {
+  if (Boolean(value.graphFingerprint) !== Boolean(value.graphPathIds)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [value.graphFingerprint ? "graphPathIds" : "graphFingerprint"], message: "Graph fingerprint and path identities must be supplied together." });
+});
 
 export type AdaptivePolicyInput = z.infer<typeof adaptivePolicyInputSchema>;
 export type AdaptiveExecutionBinding = z.infer<typeof adaptiveExecutionBindingSchema>;

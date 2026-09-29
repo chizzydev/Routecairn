@@ -1,4 +1,4 @@
-﻿import { authHeadersForProfile, redactedCurlCommand } from "../../core/auth/AuthProfile.js";
+import { authHeadersForProfile, redactedCurlCommand } from "../../core/auth/AuthProfile.js";
 import { summarizeAuthProfileSet } from "../../core/auth/AuthProfileSet.js";
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";

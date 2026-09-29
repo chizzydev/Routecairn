@@ -1,4 +1,4 @@
-﻿export type ParameterLocation = "query" | "path";
+export type ParameterLocation = "query" | "path";
 export type ParameterKind =
   | "object-id"
   | "uuid"

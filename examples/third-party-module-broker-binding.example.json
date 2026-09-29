@@ -1,0 +1,34 @@
+{
+  "target": "https://app.example.com",
+  "scope": {
+    "program": "owned-module-analysis",
+    "allowedDomains": [
+      "app.example.com"
+    ],
+    "disallowedPaths": [
+      "/logout",
+      "/billing"
+    ],
+    "allowedMethods": [
+      "GET",
+      "HEAD"
+    ],
+    "rateLimitPerSecond": 2,
+    "concurrency": 2,
+    "maxDepth": 0,
+    "sameOriginOnly": true,
+    "includeSubdomains": false,
+    "respectRobotsTxt": false,
+    "userAgent": "RouteCairn-Module-Broker/1.0"
+  },
+  "approval": {
+    "targetOrigin": "https://app.example.com",
+    "packageDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "authorizedAt": "2025-01-01T00:00:00.000Z",
+    "expiresAt": "2025-01-01T00:30:00.000Z",
+    "operator": "replace-with-current-operator",
+    "reference": "replace-with-current-authorization-reference",
+    "nonMutatingPosts": [],
+    "confirmation": "I_AUTHORIZE_BROKERED_MODULE_REQUESTS"
+  }
+}

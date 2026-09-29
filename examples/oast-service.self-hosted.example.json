@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "mode": "SELF_HOSTED",
+  "listenHost": "127.0.0.1",
+  "httpPort": 7777,
+  "dnsUdpPort": 53535,
+  "dnsTcpPort": 53535,
+  "baseDomain": "oast.example.test",
+  "publicHttpBaseUrl": "http://127.0.0.1:7777/",
+  "databasePath": ".routecairn-oast/oast.sqlite",
+  "signingKeyEnv": "ROUTECAIRN_OAST_SIGNING_KEY",
+  "tenantTokensEnv": "ROUTECAIRN_OAST_TENANT_TOKENS",
+  "maxLeaseSeconds": 3600,
+  "maxEventsPerLease": 20,
+  "maxRequestBytes": 65536,
+  "dnsAnswerIpv4": "127.0.0.1",
+  "dnsAnswerIpv6": "::1"
+}

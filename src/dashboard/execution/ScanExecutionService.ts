@@ -33,7 +33,8 @@ import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
 import { assertRegisteredTargetScope } from "./RegisteredTargetScope.js";
 import { AdaptiveSecurityService } from "./AdaptiveSecurityService.js";
-import { requestsForClass } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import { requestsForActiveCase } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import type { ActiveVulnerabilityCasePlan } from "../../modules/activeVulnerability/ActiveVulnerabilityTypes.js";
 
 const maxQueuedScans = 20;
 
@@ -452,6 +453,10 @@ export class ScanExecutionService {
       const jsonArtifact = this.recordArtifact(scanId, result.reportPath, "JSON_REPORT", "application/json");
       const markdownArtifact = this.recordArtifact(scanId, result.markdownReportPath, "MARKDOWN_REPORT", "text/markdown; charset=utf-8");
       const htmlArtifact = this.recordArtifact(scanId, result.htmlReportPath, "HTML_REPORT", "text/html; charset=utf-8");
+      if (report.standardsCoverage) {
+        this.recordArtifact(scanId, join(dirname(result.reportPath), "standards-coverage.json"), "STANDARDS_COVERAGE_JSON", "application/json");
+        this.recordArtifact(scanId, join(dirname(result.reportPath), "standards-coverage.csv"), "STANDARDS_COVERAGE_CSV", "text/csv; charset=utf-8");
+      }
       if (report.assistedReview && !report.execution?.partial) {
         this.recordArtifact(scanId, join(dirname(result.reportPath), "assisted-review.evidence.json"), "ASSISTED_OPERATOR_EVIDENCE", "application/json");
         this.recordArtifact(scanId, join(dirname(result.reportPath), "assisted-review.customer.json"), "ASSISTED_COVERAGE_DRAFT", "application/json");
@@ -470,6 +475,7 @@ export class ScanExecutionService {
         this.scans.attachArtifacts(scanId, { json: jsonArtifact, markdown: markdownArtifact, html: htmlArtifact });
         this.scans.updateCounters(scanId);
         this.scans.updateStatus(scanId, result.status, { ...(result.status === "CANCELLED" ? { cancelledAt: nowIso() } : {}), ...(result.error ? { errorSummary: result.error } : {}) });
+        if (report.standardsCoverage) this.events.append(scanId, "OBSERVATION_RECORDED", "Standards-native coverage accounting completed.", { kind: "STANDARDS_COVERAGE", catalog: report.standardsCoverage.catalog, accounting: report.standardsCoverage.accounting, wstgAreas: report.standardsCoverage.wstgAreas, apiRiskObjectives: report.standardsCoverage.apiRiskObjectives, gaps: report.standardsCoverage.gaps });
         this.events.append(scanId, result.status === "COMPLETED" ? "SCAN_COMPLETED" : result.status === "CANCELLED" ? "SCAN_CANCELLED" : result.status === "INTERRUPTED" ? "SCAN_INTERRUPTED" : "SCAN_FAILED", result.status === "COMPLETED" ? "Scan completed in isolated worker." : "Partial evidence ingested; incomplete coverage is not a security pass.", { findingCount, workerId: result.workerId, partial: result.status !== "COMPLETED", cleanupUnresolved });
         if (cleanupUnresolved) this.events.append(scanId, "MUTATION_CLEANUP_REQUIRED", "Cleanup remains unresolved or unknown. Use Offensive Safety recovery before further mutation.", { cleanup: report.execution?.cleanup });
       });
@@ -583,7 +589,7 @@ export function exactWorkflowRequests(workflowId: string, value: unknown): numbe
   if (workflowId === "controlled-race") return array(plan.cases).reduce<number>((total, testCase) => { const item = record(testCase); return total + array(item.preState).length + array(item.groups).reduce<number>((sum, group) => sum + array(record(group).requests).length, 0) + array(item.postState).length + array(item.cleanup).length + array(item.cleanupVerification).length; }, 0);
   if (workflowId === "billing-entitlement-security") return array(plan.cases).reduce<number>((total, testCase) => total + array(record(testCase).steps).reduce<number>((sum, step) => sum + numeric(record(record(step).execution).attempts, 1), 0), 0);
   if (workflowId === "api-graphql-authorization") return array(plan.checks).reduce<number>((total, check) => { const item = record(check); if (item.kind === "METHOD_CONFUSION") return total + 1 + array(item.alternateMethods).length; if (item.kind === "GRAPHQL_ALIAS_LIMIT" || item.kind === "GRAPHQL_BATCH_LIMIT") return total + array(item.documents).length; if (item.kind === "VERSION_BOUNDARY") return total + 2; return total + 1; }, 0);
-  if (workflowId === "active-vulnerability-validation") return array(plan.cases).reduce<number>((total, testCase) => total + requestsForClass(String(record(testCase).vulnerabilityClass ?? ""), Boolean(record(record(testCase).proof).callbackPollUrl)), 0) + numeric(record(plan.discovery).maxCandidates, 0) * 4;
+  if (workflowId === "active-vulnerability-validation") return array(plan.cases).reduce<number>((total, testCase) => total + requestsForActiveCase(testCase as ActiveVulnerabilityCasePlan), 0) + numeric(record(plan.discovery).maxCandidates, 0) * 4;
   if (workflowId === "pre-handover-assault") return 3 + array(plan.objects).length;
   if (workflowId === "assisted-review" || workflowId === "bug-bounty-authorization") return 0;
   return numeric(plan.maxRequests, 0);

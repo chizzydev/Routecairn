@@ -1,4 +1,4 @@
-﻿import { defineConfig } from "vitest/config";
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
@@ -12,6 +12,19 @@ export default defineConfig({
     // network teardown. Windows CI can exceed 15 seconds without a product
     // failure, especially after a long serialized run.
     testTimeout: 30000,
-    hookTimeout: 30000
+    hookTimeout: 30000,
+    coverage: {
+      provider: "v8",
+      reportsDirectory: ".routecairn-coverage",
+      reporter: ["text", "json-summary", "lcov"],
+      include: ["src/**/*.ts", "apps/dashboard-ui/src/**/*.{ts,tsx}"],
+      exclude: ["**/*.d.ts", "**/*.test.{ts,tsx}", "src/cli/index.ts"],
+      thresholds: {
+        statements: 68,
+        branches: 62,
+        functions: 65,
+        lines: 75
+      }
+    }
   }
 });

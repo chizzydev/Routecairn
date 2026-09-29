@@ -1502,6 +1502,7 @@ export interface RouteCairnReport {
   billingEntitlement?: import("./BillingEntitlementReport.js").BillingEntitlementReport;
   secretBoundary?: import("./SecretBoundaryReport.js").SecretBoundaryReport;
   activeVulnerability?: import("./ActiveVulnerabilityReport.js").ActiveVulnerabilityReport;
+  standardsCoverage?: import("../standards/StandardsCoverageTypes.js").StandardsCoverageReport;
   discoveredUrls: ResponseObservation[];
   findings: Finding[];
 }

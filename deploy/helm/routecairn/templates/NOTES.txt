@@ -1,0 +1,2 @@
+RouteCairn control plane installed as {{ include "routecairn.fullname" . }} with {{ .Values.replicaCount }} replicas.
+PostgreSQL, object storage, workload identity, and OTLP endpoints must be reachable under the configured NetworkPolicy.

@@ -40,10 +40,8 @@ jobs:
         run: npx playwright install chromium
       - name: Build core and dashboard
         run: npm run build && npm run dashboard:build
-      - name: Full unit and integration suite
-        run: npm test -- --testTimeout=180000 --hookTimeout=180000
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Platform boundary suite
+        run: npx vitest run tests/unit/url-normalizer.test.ts tests/unit/scope.test.ts tests/unit/browser-network-boundary.test.ts --pool=forks --maxWorkers=1
       - name: Measured effectiveness gate
         run: node dist/cli/index.js benchmark local --repetitions 3 --baseline benchmarks/routecairn-comprehensive-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
       - name: Preserve measured-effectiveness evidence
@@ -57,6 +55,78 @@ jobs:
           retention-days: 30
       - name: Capability, migration, worker-fault, and browser-boundary gates
         run: npx vitest run tests/dashboard/admin/capability-parity.test.ts tests/dashboard/worker-governance.test.ts tests/dashboard/worker-governance-api.test.ts tests/unit/browser-network-boundary.test.ts tests/dashboard/dashboard-closure-workflows.test.ts
+
+  quality:
+    name: Static quality and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run architecture:check
+      - run: npm run release:verify
+      - name: Coverage gate
+        run: npm run test:coverage -- --pool=forks --maxWorkers=1
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+      - name: Preserve coverage evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-${{ github.sha }}-${{ github.run_attempt }}
+          path: .routecairn-coverage/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  test-shards:
+    name: Test shard ${{ matrix.shard }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/4", "2/4", "3/4", "4/4"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run isolated shard
+        run: npm run test:ci -- --shard=${{ matrix.shard }} --testTimeout=180000 --hookTimeout=180000
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+  mutation-safety:
+    name: Critical safety mutation score
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:mutation
+      - name: Preserve mutation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-${{ github.sha }}-${{ github.run_attempt }}
+          path: reports/mutation/
+          if-no-files-found: error
+          retention-days: 30
 
   browser-chromium:
     name: Chromium and connection-boundary acceptance
@@ -189,15 +259,17 @@ jobs:
   assurance-gate:
     name: Required assurance gate
     if: always()
-    needs: [cross-platform, browser-chromium, release-package, control-plane-image, broader-acceptance, credibility-corpus]
+    needs: [quality, test-shards, cross-platform, browser-chromium, release-package, control-plane-image, broader-acceptance, credibility-corpus]
     runs-on: ubuntu-latest
     steps:
       - name: Reject incomplete assurance
         env:
           CROSS_PLATFORM: ${{ needs.cross-platform.result }}
+          QUALITY: ${{ needs.quality.result }}
+          TEST_SHARDS: ${{ needs.test-shards.result }}
           BROWSER: ${{ needs.browser-chromium.result }}
           RELEASE_PACKAGE: ${{ needs.release-package.result }}
           CONTROL_PLANE_IMAGE: ${{ needs.control-plane-image.result }}
           BROADER_ACCEPTANCE: ${{ needs.broader-acceptance.result }}
           CREDIBILITY: ${{ needs.credibility-corpus.result }}
-        run: test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success && test "$CONTROL_PLANE_IMAGE" = success && test "$BROADER_ACCEPTANCE" = success && test "$CREDIBILITY" = success
+        run: test "$QUALITY" = success && test "$TEST_SHARDS" = success && test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success && test "$CONTROL_PLANE_IMAGE" = success && test "$BROADER_ACCEPTANCE" = success && test "$CREDIBILITY" = success

@@ -1,4 +1,4 @@
-﻿import type { ScanContext } from "../../core/engine/ScanContext.js";
+import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import { buildEvidenceTemplates } from "../../intelligence/evidenceTemplates/EvidenceTemplateFactory.js";
 import type { WorkflowValidationReport } from "../../reports/ReportTypes.js";

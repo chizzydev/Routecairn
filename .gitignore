@@ -24,4 +24,7 @@ data/dashboard*/
 .acceptance-keys/
 .routecairn-auth-test/
 .routecairn-protocol-acceptance/
+.routecairn-coverage/
+.stryker-tmp/
+/reports/mutation/
 /deploy/control-plane/secrets/

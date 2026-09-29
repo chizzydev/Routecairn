@@ -1,4 +1,4 @@
-﻿import { readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { AppError } from "../errors/AppError.js";
 

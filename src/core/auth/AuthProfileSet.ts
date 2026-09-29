@@ -1,4 +1,4 @@
-﻿import type { AuthProfile, AuthProfileSummary } from "./AuthProfile.js";
+import type { AuthProfile, AuthProfileSummary } from "./AuthProfile.js";
 import { loadAuthProfile, summarizeAuthProfile } from "./AuthProfile.js";
 
 export interface AuthProfileSet {

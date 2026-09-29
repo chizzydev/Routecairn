@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["image", "postgres", "objectStorage", "publicOrigin", "workloadIdentity"],
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 2 },
+    "publicOrigin": { "type": "string", "pattern": "^https://" },
+    "image": { "type": "object", "required": ["repository", "tag"], "properties": { "repository": { "type": "string", "minLength": 1 }, "tag": { "type": "string", "minLength": 1 } } },
+    "postgres": { "type": "object", "required": ["secretName", "urlKey"], "properties": { "secretName": { "type": "string", "minLength": 1 }, "urlKey": { "type": "string", "minLength": 1 }, "poolSize": { "type": "integer", "minimum": 2, "maximum": 100 } } },
+    "objectStorage": { "type": "object", "required": ["bucket", "region"], "properties": { "bucket": { "type": "string", "minLength": 1 }, "region": { "type": "string", "minLength": 1 }, "prefix": { "type": "string", "pattern": "^[A-Za-z0-9/_.-]+$" } } },
+    "workloadIdentity": { "type": "object", "required": ["required", "audience"], "properties": { "required": { "type": "boolean" }, "issuers": { "type": "string" }, "audience": { "type": "string", "minLength": 1 } } },
+    "workerPools": { "type": "array", "items": { "type": "object", "required": ["name", "replicas", "networkZone", "capabilities", "enrollmentSecretName", "stateKey", "resources"], "properties": { "name": { "type": "string", "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" }, "replicas": { "type": "integer", "minimum": 0 }, "networkZone": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$" }, "capabilities": { "type": "array", "minItems": 1, "items": { "type": "string" } }, "enrollmentSecretName": { "type": "string", "minLength": 1 }, "stateKey": { "type": "string", "minLength": 1 } } } }
+  }
+}

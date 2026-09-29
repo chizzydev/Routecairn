@@ -145,9 +145,11 @@ function parseResponses(buffer: Buffer, maxBytes: number): { statusCodes: number
     if (status) statusCodes.push(Number(status));
     const bodyStart = headerEnd + 4;
     const contentLength = /(?:^|\r\n)content-length:\s*(\d+)/i.exec(header)?.[1];
-    const nextStart = bounded.indexOf(marker, bodyStart);
-    const bodyEnd = contentLength !== undefined ? Math.min(bounded.length, bodyStart + Number(contentLength)) : nextStart >= 0 ? nextStart : bounded.length;
+    // Without an explicit response length, HTTP/1 body bytes can contain text
+    // resembling a status line. Do not promote that text to a second response.
+    const bodyEnd = contentLength !== undefined ? Math.min(bounded.length, bodyStart + Number(contentLength)) : bounded.length;
     if (bodyEnd > bodyStart) bodyParts.push(bounded.subarray(bodyStart, bodyEnd));
+    if (contentLength === undefined) break;
     cursor = Math.max(bodyEnd, bodyStart + 1);
   }
   return { statusCodes, body: Buffer.concat(bodyParts).subarray(0, maxBytes) };

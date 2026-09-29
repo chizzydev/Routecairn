@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read
+      contents: write
       id-token: write
       attestations: write
       artifact-metadata: write
@@ -94,6 +94,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify version, changelog, compatibility, and independent review
+        run: |
+          npm run release:verify -- --tag "${{ github.ref_name }}"
+          npm run security:review:verify -- --release "${{ github.ref_name }}"
       - name: Build release inputs
         run: npm run build:release
       - name: Verify release tests
@@ -126,3 +130,9 @@ jobs:
             ${{ steps.sbom-attestation.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 90
+      - name: Publish immutable tagged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum release/*.tgz > release/SHA256SUMS
+          gh release create "${{ github.ref_name }}" release/*.tgz release/dependency-security/*.json release/SHA256SUMS --verify-tag --generate-notes --title "RouteCairn ${{ github.ref_name }}"

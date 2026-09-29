@@ -1,4 +1,4 @@
-﻿import type { AuthProfile } from "../../core/auth/AuthProfile.js";
+import type { AuthProfile } from "../../core/auth/AuthProfile.js";
 import { authHeadersForProfile, redactedCurlCommand, summarizeAuthProfile } from "../../core/auth/AuthProfile.js";
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";

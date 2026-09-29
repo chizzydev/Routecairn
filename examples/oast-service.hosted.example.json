@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "mode": "HOSTED",
+  "listenHost": "0.0.0.0",
+  "httpPort": 8080,
+  "httpsPort": 8443,
+  "dnsUdpPort": 5353,
+  "dnsTcpPort": 5353,
+  "baseDomain": "callbacks.security.example.com",
+  "publicHttpsBaseUrl": "https://callbacks.security.example.com/",
+  "databasePath": "/var/lib/routecairn-oast/oast.sqlite",
+  "signingKeyEnv": "ROUTECAIRN_OAST_SIGNING_KEY",
+  "tenantTokensEnv": "ROUTECAIRN_OAST_TENANT_TOKENS",
+  "tlsKeyPath": "/run/secrets/oast-tls.key",
+  "tlsCertPath": "/run/secrets/oast-tls.crt",
+  "maxLeaseSeconds": 86400,
+  "maxEventsPerLease": 20,
+  "maxRequestBytes": 65536,
+  "dnsAnswerIpv4": "203.0.113.10",
+  "dnsAnswerIpv6": "2001:db8::10"
+}

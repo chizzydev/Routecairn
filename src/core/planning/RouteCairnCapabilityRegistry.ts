@@ -69,6 +69,12 @@ export interface RouteCairnCapabilityRegistry {
     dnsRevalidation: "EVERY_DISPATCH_OR_VALIDATED_PIN_LEASE";
     diagnostics: readonly string[];
   };
+  standardsCoverage: {
+    catalogs: Readonly<Record<"wstg" | "asvs" | "apiSecurityTop10" | "cwe" | "capec", string>>;
+    artifacts: readonly string[];
+    caseAccounting: "RETAINED_EXECUTION_EVIDENCE_ONLY";
+    apiRiskObjectives: ReadonlyArray<{ id: "API4:2023" | "API6:2023" | "API10:2023"; title: string; engineIds: readonly ModuleId[] }>;
+  };
   parity: Record<string, CapabilityParity>;
 }
 
@@ -92,7 +98,7 @@ const guidedFieldCoverage: Readonly<Partial<Record<ModuleCapability, readonly st
   "collection-authorization": ["schemaVersion", "maxCollections", "maxCasesPerCollection", "maxKnownObjects", "maxRequests", "maxRetainedObservations", "maxPreviewLength", "collections[].id", "collections[].label", "collections[].category", "collections[].method", "collections[].url", "collections[].headers", "collections[].expectedContentType", "collections[].completeness", "collections[].resultArrayPath", "collections[].objectIdPath", "collections[].objectTenantPath", "collections[].objectOwnerPath", "collections[].objectStatePath", "collections[].objectTypePath", "collections[].maxInspectedEntries", "collections[].maxResponseBytes", "collections[].maxJsonDepth", "collections[].actors[]", "collections[].knownObjects[]", "collections[].cases[].id", "collections[].cases[].actorId", "collections[].cases[].knownObjectId", "collections[].cases[].expectedMembership", "collections[].cases[].expectedActorRelationship", "collections[].cases[].expectedTenantId", "collections[].cases[].expectedRole", "collections[].cases[].expectedAccountState", "collections[].cases[].expectedObjectState", "collections[].cases[].requireVerifiedIdentity", "collections[].cases[].referenceCaseId", "collections[].cases[].countExpectation", "collections[].cases[].summaryExpectations[]"],
   "bulk-authorization": ["schemaVersion", "maxDefinitions", "maxCasesPerDefinition", "maxObjectsPerCase", "maxRequests", "maxRetainedObservations", "definitions[].id", "definitions[].label", "definitions[].actors[]", "definitions[].cases[].id", "definitions[].cases[].actorId", "definitions[].cases[].caseType", "definitions[].cases[].requestStyle", "definitions[].cases[].method", "definitions[].cases[].url", "definitions[].cases[].headers", "definitions[].cases[].bodyTemplate", "definitions[].cases[].objectOrderMatters", "definitions[].cases[].objects[]", "definitions[].cases[].expectedBatchPolicy", "definitions[].cases[].requireVerifiedIdentity", "definitions[].cases[].expectedTenantId", "definitions[].cases[].expectedRole", "definitions[].cases[].expectedAccountState", "definitions[].cases[].safetyContract", "definitions[].cases[].responseContract", "definitions[].cases[].postSafetyMode", "definitions[].cases[].postconditionChecks[]", "definitions[].cases[].maxResponseBytes", "definitions[].cases[].maxJsonDepth", "definitions[].cases[].maxPreviewLength"],
   "file-authorization": ["schemaVersion", "maxDefinitions", "maxCasesPerDefinition", "maxFilesPerDefinition", "maxRequests", "maxRetainedObservations", "definitions[].id", "definitions[].label", "definitions[].actors[]", "definitions[].files[]", "definitions[].cases[].id", "definitions[].cases[].label", "definitions[].cases[].category", "definitions[].cases[].actorId", "definitions[].cases[].fileRefId", "definitions[].cases[].method", "definitions[].cases[].url", "definitions[].cases[].placeholder", "definitions[].cases[].headers", "definitions[].cases[].expectedDecision", "definitions[].cases[].requireVerifiedIdentity", "definitions[].cases[].expectedTenantId", "definitions[].cases[].expectedRole", "definitions[].cases[].expectedAccountState", "definitions[].cases[].expectedFileState", "definitions[].cases[].identityStrategy", "definitions[].cases[].identityField", "definitions[].cases[].stateField", "definitions[].cases[].signedUrlField", "definitions[].cases[].expectedFingerprint", "definitions[].cases[].contentProofMode", "definitions[].cases[].rangeStart", "definitions[].cases[].rangeLength", "definitions[].cases[].maxMetadataBytes", "definitions[].cases[].maxProbeBytes", "definitions[].cases[].maxFullStreamBytes", "definitions[].cases[].allowedRedirectOrigins", "definitions[].cases[].followSignedUrl", "definitions[].cases[].allowedSignedUrlOrigins"],
-  "active-vulnerability-validation": ["schemaVersion", "maxRequests", "maxResponseBytes", "maxCases", "actors[].id", "actors[].safeAlias", "actors[].authSlot", "actors[].relationship", "actors[].principalId", "actors[].tenantId", "discovery.enabled", "discovery.classes", "discovery.maxCandidates", "discovery.queryParametersOnly", "discovery.includeAuthenticated", "cases[].id", "cases[].label", "cases[].vulnerabilityClass", "cases[].actorId", "cases[].environment", "cases[].request.url", "cases[].request.method", "cases[].request.headers", "cases[].request.body", "cases[].request.injection.location", "cases[].request.injection.name", "cases[].request.injection.originalValue", "cases[].request.operatorConfirmedNonMutating", "cases[].proof.marker", "cases[].proof.callbackUrl", "cases[].proof.callbackPollUrl", "cases[].proof.callbackJsonPath", "cases[].proof.expectedContentSha256", "cases[].proof.allowedRedirectOrigins", "cases[].proof.secureStatuses", "cases[].proof.vulnerableStatuses", "cases[].proof.desyncSentinelPath", "cases[].proof.desyncVariant"]
+  "active-vulnerability-validation": ["schemaVersion", "maxRequests", "maxResponseBytes", "maxCases", "actors[].id", "actors[].safeAlias", "actors[].authSlot", "actors[].relationship", "actors[].principalId", "actors[].tenantId", "discovery.enabled", "discovery.classes", "discovery.maxCandidates", "discovery.queryParametersOnly", "discovery.includeAuthenticated", "oast.mode", "oast.apiBaseUrl", "oast.apiTokenEnv", "oast.tenantId", "oast.workerId", "oast.jobId", "oast.leaseSeconds", "oast.pollIntervalMs", "oast.maxPolls", "oast.protocols", "cases[].id", "cases[].label", "cases[].vulnerabilityClass", "cases[].actorId", "cases[].environment", "cases[].request.url", "cases[].request.method", "cases[].request.headers", "cases[].request.body", "cases[].request.injection.location", "cases[].request.injection.name", "cases[].request.injection.originalValue", "cases[].request.injection.pathTemplate", "cases[].request.operatorConfirmedNonMutating", "cases[].proof.marker", "cases[].proof.callbackUrl", "cases[].proof.callbackPollUrl", "cases[].proof.callbackJsonPath", "cases[].proof.expectedContentSha256", "cases[].proof.allowedRedirectOrigins", "cases[].proof.secureStatuses", "cases[].proof.vulnerableStatuses", "cases[].proof.desyncSentinelPath", "cases[].proof.desyncVariant", "cases[].proof.verificationUrl", "cases[].proof.cleanupUrl", "cases[].proof.cleanupMethod", "cases[].proof.browserSink", "cases[].proof.expectedIssuer", "cases[].proof.expectedAudience", "cases[].proof.oauthExpectedIssuer", "cases[].proof.oauthExpectedClientId", "cases[].proof.archiveEntry", "cases[].proof.maxExpandedBytes", "cases[].proof.oastProtocol", "cases[].proof.commandDialect", "cases[].proof.templateDialect", "cases[].strategy.profile", "cases[].strategy.techniques", "cases[].strategy.encodings", "cases[].strategy.maxStrategies", "cases[].strategy.boundedDelayMs", "cases[].strategy.timingSamples", "cases[].strategy.approvedRisks", "cases[].strategy.sqlDialect", "cases[].strategy.noSqlDialect", "cases[].strategy.unionColumns", "cases[].strategy.unionMarkerColumn"]
 };
 
 const controlledWorkflows: readonly ControlledWorkflowCapability[] = [
@@ -127,6 +133,16 @@ export function routeCairnCapabilityRegistry(): RouteCairnCapabilityRegistry {
     ],
     browserPolicyFields: [...moduleCatalog["browser-crawler"].supportedSettings],
     transport: { defaults: defaultPinnedTransportSettings, http2: "TLS_ONLY_EXACT_ORIGIN", dnsRevalidation: "EVERY_DISPATCH_OR_VALIDATED_PIN_LEASE", diagnostics: ["poolHits", "poolMisses", "connectionsCreated", "estimatedConnectionReuses", "http1Connections", "http2Connections", "dnsResolutions", "dnsCacheHits", "blockedResolutions", "pinRotations", "originEvictions"] },
+    standardsCoverage: {
+      catalogs: { wstg: "latest@2026-09-28", asvs: "5.0.0", apiSecurityTop10: "2023", cwe: "current", capec: "current" },
+      artifacts: ["standards-coverage.json", "standards-coverage.csv"],
+      caseAccounting: "RETAINED_EXECUTION_EVIDENCE_ONLY",
+      apiRiskObjectives: [
+        { id: "API4:2023", title: "Unrestricted Resource Consumption", engineIds: ["api-graphql-authorization", "protocol-security", "active-vulnerability-validation"] },
+        { id: "API6:2023", title: "Unrestricted Access to Sensitive Business Flows", engineIds: ["business-invariant", "billing-entitlement-security", "controlled-race"] },
+        { id: "API10:2023", title: "Unsafe Consumption of APIs", engineIds: ["active-vulnerability-validation", "secret-boundary"] }
+      ]
+    },
     parity: {
       profiles: full,
       modules: full,
@@ -146,6 +162,7 @@ export function routeCairnCapabilityRegistry(): RouteCairnCapabilityRegistry {
       "portable-integrations": full,
       "pdf-proof-packs": full,
       "sandboxed-module-sdk": full,
+      "standards-coverage": full,
       "audit": full
     }
   };

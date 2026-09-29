@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compileExecutedContracts, authorizeConfiguration } from "../../src/dashboard/execution/AdaptiveContractCompiler.js";
+import { buildAdaptiveAttackStateGraph } from "../../src/dashboard/execution/AdaptiveAttackStateGraph.js";
 import type { RouteCairnReport } from "../../src/reports/ReportTypes.js";
 
 const fingerprint = "a".repeat(64);
@@ -43,6 +44,8 @@ describe("adaptive exact executed-contract compiler", () => {
     expect(compiled).toMatchObject({ engineId: "business-invariant", authentication: "primary", mutationApprovalRequired: true, cleanupRequestCount: 2 });
     const authorized = authorizeConfiguration(compiled!.engineConfiguration, { reviewedAt: "2026-09-20T10:00:00.000Z", reviewedBy: "owner-user", rationale: "CHG-42 approved disposable fixture replay", expiresAt: "2026-09-20T14:00:00.000Z" });
     expect((authorized.cases as any[])[0].authorization).toMatchObject({ confirmation: "I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING", authorizedBy: "owner-user", changeTicket: "CHG-42 approved disposable fixture replay" });
+    const path = buildAdaptiveAttackStateGraph({ target: "https://app.test", technologies: [], ...report } as RouteCairnReport).paths.find((item) => item.sourceCaseFingerprints.includes(fingerprint));
+    expect(path).toMatchObject({ mutability: "STATE_CHANGING", automationState: "STATE_CHANGE_PROPOSED", contractReadiness: "COMPLETE", engineId: "business-invariant" });
   });
 
   it("rejects mutation evidence when cleanup was not verified", () => {

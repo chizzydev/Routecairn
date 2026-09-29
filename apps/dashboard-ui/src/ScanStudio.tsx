@@ -120,7 +120,7 @@ type StudioState = {
   workflows: WorkflowDraft[];
   advancedEngines: AdvancedEngineDraft[];
   providerAdapterBinding?: { profileId: string; versionId: string; adapterDigest: string };
-  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 | 2 };
+  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 | 2; graphFingerprint?: string; graphPathIds?: string[] };
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;

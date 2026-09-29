@@ -1,4 +1,4 @@
-﻿import { authHeadersForProfile } from "../../core/auth/AuthProfile.js";
+import { authHeadersForProfile } from "../../core/auth/AuthProfile.js";
 import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { HttpResponse } from "../../core/http/HttpTypes.js";
 import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";

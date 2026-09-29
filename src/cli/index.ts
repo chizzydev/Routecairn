@@ -17,6 +17,7 @@ import { registerValidateProtocolFixturesCommand } from "./commands/validateProt
 import { registerValidateBroaderExternalCommand } from "./commands/validateBroaderExternal.js";
 import { registerBenchmarkCommand } from "./commands/benchmark.js";
 import { registerAgentCommand } from "./commands/agent.js";
+import { registerOastCommand } from "./commands/oast.js";
 import { AppError } from "../core/errors/AppError.js";
 import { createLogger } from "../core/logging/Logger.js";
 
@@ -47,6 +48,7 @@ export function createCli(): Command {
   registerValidateBroaderExternalCommand(program);
   registerBenchmarkCommand(program);
   registerAgentCommand(program);
+  registerOastCommand(program);
 
   return program;
 }

@@ -3,6 +3,7 @@ import { isIP } from "node:net";
 import { stdin, stdout } from "node:process";
 import { parentPort, workerData } from "node:worker_threads";
 import quico from "quico";
+import { WebTransport } from "quico";
 
 interface NativeHttp3WorkerRequest {
   method: string;
@@ -20,6 +21,7 @@ interface NativeHttp3WorkerInput {
   maxBytes: number;
   ca?: string;
   requests: NativeHttp3WorkerRequest[];
+  webTransport?: { path: string; datagramsBase64: string[]; maxDatagrams: number };
 }
 
 interface NativeHttp3WorkerResponse {
@@ -65,13 +67,25 @@ async function main(): Promise<void> {
       if (connection !== undefined && current !== connection) sameConnection = false;
       connection = current;
     }
-    send({ ok: true, responses, sameConnection });
+    const webTransport = input.webTransport ? await executeWebTransport(input.webTransport) : undefined;
+    send({ ok: true, responses, sameConnection, ...(webTransport ? { webTransport } : {}) });
   } catch (error) {
     send({ ok: false, error: safeError(error) });
   } finally {
     quico.globalAgent.destroy();
   }
 }
+
+async function executeWebTransport(value: { path: string; datagramsBase64: string[]; maxDatagrams: number }): Promise<{ datagramsBase64: string[] }> {
+  const session = new WebTransport(`https://${input.hostname}:${input.port}${value.path}`, { rejectUnauthorized: true }); const received: string[] = [];
+  const errorPromise = new Promise<never>((_resolve, reject) => session.once("error", reject));
+  await Promise.race([session.ready, errorPromise, timeout("WEBTRANSPORT_READY_TIMEOUT")]);
+  const complete = new Promise<void>((resolve) => { session.on("datagram", (data) => { if (received.length >= value.maxDatagrams) return; const buffer = Buffer.from(data); if (buffer.length <= input.maxBytes) received.push(buffer.toString("base64")); if (received.length >= Math.min(value.maxDatagrams, value.datagramsBase64.length)) resolve(); }); });
+  for (const encoded of value.datagramsBase64) session.sendDatagram(Buffer.from(encoded, "base64"));
+  await Promise.race([complete, timeout("WEBTRANSPORT_DATAGRAM_TIMEOUT")]).catch((error) => { if (!received.length) throw error; }); session.close({ closeCode: 0, reason: "bounded-contract-complete" }); return { datagramsBase64: received };
+}
+
+function timeout(message: string): Promise<never> { return new Promise((_resolve, reject) => { const timer = setTimeout(() => reject(new Error(message)), input.timeoutMs); timer.unref(); }); }
 
 function send(value: unknown): void {
   if (parentPort) parentPort.postMessage(value);
@@ -154,6 +168,7 @@ function validateInput(value: NativeHttp3WorkerInput): void {
   if (!Number.isInteger(value.timeoutMs) || value.timeoutMs < 1 || value.timeoutMs > 300_000) throw new Error("HTTP3_NATIVE_TIMEOUT_INVALID");
   if (!Number.isInteger(value.maxBytes) || value.maxBytes < 1 || value.maxBytes > 64 * 1024 * 1024) throw new Error("HTTP3_NATIVE_LIMIT_INVALID");
   if (!Array.isArray(value.requests) || value.requests.length > 4) throw new Error("HTTP3_NATIVE_REQUEST_COUNT_INVALID");
+  if (value.webTransport && (!value.webTransport.path.startsWith("/") || value.webTransport.path.length > 16_384 || !Array.isArray(value.webTransport.datagramsBase64) || value.webTransport.datagramsBase64.length < 1 || value.webTransport.datagramsBase64.length > 16 || !Number.isInteger(value.webTransport.maxDatagrams) || value.webTransport.maxDatagrams < 1 || value.webTransport.maxDatagrams > 50)) throw new Error("WEBTRANSPORT_INPUT_INVALID");
   for (const request of value.requests) {
     if (!request || typeof request !== "object" || !/^[A-Z]+$/.test(request.method) || !request.path.startsWith("/") || request.path.length > 16_384) throw new Error("HTTP3_NATIVE_REQUEST_INVALID");
     if (!request.headers || typeof request.headers !== "object" || Object.keys(request.headers).length > 128) throw new Error("HTTP3_NATIVE_HEADERS_INVALID");

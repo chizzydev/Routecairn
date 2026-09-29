@@ -55,6 +55,10 @@ function renderMarkdown(report: RouteCairnReport): string {
     ] : []),
     `- Technologies detected: ${report.technologies.length}`,
     "",
+    "## Standards Coverage",
+    "",
+    ...standardsCoverageLines(report),
+    "",
     "## Technologies Detected",
     "",
     ...technologyTable(report),
@@ -226,6 +230,36 @@ function renderMarkdown(report: RouteCairnReport): string {
   ].join("\n");
 }
 
+function standardsCoverageLines(report: RouteCairnReport): string[] {
+  const coverage = report.standardsCoverage;
+  if (!coverage) return ["No standards coverage accounting was retained for this report."];
+  return [
+    `- Executed cases: ${coverage.accounting.executedCases}`,
+    `- Directly mapped cases: ${coverage.accounting.directlyMappedCases}`,
+    `- Supporting-only / unmapped cases: ${coverage.accounting.supportingOnlyCases} / ${coverage.accounting.unmappedCases}`,
+    `- Findings / no findings / inconclusive / blocked / observed: ${coverage.accounting.findings} / ${coverage.accounting.noFindings} / ${coverage.accounting.inconclusive} / ${coverage.accounting.blocked} / ${coverage.accounting.observed}`,
+    `- Catalogs: OWASP WSTG ${coverage.catalog.wstg} (snapshot ${coverage.catalog.wstgSnapshotDate}); OWASP ASVS ${coverage.catalog.asvs}; OWASP API Security Top 10 ${coverage.catalog.apiSecurityTop10}; CWE and CAPEC current catalogs.`,
+    "",
+    "### WSTG Area Accounting",
+    "",
+    "| Area | Status | Executed | Conclusive | Mapped identifiers |",
+    "| --- | --- | ---: | ---: | --- |",
+    ...coverage.wstgAreas.map((item) => `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${item.executedCases} | ${item.conclusiveCases} | ${escapeCell(item.requirementIds.join(", ") || "none")} |`),
+    "",
+    "### API Security First-Class Objectives",
+    "",
+    "| Objective | Status | Engines | Executed | Conclusive |",
+    "| --- | --- | --- | ---: | ---: |",
+    ...coverage.apiRiskObjectives.map((item) => `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${escapeCell(item.engineIds.join(", ") || "none")} | ${item.executedCases} | ${item.conclusiveCases} |`),
+    "",
+    "### Priority Coverage Gaps",
+    "",
+    ...(coverage.gaps.length ? coverage.gaps.map((item) => `- ${item.priority} ${item.framework}/${item.id} — ${escapeText(item.title)}: ${escapeText(item.reason)}`) : ["No priority gap remains for the configured coverage objectives in this exact run."]),
+    "",
+    "> Standards mappings describe retained evidence for this scan. They are not a certification of full standard conformance."
+  ];
+}
+
 function activeVulnerabilityLines(report: RouteCairnReport): string[] {
   const review = report.activeVulnerability;
   if (!review?.enabled) return ["Active vulnerability validation was not configured."];
@@ -236,7 +270,19 @@ function activeVulnerabilityLines(report: RouteCairnReport): string[] {
     "",
     "| Class | Planned | Proven | Secure | Inconclusive | Blocked | Not assessed |",
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ...review.coverage.map((value) => `| ${value.vulnerabilityClass} | ${value.planned} | ${value.proven} | ${value.secure} | ${value.inconclusive} | ${value.blocked} | ${value.notAssessed} |`)
+    ...review.coverage.map((value) => `| ${value.vulnerabilityClass} | ${value.planned} | ${value.proven} | ${value.secure} | ${value.inconclusive} | ${value.blocked} | ${value.notAssessed} |`),
+    "",
+    "| Case | Class | Outcome | Reason | Strategies | Cleanup |",
+    "| --- | --- | --- | --- | ---: | --- |",
+    ...review.cases.map((value) => `| ${escapeCell(value.caseId)} | ${value.vulnerabilityClass} | ${value.outcome} | ${escapeCell(value.reasonCode)} | ${value.strategiesExecuted}/${value.strategiesPlanned} | ${value.cleanup} |`),
+    ...(review.cases.some((value) => value.oastEvidence) ? [
+      "",
+      "| OAST case | Protocol | Delay | Event fingerprint | Binding fingerprint | Replay rejected |",
+      "| --- | --- | ---: | --- | --- | --- |",
+      ...review.cases.filter((value) => value.oastEvidence).map((value) => `| ${escapeCell(value.caseId)} | ${value.oastEvidence!.protocol} | ${value.oastEvidence!.delayMs} ms | ${value.oastEvidence!.requestFingerprint.slice(0, 16)} | ${value.oastEvidence!.bindingFingerprint.slice(0, 16)} | ${value.oastEvidence!.replayRejected ? "yes" : "no"} |`),
+      "",
+      "OAST evidence contains keyed or one-way fingerprints only; callback payloads, source addresses, tenant IDs, worker IDs, job IDs, and case binding values are excluded."
+    ] : [])
   ];
 }
 
@@ -362,9 +408,9 @@ function protocolSecurityLines(report: RouteCairnReport): string[] {
     `- Passed / failed / inconclusive / blocked: ${review.passedCases} / ${review.failedCases} / ${review.inconclusiveCases} / ${review.blockedCases}`,
     ...review.notes.map((note) => `- ${note}`),
     "",
-    "| Case | Kind | Actor | Outcome | Reason | Status | Messages | Events | Protocol | Cleanup |",
-    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.kind} | ${escapeCell(item.actorAlias)} | ${item.outcome} | ${item.reason} | ${item.statusCode ?? "-"} | ${item.messageCount} | ${item.eventCount} | ${item.negotiatedProtocol ?? "-"} | ${item.cleanupOutcome ?? "-"} |`),
+    "| Case | Kind | Risk | Actor | Outcome | Reason | Status | Messages | Events | Structures | Protocol | Cleanup |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.kind} | ${item.riskClass} | ${escapeCell(item.actorAlias)} | ${item.outcome} | ${item.reason} | ${item.statusCode ?? "-"} | ${item.messageCount} | ${item.eventCount} | ${item.structuralCount ?? "-"} | ${item.negotiatedProtocol ?? "-"} | ${item.cleanupOutcome ?? "-"} |`),
     "",
     "Protocol evidence retains counts, status, negotiated protocol, outcomes, and fingerprints only; message, event, protobuf, upload, variable, credential, and response payloads are omitted."
   ];

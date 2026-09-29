@@ -1,4 +1,4 @@
-﻿import type { ScanContext } from "../../core/engine/ScanContext.js";
+import type { ScanContext } from "../../core/engine/ScanContext.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
 import { analyzePathSegment, analyzeQueryParameter } from "../../intelligence/parameters/ParameterClassifier.js";
 import type { ParameterAnalysisReport, ParameterizedUrlAnalysis, ParameterRiskTag, ParameterSignal } from "../../reports/ReportTypes.js";

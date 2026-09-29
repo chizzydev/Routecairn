@@ -10,12 +10,13 @@ import { validateAdvancedEngineInput, advancedEngineCatalog, type AdvancedEngine
 import { adaptiveExecutionBindingSchema, type AdaptiveExecutionBinding } from "../contracts/AdaptiveSecuritySchemas.js";
 import { compileBillingReadOnlyCase, compileBusinessInvariantReadOnlyCase, compileGraphqlIntrospectionCase, compileOperationalHealthCase, compileRouteReadOnlyCase, compileSupabaseReadOnlyCase, type AdaptiveCompiledReadOnlyCase } from "./AdaptiveReadOnlyCompiler.js";
 import { authorizeConfiguration, compileExecutedContracts, type AdaptiveCompiledContract, type AdaptiveAuthenticationRequirement } from "./AdaptiveContractCompiler.js";
+import { buildAdaptiveAttackStateGraph, type AdaptiveAttackPath, type AdaptiveAttackStateGraph } from "./AdaptiveAttackStateGraph.js";
 
 const defaultRequiredLanes = ["PUBLIC_BASELINE", "AUTHENTICATED_IDENTITY", "ACCOUNT_PAIR_AUTHORIZATION", "BROWSER_LEARNING", "AUTHENTICATION_LIFECYCLE", "API_GRAPHQL_AUTHORIZATION", "DATA_AUTHORIZATION", "BUSINESS_LOGIC", "OPERATIONAL_ENDPOINTS", "BILLING_ENTITLEMENTS", "MUTATION_ACCEPTANCE", "RECOVERY_ACCEPTANCE"] as const;
 const terminalScans = new Set(["COMPLETED", "IMPORTED", "FAILED", "CANCELLED", "INTERRUPTED"]);
 
 export interface AdaptiveInventory {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   buildFingerprint: string;
   buildEvidence: boolean;
   producers: string[];
@@ -32,6 +33,7 @@ export interface AdaptiveInventory {
   supabaseResources: Array<{ key: string; surface: string; resource: string; operations: string[]; actors: string[] }>;
   lifecycleCategories: string[];
   workflowCases: Array<{ key: string; workflowId: string; fingerprint: string; executionState: string }>;
+  attackGraph?: AdaptiveAttackStateGraph;
 }
 
 export class AdaptiveSecurityService {
@@ -146,7 +148,7 @@ export class AdaptiveSecurityService {
     const binding = adaptiveExecutionBindingSchema.parse(request.adaptiveExecutionBinding);
     const row = this.recommendationRow(binding.recommendationId);
     const materialized = this.materialization(row);
-    if (binding.sourceFingerprint !== row.source_fingerprint || binding.executionFingerprint !== materialized.binding.executionFingerprint || binding.compilerVersion !== materialized.binding.compilerVersion) throw new Error("ADAPTIVE_EXECUTION_BINDING_MISMATCH");
+    if (digest(binding) !== digest(materialized.binding) || binding.sourceFingerprint !== row.source_fingerprint) throw new Error("ADAPTIVE_EXECUTION_BINDING_MISMATCH");
     if (request.targetId !== row.target_id) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
     const target = this.database.db.prepare("SELECT base_origin FROM targets WHERE id=?").get(row.target_id) as { base_origin: string } | undefined;
     if (!target || new URL(request.target).origin !== target.base_origin) throw new Error("ADAPTIVE_EXECUTION_TARGET_MISMATCH");
@@ -166,7 +168,9 @@ export class AdaptiveSecurityService {
     const snapshots = (this.database.db.prepare("SELECT id,source_scan_id,status,model_digest,target_row_version,build_fingerprint,created_at,accepted_at FROM adaptive_security_snapshots WHERE target_id=? ORDER BY created_at DESC LIMIT 30").all(targetId) as SnapshotListRow[]).map(snapshotSummary);
     const drifts = this.database.db.prepare("SELECT id,snapshot_id,baseline_snapshot_id,drift_type,severity,semantic_key,semantic_fingerprint,safe_summary,status,created_at FROM adaptive_security_drifts WHERE target_id=? ORDER BY created_at DESC LIMIT 200").all(targetId);
     const recommendations = (this.database.db.prepare("SELECT r.id,r.target_id,r.snapshot_id,r.category,r.engine_id,r.lane_kind,r.source_fingerprint,r.status,r.mutation_hypothesis,r.operator_approval_required,r.safe_draft_json,r.required_bindings_json,r.operator_rationale,r.reviewed_by,r.reviewed_at,r.linked_scan_id,r.linked_case_fingerprint,r.execution_outcome,r.created_at,r.updated_at,b.profile_id AS adapter_profile_id,b.version_id AS adapter_version_id FROM adaptive_security_recommendations r LEFT JOIN provider_adapter_recommendation_bindings b ON b.recommendation_id=r.id WHERE r.target_id=? ORDER BY r.created_at DESC LIMIT 200").all(targetId) as RecommendationListRow[]).map((row) => ({ ...recommendationSummary(row), executionCandidates: this.executionCandidates(row) }));
-    return { targetId, policy, coverage: this.coverage(targetId, policy), snapshots, drifts, recommendations };
+    const latest = this.database.db.prepare("SELECT inventory_json FROM adaptive_security_snapshots WHERE target_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1").get(targetId) as { inventory_json: string } | undefined;
+    const attackGraph = latest ? (JSON.parse(latest.inventory_json) as AdaptiveInventory).attackGraph : undefined;
+    return { targetId, policy, coverage: this.coverage(targetId, policy), snapshots, drifts, recommendations, ...(attackGraph ? { attackGraph } : {}) };
   }
 
   public snapshot(id: string): Record<string, unknown> {
@@ -249,7 +253,8 @@ export class AdaptiveSecurityService {
     const authentication = resolveAuthentication(String(state.authentication ?? "public") as AdaptiveAuthenticationRequirement, target);
     const expected = digest({ templateExpected, authorizedConfiguration: validated.value, authentication });
     const cleanupRequestCount = Number(state.cleanupRequestCount ?? 0);
-    return { engineConfiguration: validated.value as Record<string, unknown>, requestCount: state.requestCount, cleanupRequestCount, authentication, binding: { recommendationId: row.id, sourceFingerprint: row.source_fingerprint, executionFingerprint: expected, compilerVersion }, automation: { ...state, approvalExpiresAt: approvalRequired ? expiresAt : undefined } };
+    const graphBinding = attackGraphBinding(draft);
+    return { engineConfiguration: validated.value as Record<string, unknown>, requestCount: state.requestCount, cleanupRequestCount, authentication, binding: { recommendationId: row.id, sourceFingerprint: row.source_fingerprint, executionFingerprint: expected, compilerVersion, ...graphBinding }, automation: { ...state, approvalExpiresAt: approvalRequired ? expiresAt : undefined } };
   }
 
   private recommendationRow(id: string): RecommendationRow { const row = this.database.db.prepare("SELECT * FROM adaptive_security_recommendations WHERE id=?").get(id) as RecommendationRow | undefined; if (!row) throw new Error("ADAPTIVE_RECOMMENDATION_NOT_FOUND"); return row; }
@@ -281,7 +286,8 @@ function inventoryFrom(report: RouteCairnReport, workflowCases: AdaptiveInventor
   const mergedCases = new Map([...workflowCases, ...reportCases].map((item) => [item.key, item]));
   const producers = [report.apiMapper && "api-mapper", report.apiProbe && "api-probe", report.apiGraphql && "api-graphql", report.browserCrawl?.authentication && "browser-learning", report.supabaseAuthorization && "supabase-authorization", report.authenticationLifecycle && "authentication-lifecycle", report.businessInvariant && "business-invariant", report.controlledRace && "controlled-race", report.linkPortalSecurity && "link-portal-export-security", report.operationalEndpointSecurity && "operational-endpoint-security", report.billingEntitlement && "billing-entitlement-security", report.activeVulnerability && "active-vulnerability-validation", report.protocolSecurity && "protocol-security"].filter((item): item is string => Boolean(item)).sort();
   const buildSignals = { technologies: report.technologies.map((item) => item.name).sort(), nextBuild: report.nextJsReview?.buildIds ?? [] };
-  return { schemaVersion: 1, buildFingerprint: digest(buildSignals), buildEvidence: buildSignals.technologies.length > 0 || buildSignals.nextBuild.length > 0, producers, origins: [...origins].sort(), routes: [...routes.values()].sort(byKey), fields, apiFields, cookies, graphql, graphqlOperations, adminRoutes: [...new Set((report.browserCrawl?.authentication?.adminRoutes ?? []).map((item) => safePath(new URL(item, report.target).pathname)))].sort(), roles, versions, supabaseResources, lifecycleCategories, workflowCases: [...mergedCases.values()].sort(byKey) };
+  const attackGraph = buildAdaptiveAttackStateGraph(report);
+  return { schemaVersion: 2, buildFingerprint: digest(buildSignals), buildEvidence: buildSignals.technologies.length > 0 || buildSignals.nextBuild.length > 0, producers, origins: [...origins].sort(), routes: [...routes.values()].sort(byKey), fields, apiFields, cookies, graphql, graphqlOperations, adminRoutes: [...new Set((report.browserCrawl?.authentication?.adminRoutes ?? []).map((item) => safePath(new URL(item, report.target).pathname)))].sort(), roles, versions, supabaseResources, lifecycleCategories, workflowCases: [...mergedCases.values()].sort(byKey), attackGraph };
 }
 
 function observedWorkflowCases(report: RouteCairnReport): AdaptiveInventory["workflowCases"] {
@@ -336,21 +342,66 @@ function compareInventory(before: AdaptiveInventory, after: AdaptiveInventory, i
   for (const item of after.apiFields ?? []) { const old = previousApiFields.get(item.key); if (!old) output.push(drift("NEW_API_RESPONSE_FIELD", /secret|token|credential|payment|identity|private|sensitive/i.test(item.classification) ? "HIGH" : "MEDIUM", item.key, `A new API response field classification was observed at ${item.path}.`)); else if (digest(old) !== digest(item)) output.push(drift("API_FIELD_EXPECTATION_CHANGED", "HIGH", item.key, "An API response field classification or expected exposure changed.")); }
   const previousResources = new Map(before.supabaseResources.map((item) => [item.key, item]));
   for (const item of after.supabaseResources) { const old = previousResources.get(item.key); if (old && digest(old) !== digest(item)) output.push(drift("DATA_RESOURCE_POLICY_CHANGED", "HIGH", item.key, "A Supabase/PostgREST resource actor or operation boundary changed.")); }
+  compareAttackGraphs(before.attackGraph, after.attackGraph, includeRemoved, output);
   if (before.buildEvidence && after.buildEvidence && before.buildFingerprint !== after.buildFingerprint) output.push(drift("BUILD_CHANGED", "INFO", "build", "The observed product/build fingerprint changed; required acceptance coverage must be re-evaluated."));
   return output;
 }
 
+function compareAttackGraphs(before: AdaptiveAttackStateGraph | undefined, after: AdaptiveAttackStateGraph | undefined, includeRemoved: boolean, output: Drift[]): void {
+  if (!after) return;
+  if (!before) {
+    output.push(drift("ATTACK_GRAPH_ESTABLISHED", "INFO", after.graphFingerprint, `An evidence-backed attack-state graph was established with ${after.nodes.length} nodes, ${after.edges.length} relationships, and ${after.paths.length} paths.`));
+    return;
+  }
+  const start = output.length;
+  const limit = 200;
+  let truncated = false;
+  const push = (item: Drift): void => { if (output.length - start < limit - 1) output.push(item); else truncated = true; };
+  const previousNodes = new Map(before.nodes.map((item) => [item.id, item]));
+  const currentNodes = new Map(after.nodes.map((item) => [item.id, item]));
+  for (const node of after.nodes) if (!previousNodes.has(node.id) && ["ACTOR", "ROLE", "TENANT", "OBJECT", "CAPABILITY", "OPERATION", "BROWSER_STATE"].includes(node.kind)) push(drift(`NEW_GRAPH_${node.kind}`, ["CAPABILITY", "OPERATION"].includes(node.kind) ? "HIGH" : "MEDIUM", node.id, `A new evidence-backed ${node.kind.toLowerCase().replaceAll("_", " ")} was observed: ${node.label}.`));
+  const previousEdges = new Map(before.edges.map((item) => [item.id, item]));
+  for (const edge of after.edges) if (!previousEdges.has(edge.id) && (["OWNS", "ISSUES", "CONSUMES", "PRODUCES", "EFFECTS", "CLEANED_BY"].includes(edge.kind) || edge.stateChanging)) push(drift(`NEW_GRAPH_${edge.kind}_RELATIONSHIP`, edge.stateChanging || ["OWNS", "ISSUES", "CONSUMES"].includes(edge.kind) ? "HIGH" : "MEDIUM", edge.id, `A new evidence-backed ${edge.kind.toLowerCase().replaceAll("_", " ")} relationship was observed.`));
+  const previousPaths = new Map(before.paths.map((item) => [item.id, item]));
+  const currentPaths = new Map(after.paths.map((item) => [item.id, item]));
+  for (const path of after.paths) {
+    const old = previousPaths.get(path.id);
+    if (!old) push(drift(path.mutability === "STATE_CHANGING" ? "NEW_STATE_CHANGING_GRAPH_PATH" : "NEW_READ_ONLY_GRAPH_PATH", path.mutability === "STATE_CHANGING" ? "HIGH" : "MEDIUM", path.id, `A new ${path.mutability.toLowerCase().replaceAll("_", " ")} attack-state path was observed: ${path.label}.`));
+    else if (digest(graphPathContract(old)) !== digest(graphPathContract(path))) push(drift("GRAPH_PATH_CONTRACT_CHANGED", "HIGH", path.id, `The evidence, readiness, or required bindings changed for attack-state path ${path.label}.`));
+  }
+  const removalCovered = includeRemoved && !before.bounds.truncated && !after.bounds.truncated && before.producers.every((producer) => after.producers.includes(producer));
+  if (removalCovered) {
+    for (const node of before.nodes) if (!currentNodes.has(node.id) && ["ACTOR", "ROLE", "TENANT", "OBJECT", "CAPABILITY", "OPERATION", "BROWSER_STATE"].includes(node.kind)) push(drift(`REMOVED_GRAPH_${node.kind}`, "MEDIUM", node.id, `A previously observed ${node.kind.toLowerCase().replaceAll("_", " ")} is no longer present: ${node.label}.`));
+    for (const path of before.paths) if (!currentPaths.has(path.id)) push(drift("REMOVED_GRAPH_PATH", path.mutability === "STATE_CHANGING" ? "HIGH" : "MEDIUM", path.id, `A previously observed attack-state path is no longer present: ${path.label}.`));
+  }
+  if (truncated) output.push(drift("ATTACK_GRAPH_DRIFT_TRUNCATED", "INFO", after.graphFingerprint, `Attack-state graph drift was capped at ${limit} records for bounded review.`));
+}
+
+function graphPathContract(path: AdaptiveAttackPath): unknown { return { mutability: path.mutability, automationState: path.automationState, contractReadiness: path.contractReadiness, engineId: path.engineId, sourceCaseFingerprints: path.sourceCaseFingerprints, requiredBindings: path.requiredBindings, evidence: path.evidence }; }
+
 function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory, drifts: Drift[]): Recommendation[] {
   const result = new Map<string, Recommendation>();
+  const graph = inventory.attackGraph;
+  const coveredGraphPaths = new Set<string>();
+  const graphPathIdsForRoute = (method: string, pathTemplate: string, mutability?: AdaptiveAttackPath["mutability"]): string[] => {
+    if (!graph) return [];
+    const operationIds = new Set(graph.nodes.filter((node) => node.kind === "OPERATION" && node.attributes.method === method.toUpperCase() && node.attributes.pathTemplate === pathTemplate).map((node) => node.id));
+    return graph.paths.filter((path) => (!mutability || path.mutability === mutability) && path.nodeIds.some((id) => operationIds.has(id))).map((path) => path.id).slice(0, 32);
+  };
+  const graphPathIdsForCases = (fingerprints: readonly string[]): string[] => graph ? graph.paths.filter((path) => path.sourceCaseFingerprints.some((fingerprint) => fingerprints.includes(fingerprint))).map((path) => path.id).slice(0, 32) : [];
   type Compiled = AdaptiveCompiledReadOnlyCase | AdaptiveCompiledContract;
-  const add = (item: Omit<Recommendation, "sourceFingerprint" | "operatorApprovalRequired"> & { source: unknown; compiled?: Compiled | undefined }) => {
-    const sourceFingerprint = digest(item.source);
+  const add = (item: Omit<Recommendation, "sourceFingerprint" | "operatorApprovalRequired"> & { source: unknown; compiled?: Compiled | undefined; graphPathIds?: readonly string[] }) => {
+    const graphPathIds = [...new Set((item.graphPathIds ?? []).filter((id) => /^[a-f0-9]{64}$/.test(id)))].sort().slice(0, 32);
+    graphPathIds.forEach((id) => coveredGraphPaths.add(id));
+    const sourceFingerprint = digest(graphPathIds.length ? { evidence: item.source, graphPathIds } : item.source);
     const key = `${item.category}:${sourceFingerprint}`;
-    const draft = item.compiled ? executableDraft(item.draft, item.compiled, sourceFingerprint) : { ...item.draft, automation: { state: "REQUIRES_BINDINGS", compilerVersion: 1, mutationApprovalRequired: item.mutationHypothesis, unresolvedBindings: item.requiredBindings } };
+    const graphBinding = graph && graphPathIds.length ? { attackGraphBinding: { graphFingerprint: graph.graphFingerprint, graphPathIds } } : {};
+    const draft = item.compiled ? executableDraft({ ...item.draft, ...graphBinding }, item.compiled, sourceFingerprint) : { ...item.draft, ...graphBinding, automation: { state: "REQUIRES_BINDINGS", compilerVersion: 1, mutationApprovalRequired: item.mutationHypothesis, unresolvedBindings: item.requiredBindings } };
     const approvalRequired = item.compiled ? "mutationApprovalRequired" in item.compiled && item.compiled.mutationApprovalRequired : true;
     result.set(key, { category: item.category, engineId: item.engineId, laneKind: item.laneKind, mutationHypothesis: item.mutationHypothesis, sourceFingerprint, operatorApprovalRequired: approvalRequired, draft, requiredBindings: item.compiled ? [] : item.requiredBindings });
   };
   for (const compiled of compileExecutedContracts(report)) {
+    const graphPathIds = graphPathIdsForCases(compiled.sourceCaseFingerprints);
     add({
       category: `EXACT_CONTRACT_REPLAY_${compiled.engineId.toUpperCase().replaceAll("-", "_")}`,
       engineId: compiled.engineId,
@@ -359,13 +410,16 @@ function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory,
       source: { engineId: compiled.engineId, evidenceFingerprint: compiled.evidenceFingerprint, sourceCaseFingerprints: compiled.sourceCaseFingerprints },
       draft: { exactExecutedContract: true, sourceCaseFingerprints: compiled.sourceCaseFingerprints },
       requiredBindings: [],
-      compiled
+      compiled,
+      graphPathIds
     });
   }
   for (const candidate of report.browserCrawl?.authentication?.learnedTestCases ?? []) {
-    for (const category of candidate.suggestedLifecycleCategories) add({ category: `LIFECYCLE_${category}`, engineId: "authentication-lifecycle", laneKind: "AUTHENTICATION_LIFECYCLE", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { category, method: candidate.method, endpoint: safePath(new URL(candidate.endpoint).pathname), fields: candidate.observedFieldNames.map(safeName).sort(), bodyFormat: candidate.requestBodyFormat ?? "NONE", authorizationContext: candidate.authorizationContext, classification: candidate.classification }, draft: learnedDraft(candidate, category), requiredBindings: lifecycleBindings(category) });
+    const candidatePath = safePath(new URL(candidate.endpoint).pathname);
+    const candidateGraphPaths = graphPathIdsForRoute(candidate.method, candidatePath, candidate.classification === "MUTATION_HYPOTHESIS" ? "STATE_CHANGING" : "READ_ONLY");
+    for (const category of candidate.suggestedLifecycleCategories) add({ category: `LIFECYCLE_${category}`, engineId: "authentication-lifecycle", laneKind: "AUTHENTICATION_LIFECYCLE", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { category, method: candidate.method, endpoint: candidatePath, fields: candidate.observedFieldNames.map(safeName).sort(), bodyFormat: candidate.requestBodyFormat ?? "NONE", authorizationContext: candidate.authorizationContext, classification: candidate.classification }, draft: learnedDraft(candidate, category), requiredBindings: lifecycleBindings(category), graphPathIds: candidateGraphPaths });
     const path = safePath(new URL(candidate.endpoint).pathname);
-    if (/graphql/i.test(path)) { const compiled = candidate.classification === "READ_ONLY_OBSERVATION" ? compileGraphqlIntrospectionCase(report, path) : undefined; add({ category: compiled ? "GRAPHQL_INTROSPECTION_READ_ONLY" : "GRAPHQL_OPERATION_REVIEW", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, protocol: "GRAPHQL", pathTemplate: path, method: candidate.method, executable: Boolean(compiled) }, requiredBindings: ["named operation", "actor matrix", "field expectations", "tenant expectation"], compiled }); }
+    if (/graphql/i.test(path)) { const compiled = candidate.classification === "READ_ONLY_OBSERVATION" ? compileGraphqlIntrospectionCase(report, path) : undefined; add({ category: compiled ? "GRAPHQL_INTROSPECTION_READ_ONLY" : "GRAPHQL_OPERATION_REVIEW", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, protocol: "GRAPHQL", pathTemplate: path, method: candidate.method, executable: Boolean(compiled) }, requiredBindings: ["named operation", "actor matrix", "field expectations", "tenant expectation"], compiled, graphPathIds: candidateGraphPaths }); }
     if (/signed|invite|portal|export|download/i.test(path)) add({ category: "CAPABILITY_LINK_REVIEW", engineId: "link-portal-export-security", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: candidate.classification === "MUTATION_HYPOTHESIS", source: { method: candidate.method, path, fields: candidate.observedFieldNames.map(safeName).sort() }, draft: { sourceCandidateId: candidate.id, pathTemplate: path, method: candidate.method, executable: false }, requiredBindings: ["resource owner", "tenant", "expiry", "tamper/replay assertions", "cleanup"] });
     if (/webhook|cron|job|health|admin|worker/i.test(path)) {
       const operational = candidate.classification === "READ_ONLY_OBSERVATION" ? compileOperationalHealthCase(report, { protocol: "REST", method: candidate.method, pathTemplate: path, source: "browser-learning", stateChanging: false }) : undefined;
@@ -382,9 +436,10 @@ function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory,
   }
   for (const item of inventory.routes.filter((route) => route.source === "api-mapper" || route.source === "api-graphql-inventory" || (route.source === "browser-learning" && !route.stateChanging))) {
     const compiled = item.protocol === "REST" ? compileRouteReadOnlyCase(report, item) : !item.stateChanging ? compileGraphqlIntrospectionCase(report, item.pathTemplate) : undefined;
-    add({ category: compiled ? (item.protocol === "REST" ? "API_READ_ONLY_REGRESSION" : "GRAPHQL_INTROSPECTION_READ_ONLY") : "API_AUTHORIZATION_MATRIX", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: item.stateChanging && !compiled, source: item, draft: { protocol: item.protocol, pathTemplate: item.pathTemplate, documentedMethods: [item.method], executable: Boolean(compiled) }, requiredBindings: ["Account A/B object identities", "expected decisions", "response field rules"], compiled });
+    const routeGraphPaths = graphPathIdsForRoute(item.method, item.pathTemplate, compiled || !item.stateChanging ? "READ_ONLY" : "STATE_CHANGING");
+    add({ category: compiled ? (item.protocol === "REST" ? "API_READ_ONLY_REGRESSION" : "GRAPHQL_INTROSPECTION_READ_ONLY") : "API_AUTHORIZATION_MATRIX", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: item.stateChanging && !compiled, source: item, draft: { protocol: item.protocol, pathTemplate: item.pathTemplate, documentedMethods: [item.method], executable: Boolean(compiled) }, requiredBindings: ["Account A/B object identities", "expected decisions", "response field rules"], compiled, graphPathIds: item.stateChanging ? [] : routeGraphPaths });
     if (item.stateChanging) {
-      add({ category: "BUSINESS_INVARIANT_CANDIDATE", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: true, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["pre-state", "bounded action sequence", "expected invariant", "authoritative post-state", "verified cleanup"] });
+      add({ category: "BUSINESS_INVARIANT_CANDIDATE", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: true, source: { method: item.method, pathTemplate: item.pathTemplate }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: false }, requiredBindings: ["pre-state", "bounded action sequence", "expected invariant", "authoritative post-state", "verified cleanup"], graphPathIds: routeGraphPaths });
     } else {
       const invariant = item.protocol === "REST" ? compileBusinessInvariantReadOnlyCase(report, item) : undefined;
       if (invariant) add({ category: "BUSINESS_INVARIANT_READ_ONLY", engineId: "business-invariant", laneKind: "BUSINESS_LOGIC", mutationHypothesis: false, source: { method: item.method, pathTemplate: item.pathTemplate, kind: "stable-observation" }, draft: { pathTemplate: item.pathTemplate, method: item.method, executable: true }, requiredBindings: [], compiled: invariant });
@@ -402,12 +457,26 @@ function recommendations(report: RouteCairnReport, inventory: AdaptiveInventory,
     add({ category: "GRAPHQL_INTROSPECTION_READ_ONLY", engineId: "api-graphql-authorization", laneKind: "API_GRAPHQL_AUTHORIZATION", mutationHypothesis: false, source: { protocol: "GRAPHQL", path, kind: "generated-introspection" }, draft: { protocol: "GRAPHQL", pathTemplate: path, operation: "GENERATED_INTROSPECTION", executable: true }, requiredBindings: [], compiled });
   }
   for (const item of inventory.supabaseResources) { const compiled = item.operations.every((operation) => operation === "SELECT") ? compileSupabaseReadOnlyCase(report, item) : undefined; add({ category: compiled ? "SUPABASE_ANONYMOUS_READ_REGRESSION" : "SUPABASE_AUTHORIZATION_MATRIX", engineId: "supabase-authorization", laneKind: "DATA_AUTHORIZATION", mutationHypothesis: item.operations.some((operation) => operation !== "SELECT"), source: item, draft: { surface: item.surface, resource: item.resource, operations: item.operations, actors: item.actors, executable: Boolean(compiled) }, requiredBindings: ["Account A/B and tenant identities", "exact object bindings", "expected decisions", "sensitive columns", "cleanup for writes"], compiled }); }
+  for (const path of graph?.paths.filter((item) => item.mutability === "STATE_CHANGING" && !coveredGraphPaths.has(item.id)) ?? []) {
+    if (!advancedEngineCatalog.some((entry) => entry.id === path.engineId)) continue;
+    const nodeKinds = [...new Set(path.nodeIds.map((id) => graph?.nodes.find((node) => node.id === id)?.kind).filter((kind): kind is NonNullable<typeof kind> => Boolean(kind)))];
+    const requiredBindings = path.requiredBindings.length ? [...path.requiredBindings] : ["compiler-valid exact execution contract", "explicit operator review"];
+    add({ category: "ATTACK_GRAPH_STATE_TRANSITION", engineId: path.engineId, laneKind: engineLane(path.engineId), mutationHypothesis: true, source: { graphPathId: path.id, engineId: path.engineId, sourceCaseFingerprints: path.sourceCaseFingerprints }, draft: { graphPathId: path.id, label: path.label, nodeKinds, contractReadiness: path.contractReadiness, executable: false }, requiredBindings, graphPathIds: [path.id] });
+  }
   for (const item of drifts.filter((entry) => entry.severity === "HIGH")) add({ category: `DRIFT_${item.type}`, engineId: driftEngine(item.type), laneKind: driftLane(item.type), mutationHypothesis: false, source: item, draft: { semanticKey: item.semanticKey, safeSummary: item.summary }, requiredBindings: ["operator review", "exact regression case", "authoritative expected outcome"] });
   return [...result.values()];
 }
 
 function learnedDraft(candidate: BrowserLearnedTestCase, category: string): Record<string, unknown> { return { sourceCandidateId: candidate.id, category, method: candidate.method, pathTemplate: safePath(new URL(candidate.endpoint).pathname), requestBodyFormat: candidate.requestBodyFormat ?? "UNKNOWN", observedFieldNames: candidate.observedFieldNames.map(safeName).sort(), observedStatusCodes: [...candidate.observedStatusCodes].sort(), state: "DRAFT_REQUIRES_OPERATOR_CASE", executable: false }; }
 function executableDraft(summary: Record<string, unknown>, compiled: AdaptiveCompiledReadOnlyCase | AdaptiveCompiledContract, sourceFingerprint: string): Record<string, unknown> { const exactContract = "mutationApprovalRequired" in compiled; const compilerVersion = exactContract ? 2 : 1; const mutationApprovalRequired = exactContract && compiled.mutationApprovalRequired; const automation = { state: mutationApprovalRequired ? "READY_APPROVAL_GATED" : "READY_READ_ONLY", compilerVersion, evidenceStrength: compiled.evidenceStrength, evidenceFingerprint: compiled.evidenceFingerprint, requestCount: compiled.requestCount, cleanupRequestCount: exactContract ? compiled.cleanupRequestCount : 0, authentication: exactContract ? compiled.authentication : "public", mutationApprovalRequired, summary: compiled.summary }; const executionFingerprintValue = executionFingerprint(compiled.engineId, sourceFingerprint, compiled.evidenceFingerprint, compiled.engineConfiguration, compilerVersion); return { ...summary, executable: true, automation, engineConfiguration: compiled.engineConfiguration, executionFingerprint: executionFingerprintValue }; }
+function attackGraphBinding(draft: Record<string, unknown>): Pick<AdaptiveExecutionBinding, "graphFingerprint" | "graphPathIds"> {
+  if (draft.attackGraphBinding === undefined) return {};
+  const binding = draft.attackGraphBinding;
+  if (!binding || typeof binding !== "object" || Array.isArray(binding)) throw new Error("ADAPTIVE_ATTACK_GRAPH_BINDING_INVALID");
+  const value = binding as Record<string, unknown>;
+  if (typeof value.graphFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(value.graphFingerprint) || !Array.isArray(value.graphPathIds) || value.graphPathIds.length < 1 || value.graphPathIds.length > 32 || value.graphPathIds.some((id) => typeof id !== "string" || !/^[a-f0-9]{64}$/.test(id))) throw new Error("ADAPTIVE_ATTACK_GRAPH_BINDING_INVALID");
+  return { graphFingerprint: value.graphFingerprint, graphPathIds: [...new Set(value.graphPathIds as string[])].sort() };
+}
 function executionFingerprint(engineId: string, sourceFingerprint: string, evidenceFingerprint: string, engineConfiguration: unknown, compilerVersion: number): string { return digest({ purpose: compilerVersion === 1 ? "adaptive-read-only-execution" : "adaptive-exact-contract-execution", engineId, sourceFingerprint, evidenceFingerprint, engineConfiguration, compilerVersion }); }
 function isReadOnlyConfiguration(engineId: string, value: Record<string, unknown>): boolean {
   if (engineId === "api-graphql-authorization") { const routes = Array.isArray(value.routes) ? value.routes as Array<Record<string, unknown>> : []; const checks = Array.isArray(value.checks) ? value.checks as Array<Record<string, unknown>> : []; return routes.length > 0 && checks.length > 0 && routes.every((route) => route.protocol === "GRAPHQL" || (Array.isArray(route.documentedMethods) && (route.documentedMethods as unknown[]).every((method) => ["GET", "HEAD", "OPTIONS"].includes(String(method))))) && checks.every((check) => check.kind === "GRAPHQL_INTROSPECTION" || !containsUnsafeMethod(check)); }
@@ -438,7 +507,7 @@ function resolveAuthentication(requirement: AdaptiveAuthenticationRequirement, t
 function lifecycleBindings(category: string): string[] { const common = ["disposable actor", "exact assertions", "expiring authorization", "verified cleanup"]; if (/RESET|INVITATION|MFA|PASSKEY|RECOVERY|LINKING|VERIFICATION/.test(category)) common.push("single-use token/fixture binding"); if (/EXPIRATION/.test(category)) common.push("bounded wait contract"); return common; }
 function driftEngine(type: string): string { return type.includes("COOKIE") || type.includes("AUTH") ? "authentication-lifecycle" : type.includes("DATA") ? "supabase-authorization" : type.includes("WRITABLE") ? "business-invariant" : "api-graphql-authorization"; }
 function driftLane(type: string): LiveAcceptanceLane["kind"] { return type.includes("COOKIE") || type.includes("AUTH") ? "AUTHENTICATION_LIFECYCLE" : type.includes("DATA") ? "DATA_AUTHORIZATION" : type.includes("WRITABLE") ? "BUSINESS_LOGIC" : "API_GRAPHQL_AUTHORIZATION"; }
-function engineLane(engineId: string): LiveAcceptanceLane["kind"] { return engineId === "api-graphql-authorization" ? "API_GRAPHQL_AUTHORIZATION" : engineId === "supabase-authorization" || engineId === "link-portal-export-security" ? "DATA_AUTHORIZATION" : engineId === "billing-entitlement-security" ? "BILLING_ENTITLEMENTS" : "BUSINESS_LOGIC"; }
+function engineLane(engineId: string): LiveAcceptanceLane["kind"] { return engineId === "authentication-lifecycle" ? "AUTHENTICATION_LIFECYCLE" : engineId === "api-graphql-authorization" ? "API_GRAPHQL_AUTHORIZATION" : engineId === "supabase-authorization" || engineId === "link-portal-export-security" ? "DATA_AUTHORIZATION" : engineId === "billing-entitlement-security" ? "BILLING_ENTITLEMENTS" : engineId === "operational-endpoint-security" ? "OPERATIONAL_ENDPOINTS" : "BUSINESS_LOGIC"; }
 function compareSet<T extends Record<string, unknown>>(before: T[], after: T[], key: keyof T, added: string, removed: string, output: Drift[], includeRemoved: boolean, severity: (item: T) => Drift["severity"]): void { const old = new Map(before.map((item) => [String(item[key]), item])); const next = new Map(after.map((item) => [String(item[key]), item])); for (const [id, item] of next) if (!old.has(id)) output.push(drift(added, severity(item), id, `${added.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); if (includeRemoved) for (const id of old.keys()) if (!next.has(id)) output.push(drift(removed, "MEDIUM", id, `${removed.replaceAll("_", " ").toLowerCase()} observed: ${id}.`)); }
 function drift(type: string, severity: Drift["severity"], semanticKey: string, summary: string): Drift { return { type, severity, semanticKey, summary }; }
 function verifyRecommendation(database: DashboardDatabase, engineId: string, scanId: string, scanStatus: string, caseFingerprint: string): "RUNNING" | "VERIFIED" | "INCONCLUSIVE" { if (!terminalScans.has(scanStatus)) return "RUNNING"; if (!["COMPLETED","IMPORTED"].includes(scanStatus)) return "INCONCLUSIVE"; const module = engineModule(engineId); const workflow = engineWorkflow(engineId); if (!module || !workflow) return "INCONCLUSIVE"; const moduleRow = database.db.prepare("SELECT status FROM scan_module_executions WHERE scan_id=? AND module_id=?").get(scanId, module) as { status: string } | undefined; const caseRow = database.db.prepare("SELECT execution_state FROM scan_workflow_case_executions WHERE scan_id=? AND workflow_id=? AND safe_case_fingerprint=?").get(scanId, workflow, caseFingerprint) as { execution_state: string } | undefined; return moduleRow?.status === "COMPLETED" && caseRow?.execution_state === "COMPLETED" ? "VERIFIED" : "INCONCLUSIVE"; }

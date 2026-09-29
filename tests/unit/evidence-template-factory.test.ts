@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildEvidenceTemplates } from "../../src/intelligence/evidenceTemplates/EvidenceTemplateFactory.js";
 
 describe("evidence template factory", () => {

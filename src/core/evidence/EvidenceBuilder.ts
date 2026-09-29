@@ -1,4 +1,4 @@
-﻿import type { Confidence } from "../findings/Confidence.js";
+import type { Confidence } from "../findings/Confidence.js";
 import type { FindingEvidence } from "../findings/Finding.js";
 import type { Severity } from "../findings/Severity.js";
 import type { HttpResponse } from "../http/HttpTypes.js";
@@ -7,7 +7,7 @@ import { redactSensitiveUrl } from "./ValuePresenceAttestation.js";
 
 const sensitiveHeaderPattern = /^(?:authorization|proxy-authorization|cookie|set-cookie|apikey|x-api-key|api-key|x-auth-token|x-csrf-token|x-tenant-id|x-org-id|x-organization-id|x-workspace-id)$/i;
 const sensitiveBodyPatterns: Array<[RegExp, string]> = [
-  [/(\b[A-Za-z0-9_.-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|service[_-]?role[_-]?key|secret|signing[_-]?secret|session(?:[_-]?(?:id|token|secret))?|password|passwd|pwd|database[_-]?url|db[_-]?password|private[_-]?key)[A-Za-z0-9_.-]*\b["']?\s*[:=]\s*)["']?[^"'\s,;<>]+/gi, "$1<redacted>"],
+  [/(\b[A-Za-z0-9_.-]*(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|service[_-]?role[_-]?key|secret|signing[_-]?secret|session(?:[_-]?(?:id|token|secret))?|password|passwd|pwd|database[_-]?url|db[_-]?password|private[_-]?key)[A-Za-z0-9_.-]*\b["']?\s*[:=]\s*["']?)[^"'\s,;<>]+/gi, "$1<redacted>"],
   [/("(?:ssn|socialSecurityNumber|taxId|privateEmail|privatePhone|privateAddress|passwordHash)"\s*:\s*")[^"]+("?)/gi, "$1<redacted>$2"],
   [/AKIA[0-9A-Z]{16}/g, "AKIA<redacted>"],
   [/(?:postgres|mysql|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi, "<redacted-connection-url>"],

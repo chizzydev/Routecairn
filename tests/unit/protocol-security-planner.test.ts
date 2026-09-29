@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { planProtocolSecurity, protocolSecurityInputSchema } from "../../src/modules/protocolSecurity/ProtocolSecurityPlanner.js";
 
@@ -59,5 +60,29 @@ describe("protocol security planner", () => {
       : { id: "stateful-grpc", label: "stateful grpc", kind, actorId: "anon", requireVerifiedIdentity: false, url: `${target}/service/Change`, headers: {}, payloadSecretRef: "fixture", maxMessages: 1, readOnly: false, expectation };
     const input = protocolSecurityInputSchema.parse({ schemaVersion: 1, actors: [actor], cases: [value] });
     expect(() => planProtocolSecurity(input, { target, scope: { ...defaultScope, allowedMethods: ["GET", "POST"] } })).toThrow(/requires authorization and cleanup/i);
+  });
+
+  it("plans the expanded bounded protocol semantics and verifies persisted-query hashes", () => {
+    const document = "query Viewer { viewer { id } }"; const sha256Hash = createHash("sha256").update(document).digest("hex"); const now = Date.now(); const desyncApproval = { environment: "TEST", operator: "test", ticket: "T-6", authorizedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 60_000).toISOString(), confirmation: "I_AUTHORIZE_BOUNDED_PROTOCOL_DESYNCHRONIZATION" } as const;
+    const input = protocolSecurityInputSchema.parse({ schemaVersion: 1, maxRequests: 30, actors: [actor], cases: [
+      { id: "ws-machine", label: "ws machine", kind: "WEBSOCKET_AUTH_STATE_MACHINE", actorId: "anon", requireVerifiedIdentity: false, url: "wss://app.example.com/socket", headers: {}, states: [{ send: { type: "authenticate" } }, { expectType: "authenticated" }, { send: { type: "read" } }, { expectType: "result", expectJsonPath: "data.allowed", equals: true }], maxMessages: 4, expectation: { ...expectation, decision: "ALLOW", allowedStatuses: [101], minMessages: 2 } },
+      { id: "incremental", label: "incremental", kind: "GRAPHQL_INCREMENTAL", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/graphql`, headers: {}, document: "query Feed { feed @stream(initialCount: 1) { id } }", variables: {}, maxParts: 4, expectedPaths: ["feed.1"], expectation },
+      { id: "subscription-reauth", label: "subscription reauth", kind: "GRAPHQL_SUBSCRIPTION_REAUTH", actorId: "anon", requireVerifiedIdentity: false, url: "wss://app.example.com/graphql", headers: {}, transport: "GRAPHQL_TRANSPORT_WS", document: "subscription Watch { events { __typename } }", variables: {}, initialConnectionPayload: { authorization: "{{SECRET:old_session}}" }, reauthConnectionPayload: { authorization: "{{SECRET:new_session}}" }, maxMessages: 4, expectation },
+      { id: "persisted", label: "persisted", kind: "GRAPHQL_PERSISTED_QUERY", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/graphql`, headers: {}, document, variables: {}, sha256Hash, negotiation: "REGISTER_THEN_HASH", expectation },
+      { id: "federation", label: "federation", kind: "GRAPHQL_FEDERATION", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/graphql`, headers: {}, operation: "ENTITIES", representations: [{ __typename: "User", id: "{{SECRET:user_id}}" }], expectation },
+      { id: "grpc-client", label: "grpc client", kind: "GRPC_CLIENT_STREAM", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/svc/Upload`, headers: {}, payloadSecretRefs: ["one", "two"], maxMessages: 2, interMessageDelayMs: 1, expectation },
+      { id: "grpc-bidi", label: "grpc bidi", kind: "GRPC_BIDI_STREAM", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/svc/Chat`, headers: {}, payloadSecretRefs: ["one", "two"], maxMessages: 2, interMessageDelayMs: 1, expectation },
+      { id: "wt", label: "wt", kind: "WEBTRANSPORT_DATAGRAM", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/wt`, headers: {}, datagramSecretRefs: ["ping"], maxDatagrams: 1, readOnly: true, expectation },
+      { id: "compression", label: "compression", kind: "COMPRESSION_BOUNDARY", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/compressed`, headers: {}, method: "GET", encoding: "gzip", maxExpandedBytes: 4096, readOnly: true, expectation },
+      { id: "identity", label: "identity", kind: "CROSS_PROTOCOL_IDENTITY", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/identity`, headers: {}, legs: [{ protocol: "HTTP1", url: `${target}/identity`, method: "GET", headers: {}, jsonPath: "subject" }, { protocol: "HTTP2", url: `${target}/identity`, method: "GET", headers: {}, jsonPath: "subject" }], readOnly: true, expectation },
+      { id: "proxy", label: "proxy", kind: "PROXY_CHAIN_DESYNCHRONIZATION", actorId: "anon", requireVerifiedIdentity: false, url: `${target}/probe`, headers: {}, method: "POST", bodySecretRef: "probe", framing: "CONTENT_LENGTH_DELTA", declaredLengthDelta: 1, sentinelPath: "/sentinel", proxyChain: [{ origin: target, protocol: "H2" }, { origin: target, protocol: "H3" }], authorization: desyncApproval, expectation }
+    ] });
+    const plan = planProtocolSecurity(input, { target, scope: defaultScope });
+    expect(plan.cases).toHaveLength(11);
+    expect(plan.cases.find((item) => item.id === "proxy")?.riskClass).toBe("CRITICAL");
+    expect(plan.cases.find((item) => item.id === "wt")?.riskClass).toBe("MODERATE");
+    expect(() => protocolSecurityInputSchema.parse({ schemaVersion: 1, actors: [actor], cases: [{ ...input.cases.find((item) => item.kind === "GRAPHQL_PERSISTED_QUERY")!, sha256Hash: "0".repeat(64) }] })).not.toThrow();
+    const bad = protocolSecurityInputSchema.parse({ schemaVersion: 1, actors: [actor], cases: [{ ...input.cases.find((item) => item.kind === "GRAPHQL_PERSISTED_QUERY")!, sha256Hash: "0".repeat(64) }] });
+    expect(() => planProtocolSecurity(bad, { target, scope: defaultScope })).toThrow(/hash.*does not match/i);
   });
 });

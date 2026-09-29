@@ -2,8 +2,9 @@ import { createHash, createPublicKey, randomBytes, randomUUID, verify, type KeyO
 import type { IncomingHttpHeaders } from "node:http";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
+import type { RemoteWorkerOperations } from "./RemoteWorkerOperations.js";
 
-export class RemoteWorkerService {
+export class RemoteWorkerService implements RemoteWorkerOperations {
   public constructor(private readonly database: DashboardDatabase) {}
 
   public createEnrollment(input: { organizationId: string; nameHint?: string; expiresInMinutes: number }, actor: string): { enrollmentId: string; token: string; expiresAt: string } {
@@ -16,12 +17,12 @@ export class RemoteWorkerService {
     const publicKey = validateEd25519(input.publicKeyPem); const normalizedPublicKey = publicKey.export({ format: "pem", type: "spki" }).toString();
     const row = this.database.db.prepare("SELECT * FROM remote_worker_enrollments WHERE token_hash=?").get(digest(input.token)) as EnrollmentRow | undefined;
     if (!row || row.consumed_at || Date.parse(row.expires_at) <= Date.now()) throw new RemoteWorkerAuthError("REMOTE_ENROLLMENT_REJECTED");
-    const id = randomUUID(); const now = nowIso(); const fingerprint = createHash("sha256").update(publicKey.export({ format: "der", type: "spki" })).digest("hex");
+    const id = randomUUID(); const now = nowIso(); const fingerprint = createHash("sha256").update(publicKey.export({ format: "der", type: "spki" })).digest("hex");const labels={...input.labels,networkZone:normalizeZone(input.labels.networkZone)};
     this.database.transaction(() => {
       const consumed = this.database.db.prepare("UPDATE remote_worker_enrollments SET consumed_at=? WHERE id=? AND consumed_at IS NULL AND expires_at>?").run(now, row.id, now);
       if (consumed.changes !== 1) throw new RemoteWorkerAuthError("REMOTE_ENROLLMENT_REJECTED");
       this.database.db.prepare(`INSERT INTO remote_workers (id,organization_id,name,public_key_pem,public_key_fingerprint,capabilities_json,labels_json,status,generation,last_seen_at,created_at,updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 1, ?, ?, ?)`).run(id, row.organization_id, input.name, normalizedPublicKey, fingerprint, JSON.stringify([...new Set(input.capabilities)].sort()), JSON.stringify(input.labels), now, now, now);
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'ONLINE', 1, ?, ?, ?)`).run(id, row.organization_id, input.name, normalizedPublicKey, fingerprint, JSON.stringify([...new Set(input.capabilities)].sort()), JSON.stringify(labels), now, now, now);
     });
     return { workerId: id, generation: 1, signatureProtocol: "routecairn-agent-ed25519-v1" };
   }
@@ -46,18 +47,19 @@ export class RemoteWorkerService {
     this.database.db.prepare("UPDATE remote_workers SET status=?,resources_json=?,last_seen_at=?,updated_at=? WHERE id=?").run(input.status, canonical(input.resources), nowIso(), nowIso(), worker.id);
   }
 
-  public enqueue(input: { organizationId: string; kind: string; payload: Record<string, unknown>; requiredCapabilities: string[]; priority: number; maxAttempts: number }, actor: string): string {
+  public enqueue(input: { organizationId: string; kind: string; payload: Record<string, unknown>; requiredCapabilities: string[]; priority: number; maxAttempts: number; networkZone?: string }, actor: string): string {
     ensureSafeObject(input.payload); const id = randomUUID(); const requiredCapabilities = [...new Set([input.kind.toLowerCase(), ...input.requiredCapabilities])].sort();
-    this.database.db.prepare(`INSERT INTO remote_jobs (id,organization_id,kind,safe_payload_json,required_capabilities_json,status,priority,max_attempts,created_by,created_at)
-      VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`).run(id, input.organizationId, input.kind, canonical(input.payload), JSON.stringify(requiredCapabilities), input.priority, input.maxAttempts, actor, nowIso());
+    this.database.db.prepare(`INSERT INTO remote_jobs (id,organization_id,kind,safe_payload_json,required_capabilities_json,network_zone,status,priority,max_attempts,created_by,created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)`).run(id, input.organizationId, input.kind, canonical(input.payload), JSON.stringify(requiredCapabilities), input.networkZone ?? null, input.priority, input.maxAttempts, actor, nowIso());
     return id;
   }
 
-  public claim(worker: WorkerRow): unknown {
+  public claim(worker: WorkerRow, _waitMs = 0): unknown {
     this.requeueExpired();
     if (worker.status !== "ONLINE") return { job: null };
     const capabilities = new Set(JSON.parse(worker.capabilities_json) as string[]);
-    const candidates = this.database.db.prepare("SELECT * FROM remote_jobs WHERE organization_id=? AND status='QUEUED' AND attempt_count<max_attempts ORDER BY priority DESC,created_at LIMIT 100").all(worker.organization_id) as JobRow[];
+    const labels = JSON.parse(worker.labels_json) as Record<string, string>;
+    const candidates = this.database.db.prepare("SELECT * FROM remote_jobs WHERE organization_id=? AND status='QUEUED' AND attempt_count<max_attempts AND (network_zone IS NULL OR network_zone=?) ORDER BY priority DESC,created_at LIMIT 100").all(worker.organization_id, labels.networkZone ?? "default") as JobRow[];
     const job = candidates.find((candidate) => (JSON.parse(candidate.required_capabilities_json) as string[]).every((capability) => capabilities.has(capability)));
     if (!job) return { job: null };
     const leaseToken = randomBytes(32).toString("base64url"); const expiresAt = new Date(Date.now() + 60_000).toISOString();
@@ -103,6 +105,7 @@ function validateEd25519(pem: string): KeyObject { let key: KeyObject; try { key
 function ensureSafeObject(value: Record<string, unknown>): void { const raw = canonical(value); if (Buffer.byteLength(raw) > 256 * 1024) throw new Error("REMOTE_JOB_PAYLOAD_TOO_LARGE"); const inspect=(item:unknown,depth:number):void=>{if(depth>12)throw new Error("REMOTE_JOB_PAYLOAD_TOO_DEEP");if(Array.isArray(item)){for(const child of item)inspect(child,depth+1);return;}if(item&&typeof item==="object")for(const [key,child] of Object.entries(item as Record<string,unknown>)){if(/(password|passwd|secret|token|cookie|authorization|private[_-]?key|api[_-]?key|credential|session|jwt|signature|signed)/i.test(key)&&!/(?:path|ref|env)$/i.test(key))throw new Error("REMOTE_JOB_SECRET_FIELD_REJECTED");inspect(child,depth+1);}};inspect(value,0); }
 function effectiveStatus(row: WorkerRow): string { return row.status === "ONLINE" && (!row.last_seen_at || Date.parse(row.last_seen_at) < Date.now() - 90_000) ? "OFFLINE" : row.status; }
 function safeRemoteError(value: string): string { return value.replace(/https?:\/\/[^\s]+/gi, "<endpoint>").replace(/\b(password|secret|token|cookie|authorization|private[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>").replace(/[\r\n]+/g, " ").slice(0, 1000); }
+function normalizeZone(value:string|undefined):string{const zone=(value??"default").toLowerCase();if(!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(zone))throw new Error("REMOTE_WORKER_NETWORK_ZONE_INVALID");return zone;}
 interface EnrollmentRow { id: string; organization_id: string; expires_at: string; consumed_at: string | null }
 export interface WorkerRow { id: string; organization_id: string; name: string; public_key_pem: string; public_key_fingerprint: string; capabilities_json: string; labels_json: string; resources_json: string | null; status: string; generation: number; last_seen_at: string | null; created_at: string }
-interface JobRow { id: string; kind: string; status: string; safe_payload_json: string; required_capabilities_json: string; assigned_worker_id: string | null; lease_token_hash: string | null; lease_expires_at: string | null }
+interface JobRow { id: string; kind: string; status: string; safe_payload_json: string; required_capabilities_json: string; network_zone: string | null; assigned_worker_id: string | null; lease_token_hash: string | null; lease_expires_at: string | null }

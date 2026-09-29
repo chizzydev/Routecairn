@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "moduleId": "framework-signature-pack",
+  "version": "1.0.0",
+  "entrypoint": "index.mjs",
+  "description": "Identifies bounded framework response signatures through the RouteCairn request broker.",
+  "permissions": {
+    "network": false,
+    "childProcess": false,
+    "filesystem": "PACKAGE_READ_ONLY",
+    "maxRuntimeMs": 10000,
+    "maxMemoryMb": 64
+  },
+  "capabilities": {
+    "requestBroker": {
+      "maxRequests": 8,
+      "riskClass": "LOW",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "pathPrefixes": [
+        "/",
+        "/api"
+      ],
+      "allowNonMutatingPost": false,
+      "maxRequestBytes": 0,
+      "maxResponseBytes": 262144,
+      "bodyPreviewBytes": 16384,
+      "timeoutMs": 5000,
+      "concurrency": 2
+    }
+  },
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "candidatePaths": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "minItems": 1,
+        "maxItems": 8
+      }
+    },
+    "required": [
+      "candidatePaths"
+    ],
+    "additionalProperties": false
+  },
+  "outputLimit": 100
+}

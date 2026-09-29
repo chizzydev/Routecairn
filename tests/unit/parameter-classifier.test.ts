@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { analyzePathSegment, analyzeQueryParameter } from "../../src/intelligence/parameters/ParameterClassifier.js";
 
 describe("parameter classifier", () => {

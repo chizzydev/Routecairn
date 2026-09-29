@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { classifyApiMethodSafety, isSafeApiMethod } from "../../src/intelligence/apiSafety/ApiMethodSafety.js";
 
 describe("API method safety", () => {

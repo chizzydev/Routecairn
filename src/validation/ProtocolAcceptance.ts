@@ -6,7 +6,7 @@ import { createServer as createNetServer, type AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import quico, { type QuicoServer } from "quico";
 import selfsigned from "selfsigned";
-import { runBoundedHttp, runHttp2, runHttp3Authorization, runHttp3Desync, runWebSocket, type ProtocolTransportOptions } from "../modules/protocolSecurity/ProtocolTransports.js";
+import { runBoundedHttp, runGrpcStream, runHttp2, runHttp3Authorization, runHttp3Desync, runWebSocket, type ProtocolTransportOptions } from "../modules/protocolSecurity/ProtocolTransports.js";
 
 export interface ProtocolAcceptanceLane {
   name: "websocket-authorization" | "graphql-websocket" | "multipart-cleanup" | "grpc-tls" | "http2-tls" | "http3-native";
@@ -88,8 +88,10 @@ export async function runProtocolAcceptance(parentDirectory = ".routecairn-proto
       const denied = await runHttp2(`${origins.tlsOrigin}/fixture.Service/Unary`, "POST", { "content-type": "application/grpc", te: "trailers" }, requestFrame, 4, tlsOptions);
       const unary = await runHttp2(`${origins.tlsOrigin}/fixture.Service/Unary`, "POST", { "content-type": "application/grpc", te: "trailers", authorization: "Bearer grpc-fixture-token" }, requestFrame, 4, tlsOptions);
       const stream = await runHttp2(`${origins.tlsOrigin}/fixture.Service/Stream`, "POST", { "content-type": "application/grpc", te: "trailers", authorization: "Bearer grpc-fixture-token" }, requestFrame, 4, tlsOptions);
-      if (denied.grpcStatus !== 7 || unary.protocol !== "h2" || unary.grpcStatus !== 0 || unary.grpcMessages.length !== 1 || stream.grpcStatus !== 0 || stream.grpcMessages.length !== 2) throw new Error("GRPC_TLS_ACCEPTANCE_FAILED");
-      return { protocol: unary.protocol, deniedGrpcStatus: denied.grpcStatus ?? -1, unaryMessages: unary.grpcMessages.length, streamMessages: stream.grpcMessages.length, grpcStatus: unary.grpcStatus ?? -1, trailersVerified: true };
+      const clientStream = await runGrpcStream(`${origins.tlsOrigin}/fixture.Service/Client`, { "content-type": "application/grpc", te: "trailers", authorization: "Bearer grpc-fixture-token" }, [Buffer.from([0x08, 0x01]), Buffer.from([0x08, 0x02])], 4, 1, tlsOptions);
+      const bidi = await runGrpcStream(`${origins.tlsOrigin}/fixture.Service/Bidi`, { "content-type": "application/grpc", te: "trailers", authorization: "Bearer grpc-fixture-token" }, [Buffer.from([0x08, 0x01]), Buffer.from([0x08, 0x02])], 4, 1, tlsOptions);
+      if (denied.grpcStatus !== 7 || unary.protocol !== "h2" || unary.grpcStatus !== 0 || unary.grpcMessages.length !== 1 || stream.grpcStatus !== 0 || stream.grpcMessages.length !== 2 || clientStream.grpcStatus !== 0 || clientStream.grpcMessages.length !== 1 || bidi.grpcStatus !== 0 || bidi.grpcMessages.length !== 2) throw new Error("GRPC_TLS_ACCEPTANCE_FAILED");
+      return { protocol: unary.protocol, deniedGrpcStatus: denied.grpcStatus ?? -1, unaryMessages: unary.grpcMessages.length, streamMessages: stream.grpcMessages.length, clientStreamMessages: clientStream.grpcMessages.length, bidiMessages: bidi.grpcMessages.length, grpcStatus: unary.grpcStatus ?? -1, trailersVerified: true };
     }));
 
     lanes.push(await lane("http2-tls", async () => {
@@ -219,8 +221,8 @@ class ProtocolAcceptanceFixtures {
     stream.on("end", () => {
       const authorized = headers.authorization === "Bearer grpc-fixture-token";
       const request = Buffer.concat(chunks);
-      if (!authorized || !validGrpcFrame(request)) { respondGrpc(stream, Buffer.alloc(0), authorized ? 3 : 7, authorized ? 400 : 403); return; }
-      const frames = path.endsWith("/Stream") ? [grpcFrame(Buffer.from([0x08, 0x01])), grpcFrame(Buffer.from([0x08, 0x02]))] : [grpcFrame(Buffer.from([0x08, 0x2a]))];
+      if (!authorized || !validGrpcFrames(request, path.endsWith("/Client") || path.endsWith("/Bidi") ? 2 : 1)) { respondGrpc(stream, Buffer.alloc(0), authorized ? 3 : 7, authorized ? 400 : 403); return; }
+      const frames = path.endsWith("/Stream") || path.endsWith("/Bidi") ? [grpcFrame(Buffer.from([0x08, 0x01])), grpcFrame(Buffer.from([0x08, 0x02]))] : [grpcFrame(Buffer.from([0x08, 0x2a]))];
       respondGrpc(stream, Buffer.concat(frames), 0, 200);
     });
   }
@@ -234,7 +236,7 @@ async function lane(name: ProtocolAcceptanceLane["name"], operation: () => Promi
 function serverFrame(value: unknown): Buffer { const payload = Buffer.from(JSON.stringify(value)); if (payload.length >= 126) { const head = Buffer.alloc(4); head[0] = 0x81; head[1] = 126; head.writeUInt16BE(payload.length, 2); return Buffer.concat([head, payload]); } return Buffer.concat([Buffer.from([0x81, payload.length]), payload]); }
 function clientFrame(value: Buffer): { opcode: number; payload: Buffer; bytes: number } | undefined { if (value.length < 6) return; const opcode = value[0]! & 0x0f; let length = value[1]! & 0x7f; let offset = 2; if (length === 126) { if (value.length < 8) return; length = value.readUInt16BE(2); offset = 4; } else if (length === 127) { if (value.length < 14) return; const size = value.readBigUInt64BE(2); if (size > BigInt(1024 * 1024)) throw new Error("WEBSOCKET_FIXTURE_FRAME_LIMIT"); length = Number(size); offset = 10; } if (!(value[1]! & 0x80) || value.length < offset + 4 + length) return; const mask = value.subarray(offset, offset + 4); offset += 4; const payload = Buffer.alloc(length); for (let index = 0; index < length; index++) payload[index] = value[offset + index]! ^ mask[index % 4]!; return { opcode, payload, bytes: offset + length }; }
 function grpcFrame(payload: Buffer): Buffer { const frame = Buffer.alloc(5 + payload.length); frame.writeUInt32BE(payload.length, 1); payload.copy(frame, 5); return frame; }
-function validGrpcFrame(value: Buffer): boolean { return value.length >= 5 && value[0] === 0 && value.readUInt32BE(1) === value.length - 5; }
+function validGrpcFrames(value: Buffer, expected: number): boolean { let count = 0, offset = 0; while (offset + 5 <= value.length) { if (value[offset] !== 0) return false; const size = value.readUInt32BE(offset + 1); if (offset + 5 + size > value.length) return false; count += 1; offset += 5 + size; } return offset === value.length && count === expected; }
 async function requestBody(request: IncomingMessage): Promise<Buffer> { const chunks: Buffer[] = []; let size = 0; for await (const chunk of request) { const value = Buffer.from(chunk); size += value.length; if (size > 1024 * 1024) throw new Error("PROTOCOL_FIXTURE_REQUEST_LIMIT"); chunks.push(value); } return Buffer.concat(chunks); }
 function listen(server: Server | Http2SecureServer, port: number, host: string): Promise<void> { return new Promise((resolveListen, reject) => { server.once("error", reject); server.listen(port, host, () => { server.off("error", reject); resolveListen(); }); }); }
 async function availablePort(): Promise<number> { const server = createNetServer(); await new Promise<void>((resolveListen, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolveListen(); }); }); const port = (server.address() as AddressInfo).port; await new Promise<void>((resolveClose) => server.close(() => resolveClose())); return port; }

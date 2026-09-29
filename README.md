@@ -956,7 +956,7 @@ All requests use the ordinary scope, DNS, pacing, concurrency, response-size, an
 
 ### Protocol-Level Security
 
-`--protocol-security` accepts an explicit bounded manifest for WebSocket messages, Server-Sent Events, GraphQL mutations and subscriptions, gRPC unary and server-streaming calls, multipart uploads, HTTP/2 authorization/desynchronization checks, and HTTP/3 capability checks.
+`--protocol-security` accepts an explicit bounded manifest for WebSocket messages and authorization state machines; Server-Sent Events; GraphQL mutations, subscriptions, incremental delivery, persisted queries, federation, and subscription reauthorization; all four gRPC interaction modes; multipart and interrupted streaming uploads; WebTransport datagrams; compression boundaries; cross-protocol identity consistency; and HTTP/1, HTTP/2, HTTP/3, and proxy-chain desynchronization checks.
 
 ```powershell
 routecairn scan https://app.example.com `
@@ -966,13 +966,21 @@ routecairn scan https://app.example.com `
   --output ./reports/protocol-security
 ```
 
-WebSocket handshakes and HTTP/2 sessions resolve and pin the complete destination before opening a socket, preserve the original authority and TLS SNI, enforce live scope plus the shared target-authorization/rate/concurrency/request budgets, cap bytes/messages/duration, and omit payloads from all evidence. GraphQL-over-WebSocket supports `graphql-transport-ws` and the legacy `graphql-ws` subprotocol. GraphQL-over-SSE and ordinary SSE are bounded by response bytes and duration, retain completed events when the duration bound closes an otherwise-open stream, and are parsed only into event counts and configured structural assertions. gRPC uses HTTP/2 framing with payloads supplied from worker-only secret references and records only status and message counts.
+WebSocket handshakes and HTTP/2 sessions resolve and pin the complete destination before opening a socket, preserve the original authority and TLS SNI, enforce live scope plus the shared target-authorization/rate/concurrency/request budgets, cap bytes/messages/duration, and omit payloads from all evidence. WebSocket state contracts interleave exact sends with ordered type and JSON-path expectations on one connection. GraphQL-over-WebSocket supports `graphql-transport-ws` and the legacy `graphql-ws` subprotocol. Subscription reauthorization reconnects with an exact second connection payload and re-evaluates the same subscription contract.
 
-GraphQL mutations plus state-changing WebSocket messages, gRPC calls, and multipart uploads require active authorization limited to local, test, or staging, disposable resources, a durable global mutation lock, an encrypted recovery checkpoint, and an exact cleanup request whose status must verify restoration. HTTP/2 and HTTP/3 desynchronization cases require separate expiring non-production authorization and use one malformed length case plus one fixed same-origin, in-scope same-session/process sentinel. Desynchronization probes are blocked in bug-bounty mode because the target-authorization schema does not grant that protocol-level capability.
+GraphQL incremental delivery parses bounded `multipart/mixed` parts, requires completion, and checks declared patch paths. Automatic persisted query cases verify the document SHA-256 digest before execution and support hash-only or register-then-hash negotiation. Federation cases issue only fixed `_service` or `_entities` operations, with bounded supplied representations. GraphQL-over-SSE and ordinary SSE remain bounded by response bytes and duration and retain completed events when the duration bound closes an otherwise-open stream.
+
+gRPC unary, server-streaming, client-streaming, and bidirectional calls use HTTP/2 framing. Client messages are fixed secret-backed protobuf fixtures, bounded in count and bytes, optionally paced by a short per-message delay, and half-closed deterministically. Reports retain status and message counts only. WebTransport uses a pinned DNS result in the isolated native HTTP/3 worker, caps sent and received datagrams, and records counts without datagram contents. When authentication is needed, the manifest must explicitly select `DATAGRAM` authentication and make the first secret-backed application datagram the protocol's session credential; Extended CONNECT headers are never silently assumed or simulated.
+
+GraphQL mutations plus state-changing WebSocket messages and state machines, gRPC calls, multipart uploads, and interrupted streaming uploads require active authorization limited to local, test, or staging, disposable resources, a durable global mutation lock, an encrypted recovery checkpoint, and an exact cleanup request whose status must verify restoration. Interrupted uploads stop at an exact byte boundary, verify the declared read-only resource state, and always enter cleanup recovery after transmission is armed.
+
+Compression contracts negotiate one declared encoding, bound compressed response bytes, and enforce a separate maximum expanded size for gzip, deflate, and Brotli before parsing. Compression, WebTransport, and cross-protocol identity cases require an explicit read-only attestation. Cross-protocol identity contracts compare one-way fingerprints of an exact response or configured JSON path across two to five HTTP/1.1, HTTP/2, HTTP/3, WebSocket, WebTransport, or gRPC legs using the same actor. Identity values never enter evidence.
+
+HTTP/1, HTTP/2, HTTP/3, and proxy-chain desynchronization cases require separate expiring non-production authorization. Each matrix contains only declared protocol hops, generated framing variants, and a fixed same-origin, in-scope sentinel. HTTP/2 and HTTP/3 probes reuse the same session or native QUIC connection for their sentinel. Desynchronization probes are blocked in bug-bounty mode because the target-authorization schema does not grant that protocol-level capability.
 
 HTTP/3 uses RouteCairn's packaged pure-JavaScript QUIC/TLS 1.3/QPACK runtime and no longer requires an external `curl` installation. Each HTTP/3 sequence runs in a credential-minimal Node subprocess whose one DNS resolution is forced to the address approved by RouteCairn's destination policy while TLS authenticates the original hostname. HTTP/1.1 and HTTP/2 fallback are disabled, response bytes and duration are bounded, and desynchronization sentinels must reuse the same native QUIC connection. A failed QUIC negotiation is reported as inconclusive rather than silently downgraded.
 
-Dedicated disposable acceptance fixtures cover authenticated and denied WebSocket handshakes, both GraphQL-over-WebSocket subprotocols, stateful multipart upload cleanup, TLS gRPC unary and server streams, TLS HTTP/2 authorization, and native HTTP/3 authorization:
+Automated protocol tests cover ordered WebSocket message states, incremental and persisted GraphQL delivery, federation and subscription reauthorization contracts, interrupted upload boundaries, client and bidirectional gRPC framing, compression limits, and cross-protocol identity comparisons. Dedicated disposable acceptance fixtures cover authenticated and denied WebSocket handshakes, both GraphQL-over-WebSocket subprotocols, stateful multipart upload cleanup, all four TLS gRPC interaction modes, TLS HTTP/2 authorization, and native HTTP/3 authorization:
 
 ```bash
 npm run acceptance:protocols
@@ -1112,9 +1120,9 @@ Confirmed findings are deliberately narrower than observations: demonstrable ser
 
 Secrets and dynamic target values use worker-only `{{SECRET:name}}` and temporally ordered `{{CAPTURE:name}}` references. Raw target state, request and response bodies, credentials, tokens, operator identities, and change tickets are absent from race evidence, findings, JSON summaries, Markdown, HTML, request audit, and the mutation journal.
 
-### Native Active Vulnerability Validation
+### Context-Aware Active Vulnerability Validation
 
-The active-validation engine executes bounded, class-aware differential cases for SQL/NoSQL injection, reflected XSS, SSRF, command/template injection, path traversal, CSRF, redirects, cache behavior, unsafe deserialization, XXE, and HTTP desynchronization. It accepts explicit immutable cases and can compile only same-origin `GET` query parameters already observed by parameter analysis; it never expands discovery into new paths, methods, origins, actors, or callbacks.
+The active-validation engine executes bounded, class-aware strategies for SQL/NoSQL injection, reflected/stored/DOM XSS, second-order injection, CRLF injection, prototype pollution, JWT and OAuth validation, file/archive processing, SSRF, command/template injection, path traversal, CSRF, redirects, cache behavior, unsafe deserialization, XXE, and HTTP desynchronization. It accepts explicit immutable cases and can compile only same-origin `GET` query parameters already observed by parameter analysis; discovery never grants a new path, method, origin, actor, callback, mutation, or cleanup permission.
 
 ```powershell
 routecairn scan https://app.example.com `
@@ -1123,7 +1131,39 @@ routecairn scan https://app.example.com `
   --output ./reports/active-vulnerability
 ```
 
-Each case sends a bounded baseline, control, and generated probe. Findings require a class-specific proof signal such as a database error differential, offline browser execution, callback confirmation, a non-sensitive fixture marker/hash, an exact redirect/cache contract, or an ambiguous-framing sentinel observed over the dedicated raw HTTP/1 lane. Stateful and raw-protocol classes require the appropriate local/test/staging authorization. Payloads, original values, callback tokens, credentials, and response bodies stay transient; reports retain only redacted observations, hashes, statuses, proof signals, and immutable comparison fingerprints.
+Every case carries a strategy policy: `CONSERVATIVE`, `BALANCED`, or `DEEP`; an exact technique allowlist; encoding/normalization variants; a hard strategy ceiling; timing samples; a delay capped at two seconds; and explicit accepted risk classes. The planner reserves the worst-case request count and rejects technique/class mismatches. The default remains one low-noise technique. Boolean SQL/NoSQL proof requires a paired true/false differential, error techniques require a database-only error delta, union techniques require a canary, and timing techniques require repeated median/MAD evidence. Timing, stateful, and ambiguous-protocol techniques are restricted to local fixtures or authorized staging and cannot be enabled by discovery.
+
+Injection points are explicit and validated: query, header, cookie, a single path template placeholder, scalar JSON field, bounded text/XML body, multipart field, or multipart filename. URL, double-URL, and JSON-Unicode normalization variants are generated internally. Operator-authored control characters and transport framing headers remain forbidden. JWT strategies mutate signature, algorithm, claims, or an ephemeral embedded public key and require issuer/audience contracts; a credential-vault reference can supply the original token without serializing it. OAuth strategies cover state, issuer, mix-up, and account-link binding against declared issuer/client/account contracts.
+
+Stored XSS, second-order, prototype, CSRF, cache-poisoning, cache-deception, account-link, and file-processing cases require a fixture proof anchor, same-origin verification read, explicit cleanup request, scoped write permission, and a reserved cleanup budget. Verification and callback reads each have a control read before the probe, so a pre-existing marker or callback state is not accepted as proof. Cleanup runs in the cancellation-safe cleanup lane and its outcome is part of the case observation. Browser XSS proof executes returned markup only in an offline, credential-free Chromium context with every network request blocked. File cases require a safe fixture filename and expanded-byte ceiling; archive and parser strategies place a tiny complete ZIP or XML fixture, encoded as base64, in the chosen injection field. The fixture endpoint must explicitly accept that base64 field. HTTP desynchronization can run a bounded H1 CL.TE/TE.CL and H2/H3 length-mismatch matrix; every probe uses an isolated/pinned origin, a distinct in-scope sentinel, and the shared authorization/request ledger. H2/H3 length-mismatch acceptance with a clean sentinel stays inconclusive.
+
+Findings require a class-specific proof signal such as a paired query differential, offline browser source-to-sink execution, a verification/callback marker, claim-bound identity evidence, a non-sensitive fixture hash, an exact redirect/cache contract, or a clean-versus-contaminated framing sentinel. A changed response alone stays `INCONCLUSIVE`. Payloads, original values, callback tokens, credentials, bodies, JWTs, and cleanup commands stay transient; reports retain only redacted strategy metadata, hashes, statuses, timing values, proof signals, cleanup state, and immutable comparison fingerprints.
+
+#### Native OAST collaborator
+
+RouteCairn includes a bounded collaborator service for blind SSRF, XXE, command-injection, and template-execution proof. It issues a separate HMAC-signed DNS/HTTP/HTTPS identity and random polling token for every case strategy, binds the lease to tenant, worker, job, and case fingerprints, accepts callbacks only while the lease is active, and de-duplicates callback replays. Delayed polling is capped at 60 seconds per strategy. Reports retain event time, delay, protocol, and keyed or one-way fingerprints; raw source addresses, callback bodies, query values, headers, tenant IDs, worker IDs, job IDs, case binding values, and tenant tokens are never evidence.
+
+Create the service secrets outside configuration files. The tenant-token variable is a JSON object, so a token can create leases only for its own exact tenant ID:
+
+```powershell
+$env:ROUTECAIRN_OAST_SIGNING_KEY = '<at-least-32-random-bytes>'
+$env:ROUTECAIRN_OAST_TENANT_TOKENS = '{"security-team-a":"<at-least-24-random-characters>"}'
+routecairn oast serve --config ./examples/oast-service.self-hosted.example.json
+```
+
+The scanner receives only its tenant token through the environment variable named by the active-validation manifest:
+
+```powershell
+$env:ROUTECAIRN_OAST_TENANT_TOKEN = '<matching-tenant-token>'
+routecairn scan https://app.example.com `
+  --scope ./examples/scope.example.json `
+  --active-vulnerability ./examples/active-vulnerability-oast.example.json `
+  --output ./reports/oast-validation
+```
+
+Self-hosted mode permits plain HTTP management only on a loopback origin. Hosted mode requires a credential-free public HTTPS origin, a local HTTPS listener, and TLS key/certificate paths. Delegate the configured callback subdomain to the service's authoritative DNS address and expose both UDP and TCP DNS. Keep the management/callback listeners behind normal network rate controls and persistent storage. The service also ships with [`deploy/oast/Dockerfile`](deploy/oast/Dockerfile); mount the JSON configuration, TLS material, and SQLite data directory, then supply both secret environment variables at runtime. `examples/oast-service.hosted.example.json` shows the hosted contract.
+
+Native OAST is opt-in per case. `OAST_CALLBACK` requires the `OUT_OF_BAND_CALLBACK` approval, `LOCAL_FIXTURE` or `AUTHORIZED_STAGING`, one exact plain identity, an enabled protocol, and a top-level service contract. Command and template cases additionally declare their runtime dialect. XXE requires HTTP or HTTPS so the external entity is actually dereferenced. A missing callback remains inconclusive.
 
 ### Batch 50A–50B: Assisted Findings and Trust Review
 
@@ -1293,6 +1333,10 @@ Telemetry files contain `runtimeMs`, `peakRssBytes`, `requestCount`, optional `t
 ### Adaptive security model and test recommendations
 
 The **Adaptive Security** workspace implements an evidence-bound loop: observe a completed registered-target scan, reduce it to a canonical secret-free model, compile sufficiently proven read-only observations into complete tests, retain underspecified or mutating discoveries as reviewable proposals, link a same-target execution, verify completion of the relevant engine, and learn from the next scan. Completed dashboard scans create candidate model snapshots automatically; historical completed/imported reports can be analyzed explicitly. An operator accepts the exact SHA-256-bound model as the expected baseline, and later snapshots expose route, origin, administrative path, API version, GraphQL contract, API-field, browser-field, cookie, actor/role, Supabase resource, lifecycle-category, build, and full workflow-contract drift.
+
+Each snapshot also contains a bounded evidence-backed attack-state graph. It models actors, roles, tenants, owned objects, routes, parameters, operations, browser states, tokens/invitations/signed capabilities, preconditions, effects, cleanup states, and producer/consumer dependencies between requests. Nodes, relationships, and paths retain only safe labels, normalized paths, contract fingerprints, producer identities, and evidence strength. The builder caps nodes, relationships, paths, evidence per item, and path length; reports when a cap was reached; and uses stable SHA-256 identities so additions, removals, ownership changes, capability flows, and state-changing paths can be reviewed as model drift. Removal drift is suppressed when the later graph lacks equivalent producer coverage or either graph was truncated.
+
+Read-only graph paths are automation candidates only when an existing compiler can bind them to an exact anonymous response or conclusive executed contract. Their materialized execution binding includes the exact graph fingerprint and path identities in addition to the recommendation, source, execution, and compiler fingerprints. Any graph or path substitution fails closed. State-changing paths become proposals associated with the appropriate dedicated engine. A conclusive prior contract with verified cleanup can be compiled as `READY_APPROVAL_GATED`; incomplete paths remain `REQUIRES_BINDINGS` with explicit precondition, effect, actor, object, and cleanup gaps. Neither graph construction nor operator approval sends traffic.
 
 Learned request values, response bodies, cookie values, tokens, credentials, raw identifiers, and sensitive query values are never stored in the adaptive tables. Paths and names are normalized, while security semantics use complete existing comparison fingerprints. A changed or removed assertion therefore becomes a changed contract instead of silently proving remediation. Removed-surface drift is emitted only when the newer scan contains equivalent producer coverage, avoiding false removals caused by a narrower scan profile.
 
@@ -1501,6 +1545,8 @@ The data directory contains the SQLite database, generated dashboard reports, pr
 ### SQLite Choice
 
 RouteCairn uses `better-sqlite3` for dashboard persistence. Node's built-in `node:sqlite` exists on the inspected runtime, but it still emits an experimental warning here, so dashboard v1 uses a mature local SQLite driver with explicit SQL migrations, prepared statements, transactions, foreign keys, WAL mode, busy timeout, and schema version metadata.
+
+SQLite remains the zero-service local provider. Setting `ROUTECAIRN_CONTROL_PLANE_MODE=distributed` and `ROUTECAIRN_DATABASE_URL` selects the PostgreSQL control-plane provider for shared fleet state, durable jobs, replay records, event outbox entries, object metadata, leader leases, and scheduling fencing tokens. The provider runs idempotent, advisory-lock-protected migrations at startup and refuses readiness when its schema is unavailable.
 
 Run migrations directly:
 
@@ -1744,6 +1790,8 @@ Server mode supports OIDC authorization-code login with PKCE, one-use hashed sta
 
 Signed remote workers use one-time enrollment tokens and per-worker Ed25519 identities. Every heartbeat, job claim, lease renewal, and result covers the HTTP method, exact path, timestamp, nonce, and canonical body digest; timestamps are bounded and nonces are persisted to reject replay. Jobs are organization- and capability-bound, the control plane automatically adds the capability implied by each job kind, payloads reject credential values, leases expire and requeue within an attempt budget, and workers can be drained, quarantined, or permanently revoked.
 
+Distributed workers use an event-driven bounded claim wait backed by PostgreSQL `LISTEN/NOTIFY`; the durable job row remains authoritative across missed notifications or reconnects. Claims use one transaction and `FOR UPDATE SKIP LOCKED`, so concurrent control-plane replicas cannot lease the same job. Jobs can additionally require a network zone. A worker must match that zone and every required capability before it can claim the job.
+
 `routecairn agent enroll` now advertises native `ping`, `scan`, `module`, and `export` capabilities by default and atomically creates a mode-0600 local identity file. `routecairn agent run --state ./agent/state.json --workspace ./agent` executes all four job kinds without an external handler. Scan and module payloads bind a target, a worker-local scope file, bounded execution settings, optional worker-local credential/configuration/engine files, explicit built-in module IDs, and a workspace-contained output directory. Export jobs convert a worker-local report to JSON, Markdown, HTML, SARIF, JUnit, or Burp XML. Inputs, outputs, and the worker scan-history index cannot escape the workspace through absolute paths, traversal, resolved links, or linked output ancestors; job deadlines abort execution; lease-renewal failure aborts the job; returned results contain safe relative paths, counts, statuses, and hashes. The long-running worker uses bounded control-plane request timeouts and reconnects with bounded exponential backoff. An optional ESM handler remains available as an intentional override. The control plane never transmits target credentials: payloads contain only worker-local path references and non-secret controls.
 
 Cloud synchronization supports two explicit peer modes. `FULL_STATE`, the default, merges organization-scoped projects, targets, scans, scan plans/modules/events, findings and history, credential profiles, saved configurations and versions, scan comparisons and coverage, proof packs and selected findings, generated artifact content, and membership intent into the destination's live dashboard tables. `SAFE_EVENTS` retains metadata-only event federation. State entities carry content digests, source timestamps, row versions and origin installation IDs; deterministic last-writer ordering makes replay idempotent and prevents an older replica from replacing newer state. UUID collisions with a different local tenant are quarantined as conflicts rather than reassigned.
@@ -1758,17 +1806,79 @@ The background coordinator reconciles every active organization and pushes enabl
 
 A production-oriented self-hosted deployment is provided in `deploy/control-plane`. Its Compose stack builds the release dashboard, keeps application state in a named volume, exposes only a Caddy TLS edge, waits for the authenticated control plane's database readiness, and supports one-time non-interactive owner bootstrap. Remove the bootstrap credentials after first startup. `/healthz` is a process liveness probe and `/readyz` checks database readiness; neither exposes installation metadata. The same server provides the browser workspace, organization APIs, signed-worker enrollment/lease/result endpoints, and signed peer synchronization.
 
+### Horizontally Scaled Control Plane
+
+The distributed provider is selected entirely through environment configuration, leaving the local provider available without PostgreSQL, object storage, Kubernetes, or telemetry services.
+
+```text
+ROUTECAIRN_CONTROL_PLANE_MODE=distributed
+ROUTECAIRN_DATABASE_URL_FILE=/run/secrets/database-url
+ROUTECAIRN_EVIDENCE_S3_BUCKET=routecairn-evidence
+ROUTECAIRN_EVIDENCE_KMS_KEY_ID=alias/routecairn-evidence
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+```
+
+PostgreSQL holds fleet enrollment, worker identity, one-use nonces, durable jobs, leases, results, a transactional event record, evidence-object metadata, and distributed scheduler leases. Job claims use capability-array containment, optional exact network-zone matching, priority order, attempt ceilings, lease expiry, and row locks with `SKIP LOCKED`. The leader lease issues a monotonically increasing fencing token; scheduled work must carry the current token so a former leader cannot continue after losing its lease.
+
+Dashboard scan streams subscribe to the control-plane event channel and use a 15-second SSE heartbeat rather than repeatedly querying every two seconds. PostgreSQL notifications are wakeups; durable state and outbox rows remain the source of truth. `/readyz` checks both PostgreSQL schema availability and object-storage access in distributed mode.
+
+Evidence is uploaded by tenant and immutable artifact identity to an S3-compatible store. The object key contains the organization UUID, artifact UUID, and expected SHA-256. Upload and download verify size and digest, downloads use a private local cache, object metadata is held in PostgreSQL, S3 server-side encryption is always requested, and an optional KMS key enables provider-backed or HSM-backed encryption. Cross-replica artifact reads can resolve directly from shared object metadata when the local SQLite row is absent.
+
+The dashboard master key can also be supplied as a KMS ciphertext through `ROUTECAIRN_MASTER_KEY_KMS_CIPHERTEXT_FILE` and `ROUTECAIRN_MASTER_KEY_KMS_KEY_ID`. Decryption requires the fixed encryption context `purpose=routecairn-dashboard-master-key`; raw and KMS-backed sources are mutually exclusive. Cloud KMS implementations backed by an HSM or custom key store therefore protect credential-vault, executable-plan, adapter, acceptance, and governed-export key material without embedding a plaintext master key in a Pod specification.
+
+The control plane emits OpenTelemetry traces and metrics through OTLP HTTP and emits structured, single-line JSON operational logs with bounded labels and secret-key filtering. Metrics cover request counts, job transitions, and operation duration. Trace failures record stable error messages without request bodies, credentials, target query strings, or worker payloads.
+
+Remote workers always retain their Ed25519 request signature. They may add an OIDC workload token read fresh from a rotating token file, direct client-certificate authentication, or a certificate fingerprint from a trusted mTLS proxy with an HMAC proof. Issuers are allowlisted, discovery and JWKS require HTTPS, audience/issuer/age are verified, and an optional token claim binds the identity to the exact worker UUID. Kubernetes projected service-account tokens therefore add identity rather than replacing replay-resistant request signing.
+
+[`deploy/helm/routecairn`](deploy/helm/routecairn) includes a multi-replica Deployment, readiness and liveness probes, rolling updates, HPA, disruption budget, service account annotations for cloud workload identity, optional PostgreSQL client TLS, ingress, restricted pod security contexts, NetworkPolicy, S3/KMS configuration, OTLP configuration, and independent worker pools grouped by network zone and capability. [`deploy/control-plane/compose.distributed.yaml`](deploy/control-plane/compose.distributed.yaml) is a single-host PostgreSQL, MinIO, and collector profile for evaluating the same provider contracts.
+
 External delivery uses a durable idempotent outbox with atomic multi-process claims, interrupted-delivery recovery, and bounded exponential retry. Webhook channels can use an HMAC signature; Slack uses an environment-backed webhook URL; email uses a configured HTTPS mail-provider endpoint and bearer token; GitHub and Jira use their HTTPS issue endpoints and bearer tokens. Stored rows contain only endpoint/configuration metadata and environment-variable references. Operators can queue a bounded safe notification payload through the dashboard API and inspect delivery state without exposing provider responses or secret values. Regression, failure, cleanup-required, and approval-required continuous-assurance notifications are bridged automatically to enabled default-organization channels, subject to each channel's minimum-severity setting.
 
 Backup creation uses SQLite's consistent backup API. Bundles may be AES-256-GCM encrypted with the dashboard master key and contain an authenticated manifest, schema version, installation identity, and digest. Restore requires a fresh verification plus the exact confirmation phrase, is staged for the next restart, runs SQLite integrity validation before replacement, preserves the prior database as a timestamped pre-restore copy, and rolls back the file swap on failure. Backup key availability is fail-closed.
 
 Portable integration artifacts are available as SARIF 2.1.0, JUnit XML, Burp-compatible XML, and bounded JSON. They are generated from normalized finding identities and safe endpoints, stored as ordinary governed artifacts, and downloaded through the existing artifact authorization and root-containment checks. GitHub and Jira issue creation is available through notification channels, preserving explicit operator enqueue and idempotency.
 
-Third-party modules use a manifest-driven SDK with a two-step register/approve lifecycle. The host hashes the complete bounded package, rejects links and dependency directories, validates a safe JSON-schema subset for inputs, and quarantines a package whose bytes change after approval. Execution occurs in a separate Node permission sandbox with package-only read access, no network, no child-process permission, minimal environment inheritance, and bounded input, output, heap, and wall time. Results must pass a strict observation/finding schema before they return to the dashboard.
+Third-party modules use a manifest-driven SDK with a two-step register/approve lifecycle. The host hashes the complete bounded package, rejects links and dependency directories, validates a safe JSON-schema subset for inputs, and quarantines a package whose bytes change after approval. Every execution copies the approved bytes into a private snapshot and verifies the snapshot digest before the sandbox starts, preventing package changes between approval and import. Execution occurs in a separate Node permission sandbox with no direct network or child-process authority, minimal environment inheritance, manifest-selected entrypoint-only or package read access, and bounded input, output, heap, and wall time. Results must pass a strict observation/finding schema before they return to the dashboard.
+
+Modules that declare `capabilities.requestBroker` can propose HTTP requests through `sdk.request()` or `sdk.capabilities.request()`. The manifest fixes the risk class, methods, canonical path prefixes, request count, request/response byte limits, preview limit, timeout, and concurrency. `POST` is available only to a `MODERATE` capability that declares non-mutating POST and to proposals that repeat that attestation. `PUT`, `PATCH`, `DELETE`, credentials, cookies, framing headers, routing headers, URL user-info, fragments, undeclared paths, and undeclared methods are structurally unavailable.
+
+```js
+export async function analyze(input, sdk) {
+  const response = await sdk.request({
+    url: input.path,
+    method: "GET",
+    headers: { accept: "application/json" },
+    purpose: "framework signature comparison"
+  });
+  return {
+    observations: [{
+      kind: "framework-signature",
+      summary: `Observed ${response.statusCode ?? "no status"}`,
+      data: { bodySha256: response.bodySha256 ?? null }
+    }],
+    findings: [],
+    notes: []
+  };
+}
+```
+
+Every brokered execution requires a separate binding containing an exact target origin, the normal RouteCairn scope, optional target-authorization proof, and a one-hour-or-shorter approval bound to the exact package digest and target origin with confirmation `I_AUTHORIZE_BROKERED_MODULE_REQUESTS`. Each permitted non-mutating POST is additionally bound to one canonical query-free path plus SHA-256 digests of the exact request body and canonical header set. The dashboard Modules workspace accepts this reviewed binding separately from module input. The host then applies normalized scope, target authorization, all-answer DNS classification and IP pinning, rate and concurrency limits, a transmission budget, response limits, no retries, and no redirects before sending anything.
+
+The module receives status, an allowlisted and redacted header set, a secret-redacted bounded body preview, body digest, safe URL, byte count, timing, truncation, redirect count, and a stable policy error code. It never receives cookies, authorization headers, raw redirect credentials, socket handles, DNS answers, or broker internals. The final result includes only aggregate capability counts and an audit digest. See `examples/third-party-module.example.json` for a complete capability manifest and `examples/third-party-module-broker-binding.example.json` for an intentionally expired execution binding that must be replaced with the current approved package digest and authorization window.
+
+### Standards-Native Coverage Accounting
+
+Every retained execution case is assigned a stable coverage-case identity and mapped to applicable OWASP WSTG, OWASP ASVS 5.0.0, OWASP API Security Top 10 2023, CWE, and CAPEC references. Mapping occurs from the executed module, workflow case, vulnerability class, protocol kind, and finding evidence. It does not infer a pass from a selected module, an incomplete scan, or a missing result. Findings, no-finding outcomes, inconclusive cases, blocked cases, and observations remain distinct.
+
+Coverage is embedded in `report.json`, summarized in the Markdown and HTML reports, shown in the dashboard Scan Detail view, and emitted as `standards-coverage.json` plus a normalized `standards-coverage.csv`. Evidence references are deterministic, redacted hashes and identifiers rather than response bodies or credentials. The JSON report aggregates outcomes by requirement, reports every one of the twelve WSTG areas, and keeps gaps visible when no conclusive case exists. The WSTG catalog is pinned to the `latest` content reviewed on 2026-09-28; ASVS references use the versioned `v5.0.0-X.Y.Z` form.
+
+Three API Security Top 10 objectives are exposed as first-class engine families. API4 resource-consumption coverage is supplied by bounded GraphQL, protocol/compression, and file-processing cases. API6 sensitive-business-flow coverage is supplied by business-invariant, billing-entitlement, and controlled-race contracts. API10 unsafe third-party API consumption is supplied by SSRF/XXE validation and secret-boundary checks. Cryptography, error handling, client-side behavior, and generalized injection appear as explicit priority gaps whenever their mapped cases were not conclusively exercised.
+
+This accounting describes evidence produced by a particular scan. It is not an ASVS certification, WSTG completion claim, or substitute for manual review.
 
 ### Remaining v1 Limits
 
-RouteCairn provides a self-hostable HTTPS control plane, native signed remote execution, server-enforced organization tenancy, and automatic signed multi-installation state synchronization; it does not operate a vendor-hosted SaaS service. Peer credential transfer is explicit, encrypted end to end between configured vaults, and re-keyed on receipt rather than persisted as raw material. Billing for a hosted service and WebSocket dashboard updates remain outside v1. Reviewed scheduling and deployment-triggered continuous assurance, external alert delivery, organization RBAC, signed agents, encrypted backup/restore, portable integration exports, PDF proof packs, OIDC login, and the restricted module SDK are implemented. Authenticated browser bootstrap remains available through encrypted credential profiles and the credential API schema; Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
+RouteCairn provides a self-hostable HTTPS control plane, native signed remote execution, server-enforced organization tenancy, PostgreSQL-backed fleet coordination, S3-compatible evidence storage, event-driven SSE updates, and automatic signed multi-installation state synchronization; it does not operate a vendor-hosted SaaS service. Peer credential transfer is explicit, encrypted end to end between configured vaults, and re-keyed on receipt rather than persisted as raw material. Billing for a hosted service remains outside v1. Reviewed scheduling and deployment-triggered continuous assurance, external alert delivery, organization RBAC, signed agents, encrypted backup/restore, portable integration exports, PDF proof packs, OIDC login, and the restricted module SDK are implemented. Authenticated browser bootstrap remains available through encrypted credential profiles and the credential API schema; Scan Studio Core, visual scope building, structured ephemeral auth, saved/ephemeral actor mixing, identity testing, all seven controlled-authorization workflow execution paths, and planner/launch round-trip are implemented.
 
 Dashboard guided builders are the primary operating surface for controlled authorization and advanced engines; bounded safe JSON import/export remains an alternative. Capability-parity tests require each declared dashboard capability to expose a guided builder or managed workspace. Versioned configurations, governed isolated workers, worker diagnostics and controls, credential lifecycle, browser connection isolation, controlled mutation/recovery, live acceptance, adaptive security intelligence, provider adapters, continuous assurance, and evidence governance are all dashboard-operated.
 # Controlled Offensive Execution & Recovery
@@ -1803,3 +1913,11 @@ routecairn offensive recover `
 ```
 
 The CLI defaults to the dashboard’s canonical `controlled-mutations` directory. When an operator supplies another `--journal-dir`, RouteCairn durably registers it with the dashboard, which aggregates all registered journals without returning their filesystem paths to the browser. The **Offensive Safety** view also discovers encrypted recovery bundles independently: a bundle without a trustworthy terminal journal state becomes `MUTATION_STATE_UNCERTAIN` and triggers the persistent **UNRESOLVED CLEANUP — TARGET STATE MAY STILL BE MODIFIED** alert. New controlled mutations remain blocked until every cleanup obligation is independently verified. Use the dashboard’s Production Mutation controls for controlled-contract execution/recovery and Offensive Safety for dedicated-workflow recovery; the CLI remains an alternative for controlled contracts. `CONTROLLED_DELETION` is available only for disposable non-production fixtures with reconstructive rollback and exact pre-state hash restoration; `LAB_DESTRUCTIVE` remains planned and unavailable.
+
+## Engineering assurance
+
+`npm run quality` applies deterministic text formatting, ESLint safety rules, module size budgets, the TypeScript build, property tests, and bounded parser/importer fuzzing. `npm run test:coverage` enforces global minimums of 68% statements, 62% branches, 65% functions, and 75% lines. `npm run test:mutation` measures decision coverage in scope, target authorization, and controlled mutation policy; its checked baseline fails below 55% while the report distinguishes uncovered and surviving mutations.
+
+Continuous assurance splits the complete Vitest inventory into four isolated single-worker shards with a 4 GiB heap. Platform jobs run smaller operating system boundary suites, so Windows, macOS, and both supported Node LTS lines do not repeat the entire suite. CodeQL runs its security and quality query suite on pushes, pull requests, and a weekly schedule.
+
+Release compatibility is defined in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md), the tag process in [docs/RELEASING.md](docs/RELEASING.md), and changes in [CHANGELOG.md](CHANGELOG.md). A tag cannot publish until its package version and changelog agree and an active trusted independent reviewer has signed an accepted, unexpired, commit-bound security review attestation with no unresolved critical or high findings.

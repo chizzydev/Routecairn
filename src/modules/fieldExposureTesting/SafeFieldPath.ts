@@ -76,4 +76,3 @@ export function valueAtSafePath(source: Record<string, unknown> | undefined, seg
   if (typeof value === "string" && /^(?:\*+|x+|redacted|null)$/i.test(value.trim())) return { state: "PRESENT_REDACTED", value };
   return { state: "PRESENT_VALUE", value };
 }
-

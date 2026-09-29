@@ -70,6 +70,7 @@ interface DashboardData {
   secretBoundary: RouteCairnReport["secretBoundary"];
   activeVulnerability: RouteCairnReport["activeVulnerability"];
   assistedReview: RouteCairnReport["assistedReview"];
+  standardsCoverage: RouteCairnReport["standardsCoverage"];
   js: {
     scripts: number;
     queuedEndpoints: number;
@@ -246,6 +247,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
         <section class="section" data-section="manual"></section>
         <section class="section" data-section="proof"></section>
         <section class="section" data-section="browser"></section>
+        <section class="section" data-section="standards"></section>
         <section class="section" data-section="intelligence"></section>
       </main>
     </div>
@@ -254,7 +256,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
   <script>
     const data = JSON.parse(document.getElementById('routecairn-data').textContent);
     const sections = [
-      ['overview', 'Overview'], ['findings', 'Findings'], ['workflows', 'Workflows'], ['manual', 'Manual Test Pack'], ['proof', 'Proof Blocks'], ['browser', 'Browser'], ['intelligence', 'Intelligence']
+      ['overview', 'Overview'], ['findings', 'Findings'], ['workflows', 'Workflows'], ['manual', 'Manual Test Pack'], ['proof', 'Proof Blocks'], ['browser', 'Browser'], ['standards', 'Standards'], ['intelligence', 'Intelligence']
     ];
     const state = { severity: 'all', type: 'all', verification: 'all', triage: 'all', q: '' };
     const nav = document.getElementById('nav');
@@ -403,15 +405,33 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
         '<div class="card band" style="margin-top:14px"><h3>Active Vulnerability Validation</h3>' + activeVulnerabilityHtml() + '</div>' +
         '<div class="card band" style="margin-top:14px"><h3>Assisted Security Review</h3>' + assistedReviewHtml() + '</div>';
     }
+
+    function renderStandards() {
+      const coverage = data.standardsCoverage;
+      if (!coverage) { bySection('standards').innerHTML = sectionTitle('Standards Coverage', 'No standards accounting was retained for this report.') + '<div class="empty">Coverage unavailable.</div>'; return; }
+      const accounting = coverage.accounting;
+      const areas = coverage.wstgAreas.map((item) => [item.id + ' — ' + item.title, item.status, item.executedCases, item.conclusiveCases, item.requirementIds.join(', ') || 'none']);
+      const requirements = coverage.requirements.map((item) => [item.framework, item.id, item.title, item.directCases, item.supportingCases, item.findings, item.noFindings, item.inconclusive, item.blocked]);
+      const apiObjectives = coverage.apiRiskObjectives.map((item) => [item.id, item.title, item.status, item.engineIds.join(', ') || 'none', item.executedCases, item.conclusiveCases]);
+      const gaps = coverage.gaps.map((item) => [item.priority, item.framework, item.id, item.title, item.status, item.reason]);
+      bySection('standards').innerHTML = sectionTitle('Standards Coverage', 'Evidence-backed case accounting for OWASP WSTG, ASVS 5.0.0, API Security Top 10 2023, CWE, and CAPEC.') +
+        '<div class="grid stats">' + stat('Executed cases', accounting.executedCases) + stat('Direct mappings', accounting.directlyMappedCases) + stat('Findings', accounting.findings) + stat('No findings', accounting.noFindings) + stat('Inconclusive', accounting.inconclusive) + stat('Blocked', accounting.blocked) + '</div>' +
+        '<h4>WSTG areas</h4>' + simpleTable(areas, ['Area','Status','Executed','Conclusive','Identifiers']) +
+        '<h4>Mapped requirements and weakness classes</h4>' + simpleTable(requirements, ['Framework','ID','Title','Direct','Supporting','Findings','Clean','Inconclusive','Blocked']) +
+        '<h4>API Security first-class objectives</h4>' + simpleTable(apiObjectives, ['ID','Objective','Status','Engines','Executed','Conclusive']) +
+        '<h4>Priority gaps</h4>' + (gaps.length ? simpleTable(gaps, ['Priority','Framework','ID','Title','Status','Reason']) : '<div class="empty">No priority gap remains for this exact run.</div>') +
+        '<p class="muted">Mappings account for retained scan evidence and do not certify full conformance with an entire standard.</p>';
+    }
     function protocolSecurityHtml() {
       const report = data.protocolSecurity;
       if (!report || !report.enabled) return '<div class="empty">Protocol-level security testing was not configured.</div>';
-      return '<p>Executed: <strong>' + esc(report.executedCases) + '/' + esc(report.plannedCases) + '</strong>; passed: ' + esc(report.passedCases) + '; failed: ' + esc(report.failedCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.observations.map(v => [v.label, v.kind, v.actorAlias, v.outcome, v.reason, v.statusCode || '-', v.messageCount, v.eventCount, v.negotiatedProtocol || '-', v.cleanupOutcome || '-']), ['Case','Kind','Actor','Outcome','Reason','Status','Messages','Events','Protocol','Cleanup']);
+      return '<p>Executed: <strong>' + esc(report.executedCases) + '/' + esc(report.plannedCases) + '</strong>; passed: ' + esc(report.passedCases) + '; failed: ' + esc(report.failedCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.observations.map(v => [v.label, v.kind, v.riskClass, v.actorAlias, v.outcome, v.reason, v.statusCode || '-', v.messageCount, v.eventCount, v.structuralCount == null ? '-' : v.structuralCount, v.negotiatedProtocol || '-', v.cleanupOutcome || '-']), ['Case','Kind','Risk','Actor','Outcome','Reason','Status','Messages','Events','Structures','Protocol','Cleanup']);
     }
     function activeVulnerabilityHtml() {
       const report = data.activeVulnerability;
       if (!report || !report.enabled) return '<div class="empty">Active vulnerability validation was not configured.</div>';
-      return '<p>Cases: <strong>' + esc(report.plannedCases) + '</strong> (' + esc(report.explicitCases) + ' explicit; ' + esc(report.discoveredCases) + ' discovery-compiled). Proven: <strong>' + esc(report.provenCases) + '</strong>; secure: ' + esc(report.secureCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.coverage.map(v => [v.vulnerabilityClass, v.planned, v.proven, v.secure, v.inconclusive, v.blocked, v.notAssessed]), ['Class','Planned','Proven','Secure','Inconclusive','Blocked','Not assessed']);
+      const oast = report.cases.filter(v => v.oastEvidence).map(v => [v.caseId, v.oastEvidence.protocol, v.oastEvidence.delayMs + ' ms', v.oastEvidence.requestFingerprint.slice(0, 16), v.oastEvidence.bindingFingerprint.slice(0, 16), v.oastEvidence.replayRejected ? 'yes' : 'no']);
+      return '<p>Cases: <strong>' + esc(report.plannedCases) + '</strong> (' + esc(report.explicitCases) + ' explicit; ' + esc(report.discoveredCases) + ' discovery-compiled). Proven: <strong>' + esc(report.provenCases) + '</strong>; secure: ' + esc(report.secureCases) + '; inconclusive: ' + esc(report.inconclusiveCases) + '; blocked: ' + esc(report.blockedCases) + '.</p>' + simpleTable(report.coverage.map(v => [v.vulnerabilityClass, v.planned, v.proven, v.secure, v.inconclusive, v.blocked, v.notAssessed]), ['Class','Planned','Proven','Secure','Inconclusive','Blocked','Not assessed']) + simpleTable(report.cases.map(v => [v.caseId, v.vulnerabilityClass, v.outcome, v.reasonCode, v.strategiesExecuted + '/' + v.strategiesPlanned, v.cleanup]), ['Case','Class','Outcome','Reason','Strategies','Cleanup']) + (oast.length ? '<h4>Native OAST evidence</h4>' + simpleTable(oast, ['Case','Protocol','Delay','Event fingerprint','Binding fingerprint','Replay rejected']) + '<p>Evidence contains keyed or one-way fingerprints only. Callback payloads and binding values are excluded.</p>' : '');
     }
     function assistedReviewHtml() {
       const review = data.assistedReview;
@@ -479,7 +499,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
     }
     function simpleTable(rows, headers) { if (!rows.length) return '<div class="empty">None recorded.</div>'; return '<table><thead><tr>' + headers.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(cell => '<td class="url">' + esc(cell) + '</td>').join('') + '</tr>').join('') + '</tbody></table>'; }
 
-    renderOverview(); renderFindings(); renderWorkflows(); renderManualPack(); renderProof(); renderBrowser(); renderIntelligence();
+    renderOverview(); renderFindings(); renderWorkflows(); renderManualPack(); renderProof(); renderBrowser(); renderStandards(); renderIntelligence();
   </script>
 </body>
 </html>`;
@@ -526,6 +546,7 @@ function dashboardData(outputDir: string, report: RouteCairnReport, triage: Tria
     secretBoundary: report.secretBoundary,
     activeVulnerability: report.activeVulnerability,
     assistedReview: report.assistedReview,
+    standardsCoverage: report.standardsCoverage,
     js: {
       scripts: report.jsIntelligence?.scripts.length ?? 0,
       queuedEndpoints: report.jsIntelligence?.queuedEndpoints.length ?? 0,

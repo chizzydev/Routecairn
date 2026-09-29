@@ -4,10 +4,11 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { handleNativeAgentJob, nativeAgentCapabilities } from "../agent/NativeAgentJobHandler.js";
+import { Agent, fetch } from "undici";
 
-export interface EnrollOptions { server: string; token: string; name: string; state: string; capability: string[] }
+export interface EnrollOptions { server: string; token: string; name: string; state: string; capability: string[]; networkZone?: string; tlsCa?: string; tlsCert?: string; tlsKey?: string; workloadIdentityTokenFile?: string }
 export interface RunOptions { state: string; handler?: string; once?: boolean; interval?: string; workspace?: string; maxJobMs?: string; requestTimeoutMs?: string }
-export interface AgentState { server: string; workerId: string; privateKeyPem: string; publicKeyPem: string; capabilities: string[] }
+export interface AgentState { server: string; workerId: string; privateKeyPem: string; publicKeyPem: string; capabilities: string[]; transport?: { tlsCaFile?: string; tlsCertFile?: string; tlsKeyFile?: string; workloadIdentityTokenFile?: string } }
 interface AgentJob { id: string; kind: string; payload: Record<string, unknown>; leaseToken: string }
 interface AgentHandler { handle?: (job: AgentJob, context: { signal: AbortSignal; workspace: string }) => Promise<Record<string, unknown>> }
 
@@ -19,6 +20,11 @@ export function registerAgentCommand(program: Command): void {
     .requiredOption("--name <name>")
     .requiredOption("--state <file>")
     .option("--capability <value...>", "Worker capabilities", [...nativeAgentCapabilities])
+    .option("--network-zone <zone>", "Network zone used for pool-aware scheduling.", "default")
+    .option("--tls-ca <file>", "Private CA bundle for control-plane mTLS.")
+    .option("--tls-cert <file>", "Worker client certificate for mTLS.")
+    .option("--tls-key <file>", "Worker client private key for mTLS.")
+    .option("--workload-identity-token-file <file>", "Rotating OIDC workload identity token file.")
     .action((options: EnrollOptions) => enrollAgent(options));
   agent.command("run")
     .requiredOption("--state <file>")
@@ -32,19 +38,23 @@ export function registerAgentCommand(program: Command): void {
 }
 
 export async function enrollAgent(options: EnrollOptions): Promise<void> {
+  const networkZone=options.networkZone??"default";if (!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(networkZone)) throw new Error("Network zone is invalid.");
   const pair = generateKeyPairSync("ed25519");
   const publicKeyPem = pair.publicKey.export({ format: "pem", type: "spki" }).toString();
   const privateKeyPem = pair.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
   const server = origin(options.server);
+  const transport = transportState(options);
+  const client = await createAgentTransport(server, transport);
   const response = await fetch(`${server}/api/remote-agents/enroll`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: options.token, name: options.name, publicKeyPem, capabilities: options.capability, labels: { runtime: `node-${process.version}`, platform: process.platform, architecture: process.arch } }),
-    signal: AbortSignal.timeout(30_000)
+    headers: { "content-type": "application/json", ...await client.identityHeaders() },
+    body: JSON.stringify({ token: options.token, name: options.name, publicKeyPem, capabilities: options.capability, labels: { runtime: `node-${process.version}`, platform: process.platform, architecture: process.arch, networkZone } }),
+    signal: AbortSignal.timeout(30_000), ...(client.dispatcher ? { dispatcher: client.dispatcher } : {})
   });
-  if (!response.ok) throw new Error(`Remote enrollment failed (${response.status}).`);
+  if (!response.ok) { await client.dispatcher?.close(); throw new Error(`Remote enrollment failed (${response.status}).`); }
   const body = await response.json() as { workerId: string };
-  const state: AgentState = { server, workerId: body.workerId, privateKeyPem, publicKeyPem, capabilities: options.capability };
+  await client.dispatcher?.close();
+  const state: AgentState = { server, workerId: body.workerId, privateKeyPem, publicKeyPem, capabilities: options.capability, ...(Object.keys(transport).length ? { transport } : {}) };
   const statePath = resolve(options.state);
   await mkdir(dirname(statePath), { recursive: true });
   const temporaryStatePath = `${statePath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
@@ -67,25 +77,28 @@ export async function runAgent(options: RunOptions): Promise<void> {
   const requestTimeoutMs = Math.max(1_000, Math.min(120_000, Number(options.requestTimeoutMs) || 30_000));
   const workspace = resolve(options.workspace ?? dirname(statePath));
   const external = options.handler ? await import(pathToFileURL(resolve(options.handler)).href) as AgentHandler : undefined;
+  const transport = await createAgentTransport(state.server, state.transport ?? {});
   if (external && typeof external.handle !== "function") throw new Error("Agent handler module must export handle(job, context).");
   let retryDelay = interval;
-  do {
-    try {
-      await signedRequest(state, "/api/remote-agents/worker/heartbeat", { status: "ONLINE", resources: { cpuPercent: 0, memoryBytes: process.memoryUsage().rss, activeJobs: 0 } }, requestTimeoutMs);
-      const claimed = await signedRequest(state, "/api/remote-agents/worker/claim", {}, requestTimeoutMs) as { job: AgentJob | null };
-      if (claimed.job) await executeJob(state, claimed.job, external, workspace, maxJobMs, requestTimeoutMs);
-      retryDelay = interval;
-      if (!options.once) await delay(interval);
-    } catch (error) {
-      if (options.once) throw error;
-      process.stderr.write(`Remote worker cycle failed: ${safeError(error)}\n`);
-      await delay(retryDelay);
-      retryDelay = Math.min(60_000, Math.max(interval, retryDelay * 2));
-    }
-  } while (!options.once);
+  try {
+    do {
+      try {
+        await signedRequest(state, "/api/remote-agents/worker/heartbeat", { status: "ONLINE", resources: { cpuPercent: 0, memoryBytes: process.memoryUsage().rss, activeJobs: 0 } }, requestTimeoutMs, transport);
+        const claimed = await signedRequest(state, "/api/remote-agents/worker/claim", {}, Math.max(requestTimeoutMs, 35_000), transport) as { job: AgentJob | null };
+        if (claimed.job) await executeJob(state, claimed.job, external, workspace, maxJobMs, requestTimeoutMs, transport);
+        retryDelay = interval;
+        if (!options.once) await delay(interval);
+      } catch (error) {
+        if (options.once) throw error;
+        process.stderr.write(`Remote worker cycle failed: ${safeError(error)}\n`);
+        await delay(retryDelay);
+        retryDelay = Math.min(60_000, Math.max(interval, retryDelay * 2));
+      }
+    } while (!options.once);
+  } finally { await transport.dispatcher?.close(); }
 }
 
-async function executeJob(state: AgentState, job: AgentJob, external: AgentHandler | undefined, workspace: string, maxJobMs: number, requestTimeoutMs: number): Promise<void> {
+async function executeJob(state: AgentState, job: AgentJob, external: AgentHandler | undefined, workspace: string, maxJobMs: number, requestTimeoutMs: number, transport: AgentTransport): Promise<void> {
   const controller = new AbortController();
   let renewing = false;
   let renewalError: unknown;
@@ -94,28 +107,28 @@ async function executeJob(state: AgentState, job: AgentJob, external: AgentHandl
   const timer = setInterval(() => {
     if (renewing || renewalError) return;
     renewing = true;
-    void signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/renew`, { leaseToken: job.leaseToken }, requestTimeoutMs)
+    void signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/renew`, { leaseToken: job.leaseToken }, requestTimeoutMs, transport)
       .catch((error) => { renewalError = error; controller.abort(error); })
       .finally(() => { renewing = false; });
   }, 20_000);
   timer.unref();
   try {
-    await signedRequest(state, "/api/remote-agents/worker/heartbeat", { status: "ONLINE", resources: { cpuPercent: 0, memoryBytes: process.memoryUsage().rss, activeJobs: 1 } }, requestTimeoutMs);
+    await signedRequest(state, "/api/remote-agents/worker/heartbeat", { status: "ONLINE", resources: { cpuPercent: 0, memoryBytes: process.memoryUsage().rss, activeJobs: 1 } }, requestTimeoutMs, transport);
     const context = { signal: controller.signal, workspace };
     const result = external?.handle ? await external.handle(job, context) : await handleNativeAgentJob(job, context);
     if (controller.signal.aborted) throw controller.signal.reason instanceof Error ? controller.signal.reason : new Error("AGENT_JOB_ABORTED");
     if (renewalError) throw renewalError;
-    await signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/complete`, { leaseToken: job.leaseToken, status: "COMPLETED", result }, requestTimeoutMs);
+    await signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/complete`, { leaseToken: job.leaseToken, status: "COMPLETED", result }, requestTimeoutMs, transport);
   } catch (error) {
     controller.abort(error);
-    await signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/complete`, { leaseToken: job.leaseToken, status: "FAILED", error: safeError(error) }, requestTimeoutMs);
+    await signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/complete`, { leaseToken: job.leaseToken, status: "FAILED", error: safeError(error) }, requestTimeoutMs, transport);
   } finally {
     clearInterval(timer);
     clearTimeout(deadline);
   }
 }
 
-async function signedRequest(state: AgentState, path: string, body: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
+async function signedRequest(state: AgentState, path: string, body: Record<string, unknown>, timeoutMs: number, transport: AgentTransport): Promise<unknown> {
   const timestamp = new Date().toISOString();
   const nonce = randomBytes(24).toString("base64url");
   const serialized = canonical(body);
@@ -129,10 +142,11 @@ async function signedRequest(state: AgentState, path: string, body: Record<strin
       "x-routecairn-worker-id": state.workerId,
       "x-routecairn-timestamp": timestamp,
       "x-routecairn-nonce": nonce,
-      "x-routecairn-signature": signature
+      "x-routecairn-signature": signature,
+      ...await transport.identityHeaders()
     },
     body: serialized,
-    signal: AbortSignal.timeout(timeoutMs)
+    signal: AbortSignal.timeout(timeoutMs), ...(transport.dispatcher ? { dispatcher: transport.dispatcher } : {})
   });
   if (!response.ok) throw new Error(`Remote worker request failed (${response.status}).`);
   return response.json();
@@ -152,6 +166,24 @@ function sort(value: unknown): unknown {
 function validateState(state: AgentState): void {
   if (!state || typeof state.server !== "string" || typeof state.workerId !== "string" || typeof state.privateKeyPem !== "string" || !Array.isArray(state.capabilities)) throw new Error("AGENT_STATE_INVALID");
   origin(state.server);
+  if (state.transport && ((state.transport.tlsCertFile && !state.transport.tlsKeyFile) || (!state.transport.tlsCertFile && state.transport.tlsKeyFile))) throw new Error("AGENT_MTLS_KEYPAIR_REQUIRED");
 }
 function safeError(error: unknown): string { return (error instanceof Error ? error.message : "Agent job failed").replace(/https?:\/\/[^\s]+/gi, "<endpoint>").replace(/\b(password|secret|token|cookie|authorization|private[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>").replace(/[\r\n]+/g, " ").slice(0, 1000); }
 function delay(milliseconds: number): Promise<void> { return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds)); }
+
+interface AgentTransport { dispatcher?: Agent; identityHeaders(): Promise<Record<string,string>> }
+function transportState(options: EnrollOptions): NonNullable<AgentState["transport"]> { return {
+  ...(options.tlsCa ? { tlsCaFile: resolve(options.tlsCa) } : {}), ...(options.tlsCert ? { tlsCertFile: resolve(options.tlsCert) } : {}),
+  ...(options.tlsKey ? { tlsKeyFile: resolve(options.tlsKey) } : {}), ...(options.workloadIdentityTokenFile ? { workloadIdentityTokenFile: resolve(options.workloadIdentityTokenFile) } : {})
+}; }
+async function createAgentTransport(server: string, state: NonNullable<AgentState["transport"]>): Promise<AgentTransport> {
+  if ((state.tlsCertFile && !state.tlsKeyFile) || (!state.tlsCertFile && state.tlsKeyFile)) throw new Error("Agent mTLS requires both certificate and key files.");
+  const parsed = new URL(server); let dispatcher: Agent | undefined;
+  if (parsed.protocol === "https:" && (state.tlsCaFile || state.tlsCertFile)) dispatcher = new Agent({ connect: {
+    ...(state.tlsCaFile ? { ca: await readFile(state.tlsCaFile, "utf8") } : {}), ...(state.tlsCertFile ? { cert: await readFile(state.tlsCertFile, "utf8") } : {}), ...(state.tlsKeyFile ? { key: await readFile(state.tlsKeyFile, "utf8") } : {}), rejectUnauthorized: true
+  } });
+  return { ...(dispatcher ? { dispatcher } : {}), identityHeaders: async () => {
+    if (!state.workloadIdentityTokenFile) return {};
+    const token=(await readFile(state.workloadIdentityTokenFile,"utf8")).trim();if(token.length<20||token.length>16*1024)throw new Error("AGENT_WORKLOAD_IDENTITY_TOKEN_INVALID");return{authorization:`Bearer ${token}`};
+  } };
+}

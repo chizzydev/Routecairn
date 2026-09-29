@@ -474,10 +474,11 @@ function minimumCleanupRequests(input: ScanPlannerInput): number {
   total += input.authenticationLifecycle?.automation?.categories.length ?? 0;
   total += input.businessInvariant?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
   total += input.controlledRace?.cases.reduce((count, item) => count + item.cleanup.length + item.cleanupVerification.length, 0) ?? 0;
-  total += input.protocolSecurity?.cases.filter((item) => item.kind === "GRAPHQL_MUTATION" || ((item.kind === "MULTIPART_UPLOAD" || item.kind === "WEBSOCKET" || item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM") && !item.readOnly)).length ?? 0;
+  total += input.protocolSecurity?.cases.filter((item) => item.kind === "GRAPHQL_MUTATION" || item.kind === "STREAMING_UPLOAD_INTERRUPT" || ((item.kind === "MULTIPART_UPLOAD" || item.kind === "WEBSOCKET" || item.kind === "WEBSOCKET_AUTH_STATE_MACHINE" || item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM" || item.kind === "GRPC_CLIENT_STREAM" || item.kind === "GRPC_BIDI_STREAM") && !item.readOnly)).length ?? 0;
   total += input.linkPortalSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
   total += input.operationalEndpointSecurity?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").length, 0) ?? 0;
   total += input.billingEntitlement?.cases.reduce((count, item) => count + item.steps.filter((step) => step.phase === "CLEANUP").reduce((stepCount, step) => stepCount + step.execution.attempts, 0), 0) ?? 0;
+  total += input.activeVulnerability?.cases.filter((item) => Boolean(item.proof.cleanupUrl && item.proof.cleanupMethod)).length ?? 0;
   return total;
 }
 

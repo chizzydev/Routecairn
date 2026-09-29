@@ -8,6 +8,8 @@ export type SqlValue = string | number | bigint | Buffer | null;
 
 export class DashboardDatabase {
   public readonly db: Database.Database;
+  private eventObserver?: ((event: { scanId: string; eventType: string; seq: number; moduleId?: string; message: string; metadata: unknown; createdAt: string }) => void) | undefined;
+  private artifactObserver?: ((artifact: { artifactId: string; organizationId: string; path: string; sha256: string; size: number; contentType: string }) => void) | undefined;
 
   public constructor(public readonly databasePath: string) {
     mkdirSync(dirname(databasePath), { recursive: true });
@@ -101,12 +103,18 @@ export class DashboardDatabase {
 
   public appendEvent(scanId: string, eventType: string, message: string, metadata: Record<string, unknown>, moduleId?: string): void {
     const row = this.db.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS nextSeq FROM scan_events WHERE scan_id = ?").get(scanId) as { nextSeq: number };
+    const safeMessage=clamp(message,500);const metadataJson=JSON.stringify(metadata);const safeMetadata=metadataJson.length<=4000?metadataJson:JSON.stringify({truncated:true,originalBytes:Buffer.byteLength(metadataJson)});const createdAt=nowIso();
     this.db
       .prepare(
         "INSERT INTO scan_events (id, seq, scan_id, event_type, module_id, safe_message, safe_metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(randomUUID(), row.nextSeq, scanId, eventType, moduleId ?? null, clamp(message, 500), clamp(JSON.stringify(metadata), 4000), nowIso());
+      .run(randomUUID(), row.nextSeq, scanId, eventType, moduleId ?? null, safeMessage, safeMetadata, createdAt);
+    this.eventObserver?.({ scanId, eventType, seq: row.nextSeq, ...(moduleId ? { moduleId } : {}), message: safeMessage, metadata: JSON.parse(safeMetadata), createdAt });
   }
+
+  public observeEvents(observer: (event: { scanId: string; eventType: string; seq: number; moduleId?: string; message: string; metadata: unknown; createdAt: string }) => void): void { this.eventObserver = observer; }
+  public observeArtifacts(observer: (artifact: { artifactId: string; organizationId: string; path: string; sha256: string; size: number; contentType: string }) => void): void { this.artifactObserver = observer; }
+  public notifyArtifact(artifact: { artifactId: string; organizationId: string; path: string; sha256: string; size: number; contentType: string }): void { this.artifactObserver?.(artifact); }
 
   public transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)();

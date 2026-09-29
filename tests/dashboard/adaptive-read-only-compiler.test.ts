@@ -68,8 +68,9 @@ describe("adaptive discovery-to-execution compiler", () => {
     const service = new AdaptiveSecurityService(database);
     const observed = service.observeCompletedScan(sourceScanId, publicReport("/api/public-profile", 200, "application/json"), targetId) as any;
     const recommendation = observed.state.recommendations.find((item: any) => item.category === "API_READ_ONLY_REGRESSION");
-    expect(recommendation).toMatchObject({ operatorApprovalRequired: false, mutationHypothesis: false, requiredBindings: [], draft: { executable: true, automation: { state: "READY_READ_ONLY" } } });
+    expect(recommendation).toMatchObject({ operatorApprovalRequired: false, mutationHypothesis: false, requiredBindings: [], draft: { executable: true, automation: { state: "READY_READ_ONLY" }, attackGraphBinding: { graphFingerprint: observed.inventory.attackGraph.graphFingerprint } } });
     const materialized = service.materializeRecommendation(recommendation.id) as any;
+    expect(materialized.binding).toMatchObject({ graphFingerprint: observed.inventory.attackGraph.graphFingerprint, graphPathIds: [expect.stringMatching(/^[a-f0-9]{64}$/)] });
     const request: any = { target: "https://app.test", targetId, profile: "full", maxRequests: materialized.limits.maxRequests, cleanupReservedRequests: 0, includeModules: ["api-graphql-authorization"], apiGraphql: materialized.engineConfiguration, adaptiveExecutionBinding: materialized.binding, studio: { version: 1, scanName: "Adaptive read-only", authorization: { category: "OWNED", confirmed: true }, scope: scope(), authentication: { mode: "public" }, evidenceLevel: "strong", outputs: { json: true, markdown: true, html: true }, moduleSettings: {}, workflows: [], workflowSummary: [] } };
     expect(() => service.assertExecutionBinding(request)).not.toThrow();
     request.operationalEndpointSecurity = {};
@@ -77,6 +78,11 @@ describe("adaptive discovery-to-execution compiler", () => {
     delete request.operationalEndpointSecurity;
     request.apiGraphql.checks[0].response.expectedDecision = "DENY";
     expect(() => service.assertExecutionBinding(request)).toThrow("CONFIGURATION_CHANGED");
+    request.apiGraphql = (service.materializeRecommendation(recommendation.id) as any).engineConfiguration;
+    request.adaptiveExecutionBinding = { ...materialized.binding, graphPathIds: ["c".repeat(64)] };
+    expect(() => service.assertExecutionBinding(request)).toThrow("BINDING_MISMATCH");
+    request.adaptiveExecutionBinding = { recommendationId: materialized.binding.recommendationId, sourceFingerprint: materialized.binding.sourceFingerprint, executionFingerprint: materialized.binding.executionFingerprint, compilerVersion: materialized.binding.compilerVersion, graphFingerprint: materialized.binding.graphFingerprint };
+    expect(() => service.assertExecutionBinding(request)).toThrow();
     database.close();
   });
 

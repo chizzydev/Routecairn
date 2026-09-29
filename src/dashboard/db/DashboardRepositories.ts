@@ -556,14 +556,16 @@ export class ArtifactRepository {
         "INSERT INTO artifacts (id, organization_id, scan_id, proof_pack_id, artifact_type, safe_display_name, canonical_path, size, content_type, scoped_or_full_safe_hash, created_at, retention_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .run(id, input.organizationId ?? null,input.scanId ?? null, input.proofPackId ?? null, input.type, clamp(input.name, 200), input.path, input.size, input.contentType, input.hash, nowIso(), input.retentionState ?? "RETAIN");
+    const stored = this.database.db.prepare("SELECT organization_id FROM artifacts WHERE id=?").get(id) as { organization_id: string } | undefined;
+    if (stored?.organization_id) this.database.notifyArtifact({ artifactId: id, organizationId: stored.organization_id, path: input.path, sha256: input.hash, size: input.size, contentType: input.contentType });
     return id;
   }
 
-  public get(id: string,organizationId?:string): { id: string; path: string; contentType: string; name: string } | undefined {
-    const row = this.database.db.prepare(`SELECT id, canonical_path, content_type, safe_display_name FROM artifacts WHERE id = ? ${organizationId?"AND organization_id=?":""}`).get(id,...(organizationId?[organizationId]:[])) as
-      | { id: string; canonical_path: string; content_type: string; safe_display_name: string }
+  public get(id: string,organizationId?:string): { id: string; organizationId: string; path: string; contentType: string; name: string; size: number; sha256: string } | undefined {
+    const row = this.database.db.prepare(`SELECT id, organization_id, canonical_path, content_type, safe_display_name, size, scoped_or_full_safe_hash FROM artifacts WHERE id = ? ${organizationId?"AND organization_id=?":""}`).get(id,...(organizationId?[organizationId]:[])) as
+      | { id: string; organization_id: string; canonical_path: string; content_type: string; safe_display_name: string; size: number; scoped_or_full_safe_hash: string }
       | undefined;
-    return row ? { id: row.id, path: row.canonical_path, contentType: row.content_type, name: row.safe_display_name } : undefined;
+    return row ? { id: row.id, organizationId: row.organization_id, path: row.canonical_path, contentType: row.content_type, name: row.safe_display_name, size: row.size, sha256: row.scoped_or_full_safe_hash } : undefined;
   }
 }
 

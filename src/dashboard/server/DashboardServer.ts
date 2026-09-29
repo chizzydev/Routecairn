@@ -2,8 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdirSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { DashboardDatabase, nowIso } from "../db/DashboardDatabase.js";
 import { ArtifactRepository, AuditRepository, EventRepository, FindingRepository, ProjectRepository, SavedConfigurationRepository, ScanRepository, TargetRepository } from "../db/DashboardRepositories.js";
 import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
@@ -21,10 +21,9 @@ import { isLoopbackHost, resolveDashboardPaths, type DashboardPaths } from "../s
 import { routeCairnCapabilityRegistry } from "../../core/planning/RouteCairnCapabilityRegistry.js";
 import { CredentialVault, parseVaultKey } from "../credentials/CredentialVault.js";
 import { RetestTemplateVault } from "../retests/RetestTemplateVault.js";
-import { inspectImageDimensions } from "../security/ImageDimensions.js";
 import { ZodError } from "zod";
 import { AppError } from "../../core/errors/AppError.js";
-import { FindingCommandCenterService, FindingCommandError, type FindingQuery } from "../findings/FindingCommandCenterService.js";
+import { FindingCommandCenterService, FindingCommandError } from "../findings/FindingCommandCenterService.js";
 import {
   findingBulkReviewSchema,
   findingBulkRemediationSchema,
@@ -39,7 +38,6 @@ import {
   savedFindingViewDefaultSchema,
   savedFindingViewSchema
 } from "../contracts/FindingSchemas.js";
-import type { ReviewStatus } from "../types/DashboardTypes.js";
 import { capabilityParityManifest, validateCapabilityParityManifest } from "../admin/CapabilityParityManifest.js";
 import { readMutationCleanupStatus } from "../../core/offensive/MutationCleanupStatus.js";
 import { scopeSchema } from "../../config/ConfigSchema.js";
@@ -64,13 +62,34 @@ import { continuousAssuranceNotificationAckSchema, continuousAssurancePolicyInpu
 import { BackupRestoreService } from "../operations/BackupRestoreService.js";
 import { OrganizationPermissionError, OrganizationService } from "../operations/OrganizationService.js";
 import { NotificationService } from "../operations/NotificationService.js";
-import { RemoteWorkerAuthError, RemoteWorkerService } from "../operations/RemoteWorkerService.js";
+import { RemoteWorkerAuthError } from "../operations/RemoteWorkerService.js";
+import type { RemoteWorkerOperations } from "../operations/RemoteWorkerOperations.js";
+import { ControlPlaneInfrastructure } from "../../controlPlane/ControlPlaneInfrastructure.js";
+import { WorkloadIdentityError } from "../../controlPlane/WorkloadIdentity.js";
+import { decryptKmsConfigurationSecret } from "../../controlPlane/KeyManagement.js";
 import { CloudSyncAuthError, CloudSyncService } from "../operations/CloudSyncService.js";
 import { IntegrationExportService } from "../operations/IntegrationExportService.js";
 import { ThirdPartyModuleService } from "../operations/ThirdPartyModuleService.js";
 import { SsoService } from "../operations/SsoService.js";
 import { DistributedMutationCoordinatorError, DistributedMutationCoordinatorService } from "../operations/DistributedMutationCoordinatorService.js";
 import { backupCreateSchema, backupRestoreSchema, cloudSyncMembershipBindSchema, cloudSyncPeerSchema, cloudSyncPushSchema, integrationExportSchema, notificationChannelSchema, notificationEnqueueSchema, organizationCreateSchema, organizationMemberSchema, remoteEnrollmentSchema, remoteHeartbeatSchema, remoteJobLeaseRenewSchema, remoteJobResultSchema, remoteJobSchema, remoteWorkerEnrollSchema, remoteWorkerStateSchema, ssoProviderSchema, thirdPartyModuleExecuteSchema, thirdPartyModuleRegisterSchema } from "../contracts/OperationalScaleSchemas.js";
+
+import {
+  HttpError,
+  booleanParam,
+  correlationId,
+  enumParam,
+  findingQuery,
+  numberParam,
+  reviewAuditAction,
+  scanSortParam,
+  scanStatusParam,
+  serveArtifact,
+  serveImagePreview,
+  serveStatic,
+  setSecurityHeaders,
+  stringParam,
+} from "./DashboardHttpSupport.js";
 
 export interface DashboardServerOptions {
   host?: string;
@@ -106,7 +125,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     throw new Error("RouteCairn Dashboard refuses non-loopback binding in local mode.");
   }
   const paths = resolveDashboardPaths(options.dataDir);
-  const vaultKey = parseVaultKey(options.masterKey ?? process.env.ROUTECAIRN_MASTER_KEY, options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
+  const vaultKey = parseVaultKey(await dashboardMasterKey(options), options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   mkdirSync(paths.reportsDir, { recursive: true });
   mkdirSync(paths.artifactsDir, { recursive: true });
   mkdirSync(paths.proofPacksDir, { recursive: true });
@@ -115,10 +134,14 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   mkdirSync(paths.backupsDir, { recursive: true });
   mkdirSync(paths.integrationsDir, { recursive: true });
   mkdirSync(paths.thirdPartyModulesDir, { recursive: true });
+  mkdirSync(paths.objectCacheDir, { recursive: true });
   BackupRestoreService.applyStagedRestore(paths, vaultKey);
   const database = new DashboardDatabase(paths.databasePath);
   database.migrate();
   database.recoverInterruptedScans();
+  const infrastructure = await ControlPlaneInfrastructure.start(database, paths);
+  database.observeEvents((event) => { void infrastructure.publish("scan-events", event.scanId, { eventType: event.eventType, seq: event.seq, ...(event.moduleId ? { moduleId: event.moduleId } : {}), message: event.message, metadata: event.metadata, createdAt: event.createdAt }); });
+  database.observeArtifacts((artifact) => infrastructure.uploadEvidence(artifact));
 
   const localSessions = mode === "local" ? new LocalSessionManager() : undefined;
   const serverSessions = mode === "server" && serverSecurity ? new ServerSessionManager(database, serverSecurity) : undefined;
@@ -147,12 +170,17 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const providerAdapters = new ProviderAdapterService(database, execution, vault, vaultKey);
   const comparison = new ComparisonService(database);
   const evidenceGovernance = new EvidenceGovernanceService(database, paths, vaultKey);
-  const continuousAssurance = new ContinuousAssuranceService(database, paths, execution, providerAdapters, new ScanComparisonService(database), evidenceGovernance);
+  const continuousAssurance = new ContinuousAssuranceService(database, paths, execution, providerAdapters, new ScanComparisonService(database), evidenceGovernance, { startTimers: infrastructure.config.mode === "local" });
   const proofPacks = new ProofPackService(database, paths);
   const organizations = new OrganizationService(database);
-  const notifications = new NotificationService(database); notifications.start();
-  const remoteWorkers = new RemoteWorkerService(database);
-  const cloudSync = new CloudSyncService(database, vault); cloudSync.start();
+  const notifications = new NotificationService(database); if(infrastructure.config.mode==="local")notifications.start();
+  const remoteWorkers = infrastructure.remoteWorkers;
+  const cloudSync = new CloudSyncService(database, vault); if(infrastructure.config.mode==="local")cloudSync.start();
+  if(infrastructure.config.mode==="distributed"){
+    infrastructure.registerScheduledTask("notifications",2_000,async()=>notifications.flush());
+    infrastructure.registerScheduledTask("continuous-assurance",15_000,async()=>{await continuousAssurance.reconcileNow();await continuousAssurance.processDueNow();});
+    infrastructure.registerScheduledTask("cloud-sync",Number(process.env.ROUTECAIRN_CLOUD_SYNC_INTERVAL_MS??30_000),async()=>{await cloudSync.synchronizeNow();});
+  }
   const backups = new BackupRestoreService(database, paths, vaultKey);
   const integrationExports = new IntegrationExportService(database, paths);
   const thirdPartyModules = new ThirdPartyModuleService(database, paths);
@@ -163,9 +191,12 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const uiDistDir = options.uiDistDir ?? packagedDashboardUiDirectory();
 
   const server = createServer(async (request, response) => {
+    const requestSpan=infrastructure.telemetry.startSpan("http.request",{method:request.method??"UNKNOWN",route:routeTemplate((request.url??"/").split("?",1)[0]??"/")});
+    response.once("finish",()=>{requestSpan.setAttribute("http.response.status_code",response.statusCode);if(response.statusCode>=500)requestSpan.setStatus({code:2});requestSpan.end();});
     try {
       setSecurityHeaders(response);
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${options.port ?? 0}`}`);
+      response.once("finish", () => infrastructure.telemetry.countRequest(routeTemplate(url.pathname), response.statusCode));
       if (request.method === "GET" && url.pathname === "/healthz") {
         response.setHeader("cache-control", "no-store");
         sendJson(response, 200, { status: "ok" });
@@ -173,8 +204,9 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
       }
       if (request.method === "GET" && url.pathname === "/readyz") {
         database.db.prepare("SELECT 1").get();
+        const readiness = await infrastructure.ready();
         response.setHeader("cache-control", "no-store");
-        sendJson(response, 200, { status: "ready" });
+        sendJson(response, readiness.ready ? 200 : 503, readiness.mode === "distributed" ? { status: readiness.ready ? "ready" : "unavailable", infrastructure: readiness } : { status: readiness.ready ? "ready" : "unavailable" });
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/session/bootstrap") {
@@ -212,16 +244,16 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
         redirect(response, serverSecurity.publicOrigin); return;
       }
       if (request.method === "POST" && url.pathname === "/api/remote-agents/enroll") {
-        const result=remoteWorkers.enroll(remoteWorkerEnrollSchema.parse(await readJson(request)));cloudSync.record(remoteWorkers.organizationForWorker(result.workerId),"remote-worker",result.workerId,"UPSERT",{status:"ONLINE",generation:result.generation});sendJson(response, 201, result); return;
+        const result=await remoteWorkers.enroll(remoteWorkerEnrollSchema.parse(await readJson(request)));cloudSync.record(await remoteWorkers.organizationForWorker(result.workerId),"remote-worker",result.workerId,"UPSERT",{status:"ONLINE",generation:result.generation});sendJson(response, 201, result); return;
       }
       if (request.method === "POST" && url.pathname.startsWith("/api/remote-agents/worker/")) {
-        const body = await readJson(request); const worker = remoteWorkers.authenticate(request.method, url.pathname, body, request.headers);
-        if (url.pathname.endsWith("/heartbeat")) { remoteWorkers.heartbeat(worker, remoteHeartbeatSchema.parse(body)); sendJson(response, 200, { ok: true }); return; }
-        if (url.pathname.endsWith("/claim")) { sendJson(response, 200, remoteWorkers.claim(worker)); return; }
+        const body = await readJson(request); const worker = await remoteWorkers.authenticate(request.method, url.pathname, body, request.headers); await infrastructure.verifyWorkerIdentity(request, worker);
+        if (url.pathname.endsWith("/heartbeat")) { await remoteWorkers.heartbeat(worker, remoteHeartbeatSchema.parse(body)); sendJson(response, 200, { ok: true }); return; }
+        if (url.pathname.endsWith("/claim")) { sendJson(response, 200, await remoteWorkers.claim(worker, infrastructure.config.queue.claimWaitMs)); return; }
         const renew = /^\/api\/remote-agents\/worker\/jobs\/(?<id>[0-9a-f-]+)\/renew$/.exec(url.pathname);
-        if (renew?.groups?.id) { const parsed=remoteJobLeaseRenewSchema.parse(body); sendJson(response,200,remoteWorkers.renew(worker,renew.groups.id,parsed.leaseToken));return; }
+        if (renew?.groups?.id) { const parsed=remoteJobLeaseRenewSchema.parse(body); sendJson(response,200,await remoteWorkers.renew(worker,renew.groups.id,parsed.leaseToken));return; }
         const complete = /^\/api\/remote-agents\/worker\/jobs\/(?<id>[0-9a-f-]+)\/complete$/.exec(url.pathname);
-        if (complete?.groups?.id) { const parsed = remoteJobResultSchema.parse(body); remoteWorkers.complete(worker, complete.groups.id, { leaseToken: parsed.leaseToken, status: parsed.status, ...(parsed.result ? { result: parsed.result } : {}), ...(parsed.error ? { error: parsed.error } : {}) }); cloudSync.record(worker.organization_id,"remote-job",complete.groups.id,"UPSERT",{status:parsed.status,workerId:worker.id});sendJson(response, 200, { ok: true }); return; }
+        if (complete?.groups?.id) { const parsed = remoteJobResultSchema.parse(body); await remoteWorkers.complete(worker, complete.groups.id, { leaseToken: parsed.leaseToken, status: parsed.status, ...(parsed.result ? { result: parsed.result } : {}), ...(parsed.error ? { error: parsed.error } : {}) }); cloudSync.record(worker.organization_id,"remote-job",complete.groups.id,"UPSERT",{status:parsed.status,workerId:worker.id});sendJson(response, 200, { ok: true }); return; }
         throw new HttpError(404, "Remote agent operation not found.");
       }
       if (request.method === "POST" && url.pathname === "/api/cloud-sync/receive") {
@@ -288,6 +320,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,thirdPartyModules
           ,sso
           ,mutationCoordinator
+          ,infrastructure
         });
         return;
       }
@@ -313,6 +346,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
       await mutationRecovery.shutdown();
       await workflowRecovery.shutdown();
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+      await infrastructure.shutdown();
       database.close();
     }
   };
@@ -349,6 +383,16 @@ function serverBootstrapOwner(): { login: string; password: string } | undefined
   const password = environmentSecret("ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD", 16_384);
   if (!password) throw new Error("The owner bootstrap password source is empty.");
   return { login, password };
+}
+
+async function dashboardMasterKey(options: DashboardServerOptions): Promise<string | undefined> {
+  if (options.masterKey) return options.masterKey;
+  const direct=environmentSecret("ROUTECAIRN_MASTER_KEY");const ciphertextFile=process.env.ROUTECAIRN_MASTER_KEY_KMS_CIPHERTEXT_FILE?.trim();const keyId=process.env.ROUTECAIRN_MASTER_KEY_KMS_KEY_ID?.trim();
+  if (direct && (ciphertextFile || keyId)) throw new Error("Raw and KMS-backed dashboard master keys cannot both be configured.");
+  if (!ciphertextFile && !keyId) return direct;if(!ciphertextFile||!keyId)throw new Error("KMS-backed dashboard master key requires both key ID and ciphertext file.");
+  const canonical=realpathSync(ciphertextFile);const stats=statSync(canonical);if(!stats.isFile()||stats.size<32||stats.size>64*1024)throw new Error("KMS dashboard master-key ciphertext file is invalid.");
+  const encoded=readFileSync(canonical,"utf8").trim();if(!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))throw new Error("KMS dashboard master-key ciphertext must be base64.");
+  return decryptKmsConfigurationSecret({keyId,ciphertext:Buffer.from(encoded,"base64"),...(process.env.AWS_REGION?{region:process.env.AWS_REGION}:{}),...(process.env.ROUTECAIRN_KMS_ENDPOINT?{endpoint:process.env.ROUTECAIRN_KMS_ENDPOINT}:{}),context:{purpose:"routecairn-dashboard-master-key"}});
 }
 
 function environmentSecret(name: string, maxBytes = 65_536): string | undefined {
@@ -397,7 +441,8 @@ interface ApiContext {
   evidenceGovernance: EvidenceGovernanceService;
   organizations: OrganizationService;
   notifications: NotificationService;
-  remoteWorkers: RemoteWorkerService;
+  remoteWorkers: RemoteWorkerOperations;
+  infrastructure: ControlPlaneInfrastructure;
   cloudSync: CloudSyncService;
   backups: BackupRestoreService;
   integrationExports: IntegrationExportService;
@@ -495,7 +540,10 @@ async function handleApiGet(context: ApiContext): Promise<void> {
     requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, { channels: context.notifications.list(organizationId), deliveries: context.notifications.deliveries(organizationId) }); return;
   }
   if (url.pathname === "/api/operations/remote-workers") {
-    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, context.remoteWorkers.list(organizationId)); return;
+    requirePermission(context, "operations.read"); const organizationId = operationalOrganization(context); requireOrg(context, organizationId, "org.read"); sendJson(response, 200, await context.remoteWorkers.list(organizationId)); return;
+  }
+  if (url.pathname === "/api/operations/infrastructure") {
+    requirePermission(context,"operations.read");sendJson(response,200,{infrastructure:await context.infrastructure.ready(),queue:{claimWaitMs:context.infrastructure.config.queue.claimWaitMs,leaseMs:context.infrastructure.config.queue.leaseMs},telemetry:{enabled:Boolean(context.infrastructure.config.telemetry.otlpEndpoint)},workloadIdentity:{required:context.infrastructure.config.workloadIdentity.required,issuerCount:context.infrastructure.config.workloadIdentity.trustedIssuers.length},evidence:{provider:context.infrastructure.objectStore.kind}});return;
   }
   if (url.pathname === "/api/operations/mutation-coordination") {
     requirePermission(context, "operations.read"); if (!context.mutationCoordinator) throw new HttpError(404, "Distributed mutation coordination is not configured.");
@@ -885,17 +933,19 @@ async function handleApiGet(context: ApiContext): Promise<void> {
   const artifact = /^\/api\/artifacts\/(?<id>[0-9a-f-]+)\/download$/.exec(url.pathname);
   if (artifact?.groups?.id) {
     requirePermission(context, "artifacts.download");
-    const item = artifacts.get(artifact.groups.id,resourceOrganization(context));
+    const organizationId=resourceOrganization(context);const localItem = artifacts.get(artifact.groups.id,organizationId);const storedItem=localItem?undefined:await context.infrastructure.objectStore.lookup(artifact.groups.id,organizationId);const item=localItem??(storedItem?{id:storedItem.artifactId,organizationId:storedItem.organizationId,path:storedItem.path,contentType:storedItem.contentType,name:storedItem.name,size:storedItem.size,sha256:storedItem.sha256}:undefined);
     if (!item) throw new HttpError(404, "Artifact not found.");
-    serveArtifact(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
+    const path=context.infrastructure.objectStore.kind==="local"&&localItem?item.path:await context.infrastructure.objectStore.materialize({artifactId:item.id,organizationId:item.organizationId,path:item.path,sha256:item.sha256,size:item.size,contentType:item.contentType},paths.objectCacheDir);
+    serveArtifact(response, { ...item, path }, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir, paths.objectCacheDir]);
     return;
   }
   const artifactPreview = /^\/api\/artifacts\/(?<id>[0-9a-f-]+)\/preview$/.exec(url.pathname);
   if (artifactPreview?.groups?.id) {
     requirePermission(context, "artifacts.download");
-    const item = artifacts.get(artifactPreview.groups.id,resourceOrganization(context));
+    const organizationId=resourceOrganization(context);const localItem=artifacts.get(artifactPreview.groups.id,organizationId);const storedItem=localItem?undefined:await context.infrastructure.objectStore.lookup(artifactPreview.groups.id,organizationId);const item=localItem??(storedItem?{id:storedItem.artifactId,organizationId:storedItem.organizationId,path:storedItem.path,contentType:storedItem.contentType,name:storedItem.name,size:storedItem.size,sha256:storedItem.sha256}:undefined);
     if (!item) throw new HttpError(404, "Artifact not found.");
-    serveImagePreview(response, item, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir]);
+    const path=context.infrastructure.objectStore.kind==="local"&&localItem?item.path:await context.infrastructure.objectStore.materialize({artifactId:item.id,organizationId:item.organizationId,path:item.path,sha256:item.sha256,size:item.size,contentType:item.contentType},paths.objectCacheDir);
+    serveImagePreview(response, { ...item, path }, [paths.reportsDir, paths.proofPacksDir, paths.artifactsDir, paths.integrationsDir, paths.objectCacheDir]);
     return;
   }
   throw new HttpError(404, "API route not found.");
@@ -931,14 +981,14 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
     requirePermission(context, "operations.read"); const parsed = notificationEnqueueSchema.parse(await readJson(request)); const organizationId=context.notifications.organizationForChannels(parsed.channelIds); requireOrg(context, organizationId, "notifications.manage"); const ids = context.notifications.enqueue(parsed); context.cloudSync.record(organizationId,"notification-delivery",parsed.idempotencyKey,"UPSERT",{eventType:parsed.eventType,resourceType:parsed.resourceType,resourceId:parsed.resourceId??"",deliveryCount:ids.length}); audit.append({ actorLabel: context.principal?.userId, action: "NOTIFICATION_ENQUEUED", resourceType: parsed.resourceType, resourceId: parsed.resourceId, summary: "External notification delivery queued.", metadata: { eventType: parsed.eventType, deliveryCount: ids.length } }); sendJson(response, 202, { deliveryIds: ids }); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/remote-workers/enrollments") {
-    requirePermission(context, "operations.read"); const parsed = remoteEnrollmentSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const enrollment = context.remoteWorkers.createEnrollment({ organizationId: parsed.organizationId, expiresInMinutes: parsed.expiresInMinutes, ...(parsed.nameHint ? { nameHint: parsed.nameHint } : {}) }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-worker-enrollment",enrollment.enrollmentId,"UPSERT",{nameHint:parsed.nameHint??"",expiresAt:enrollment.expiresAt}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_ENROLLMENT_CREATED", resourceType: "REMOTE_WORKER", resourceId: enrollment.enrollmentId, summary: "One-time remote worker enrollment created." }); sendJson(response, 201, enrollment); return;
+    requirePermission(context, "operations.read"); const parsed = remoteEnrollmentSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const enrollment = await context.remoteWorkers.createEnrollment({ organizationId: parsed.organizationId, expiresInMinutes: parsed.expiresInMinutes, ...(parsed.nameHint ? { nameHint: parsed.nameHint } : {}) }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-worker-enrollment",enrollment.enrollmentId,"UPSERT",{nameHint:parsed.nameHint??"",expiresAt:enrollment.expiresAt}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_ENROLLMENT_CREATED", resourceType: "REMOTE_WORKER", resourceId: enrollment.enrollmentId, summary: "One-time remote worker enrollment created." }); sendJson(response, 201, enrollment); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/remote-jobs") {
-    requirePermission(context, "operations.read"); const parsed = remoteJobSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const id = context.remoteWorkers.enqueue(parsed, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-job",id,"UPSERT",{kind:parsed.kind,priority:parsed.priority,requiredCapabilities:parsed.requiredCapabilities}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_JOB_QUEUED", resourceType: "REMOTE_JOB", resourceId: id, summary: "Signed remote-worker job queued.", metadata: { kind: parsed.kind } }); sendJson(response, 202, { jobId: id }); return;
+    requirePermission(context, "operations.read"); const parsed = remoteJobSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "workers.manage"); const id = await context.remoteWorkers.enqueue({ organizationId: parsed.organizationId, kind: parsed.kind, payload: parsed.payload, requiredCapabilities: parsed.requiredCapabilities, priority: parsed.priority, maxAttempts: parsed.maxAttempts, ...(parsed.networkZone ? { networkZone: parsed.networkZone } : {}) }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"remote-job",id,"UPSERT",{kind:parsed.kind,priority:parsed.priority,requiredCapabilities:parsed.requiredCapabilities,networkZone:parsed.networkZone??"any"}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_JOB_QUEUED", resourceType: "REMOTE_JOB", resourceId: id, summary: "Signed remote-worker job queued.", metadata: { kind: parsed.kind, networkZone: parsed.networkZone ?? "any" } }); sendJson(response, 202, { jobId: id }); return;
   }
   const remoteWorkerState = /^\/api\/operations\/remote-workers\/(?<id>[0-9a-f-]+)\/state$/.exec(url.pathname);
   if (request.method === "POST" && remoteWorkerState?.groups?.id) {
-    requirePermission(context, "operations.read"); const organizationId=context.remoteWorkers.organizationForWorker(remoteWorkerState.groups.id); requireOrg(context, organizationId, "workers.manage"); const parsed = remoteWorkerStateSchema.parse(await readJson(request)); context.remoteWorkers.setStatus(remoteWorkerState.groups.id, parsed.status); context.cloudSync.record(organizationId,"remote-worker",remoteWorkerState.groups.id,"UPSERT",{status:parsed.status}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_STATE_CHANGED", resourceType: "REMOTE_WORKER", resourceId: remoteWorkerState.groups.id, summary: `Remote worker changed to ${parsed.status}.` }); sendJson(response, 200, { ok: true }); return;
+    requirePermission(context, "operations.read"); const organizationId=await context.remoteWorkers.organizationForWorker(remoteWorkerState.groups.id); requireOrg(context, organizationId, "workers.manage"); const parsed = remoteWorkerStateSchema.parse(await readJson(request)); await context.remoteWorkers.setStatus(remoteWorkerState.groups.id, parsed.status); context.cloudSync.record(organizationId,"remote-worker",remoteWorkerState.groups.id,"UPSERT",{status:parsed.status}); audit.append({ actorLabel: context.principal?.userId, action: "REMOTE_WORKER_STATE_CHANGED", resourceType: "REMOTE_WORKER", resourceId: remoteWorkerState.groups.id, summary: `Remote worker changed to ${parsed.status}.` }); sendJson(response, 200, { ok: true }); return;
   }
   if (request.method === "POST" && url.pathname === "/api/operations/cloud-sync/peers") {
     requirePermission(context, "operations.read"); const parsed = cloudSyncPeerSchema.parse(await readJson(request)); requireOrg(context, parsed.organizationId, "org.manage"); const id = context.cloudSync.createPeer({ organizationId: parsed.organizationId, ...(parsed.remoteOrganizationId ? { remoteOrganizationId: parsed.remoteOrganizationId } : {}), name: parsed.name, endpoint: parsed.endpoint, sharedSecretEnv: parsed.sharedSecretEnv, enabled: parsed.enabled, syncMode: parsed.syncMode }, context.principal!.userId); context.cloudSync.record(parsed.organizationId,"cloud-sync-peer",id,"UPSERT",{name:parsed.name,enabled:parsed.enabled,syncMode:parsed.syncMode,remoteOrganizationId:parsed.remoteOrganizationId??parsed.organizationId}); audit.append({ actorLabel: context.principal?.userId, action: "CLOUD_SYNC_PEER_CREATED", resourceType: "CLOUD_SYNC_PEER", resourceId: id, summary: "Signed cloud synchronization peer configured." }); sendJson(response, 201, { peerId: id }); return;
@@ -973,7 +1023,7 @@ async function handleApiMutation(context: ApiContext): Promise<void> {
   const moduleApprove = /^\/api\/operations\/modules\/(?<id>[0-9a-f-]+)\/approve$/.exec(url.pathname);
   if (request.method === "POST" && moduleApprove?.groups?.id) { requirePermission(context, "operations.read"); const organizationId=context.thirdPartyModules.organizationForModule(moduleApprove.groups.id); requireOrg(context, organizationId, "modules.manage"); await readJson(request); context.thirdPartyModules.approve(moduleApprove.groups.id, context.principal!.userId); context.cloudSync.record(organizationId,"third-party-module",moduleApprove.groups.id,"UPSERT",{status:"APPROVED"}); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_APPROVED", resourceType: "THIRD_PARTY_MODULE", resourceId: moduleApprove.groups.id, summary: "Exact third-party module package approved." }); sendJson(response, 200, { ok: true }); return; }
   const moduleExecute = /^\/api\/operations\/modules\/(?<id>[0-9a-f-]+)\/execute$/.exec(url.pathname);
-  if (request.method === "POST" && moduleExecute?.groups?.id) { requirePermission(context, "operations.read"); requireOrg(context, context.thirdPartyModules.organizationForModule(moduleExecute.groups.id), "modules.manage"); const parsed = thirdPartyModuleExecuteSchema.parse(await readJson(request)); const result = await context.thirdPartyModules.execute(moduleExecute.groups.id, parsed.input); audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_EXECUTED", resourceType: "THIRD_PARTY_MODULE", resourceId: moduleExecute.groups.id, summary: "Approved third-party module executed in the restricted SDK host." }); sendJson(response, 200, { result }); return; }
+  if (request.method === "POST" && moduleExecute?.groups?.id) { requirePermission(context, "operations.read"); requireOrg(context, context.thirdPartyModules.organizationForModule(moduleExecute.groups.id), "modules.manage"); const parsed = thirdPartyModuleExecuteSchema.parse(await readJson(request)); const result = await context.thirdPartyModules.execute(moduleExecute.groups.id, parsed.input, parsed.broker); const capability = (result as { capabilitySummary?: Record<string, unknown> } | undefined)?.capabilitySummary; audit.append({ actorLabel: context.principal?.userId, action: "THIRD_PARTY_MODULE_EXECUTED", resourceType: "THIRD_PARTY_MODULE", resourceId: moduleExecute.groups.id, summary: parsed.broker ? "Approved third-party module executed through the capability request broker." : "Approved third-party module executed in the restricted SDK host.", metadata: { brokered: Boolean(parsed.broker), ...(parsed.broker ? { targetOrigin: parsed.broker.approval.targetOrigin, packageDigest: parsed.broker.approval.packageDigest } : {}), ...(capability ? { capability } : {}) } }); sendJson(response, 200, { result }); return; }
   if (request.method === "POST" && url.pathname === "/api/provider-adapters/preview") {
     requirePermission(context, "scans.create");
     const parsed = providerAdapterInputSchema.parse(await readJson(request));
@@ -1913,7 +1963,9 @@ async function serveEventStream(context: ApiContext, scanId: string): Promise<vo
     connection: "keep-alive"
   });
   let cursor = Number.isFinite(lastEventId) ? lastEventId : 0;
+  let closed = false;
   const sendEvents = () => {
+    if (closed) return;
     const events = context.events.list(scanId, cursor, 100);
     for (const event of events) {
       cursor = event.seq;
@@ -1923,16 +1975,26 @@ async function serveEventStream(context: ApiContext, scanId: string): Promise<vo
     }
     const scan = context.scans.get(scanId);
     if (scan && ["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED", "IMPORTED"].includes(scan.status)) {
-      clearInterval(timer);
+      close();
       context.response.end();
     }
   };
+  const unsubscribe = context.infrastructure.subscribe("scan-events", (partitionKey,payload) => {
+    if(partitionKey!==scanId)return;const seq=typeof payload.seq==="number"?payload.seq:0;const eventType=typeof payload.eventType==="string"?payload.eventType:"SCAN_EVENT";
+    if(seq>cursor){cursor=seq;context.response.write(`id: ${seq}\n`);context.response.write(`event: ${eventType.replace(/[^A-Z0-9_-]/gi,"_")}\n`);context.response.write(`data: ${JSON.stringify({seq,eventType,...(typeof payload.moduleId==="string"?{moduleId:payload.moduleId}:{}),message:typeof payload.message==="string"?payload.message:"Scan state changed.",metadata:payload.metadata??{},createdAt:typeof payload.createdAt==="string"?payload.createdAt:new Date().toISOString()})}\n\n`);}
+    if(["SCAN_COMPLETED","SCAN_FAILED","SCAN_CANCELLED","SCAN_INTERRUPTED","SCAN_IMPORTED"].includes(eventType)){close();context.response.end();}
+  });
   const timer = setInterval(() => {
     context.response.write(": heartbeat\n\n");
-    sendEvents();
-  }, 2000);
-  context.request.on("close", () => clearInterval(timer));
+  }, 15_000);
+  timer.unref();
+  function close(): void { if (closed) return; closed = true; clearInterval(timer); unsubscribe(); }
+  context.request.on("close", close);
   sendEvents();
+}
+
+function routeTemplate(pathname: string): string {
+  return pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ":id").replace(/\/[0-9]+(?=\/|$)/g, "/:number").slice(0, 200);
 }
 
 function normalizeSavedConfiguration(parsed: ReturnType<typeof savedConfigurationSchema.parse>) {
@@ -2043,7 +2105,7 @@ function redirect(response: ServerResponse, location: string): void {
 function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
   const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
-  const statusCode = error instanceof DistributedMutationCoordinatorError ? error.statusCode : conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
+  const statusCode = error instanceof DistributedMutationCoordinatorError ? error.statusCode : conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof WorkloadIdentityError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
   if (error instanceof DistributedMutationCoordinatorError) { sendJson(response, statusCode, { error: "Mutation coordination request rejected.", code: error.code }); return; }
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
@@ -2076,164 +2138,4 @@ function workflowErrorCategory(code: string): string {
   if (/ORIGIN|SIGNED_URL/.test(code)) return "WORKFLOW_FILE_ORIGIN_INVALID";
   if (/(?:OBJECT_PAIR|FIELD_EXPOSURE|AUTHORIZATION_MATRIX|EQUIVALENT_ROUTE|COLLECTION_AUTHORIZATION|BULK_AUTHORIZATION|FILE_AUTHORIZATION)/.test(code)) return "WORKFLOW_CASE_INVALID";
   return code.startsWith("SCAN_PLAN") || code.includes("MODULE") ? "WORKFLOW_TYPE_INVALID" : code;
-}
-
-function serveStatic(response: ServerResponse, root: string, pathname: string): void {
-  const candidate = pathname === "/" ? join(root, "index.html") : join(root, pathname);
-  const filePath = existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(root, "index.html");
-  if (!existsSync(filePath)) {
-    response.statusCode = 503;
-    response.setHeader("content-type", "text/plain; charset=utf-8");
-    response.end(`Dashboard UI is not built yet. Run npm run dashboard:build.\nExpected ${pathToFileURL(root).toString()}`);
-    return;
-  }
-  response.setHeader("content-type", contentType(filePath));
-  createReadStream(filePath).pipe(response);
-}
-
-function serveArtifact(response: ServerResponse, artifact: { path: string; contentType: string; name: string }, roots: readonly string[]): void {
-  if (!existsSync(resolve(artifact.path))) throw new HttpError(404, "Artifact file missing.");
-  const canonical = realpathSync(resolve(artifact.path));
-  const allowed = roots.map((root) => realpathSync(resolve(root))).some((root) => canonical === root || canonical.startsWith(`${root}\\`) || canonical.startsWith(`${root}/`));
-  if (!allowed) throw new HttpError(403, "Artifact path blocked.");
-  if (!existsSync(canonical) || !statSync(canonical).isFile()) throw new HttpError(404, "Artifact file missing.");
-  response.setHeader("content-type", artifact.contentType);
-  response.setHeader("content-disposition", `attachment; filename="${artifact.name.replace(/"/g, "")}"`);
-  response.setHeader("x-content-type-options", "nosniff");
-  createReadStream(canonical).pipe(response);
-}
-
-function serveImagePreview(response: ServerResponse, artifact: { path: string; contentType: string; name: string }, roots: readonly string[]): void {
-  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(artifact.contentType)) throw new HttpError(415, "Artifact is not a supported preview image.");
-  if (!existsSync(resolve(artifact.path))) throw new HttpError(404, "Artifact file missing.");
-  const canonical = realpathSync(resolve(artifact.path));
-  const allowed = roots.map((root) => realpathSync(resolve(root))).some((root) => canonical === root || canonical.startsWith(`${root}\\`) || canonical.startsWith(`${root}/`));
-  if (!allowed) throw new HttpError(403, "Artifact path blocked.");
-  const stat = statSync(canonical);
-  if (!stat.isFile()) throw new HttpError(404, "Artifact file missing.");
-  if (stat.size > 10 * 1024 * 1024) throw new HttpError(413, "Screenshot preview exceeds the 10 MiB preview limit.");
-  try {
-    const dimensions = inspectImageDimensions(canonical, artifact.contentType);
-    response.setHeader("x-routecairn-image-dimensions", `${dimensions.width}x${dimensions.height}`);
-  } catch (error) {
-    throw new HttpError(415, error instanceof Error ? error.message : "Image dimensions could not be validated.");
-  }
-  response.setHeader("content-type", artifact.contentType);
-  response.setHeader("content-disposition", `inline; filename="${artifact.name.replace(/"/g, "")}"`);
-  response.setHeader("x-content-type-options", "nosniff");
-  response.setHeader("content-security-policy", "default-src 'none'; img-src 'self'");
-  response.setHeader("cache-control", "private, no-store");
-  createReadStream(canonical).pipe(response);
-}
-
-function setSecurityHeaders(response: ServerResponse): void {
-  response.setHeader("x-content-type-options", "nosniff");
-  response.setHeader("referrer-policy", "no-referrer");
-  response.setHeader("content-security-policy", "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src 'self'");
-}
-
-function contentType(path: string): string {
-  switch (extname(path)) {
-    case ".html":
-      return "text/html; charset=utf-8";
-    case ".js":
-      return "text/javascript; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    default:
-      return "application/octet-stream";
-  }
-}
-
-function numberParam(url: URL, name: string, fallback: number): number {
-  const value = Number(url.searchParams.get(name) ?? fallback);
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function stringParam(url: URL, name: string): string | undefined {
-  const value = url.searchParams.get(name);
-  return value && value.length <= 200 ? value : undefined;
-}
-
-function scanStatusParam(url: URL) {
-  const value = url.searchParams.get("status");
-  return value && ["QUEUED", "PLANNING", "RUNNING", "CANCEL_REQUESTED", "CANCELLED", "COMPLETED", "FAILED", "INTERRUPTED", "IMPORTED"].includes(value)
-    ? (value as NonNullable<Parameters<ScanRepository["list"]>[1]>["status"])
-    : undefined;
-}
-
-function scanSortParam(url: URL) {
-  const value = url.searchParams.get("sort");
-  return value && ["created_desc", "created_asc", "status", "target"].includes(value) ? (value as NonNullable<Parameters<ScanRepository["list"]>[1]>["sort"]) : undefined;
-}
-
-function findingQuery(url: URL): FindingQuery {
-  return {
-    scanId: stringParam(url, "scanId"),
-    search: stringParam(url, "q"),
-    projectId: stringParam(url, "projectId"),
-    targetId: stringParam(url, "targetId"),
-    module: stringParam(url, "module"),
-    category: stringParam(url, "category"),
-    severity: stringParam(url, "severity"),
-    confidence: stringParam(url, "confidence"),
-    reviewStatus: enumParam(url, "review", ["UNREVIEWED", "IN_REVIEW", "CONFIRMED", "FALSE_POSITIVE", "ACCEPTED_RISK", "DUPLICATE", "RESOLVED", "REOPENED"] as const),
-    remediationStatus: enumParam(url, "remediation", ["OPEN", "ASSIGNED", "FIX_IN_PROGRESS", "FIXED_PENDING_RETEST", "FIXED_VERIFIED", "WONT_FIX"] as const),
-    assigneeUserId: stringParam(url, "assignee"),
-    retestStatus: enumParam(url, "retest", ["NOT_RETESTED", "RETEST_SCHEDULED", "RETEST_RUNNING", "RETEST_PASSED", "RETEST_FAILED", "RETEST_INCONCLUSIVE"] as const),
-    proofReadiness: enumParam(url, "proof", ["NOT_READY", "MISSING_REVIEW", "MISSING_EVIDENCE", "READY", "IN_PROOF_PACK"] as const),
-    firstSeenFrom: stringParam(url, "firstSeenFrom"),
-    firstSeenTo: stringParam(url, "firstSeenTo"),
-    lastSeenFrom: stringParam(url, "lastSeenFrom"),
-    lastSeenTo: stringParam(url, "lastSeenTo"),
-    newOccurrence: booleanParam(url, "newOccurrence"),
-    reopened: booleanParam(url, "reopened"),
-    sourceKind: enumParam(url, "source", ["NATIVE", "IMPORTED"] as const),
-    evidence: enumParam(url, "evidence", ["HAS_EVIDENCE", "MISSING_EVIDENCE"] as const),
-    sort: enumParam(url, "sort", ["severity_desc", "confidence_desc", "first_seen_desc", "last_seen_desc", "occurrences_desc", "review", "remediation", "target", "project"] as const),
-    page: numberParam(url, "page", 1),
-    pageSize: numberParam(url, "pageSize", numberParam(url, "limit", 25))
-  };
-}
-
-function enumParam<const T extends string>(url: URL, name: string, allowed: readonly T[]): T | undefined {
-  const value = url.searchParams.get(name);
-  if (!value) return undefined;
-  if (!allowed.includes(value as T)) throw new FindingCommandError("FINDING_FILTER_INVALID", `Unsupported ${name} filter.`);
-  return value as T;
-}
-
-function booleanParam(url: URL, name: string): boolean | undefined {
-  const value = url.searchParams.get(name);
-  if (value === null || value === "") return undefined;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  throw new FindingCommandError("FINDING_FILTER_INVALID", `${name} must be true or false.`);
-}
-
-function correlationId(request: IncomingMessage): string {
-  const value = request.headers["x-request-id"];
-  return typeof value === "string" && /^[a-zA-Z0-9._-]{1,100}$/.test(value) ? value : randomUUID();
-}
-
-function reviewAuditAction(status: ReviewStatus): string {
-  switch (status) {
-    case "IN_REVIEW": return "FINDING_REVIEW_STARTED";
-    case "CONFIRMED": return "FINDING_CONFIRMED";
-    case "FALSE_POSITIVE": return "FINDING_FALSE_POSITIVE";
-    case "ACCEPTED_RISK": return "FINDING_ACCEPTED_RISK";
-    case "DUPLICATE": return "FINDING_DUPLICATE_MARKED";
-    case "RESOLVED": return "FINDING_RESOLVED";
-    case "REOPENED": return "FINDING_REOPENED";
-    case "UNREVIEWED": return "FINDING_REVIEW_RESET";
-  }
-}
-
-class HttpError extends Error {
-  public constructor(public readonly statusCode: number, message: string) {
-    super(message);
-    this.name = "HttpError";
-  }
 }

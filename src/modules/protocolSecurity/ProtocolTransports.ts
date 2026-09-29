@@ -4,6 +4,7 @@ import { connect as connectHttp2, constants as h2, type ClientHttp2Session } fro
 import { connect as connectTcp, isIP, type Socket } from "node:net";
 import { connect as connectTls, type TLSSocket } from "node:tls";
 import { fileURLToPath } from "node:url";
+import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
 import { Agent, request as undiciRequest } from "undici";
 import { createPinnedConnector, resolvePinnedDestination } from "../../core/http/PinnedHttpTransport.js";
 import type { DnsResolver } from "../../core/http/HttpTypes.js";
@@ -11,12 +12,15 @@ import type { DnsResolver } from "../../core/http/HttpTypes.js";
 export interface ProtocolTransportOptions { allowedPrivateOrigins: readonly string[]; timeoutMs: number; maxBytes: number; abortSignal?: AbortSignal; dnsResolver?: DnsResolver; tlsCa?: string | Buffer; }
 export interface StreamMessage { type?: string; value: unknown; }
 export interface WebSocketResult { statusCode: number; protocol?: string; messages: StreamMessage[]; }
+export interface WebSocketSequenceStep { send?: unknown; expectType?: string; expectJsonPath?: string; equals?: unknown; }
 export interface Http2Result { statusCode?: number; protocol: "h2" | "h2c"; headers: Record<string, string | string[]>; body: Buffer; grpcStatus?: number; grpcMessages: Buffer[]; errorCode?: string; }
 export interface Http2DesyncResult { probe: Http2Result; sentinel: Http2Result; sameSession: true; }
 export interface SseResult { statusCode: number; body: string; eventCount: number; contentType?: string; }
 export interface BoundedHttpResult { statusCode: number; headers: Record<string, string | string[]>; body: Buffer; }
 export interface Http3Result { statusCode: number; protocol: "h3"; body: Buffer; }
 export interface Http3DesyncResult { probeStatus?: number; sentinelStatus?: number; protocol: "h3"; sameConnectionProcess: true; probeAccepted: boolean; sentinelClean: boolean; }
+export interface WebTransportResult { protocol: "h3-webtransport"; sentDatagrams: number; receivedDatagrams: Buffer[]; }
+export interface InterruptedUploadResult { transmittedBytes: number; interrupted: true; }
 
 export async function ensureHttp3Runtime(options: ProtocolTransportOptions): Promise<void> { await runNativeHttp3Worker({ hostname: "127.0.0.1", port: 9, pinnedAddress: "127.0.0.1", family: 4, timeoutMs: Math.min(options.timeoutMs, 1000), maxBytes: 1024, requests: [], ...(options.tlsCa ? { ca: Buffer.isBuffer(options.tlsCa) ? options.tlsCa.toString("utf8") : options.tlsCa } : {}) }); }
 
@@ -40,6 +44,27 @@ export async function runBoundedHttp(urlValue: string, method: string, headers: 
   finally { clearTimeout(timer); options.abortSignal?.removeEventListener("abort", abort); await dispatcher.close(); }
 }
 
+export function decodeBoundedContent(body: Buffer, encoding: "gzip" | "deflate" | "br", maxExpandedBytes: number): Buffer {
+  let output: Buffer;
+  try { output = encoding === "gzip" ? gunzipSync(body, { maxOutputLength: maxExpandedBytes }) : encoding === "deflate" ? inflateSync(body, { maxOutputLength: maxExpandedBytes }) : brotliDecompressSync(body, { maxOutputLength: maxExpandedBytes }); }
+  catch (error) { if (error instanceof Error && /output|buffer|memory|length/i.test(error.message)) throw new Error("DECOMPRESSION_EXPANSION_LIMIT_EXCEEDED"); throw new Error("DECOMPRESSION_INVALID_STREAM"); }
+  if (output.length > maxExpandedBytes) throw new Error("DECOMPRESSION_EXPANSION_LIMIT_EXCEEDED"); return output;
+}
+
+export async function runInterruptedUpload(urlValue: string, method: "POST" | "PUT" | "PATCH", headers: Readonly<Record<string, string>>, body: Buffer, chunkBytes: number, interruptAfterBytes: number, options: ProtocolTransportOptions): Promise<InterruptedUploadResult> {
+  const url = new URL(urlValue); const socket = await pinnedSocket(url, options, ["http/1.1"]); const limit = Math.min(body.length, interruptAfterBytes); let transmitted = 0;
+  const owned = Object.keys(headers).some((name) => /^(host|connection|content-length|transfer-encoding|expect)$/i.test(name)); if (owned) { socket.destroy(); throw new Error("STREAMING_UPLOAD_HEADER_OVERRIDE_FORBIDDEN"); }
+  socket.write(`${method} ${url.pathname}${url.search} HTTP/1.1\r\nHost: ${url.host}\r\nConnection: close\r\nContent-Length: ${body.length}\r\n${Object.entries(headers).map(([name, value]) => `${name}: ${value}`).join("\r\n")}\r\n\r\n`);
+  while (transmitted < limit) { const end = Math.min(limit, transmitted + chunkBytes); if (!socket.write(body.subarray(transmitted, end))) await new Promise<void>((resolve, reject) => { socket.once("drain", resolve); socket.once("error", reject); }); transmitted = end; }
+  socket.destroy(); return { transmittedBytes: transmitted, interrupted: true };
+}
+
+export async function runWebTransportDatagrams(urlValue: string, datagrams: readonly Buffer[], maxDatagrams: number, options: ProtocolTransportOptions): Promise<WebTransportResult> {
+  const url = new URL(urlValue); if (url.protocol !== "https:") throw new Error("WEBTRANSPORT_HTTPS_REQUIRED"); const pin = await resolvePinnedDestination({ hostname: url.hostname, protocol: "https:", port: url.port || "443" }, { allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) });
+  const value = await runNativeHttp3Worker({ hostname: url.hostname, port: Number(url.port || "443"), pinnedAddress: pin.address.address, family: pin.address.family, timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, requests: [], webTransport: { path: `${url.pathname}${url.search}`, datagramsBase64: datagrams.map((item) => item.toString("base64")), maxDatagrams }, ...(options.tlsCa ? { ca: Buffer.isBuffer(options.tlsCa) ? options.tlsCa.toString("utf8") : options.tlsCa } : {}) }, options.abortSignal); if (!value.webTransport) throw new Error("WEBTRANSPORT_RESULT_MISSING");
+  return { protocol: "h3-webtransport", sentDatagrams: datagrams.length, receivedDatagrams: value.webTransport.datagramsBase64.map((item) => Buffer.from(item, "base64")) };
+}
+
 export async function runSse(urlValue: string, method: "GET" | "POST", headers: Readonly<Record<string, string>>, body: string | undefined, maxEvents: number, options: ProtocolTransportOptions): Promise<SseResult> {
   const url = new URL(urlValue); const controller = new AbortController(); let timedOut = false; const abort = () => controller.abort(); options.abortSignal?.addEventListener("abort", abort, { once: true }); const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs);
   const dispatcher = new Agent({ connect: createPinnedConnector({ allowedPrivateOrigins: options.allowedPrivateOrigins, dnsTimeoutMs: Math.min(options.timeoutMs, 5000), maxDnsAnswers: 16, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}) }), pipelining: 0 });
@@ -51,7 +76,7 @@ export async function runSse(urlValue: string, method: "GET" | "POST", headers: 
   } finally { clearTimeout(timer); options.abortSignal?.removeEventListener("abort", abort); await dispatcher.close(); }
 }
 
-export async function runWebSocket(urlValue: string, headers: Readonly<Record<string, string>>, subprotocols: readonly string[], outbound: readonly unknown[], maxMessages: number, options: ProtocolTransportOptions, waitForTypeBeforeRest?: string): Promise<WebSocketResult> {
+export async function runWebSocket(urlValue: string, headers: Readonly<Record<string, string>>, subprotocols: readonly string[], outbound: readonly unknown[], maxMessages: number, options: ProtocolTransportOptions, waitForTypeBeforeRest?: string, sequence?: readonly WebSocketSequenceStep[]): Promise<WebSocketResult> {
   const url = new URL(urlValue); const socket = await pinnedSocket(url, options, ["http/1.1"]); const key = randomBytes(16).toString("base64");
   const requestHeaders: Record<string, string> = { Host: url.host, Upgrade: "websocket", Connection: "Upgrade", "Sec-WebSocket-Key": key, "Sec-WebSocket-Version": "13", ...headers };
   if (subprotocols.length) requestHeaders["Sec-WebSocket-Protocol"] = subprotocols.join(", ");
@@ -60,14 +85,14 @@ export async function runWebSocket(urlValue: string, headers: Readonly<Record<st
   const head = initial.subarray(0, boundary).toString("latin1"); const lines = head.split("\r\n"); const statusCode = Number(lines[0]?.split(" ")[1]); const responseHeaders = Object.fromEntries(lines.slice(1).map((line) => { const p = line.indexOf(":"); return p > 0 ? [line.slice(0, p).toLowerCase(), line.slice(p + 1).trim()] : [line, ""]; }));
   const expected = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
   if (statusCode !== 101 || responseHeaders["sec-websocket-accept"] !== expected || responseHeaders.upgrade?.toLowerCase() !== "websocket" || !responseHeaders.connection?.toLowerCase().split(/\s*,\s*/).includes("upgrade")) { socket.destroy(); return { statusCode: Number.isFinite(statusCode) ? statusCode : 0, messages: [] }; }
-  const initialOutbound = waitForTypeBeforeRest ? outbound.slice(0, 1) : outbound; for (const message of initialOutbound) socket.write(encodeFrame(Buffer.from(JSON.stringify(message), "utf8"), 1)); let deferredSent = !waitForTypeBeforeRest;
+  const initialOutbound = sequence ? [] : waitForTypeBeforeRest ? outbound.slice(0, 1) : outbound; for (const message of initialOutbound) socket.write(encodeFrame(Buffer.from(JSON.stringify(message), "utf8"), 1)); let deferredSent = !waitForTypeBeforeRest; let sequenceIndex = 0, sequenceSent = false; const pumpSequence = () => { while (sequence && sequenceIndex < sequence.length) { const step = sequence[sequenceIndex]!; if (step.send !== undefined && !sequenceSent) { socket.write(encodeFrame(Buffer.from(JSON.stringify(step.send), "utf8"), 1)); sequenceSent = true; } if (step.expectType || step.expectJsonPath) return; sequenceIndex += 1; sequenceSent = false; } }; pumpSequence();
   const messages: StreamMessage[] = []; let pending = initial.subarray(boundary + 4); let totalBytes = pending.length; if (totalBytes > options.maxBytes) { socket.destroy(); throw new Error("WEBSOCKET_RESPONSE_LIMIT_EXCEEDED"); } let fragmented: { opcode: number; chunks: Buffer[] } | undefined; const deadline = Date.now() + options.timeoutMs;
   try {
     while (messages.length < maxMessages && Date.now() < deadline) {
       const parsed = parseFrame(pending); if (!parsed) { let chunk: Buffer; try { chunk = await readChunk(socket, Math.max(1, deadline - Date.now()), options.abortSignal); } catch (error) { if (error instanceof Error && error.message === "PROTOCOL_READ_TIMEOUT") break; throw error; } totalBytes += chunk.length; if (totalBytes > options.maxBytes) throw new Error("WEBSOCKET_RESPONSE_LIMIT_EXCEEDED"); pending = Buffer.concat([pending, chunk]); continue; }
       pending = pending.subarray(parsed.bytes); if (parsed.opcode === 8) break; if (parsed.opcode === 9) { socket.write(encodeFrame(parsed.payload, 10)); continue; } if (parsed.opcode !== 0 && parsed.opcode !== 1 && parsed.opcode !== 2) continue;
       let payload = parsed.payload; if (parsed.opcode === 0) { if (!fragmented) continue; fragmented.chunks.push(parsed.payload); if (!parsed.fin) continue; payload = Buffer.concat(fragmented.chunks); fragmented = undefined; } else if (!parsed.fin) { fragmented = { opcode: parsed.opcode, chunks: [parsed.payload] }; continue; }
-      const text = payload.toString("utf8"); let value: unknown = text; try { value = JSON.parse(text); } catch { /* text frame */ } const type = value && typeof value === "object" && typeof (value as Record<string, unknown>).type === "string" ? String((value as Record<string, unknown>).type) : undefined; messages.push({ ...(type ? { type } : {}), value }); if (!deferredSent && type === waitForTypeBeforeRest) { for (const message of outbound.slice(1)) socket.write(encodeFrame(Buffer.from(JSON.stringify(message), "utf8"), 1)); deferredSent = true; }
+      const text = payload.toString("utf8"); let value: unknown = text; try { value = JSON.parse(text); } catch { /* text frame */ } const type = value && typeof value === "object" && typeof (value as Record<string, unknown>).type === "string" ? String((value as Record<string, unknown>).type) : undefined; messages.push({ ...(type ? { type } : {}), value }); if (!deferredSent && type === waitForTypeBeforeRest) { for (const message of outbound.slice(1)) socket.write(encodeFrame(Buffer.from(JSON.stringify(message), "utf8"), 1)); deferredSent = true; } if (sequence && sequenceIndex < sequence.length) { const step = sequence[sequenceIndex]!; const pathValue = step.expectJsonPath ? valueAt(value, step.expectJsonPath) : undefined; if ((!step.expectType || type === step.expectType) && (!step.expectJsonPath || (step.equals === undefined ? pathValue !== undefined : JSON.stringify(pathValue) === JSON.stringify(step.equals)))) { sequenceIndex += 1; sequenceSent = false; pumpSequence(); } }
     }
   } finally { if (!socket.destroyed) { socket.write(encodeFrame(Buffer.alloc(0), 8)); socket.destroy(); } }
   return { statusCode, ...(responseHeaders["sec-websocket-protocol"] ? { protocol: responseHeaders["sec-websocket-protocol"] } : {}), messages };
@@ -77,6 +102,16 @@ export async function runHttp2(urlValue: string, method: string, headers: Readon
   const url = new URL(urlValue); const opened = await openHttp2(url, options);
   try { return await requestOnSession(opened.session, url, method, headers, body, maxMessages, options, declaredLength); }
   finally { opened.session.close(); if (!opened.socket.destroyed) opened.socket.destroy(); }
+}
+
+export async function runGrpcStream(urlValue: string, headers: Readonly<Record<string, string>>, payloads: readonly Buffer[], maxMessages: number, interMessageDelayMs: number, options: ProtocolTransportOptions): Promise<Http2Result> {
+  const frames = payloads.map((payload) => { const frame = Buffer.alloc(5 + payload.length); frame.writeUInt32BE(payload.length, 1); payload.copy(frame, 5); return frame; }); const url = new URL(urlValue); const opened = await openHttp2(url, options);
+  try { return await requestOnSessionStreaming(opened.session, url, headers, frames, maxMessages, interMessageDelayMs, options); } finally { opened.session.close(); if (!opened.socket.destroyed) opened.socket.destroy(); }
+}
+
+async function requestOnSessionStreaming(session: ClientHttp2Session, url: URL, headers: Readonly<Record<string, string>>, frames: readonly Buffer[], maxMessages: number, delayMs: number, options: ProtocolTransportOptions): Promise<Http2Result> {
+  const requestHeaders: Record<string, string | number> = { [h2.HTTP2_HEADER_METHOD]: "POST", [h2.HTTP2_HEADER_PATH]: `${url.pathname}${url.search}`, [h2.HTTP2_HEADER_SCHEME]: url.protocol.slice(0, -1), [h2.HTTP2_HEADER_AUTHORITY]: url.host, ...headers };
+  return await new Promise<Http2Result>((resolve, reject) => { let stream: ReturnType<ClientHttp2Session["request"]>; try { stream = session.request(requestHeaders, { endStream: false }); } catch (error) { reject(error); return; } let responseHeaders: Record<string, string | string[]> = {}; const chunks: Buffer[] = []; let size = 0, settled = false; const timer = setTimeout(() => finish(new Error("GRPC_STREAM_TIMEOUT")), options.timeoutMs); const abort = () => finish(new Error("GRPC_STREAM_ABORTED")); const finish = (error?: Error, errorCode?: string) => { if (settled) return; settled = true; clearTimeout(timer); options.abortSignal?.removeEventListener("abort", abort); stream.close(); if (error && !errorCode) reject(error); else { const body = Buffer.concat(chunks); const statusCode = Number(responseHeaders[":status"]); const status = grpcStatus(responseHeaders); resolve({ ...(Number.isFinite(statusCode) && statusCode > 0 ? { statusCode } : {}), protocol: url.protocol === "https:" ? "h2" : "h2c", headers: responseHeaders, body, ...(status !== undefined ? { grpcStatus: status } : {}), grpcMessages: parseGrpcFrames(body, maxMessages), ...(errorCode ? { errorCode } : {}) }); } }; stream.on("response", (incoming) => { responseHeaders = normalizeHeaders(incoming); }); stream.on("trailers", (incoming) => { responseHeaders = { ...responseHeaders, ...normalizeHeaders(incoming) }; }); stream.on("data", (chunk: Buffer) => { size += chunk.length; if (size > options.maxBytes) finish(undefined, "HTTP2_RESPONSE_LIMIT_EXCEEDED"); else chunks.push(Buffer.from(chunk)); }); stream.on("end", () => finish()); stream.on("error", (error: NodeJS.ErrnoException) => finish(undefined, error.code ?? error.message)); options.abortSignal?.addEventListener("abort", abort, { once: true }); void (async () => { try { for (const frame of frames) { if (settled) return; stream.write(frame); if (delayMs) await new Promise((done) => setTimeout(done, delayMs)); } stream.end(); } catch (error) { finish(error instanceof Error ? error : new Error("GRPC_STREAM_WRITE_FAILED")); } })(); });
 }
 
 export async function runHttp2Desync(urlValue: string, method: string, headers: Readonly<Record<string, string>>, body: Buffer, declaredLength: number, sentinelPath: string, options: ProtocolTransportOptions): Promise<Http2DesyncResult> {
@@ -132,15 +167,17 @@ function grpcStatus(headers: Record<string, string | string[]>): number | undefi
 function remoteMatches(socket: Socket | TLSSocket, expected: string): boolean { const actual = socket.remoteAddress?.toLowerCase(); const wanted = expected.toLowerCase(); return actual === wanted || actual === `::ffff:${wanted}` || (actual?.replace(/^::ffff:/, "") === wanted); }
 function completeSseEvents(value: string): number { return value.split(/\r?\n\r?\n/).slice(0, -1).filter((block) => block.split(/\r?\n/).some((line) => line.startsWith("data:") || line.startsWith("event:"))).length; }
 function normalizeUndiciHeaders(value: Record<string, string | string[] | undefined>): Record<string, string | string[]> { return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined)); }
+function valueAt(value: unknown, path: string): unknown { let current = value; for (const part of path.replace(/\[(\d+)\]/g, ".$1").split(".")) { if (!current || typeof current !== "object") return; current = (current as Record<string, unknown>)[part]; } return current; }
 
 interface NativeHttp3Request { method: string; path: string; headers: Readonly<Record<string, string>>; bodyBase64?: string; }
 interface NativeHttp3Response { statusCode: number; protocol: "h3"; headers: Record<string, string | string[]>; bodyBase64: string; }
+interface NativeWebTransportResponse { datagramsBase64: string[]; }
 
-async function nativeHttp3(url: URL, pinnedAddress: string, family: 4 | 6, requests: readonly NativeHttp3Request[], options: ProtocolTransportOptions): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean }> {
+async function nativeHttp3(url: URL, pinnedAddress: string, family: 4 | 6, requests: readonly NativeHttp3Request[], options: ProtocolTransportOptions): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean; webTransport?: NativeWebTransportResponse }> {
   return runNativeHttp3Worker({ hostname: url.hostname, port: Number(url.port || "443"), pinnedAddress, family, timeoutMs: options.timeoutMs, maxBytes: options.maxBytes, requests: requests.map((item) => ({ ...item, headers: { ...item.headers } })), ...(options.tlsCa ? { ca: Buffer.isBuffer(options.tlsCa) ? options.tlsCa.toString("utf8") : options.tlsCa } : {}) }, options.abortSignal);
 }
 
-function runNativeHttp3Worker(input: { hostname: string; port: number; pinnedAddress: string; family: 4 | 6; timeoutMs: number; maxBytes: number; ca?: string; requests: Array<{ method: string; path: string; headers: Record<string, string>; bodyBase64?: string }> }, signal?: AbortSignal): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean }> {
+function runNativeHttp3Worker(input: { hostname: string; port: number; pinnedAddress: string; family: 4 | 6; timeoutMs: number; maxBytes: number; ca?: string; requests: Array<{ method: string; path: string; headers: Record<string, string>; bodyBase64?: string }>; webTransport?: { path: string; datagramsBase64: string[]; maxDatagrams: number } }, signal?: AbortSignal): Promise<{ responses: NativeHttp3Response[]; sameConnection: boolean; webTransport?: NativeWebTransportResponse }> {
   return new Promise((resolve, reject) => {
     const javascriptEntry = new URL("./NativeHttp3Worker.js", import.meta.url);
     const typescriptEntry = new URL("./NativeHttp3Worker.ts", import.meta.url);
@@ -154,7 +191,7 @@ function runNativeHttp3Worker(input: { hostname: string; port: number; pinnedAdd
     const outputLimit = Math.max(64 * 1024, input.maxBytes * Math.max(1, input.requests.length) * 2 + 64 * 1024);
     const timer = setTimeout(() => finish(new Error("HTTP3_NATIVE_TIMEOUT")), Math.max(1000, input.timeoutMs * Math.max(1, input.requests.length) + 1000));
     const abort = () => finish(new Error("HTTP3_NATIVE_ABORTED"));
-    const finish = (error?: Error, value?: { responses: NativeHttp3Response[]; sameConnection: boolean }) => {
+    const finish = (error?: Error, value?: { responses: NativeHttp3Response[]; sameConnection: boolean; webTransport?: NativeWebTransportResponse }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -175,9 +212,9 @@ function runNativeHttp3Worker(input: { hostname: string; port: number; pinnedAdd
       let message: unknown;
       try { message = JSON.parse(Buffer.concat(output).toString("utf8")); } catch { return finish(new Error("HTTP3_NATIVE_INVALID_RESULT")); }
       if (!message || typeof message !== "object") return finish(new Error("HTTP3_NATIVE_INVALID_RESULT"));
-      const result = message as { ok?: boolean; error?: string; responses?: NativeHttp3Response[]; sameConnection?: boolean };
+      const result = message as { ok?: boolean; error?: string; responses?: NativeHttp3Response[]; sameConnection?: boolean; webTransport?: NativeWebTransportResponse };
       if (!result.ok || !Array.isArray(result.responses)) return finish(new Error(result.error ?? `HTTP3_NATIVE_FAILURE${errorOutput.length ? ":RUNTIME" : ""}`));
-      finish(undefined, { responses: result.responses, sameConnection: result.sameConnection === true });
+      finish(undefined, { responses: result.responses, sameConnection: result.sameConnection === true, ...(result.webTransport ? { webTransport: result.webTransport } : {}) });
     });
     signal?.addEventListener("abort", abort, { once: true });
     child.stdin.end(JSON.stringify(input));

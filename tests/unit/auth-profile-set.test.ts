@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { summarizeAuthProfileSet } from "../../src/core/auth/AuthProfileSet.js";
 
 describe("auth profile sets", () => {

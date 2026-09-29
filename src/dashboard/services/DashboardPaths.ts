@@ -15,6 +15,7 @@ export interface DashboardPaths {
   backupsDir: string;
   integrationsDir: string;
   thirdPartyModulesDir: string;
+  objectCacheDir: string;
   restoreMarkerPath: string;
 }
 
@@ -35,6 +36,7 @@ export function resolveDashboardPaths(dataDir?: string): DashboardPaths {
     backupsDir: resolve(root, "backups"),
     integrationsDir: resolve(root, "integrations"),
     thirdPartyModulesDir: resolve(root, "third-party-modules"),
+    objectCacheDir: resolve(root, "object-cache"),
     restoreMarkerPath: resolve(root, "restore-on-restart.json")
   };
 }

@@ -119,6 +119,28 @@ export async function verifyOfflineXssExecution(html: string, nonce: string, tim
   finally { await browser?.close().catch(() => undefined); }
 }
 
+/** Replays a response at its exact generated URL in an isolated browser. The
+ * document is fulfilled from memory and every other request is aborted, so a
+ * DOM finding requires both a nonce-bearing source URL and observed execution
+ * at a browser sink without contacting the target again. */
+export async function verifyOfflineDomXssExecution(html: string, nonce: string, sourceUrl: string, timeoutMs: number): Promise<"SOURCE_TO_SINK_EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+  try {
+    const parsed = new URL(sourceUrl); if (!parsed.toString().includes(nonce)) return "NOT_EXECUTED";
+    browser = await chromium.launch({ headless: true, timeout: Math.min(timeoutMs, 15_000) });
+    const context = await browser.newContext({ serviceWorkers: "block", javaScriptEnabled: true, acceptDownloads: false });
+    await context.route("**/*", async (route) => route.request().isNavigationRequest() && route.request().url() === parsed.toString()
+      ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html })
+      : route.abort("blockedbyclient"));
+    const page = await context.newPage();
+    await page.goto(parsed.toString(), { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 10_000) });
+    const observed = await page.evaluate(() => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof);
+    await context.close();
+    return observed === nonce ? "SOURCE_TO_SINK_EXECUTED" : "NOT_EXECUTED";
+  } catch { return "UNAVAILABLE"; }
+  finally { await browser?.close().catch(() => undefined); }
+}
+
 function assertOrigin(url: string, origin: string): void { if (new URL(url).origin !== origin) throw new Error("Browser proof bootstrap left the approved origin."); }
 function safePageUrl(request: import("playwright").Request, fallback: string): string { try { return request.frame().url() || fallback; } catch { return fallback; } }
 function safeError(error: unknown): string { return error instanceof Error ? error.message.replace(/([?&][^=]+=)[^&\s]+/g, "$1<redacted>").slice(0, 300) : "unknown browser error"; }
