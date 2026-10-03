@@ -6,16 +6,17 @@ import { resolve } from "node:path";
 const coverage = process.argv.includes("--coverage");
 const runId = `${Date.now()}-${process.pid}`;
 const output = resolve(".routecairn-engineering-lab", "test-runs", runId);
-await mkdir(output, { recursive: true });
+const blobs = resolve(output, "blobs");
+await mkdir(blobs, { recursive: true });
 const cli = resolve("node_modules/vitest/vitest.mjs");
 const count = 4;
 const source = await snapshot();
 for (let shard = 1; shard <= count; shard++) {
   if (await snapshot() !== source) throw new Error("Source changed during the suite; restart verification.");
-  await run(["run", "--config", "vitest.shard.config.ts", `--shard=${shard}/${count}`, "--pool=forks", "--maxWorkers=1", "--reporter=default", "--reporter=blob", `--outputFile.blob=${output}/shard-${shard}.blob.json`, ...(coverage ? ["--coverage", `--coverage.reportsDirectory=${output}/coverage-${shard}`] : [])]);
+  await run(["run", "--config", "vitest.shard.config.ts", `--shard=${shard}/${count}`, "--pool=forks", "--maxWorkers=1", "--reporter=default", "--reporter=blob", `--outputFile.blob=${blobs}/shard-${shard}.blob.json`, ...(coverage ? ["--coverage", `--coverage.reportsDirectory=${output}/coverage-${shard}`] : [])]);
 }
 if (await snapshot() !== source) throw new Error("Source changed during the suite; partial results are not accepted.");
-await run(["--merge-reports", output, "--reporter=default", "--reporter=json", `--outputFile.json=${output}/results.json`, ...(coverage ? ["--coverage"] : [])]);
+await run(["--merge-reports", blobs, "--reporter=default", "--reporter=json", `--outputFile.json=${output}/results.json`, ...(coverage ? ["--coverage"] : [])]);
 process.stdout.write(`Recycled suite evidence: ${output}/results.json\n`);
 
 function run(args) {

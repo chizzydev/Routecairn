@@ -5,9 +5,9 @@ const write = process.argv.includes("--write");
 const check = process.argv.includes("--check");
 if (write === check) throw new Error("Use exactly one of --write or --check.");
 
-const roots = ["src", "tests", "apps", "scripts", "docs", ".github", "deploy"];
+const roots = ["src", "tests", "apps", "scripts", "docs", ".github", "deploy", "examples"];
 const rootFiles = ["README.md", "SECURITY.md", "CHANGELOG.md", "package.json", "tsconfig.json", "vitest.config.ts", "eslint.config.mjs", "stryker.config.mjs"];
-const extensions = new Set([".ts", ".tsx", ".mjs", ".json", ".md", ".yml", ".yaml", ".css", ".html"]);
+const extensions = new Set([".ts", ".tsx", ".mjs", ".json", ".md", ".yml", ".yaml", ".css", ".html", ".txt", ".py", ".go"]);
 const ignored = new Set(["node_modules", "dist", ".git", ".routecairn-coverage", ".stryker-tmp", "reports"]);
 
 async function filesUnder(directory) {
@@ -16,7 +16,7 @@ async function filesUnder(directory) {
     if (ignored.has(entry.name)) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...await filesUnder(path));
-    else if (extensions.has(extname(entry.name)) && entry.name !== "package-lock.json") result.push(path);
+    else if ((extensions.has(extname(entry.name)) || entry.name === "Dockerfile") && entry.name !== "package-lock.json") result.push(path);
   }
   return result;
 }

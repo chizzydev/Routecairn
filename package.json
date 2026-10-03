@@ -43,7 +43,7 @@
   ],
   "scripts": {
     "build": "npm run standards:check && tsc -p tsconfig.json && node scripts/copy-runtime-assets.mjs",
-    "build:release": "npm run standards:check && tsc -p tsconfig.release.json && tsc -p tsconfig.module-sdk.json && node scripts/copy-runtime-assets.mjs && npm run dashboard:typecheck && npm run dashboard:build",
+    "build:release": "node scripts/prepare-release-build.mjs && npm run standards:check && tsc -p tsconfig.release.json && tsc -p tsconfig.module-sdk.json && node scripts/copy-runtime-assets.mjs && npm run dashboard:typecheck && npm run dashboard:build",
     "dashboard": "tsx src/cli/index.ts dashboard",
     "dashboard:dev": "vite --config apps/dashboard-ui/vite.config.ts --host 127.0.0.1",
     "dashboard:build": "vite build --config apps/dashboard-ui/vite.config.ts",

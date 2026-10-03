@@ -17,3 +17,5 @@ The published CLI includes `npm-shrinkwrap.json`, matching `package-lock.json`, 
 `npm run test:complete` recycles the coordinator through four serial forked shards. `npm run test:coverage` merges Vitest blob reports and enforces the original global thresholds once; each shard's partial coverage is never accepted as whole-suite coverage. A failed process stops the runner. Logs and merged JSON results are retained under `.routecairn-engineering-lab/test-runs/`, with final coverage in `.routecairn-coverage/`.
 
 Continuous assurance retains an installed, verified candidate archive as `candidate-package-<commit>`. It is a CI artifact, not a reviewed public release. The independent-review gate remains mandatory for publication.
+
+Release builds clear only the verified generated `dist` directory before compilation, preventing obsolete outputs from entering packages. TypeScript output and published text fixtures use LF line endings. Shard blob reports have their own directory; coverage folders never enter the blob merge.
