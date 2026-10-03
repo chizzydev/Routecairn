@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readBoundedFileSync } from "../../core/files/BoundedFile.js";
 import { basename, dirname, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { clamp, nowIso } from "../db/DashboardDatabase.js";
@@ -44,8 +45,7 @@ export class EvidenceGovernanceService {
     let bytes = 0;
     for (const row of rows) {
       const path = this.safeArtifactPath(row.canonical_path);
-      if (!existsSync(path) || !statSync(path).isFile()) throw new Error(`EVIDENCE_EXPORT_ARTIFACT_MISSING: ${row.id}`);
-      const content = readFileSync(path);
+      const content = readBoundedFileSync(path, policy.maximumExportBytes - bytes);
       bytes += content.length;
       if (bytes > policy.maximumExportBytes) throw new Error("EVIDENCE_EXPORT_SIZE_LIMIT_EXCEEDED");
       const actualHash = sha256(content);

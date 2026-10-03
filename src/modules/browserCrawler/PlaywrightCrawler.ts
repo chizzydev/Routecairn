@@ -507,13 +507,14 @@ export function toPathCandidates(hrefs: string[], baseUrl: string, sameOriginOnl
   const candidates = new Map<string, PathCandidate>();
 
   for (const href of hrefs) {
-    if (href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("javascript:")) {
+    if (href.startsWith("#")) {
       continue;
     }
 
     try {
       const normalized = normalizeUrl(href, baseUrl);
       const url = new URL(normalized);
+      if (!["http:", "https:"].includes(url.protocol)) continue;
 
       if (sameOriginOnly && url.origin !== base.origin) {
         continue;

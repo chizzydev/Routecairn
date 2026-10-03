@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,7 +19,7 @@ describe("horizontal control-plane infrastructure",()=>{
   });
 
   it("validates evidence size and digest before accepting local objects",async()=>{
-    const directory=join(tmpdir(),`routecairn-object-${randomUUID()}`);directories.push(directory);await mkdir(directory,{recursive:true});const path=join(directory,"evidence.json");const body=Buffer.from('{"safe":true}\n');await writeFile(path,body);
+    const directory=await mkdtemp(join(tmpdir(),"routecairn-object-"));directories.push(directory);const path=join(directory,"evidence.json");const body=Buffer.from('{"safe":true}\n');await writeFile(path,body);
     const store=new LocalEvidenceObjectStore();const item={artifactId:randomUUID(),organizationId:randomUUID(),path,sha256:createHash("sha256").update(body).digest("hex"),size:body.length,contentType:"application/json"};
     await expect(store.put(item)).resolves.toEqual({key:path});
     await expect(store.put({...item,sha256:"0".repeat(64)})).rejects.toThrow("EVIDENCE_OBJECT_DIGEST_MISMATCH");

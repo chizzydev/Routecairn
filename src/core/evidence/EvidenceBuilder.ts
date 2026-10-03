@@ -120,8 +120,8 @@ function redactHeaderValue(value: string | string[]): string | string[] {
 }
 
 function curlCommand(method: string, url: string): string {
-  const escapedUrl = url.replace(/"/g, '\\"');
-  return `curl -i -X ${method} "${escapedUrl}"`;
+  const escapedUrl = url.replace(/[\\"$`]/g, (character) => `\\${character}`);
+  return `curl -i -X "${method.replace(/[\\"$`]/g, (character) => `\\${character}`)}" "${escapedUrl}"`;
 }
 
 function severityReason(input: EvidenceInput): string {

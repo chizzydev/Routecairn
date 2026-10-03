@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { request } from "node:https";
 import { createServer as tcpServer, type AddressInfo } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
@@ -12,7 +12,7 @@ import { generate } from "selfsigned";
 /** Starts only explicitly supplied binaries in an isolated disposable directory.
  * No installation, system trust changes, global process termination or public listener. */
 export async function createActiveProxyLab(caddyPath: string, nginxPath: string, upstreamProtocol: "H1" | "H2" = "H1") {
-  const directory = await mkdtemp(join(tmpdir(), "routecairn-proxy-lab-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "routecairn-proxy-lab-")));
   const children: ChildProcess[] = []; const diagnostics: string[] = []; const seen = new Map<string, { trace: string; probe: boolean; sentinel: boolean; violation: boolean }>();
   let deploymentSha256 = ""; const hopIds = ["caddy", "nginx"];
   const backend = createServer(async (req, res) => {

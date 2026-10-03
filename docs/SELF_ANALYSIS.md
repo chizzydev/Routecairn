@@ -18,3 +18,19 @@ CodeQL's `js/user-controlled-bypass` findings on `ModuleRegistry.handle` concern
 ## Analysis inputs
 
 CodeQL analyzes product source, dashboard source, tooling and tests. Immutable acceptance output, scorecards and official publisher datasets are retained by digest and excluded as generated/input data. Source report generation is checked by adversarial DOM execution; excluding an old generated artifact does not establish that every historical report is safe for arbitrary modified input.
+
+## Digest and authentication query findings
+
+The five `js/insufficient-password-hash` alerts are not password database derivation:
+
+- `agent.signedRequest` computes the SHA-256 digest of the whole canonical request body and signs the request transcript with Ed25519, including timestamp and nonce.
+- `TargetAuthorization.digest` binds an approved exact request body to a scope contract; it is not an account password verifier.
+- `ScanWorkerManager.envelopeHmac` authenticates a complete worker message with HMAC-SHA-256 and a separate worker capability key. Credentials are transported in the encrypted envelope, not verified against this digest as passwords.
+- `BrowserNetworkBoundary.constantEqual` compares a transient, randomly generated 192-bit local proxy capability using fixed-length SHA-256 digests and `timingSafeEqual`; there is no persisted user password hash.
+- `BroaderAcceptanceValidation.hash` fingerprints disposable acceptance request/response evidence, canonical lane receipts and attestations. This fixture exercise does not implement user password authentication.
+
+These exact alerts are classified as false positives for the password-storage query. This does not justify fast unsalted hashing for stored human passwords. The authorization, browser network boundary, signed worker and broader acceptance suites exercise the corresponding contracts.
+
+Additional fixes remove a redundant potentially exponential backup filename regex, replace blacklist URL checks with parsed HTTP/HTTPS allowlists, bound export/key-file reads through opened descriptors, use SHA-256 for finding identifiers, and serve reflected fixture values with explicit non-HTML content types. POSIX reproduction command quoting is verified by executing a shell function with hostile URL metacharacters and observing one unchanged argument.
+
+Native intermediary fixtures resolve Windows short-path aliases before passing paths to nginx. OAST and protocol acceptance retain the full test result JSON on failure as well as success, including cleanup and source identity checks.

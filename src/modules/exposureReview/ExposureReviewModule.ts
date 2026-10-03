@@ -135,7 +135,7 @@ export class ExposureReviewModule implements RouteCairnPlugin {
     };
 
     return {
-      id: `finding-${createHash("sha1").update(`${type}:${response.finalUrl}:${evidence}`).digest("hex").slice(0, 12)}`,
+      id: `finding-${createHash("sha256").update(`${type}:${response.finalUrl}:${evidence}`).digest("hex").slice(0, 12)}`,
       title,
       type,
       severity,

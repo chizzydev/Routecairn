@@ -1222,11 +1222,11 @@ function countByStatus(observations: ResponseObservation[], status: FalsePositiv
 }
 
 function escapeCell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return value.replace(/\|/g, "&#124;").replace(/[\r\n]/g, " ");
 }
 
 function escapeText(value: string): string {
-  return value.replace(/\r?\n/g, " ");
+  return value.replace(/[\r\n]/g, " ");
 }
 
 function trimForMarkdown(value: string): string {

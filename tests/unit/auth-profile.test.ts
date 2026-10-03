@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -142,3 +144,12 @@ async function writeJson(tempDir: string, name: string, value: unknown): Promise
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   return path;
 }
+
+const reproductionShell = process.platform === "win32" ? "C:/Program Files/Git/bin/bash.exe" : "/bin/sh";
+it.runIf(existsSync(reproductionShell))("preserves shell metacharacters as one URL argument without evaluating them", () => {
+  const url = 'https://example.test/path?value=\\"$(printf INJECTED)`printf INJECTED`';
+  const command = redactedCurlCommand(url);
+  const result = spawnSync(reproductionShell, ["-c", `curl() { printf '%s\\n' "$@"; }; ${command}`], { encoding: "utf8", windowsHide: true });
+  expect(result.status).toBe(0);
+  expect(result.stdout.trim().split("\n")).toEqual(["-i", url]);
+});

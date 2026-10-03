@@ -239,7 +239,7 @@ describe("object pair testing integration", () => {
       const [, kind, objectId] = match;
       const owner = objectId === "doc-a-001" ? "account-a" : "account-b";
       const headers = kind === "head-explicit" ? { "x-object-id": objectId, "x-owner": owner, "x-private-signal": "present" } : { etag: `"${objectId}"`, "content-length": "100" };
-      response.writeHead(200, headers);
+      response.writeHead(200, { ...headers, "content-type": "application/json" });
       response.end(request.method === "HEAD" ? undefined : JSON.stringify({ id: objectId, owner, privateNote: "private-field-fixture" }));
     });
 

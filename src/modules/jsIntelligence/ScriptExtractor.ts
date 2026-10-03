@@ -9,12 +9,13 @@ export class ScriptExtractor {
     $("script[src]").each((_index, element) => {
       const src = $(element).attr("src")?.trim();
 
-      if (!src || src.startsWith("data:") || src.startsWith("javascript:")) {
+      if (!src) {
         return;
       }
 
       try {
-        scripts.add(normalizeUrl(src, baseUrl));
+        const normalized = normalizeUrl(src, baseUrl);
+        if (["http:", "https:"].includes(new URL(normalized).protocol)) scripts.add(normalized);
       } catch {
         // Ignore malformed script URLs; the report should stay focused on actionable evidence.
       }

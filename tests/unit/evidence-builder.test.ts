@@ -17,7 +17,7 @@ describe("evidence builder", () => {
     expect(evidence.responseHeaders?.["set-cookie"]).toEqual(["<redacted>"]);
     expect(evidence.bodyPreview).toContain("api_key=<redacted>");
     expect(evidence.bodyPreview).not.toContain("super-secret-value");
-    expect(evidence.curlCommand).toBe('curl -i -X GET "https://example.com/admin"');
+    expect(evidence.curlCommand).toBe('curl -i -X "GET" "https://example.com/admin"');
     expect(evidence.severityReason).toContain("Medium severity with High confidence");
   });
 

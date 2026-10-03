@@ -297,7 +297,7 @@ function validateHeaderValue(value: string, label: string): void {
 }
 
 function escapeShell(value: string): string {
-  return value.replace(/"/g, "\\\"");
+  return value.replace(/[\\"$`]/g, (character) => `\\${character}`);
 }
 
 function hasForbiddenIdentityPathSegment(path: string): boolean {

@@ -1,9 +1,8 @@
-const backupExtensionPattern = /(?:^|[._-])(?:backup|bak|old|dump|db|database|sql)(?:[._-][a-z0-9-]+)*\.(?:zip|tar|tgz|tar\.gz|bak|backup|old|sql|dump|7z|rar)$/i;
 const explicitArchivePattern = /\.(?:zip|tar|tgz|tar\.gz|bak|backup|old|sql|dump|7z|rar)$/i;
 
 export function isBackupPath(pathname: string): boolean {
   const filename = pathname.split("/").filter(Boolean).at(-1) ?? pathname;
-  return explicitArchivePattern.test(filename) || backupExtensionPattern.test(filename);
+  return explicitArchivePattern.test(filename);
 }
 
 export function hasBackupResponseEvidence(input: { pathname: string; contentType?: string | undefined; bodyPreview?: string | undefined }): boolean {

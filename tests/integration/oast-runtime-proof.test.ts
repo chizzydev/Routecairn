@@ -33,7 +33,7 @@ describe.skipIf(!pythonPath)("active OAST real parser, shell and template runtim
         await new Promise((done) => setTimeout(done, 120));
         const receipt = await executePython(input); receipts.push(receipt);
         response.writeHead(200).end("accepted");
-      } catch { receiptFailures.push(`${kind}:${protocol}`); response.writeHead(500).end("runtime failed"); }
+      } catch (error) { receiptFailures.push(`${kind}:${protocol}:${error instanceof Error ? error.message : "RUNTIME_ERROR"}`); response.writeHead(500).end("runtime failed"); }
     });
     await new Promise<void>((done) => target.listen(0, "127.0.0.1", done)); origin = `http://127.0.0.1:${(target.address() as AddressInfo).port}`;
   }, 15000);
@@ -46,7 +46,7 @@ describe.skipIf(!pythonPath)("active OAST real parser, shell and template runtim
     }
   });
   it.each(cells)("$kind / $protocol / secure=$secure", async ({ kind, protocol, secure }) => {
-    const before = receipts.length;
+    const before = receipts.length, failuresBefore = receiptFailures.length;
     const scope = { ...exampleScope, allowedDomains: ["127.0.0.1"], disallowedPaths: [], allowedMethods: ["GET", "HEAD", "OPTIONS"] as const, rateLimitPerSecond: 50, concurrency: 2 };
     const input = activeVulnerabilityInputSchema.parse({ schemaVersion: 1, maxRequests: 3, maxCases: 1, discovery: { enabled: false, classes: [], maxCandidates: 0, queryParametersOnly: true, includeAuthenticated: false },
       oast: { mode: "SELF_HOSTED", apiBaseUrl: lab.httpsOrigin, apiTokenEnv: "RC_OAST_RUNTIME_TOKEN", tlsCaEnv: "RC_OAST_RUNTIME_CA", tenantId: lab.tenantId, workerId: "runtime-worker", jobId: "runtime-job", leaseSeconds: 60, pollIntervalMs: 100, maxPolls: 3, protocols: [protocol] },
@@ -55,7 +55,7 @@ describe.skipIf(!pythonPath)("active OAST real parser, shell and template runtim
     const plan = new ScanPlanner(createDefaultPluginRegistry()).resolve({ requestedProfile: "quick", scope, config: defaultConfig, activeVulnerability, overrides: { includeModules: ["api-mapper", "parameter-analysis", "active-vulnerability-validation"] } });
     const result = await new RouteCairnEngine().scan({ target: `${origin}/`, scope, config: defaultConfig, plan, outputDir: join(lab.directory, input.cases[0]!.id) });
     const bytes = await readFile(result.reportPath, "utf8"); const report = JSON.parse(bytes); const observation = report.activeVulnerability.cases[0];
-    expect(receiptFailures).toEqual([]); expect(receipts.slice(before)).toHaveLength(3); expect(receipts.slice(before).reduce((sum, receipt) => sum + receipt.executions, 0)).toBe(secure ? 0 : 1);
+    expect(receiptFailures.slice(failuresBefore)).toEqual([]); expect(receipts.slice(before)).toHaveLength(3); expect(receipts.slice(before).reduce((sum, receipt) => sum + receipt.executions, 0)).toBe(secure ? 0 : 1);
     expect(observation.outcome).toBe(secure ? "INCONCLUSIVE" : "PROVEN"); expect(observation.cleanup).toBe("CONFIRMED");
     if (!secure) { expect(observation.reasonCode).toBe("SIGNED_OAST_CALLBACK_CONFIRMED"); expect(observation.oastEvidence.protocol).toBe(protocol); expect(observation.oastEvidence.delayMs).toBeGreaterThanOrEqual(100); }
     for (const secret of [lab.token, lab.tenantId, "runtime-worker", "runtime-job", "/c/", "pollToken"]) expect(bytes).not.toContain(secret);
@@ -68,6 +68,6 @@ function executePython(input: unknown): Promise<{ runtime: string; executions: n
     const child = spawn(process.env.ROUTECAIRN_PYTHON ?? "python", [resolve("tests/helpers/oast-runtime.py")], { windowsHide: true, env: { ...process.env, PYTHONPATH: resolve(pythonPath!) }, stdio: ["pipe", "pipe", "pipe"] }); let output = "", errors = "";
     const timer = setTimeout(() => { child.kill(); reject(new Error("OAST_RUNTIME_TIMEOUT")); }, 8000);
     child.stdout.on("data", (value) => { output += String(value); if (output.length > 4096) child.kill(); }); child.stderr.on("data", (value) => { errors += String(value); if (errors.length > 4096) child.kill(); });
-    child.once("error", (error) => { clearTimeout(timer); reject(error); }); child.once("exit", (code) => { clearTimeout(timer); if (code !== 0) { reject(new Error("OAST_RUNTIME_FAILED")); return; } try { done(JSON.parse(output)); } catch { reject(new Error("OAST_RUNTIME_RECEIPT_INVALID")); } }); child.stdin.end(JSON.stringify(input));
+    child.once("error", (error) => { clearTimeout(timer); reject(error); }); child.once("exit", (code) => { clearTimeout(timer); if (code !== 0) { reject(new Error(errors.includes("TimeoutExpired") ? "OAST_RUNTIME_SUBPROCESS_TIMEOUT" : errors.includes("shell callback failed") ? "OAST_RUNTIME_SHELL_CALLBACK_FAILED" : "OAST_RUNTIME_FAILED")); return; } try { done(JSON.parse(output)); } catch { reject(new Error("OAST_RUNTIME_RECEIPT_INVALID")); } }); child.stdin.end(JSON.stringify(input));
   });
 }

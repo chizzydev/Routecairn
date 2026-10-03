@@ -18,7 +18,7 @@ describe("origin-isolated pinned connection pool", () => {
   });
 
   it("reuses a verified connection while revalidating DNS before each dispatch", async () => {
-    let connections = 0; let resolutions = 0; const fixture = await start((request, response) => response.end(request.url)); fixture.server.on("connection", () => { connections += 1; });
+    let connections = 0; let resolutions = 0; const fixture = await start((request, response) => { response.setHeader("content-type", "text/plain"); response.end(request.url); }); fixture.server.on("connection", () => { connections += 1; });
     const origin = `http://pool.test:${fixture.port}`; const pool = new PinnedOriginPool({ keepAliveTimeoutMs: 5000, keepAliveMaxTimeoutMs: 5000 });
     const client = httpClient(pool, [origin], async () => { resolutions += 1; return ["127.0.0.1"]; });
     try {

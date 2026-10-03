@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { readBoundedFileSync } from "../files/BoundedFile.js";
 import { HttpClient } from "../http/HttpClient.js";
 
 export interface DistributedMutationCoordinatorConfig {
@@ -95,9 +95,7 @@ function environmentSecret(name: string): string | undefined {
   const inline = process.env[name]; const file = process.env[`${name}_FILE`]?.trim();
   if (inline && file) throw new Error("MUTATION_COORDINATOR_SECRET_SOURCE_CONFLICT");
   if (!file) return inline;
-  const canonicalPath = realpathSync(file); const details = statSync(canonicalPath);
-  if (!details.isFile() || details.size > 65_536) throw new Error("MUTATION_COORDINATOR_SECRET_FILE_INVALID");
-  return readFileSync(canonicalPath, "utf8").replace(/[\r\n]+$/, "") || undefined;
+  return readBoundedFileSync(file, 65_536).toString("utf8").replace(/[\r\n]+$/, "") || undefined;
 }
 
 function canonical(value: unknown): string { return JSON.stringify(sort(value)); }
