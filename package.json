@@ -111,7 +111,7 @@
     "@opentelemetry/sdk-metrics": "^2.11.0",
     "@opentelemetry/sdk-node": "^0.222.0",
     "argon2": "^0.45.1",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.3",
     "chalk": "^5.4.1",
     "cheerio": "^1.2.0",
     "commander": "^12.1.0",
