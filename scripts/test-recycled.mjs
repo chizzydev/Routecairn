@@ -31,7 +31,7 @@ async function snapshot() {
   for (const root of ["src", "tests", "apps/dashboard-ui/src", "scripts"]) {
     for (const file of await readdir(root, { recursive: true })) if (/\.(?:ts|tsx|mjs|json|py|go)$/u.test(file)) files.push(`${root}/${file}`.replaceAll("\\", "/"));
   }
-  files.push("package.json", "package-lock.json", "vitest.config.ts", "vitest.shard.config.ts");
+  files.push("package.json", "package-lock.json", "npm-shrinkwrap.json", "vitest.config.ts", "vitest.shard.config.ts");
   const digest = createHash("sha256");
   for (const file of files.sort()) digest.update(file).update("\0").update(await readFile(file)).update("\0");
   return digest.digest("hex");

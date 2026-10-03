@@ -1,6 +1,7 @@
+import { readBoundedFile } from "../core/files/BoundedFile.js";
 import { createHash, createPublicKey } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { readFile, stat } from "node:fs/promises";
+
 import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { z } from "zod";
@@ -40,9 +41,7 @@ export interface AcceptanceReadiness {
 }
 
 export async function acceptanceBoundFile(binding: z.infer<typeof file>): Promise<Buffer> {
-  const path = resolve(binding.path); const info = await stat(path);
-  if (!info.isFile() || info.size > 16 * 1024 * 1024) throw new Error("EXTERNAL_ACCEPTANCE_BOUND_FILE_INVALID");
-  const bytes = await readFile(path);
+  const bytes = await readBoundedFile(resolve(binding.path), 16 * 1024 * 1024);
   if (acceptanceDigest(bytes) !== binding.sha256) throw new Error("EXTERNAL_ACCEPTANCE_BOUND_FILE_DIGEST_MISMATCH");
   return bytes;
 }

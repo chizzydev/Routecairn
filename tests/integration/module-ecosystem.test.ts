@@ -28,6 +28,23 @@ async function listen(server: Server) { await new Promise<void>((done) => server
 function binding(origin: string, digest: string, methods = ["GET", "HEAD"] as string[]) { const now = Date.now(); return thirdPartyModuleBrokerBindingSchema.parse({ target: origin, scope: { program: "owned-module-lab", allowedDomains: ["127.0.0.1"], disallowedPaths: [], allowedMethods: methods, rateLimitPerSecond: 10, concurrency: 1, maxDepth: 0, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn-Module-Lab" }, approval: { targetOrigin: origin, packageDigest: digest, authorizedAt: new Date(now - 1000).toISOString(), expiresAt: new Date(now + 60_000).toISOString(), operator: "fixture-owner", reference: "owned-loopback-approval", confirmation: "I_AUTHORIZE_BROKERED_MODULE_REQUESTS" } }); }
 
 describe("module ecosystem runtime", () => {
+  it("rejects anonymous private actions and method/role overrides while serving public metadata", async () => {
+    const f = fixture();
+    const registry = new ModuleRegistry({ directory: join(f.root, "method-boundary"), trustPath: f.trustPath, publishToken, signing: { token: signingToken, privateKeyPem: f.signer.privateKeyPem, publisher: f.signer.publisher, approvedDigests: ["0".repeat(64)] } });
+    registries.push(registry); const origin = await listen(registry.server);
+    for (const path of ["/v1/publish", "/v1/sign"]) {
+      const response = await fetch(`${origin}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-http-method-override": "GET", "x-forwarded-user": "administrator" }, body: JSON.stringify({ role: "administrator", approved: true }) });
+      expect(response.status).toBe(401);
+      expect((await fetch(`${origin}${path}`)).status).toBe(404);
+    }
+    for (const [path, token] of [["/v1/publish", signingToken], ["/v1/sign", publishToken]]) {
+      expect((await fetch(`${origin}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: "{}" })).status).toBe(401);
+    }
+    expect((await fetch(`${origin}/v1/index`)).status).toBe(200);
+    expect((await fetch(`${origin}/v1/index`, { method: "POST", body: "{}" })).status).toBe(404);
+    const index = await fetch(`${origin}/v1/index`).then((response) => response.json()) as { packages: unknown[] };
+    expect(index.packages).toEqual([]);
+  });
   it("runs the authoring CLI through keys, build, signing, review and digest-pinned installation", async () => {
     const f = fixture(), directory = join(f.root, "cli-source"); writeModuleFixture(directory);
     const cli = async (...args: string[]) => new Promise<string>((done, reject) => { const child = spawn(process.execPath, ["--import", "tsx", "src/cli/index.ts", "modules", ...args], { cwd: process.cwd(), windowsHide: true }); children.add(child); const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("CLI child runtime exceeded 20 seconds")); }, 20_000); let output = "", errors = ""; child.stdout.on("data", (chunk) => output += String(chunk)); child.stderr.on("data", (chunk) => errors += String(chunk)); child.once("error", (error) => { clearTimeout(timer); children.delete(child); reject(error); }); child.once("exit", (code) => { clearTimeout(timer); children.delete(child); code === 0 ? done(output) : reject(new Error(errors)); }); });

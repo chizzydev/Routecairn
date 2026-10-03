@@ -1,5 +1,6 @@
+import { readBoundedFile } from "../../core/files/BoundedFile.js";
 import type { Command } from "commander";
-import { readFile, stat } from "node:fs/promises";
+
 import { durableAtomicWrite } from "../../core/offensive/MutationJournal.js";
 import { officialCatalogEntries, standardsCatalogIdentity, wstgAreas } from "../../standards/StandardsCatalog.js";
 import { validateBuiltInStandardsMappings } from "../../standards/StandardsMappingValidation.js";
@@ -19,10 +20,7 @@ export function registerStandardsCommand(program: Command): void {
     process.stdout.write("Official catalog exported.\n");
   });
   command.command("validate-report").requiredOption("--input <file>", "Coverage JSON or RouteCairn report containing standardsCoverage").option("--output-dir <directory>", "Export verified coverage JSON and CSV").action(async (options: { input: string; outputDir?: string }) => {
-    const info = await stat(options.input);
-    if (!info.isFile() || info.size > 16 * 1024 * 1024) throw new Error("STANDARDS_REPORT_SIZE_INVALID");
-    const bytes = await readFile(options.input);
-    if (bytes.length > 16 * 1024 * 1024) throw new Error("STANDARDS_REPORT_SIZE_INVALID");
+    const bytes = await readBoundedFile(options.input, 16 * 1024 * 1024);
     const input = JSON.parse(bytes.toString("utf8")) as unknown;
     const coverage = input && typeof input === "object" && "standardsCoverage" in input ? input.standardsCoverage : input;
     validateStandardsCoverage(coverage);

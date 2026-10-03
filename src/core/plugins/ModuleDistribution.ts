@@ -1,5 +1,6 @@
+import { readBoundedFileSync } from "../files/BoundedFile.js";
 import { createHash, createPrivateKey, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { z } from "zod";
 import { SandboxedModuleHost } from "./SandboxedModuleHost.js";
@@ -51,14 +52,14 @@ export function buildModulePayload(directory: string, publisherId: string, expir
   let bytes = 0;
   const walk = (folder: string, depth: number): void => {
     if (depth > 16) throw new Error("MODULE_FILE_DEPTH_LIMIT");
-    for (const name of readdirSync(folder).sort()) {
-      const path = join(folder, name); const stat = lstatSync(path);
-      if (stat.isSymbolicLink()) throw new Error("MODULE_FILE_SYMLINK_REJECTED");
+    for (const entry of readdirSync(folder, { withFileTypes: true }).sort((left, right) => compareModulePaths(left.name, right.name))) {
+      const path = join(folder, entry.name);
+      if (entry.isSymbolicLink()) throw new Error("MODULE_FILE_SYMLINK_REJECTED");
       const portable = relative(root, path).replaceAll("\\", "/"); assertModulePath(portable);
-      if (stat.isDirectory()) walk(path, depth + 1);
-      else if (stat.isFile()) {
-        if (stat.size > 2 * 1024 * 1024 || files.length >= 256) throw new Error("MODULE_FILE_LIMIT");
-        const content = readFileSync(path); bytes += content.length;
+      if (entry.isDirectory()) walk(path, depth + 1);
+      else if (entry.isFile()) {
+        if (files.length >= 256) throw new Error("MODULE_FILE_LIMIT");
+        const content = readBoundedFileSync(path, 2 * 1024 * 1024); bytes += content.length;
         if (content.length > 2 * 1024 * 1024 || bytes > 10 * 1024 * 1024) throw new Error("MODULE_FILE_LIMIT");
         files.push({ path: portable, content: content.toString("base64") });
       } else throw new Error("MODULE_FILE_TYPE_REJECTED");
@@ -133,8 +134,7 @@ export function validateModulePayload(input: unknown, now = Date.now()): ModuleP
 }
 
 export function readModuleJson(path: string, limit = MODULE_BUNDLE_LIMIT): unknown {
-  const stat = lstatSync(path); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > limit) throw new Error("MODULE_INPUT_FILE_REJECTED");
-  const bytes = readFileSync(path); if (bytes.length > limit) throw new Error("MODULE_INPUT_FILE_REJECTED"); return JSON.parse(bytes.toString("utf8"));
+  return JSON.parse(readBoundedFileSync(path, limit).toString("utf8"));
 }
 export function canonicalModuleJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalModuleJson).join(",")}]`;

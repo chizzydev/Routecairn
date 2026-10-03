@@ -1,4 +1,5 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readBoundedFile } from "../core/files/BoundedFile.js";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { runBoundedHttp } from "../modules/protocolSecurity/ProtocolTransports.js";
@@ -75,4 +76,4 @@ export function renderOwnedAcceptanceHistory(result: {
   return `# Decide owned-target evidence\n\nStatus: **PARTIAL_EXTERNAL_EVIDENCE**\n\nHistorical summary: ${result.historicalSummaryAt}\n\n${assessments}\n\n## Public availability\n\n${checks}\n\nThese checks establish endpoint availability only.\n\n## Limits\n\n${result.limitations.map((item) => `- ${item}`).join("\n")}\n`;
 }
 
-async function boundedRead(path: string): Promise<Buffer> { const info = await stat(path); if (!info.isFile() || info.size > 32 * 1024 * 1024) throw new Error("OWNED_HISTORY_SOURCE_FILE_INVALID"); return readFile(path); }
+async function boundedRead(path: string): Promise<Buffer> { return readBoundedFile(path, 32 * 1024 * 1024); }

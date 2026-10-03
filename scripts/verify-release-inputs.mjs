@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const requiredFiles = [
+  "npm-shrinkwrap.json",
   "dist/standards/catalog/official-catalog.json", "dist/standards/OfficialCatalogIdentity.js", "dist/standards/StandardsCoverageValidation.js", "dist/cli/commands/standards.js", "standards/sources.lock.json", "standards/NOTICE.md", "docs/STANDARDS_ACCOUNTING.md",
   "dist/controlPlane/FleetServer.js", "dist/controlPlane/DashboardSingleton.js", "dist/controlPlane/InitializeEvidenceStorage.js", "dist/cli/commands/fleet.js", "docs/HORIZONTAL_SCALE_OPERATIONS.md", "deploy/control-plane/Minio.Dockerfile", "deploy/control-plane/Caddyfile.distributed", "deploy/helm/routecairn/templates/dashboard.yaml", "deploy/helm/routecairn/templates/dashboard-storage.yaml",
   "dist/core/plugins/ModuleDistribution.js", "dist/core/plugins/ModuleRegistry.js", "dist/core/plugins/ModuleSdk.d.ts", "dist/cli/commands/modules.js", "docs/MODULE_ECOSYSTEM.md", "examples/modules/security-headers/index.mjs", "examples/modules/framework-fingerprint/index.mjs", "examples/modules/graphql-response/index.mjs", "examples/module-registry.example.json", "deploy/module-registry/compose.yaml",

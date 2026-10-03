@@ -73,6 +73,7 @@ jobs:
       - run: npm run dashboard:typecheck
       - run: npm run architecture:check
       - run: npm run release:verify
+      - run: npx playwright install --with-deps chromium
       - name: Coverage gate
         run: npm run test:coverage -- --pool=forks --maxWorkers=1
         env:

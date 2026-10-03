@@ -1,3 +1,4 @@
+import { readBoundedFileSync } from "../files/BoundedFile.js";
 import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,8 +29,7 @@ export class SandboxedModuleHost {
   public validatePackage(packageDirectory: string, manifestInput: unknown): { manifest: ThirdPartyModuleManifest; digest: string; entrypoint: string } {
     const manifest = thirdPartyModuleManifestSchema.parse(manifestInput); const root = realpathSync(resolve(packageDirectory)); const entrypoint = realpathSync(resolve(root, manifest.entrypoint));
     const embeddedPath = resolve(root, "routecairn.module.json");
-    if (lstatSync(embeddedPath).size > 256 * 1024 || lstatSync(embeddedPath).isSymbolicLink()) throw new Error("SDK_MANIFEST_INVALID");
-    if (JSON.stringify(thirdPartyModuleManifestSchema.parse(JSON.parse(readFileSync(embeddedPath, "utf8")))) !== JSON.stringify(manifest)) throw new Error("SDK_MANIFEST_MISMATCH");
+    if (JSON.stringify(thirdPartyModuleManifestSchema.parse(JSON.parse(readBoundedFileSync(embeddedPath, 256 * 1024).toString("utf8")))) !== JSON.stringify(manifest)) throw new Error("SDK_MANIFEST_MISMATCH");
     if (entrypoint !== root && !entrypoint.startsWith(`${root}\\`) && !entrypoint.startsWith(`${root}/`)) throw new Error("SDK_ENTRYPOINT_OUTSIDE_PACKAGE");
     const stat = statSync(entrypoint); if (!stat.isFile() || stat.size > 2 * 1024 * 1024) throw new Error("SDK_ENTRYPOINT_INVALID");
     validateSchema(manifest.inputSchema);

@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
+const shrinkwrap = JSON.parse(await readFile("npm-shrinkwrap.json", "utf8"));
+if (JSON.stringify(lock) !== JSON.stringify(shrinkwrap)) throw new Error("Published dependency lock differs from package-lock.json.");
 const changelog = await readFile("CHANGELOG.md", "utf8");
 const compatibility = await readFile("docs/COMPATIBILITY.md", "utf8");
 const tagIndex = process.argv.indexOf("--tag");

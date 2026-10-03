@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.release.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true
+  },
+  "include": [
+    "src/core/plugins/ModuleSdk.ts"
+  ]
+}

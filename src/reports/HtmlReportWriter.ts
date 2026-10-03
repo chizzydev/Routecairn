@@ -276,7 +276,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
 
     const bySection = (name) => document.querySelector('[data-section="' + name + '"]');
     const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-    const badge = (text, cls = '') => '<span class="badge ' + cls + '">' + esc(text) + '</span>';
+    const badge = (text, cls = '') => '<span class="badge ' + esc(cls) + '">' + esc(text) + '</span>';
     const list = (items) => items && items.length ? '<ul>' + items.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '<span class="muted">none</span>';
     const sectionTitle = (title, sub) => '<div class="section-title"><div><h3>' + esc(title) + '</h3><p>' + esc(sub) + '</p></div></div>';
 

@@ -39,7 +39,7 @@ describe("OAST lease store", () => {
 
     expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\u00000\0empty")).toEqual({ accepted: true, replay: false });
     expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\u00000\0empty")).toEqual({ accepted: false, replay: true });
-    expect(store.record(row!, "HTTP", "198.51.100.11", "POST\0/c/id/sig\0q\0content-type\08\0different")).toEqual({ accepted: false, replay: true });
+    expect(store.record(row!, "HTTP", "198.51.100.11", "POST\0/c/id/sig\0q\0content-type\u00008\0different")).toEqual({ accepted: false, replay: true });
     const polled = store.poll(lease.leaseId, lease.pollToken)!;
     expect(polled.events).toHaveLength(1);
     expect(polled.events[0]).toMatchObject({ protocol: "HTTP", replayRejected: true, bindingFingerprint: lease.bindingFingerprint });

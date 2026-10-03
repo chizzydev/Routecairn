@@ -1,5 +1,6 @@
+import { readBoundedFile } from "../core/files/BoundedFile.js";
 import { createRequire } from "node:module";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import pg from "pg";
 import { z } from "zod";
@@ -27,12 +28,11 @@ export async function openSupabaseAcceptanceStore(options: { apiDirectory: strin
   const metadata = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
   if (metadata.name !== "decide-api" || !metadata.dependencies?.dotenv) throw new Error("SUPABASE_OWNER_BACKEND_REQUIRED");
   const envPath = resolve(options.environmentFile ?? resolve(root, ".env"));
-  if ((await stat(envPath)).size > 65536 || (await stat(options.databaseCaFile)).size > 32768) throw new Error("SUPABASE_CONFIG_TOO_LARGE");
-  const environment = (require("dotenv") as { parse(input: Buffer): Record<string, string> }).parse(await readFile(envPath));
+  const environment = (require("dotenv") as { parse(input: Buffer): Record<string, string> }).parse(await readBoundedFile(envPath, 65536));
   const url = new URL(environment.DATABASE_URL ?? "");
   if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.password || [...url.searchParams.keys()].some((key) => key.toLowerCase().startsWith("ssl"))) throw new Error("SUPABASE_DATABASE_CONFIG_INVALID");
   if (!(url.hostname === `db.${options.projectRef}.supabase.co` || url.hostname.endsWith(".pooler.supabase.com") && decodeURIComponent(url.username) === `postgres.${options.projectRef}`)) throw new Error("SUPABASE_DATABASE_PROJECT_MISMATCH");
-  const client = new pg.Client({ connectionString: url.toString(), ssl: { rejectUnauthorized: true, ca: await readFile(options.databaseCaFile, "utf8") }, connectionTimeoutMillis: 10000, query_timeout: 10000, statement_timeout: 10000, application_name: "RouteCairn-owned-Supabase-acceptance" });
+  const client = new pg.Client({ connectionString: url.toString(), ssl: { rejectUnauthorized: true, ca: (await readBoundedFile(options.databaseCaFile, 32768)).toString("utf8") }, connectionTimeoutMillis: 10000, query_timeout: 10000, statement_timeout: 10000, application_name: "RouteCairn-owned-Supabase-acceptance" });
   try {
     await client.connect();
     const stream = (client as unknown as { connection: { stream: { encrypted?: boolean; authorized?: boolean } } }).connection.stream;

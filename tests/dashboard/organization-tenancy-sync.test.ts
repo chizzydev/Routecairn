@@ -209,7 +209,7 @@ describe("organization tenancy and state merge", () => {
     }while(cursor);
     expect(pages).toBeGreaterThan(1);
     const received=new ArtifactRepository(right).get(artifactId,rightOrg)!;
-    expect(readFileSync(received.path)).toEqual(content);
+    expect(readFileSync(received.path).equals(content)).toBe(true);
     expect((right.db.prepare("SELECT missing_file_flag FROM artifacts WHERE id=?").get(artifactId) as {missing_file_flag:number}).missing_file_flag).toBe(0);
     left.close();right.close();
   },90_000);

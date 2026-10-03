@@ -19,6 +19,7 @@ try {
   const names = new Set(packResult.files.map((entry) => String(entry.path).replace(/^package\//, "").replaceAll("\\", "/")));
 
   const required = [
+    "npm-shrinkwrap.json",
     "dist/standards/catalog/official-catalog.json", "dist/standards/StandardsCoverageValidation.js", "dist/cli/commands/standards.js", "standards/NOTICE.md", "standards/sources.lock.json", "docs/STANDARDS_ACCOUNTING.md",
     "dist/core/plugins/ModuleDistribution.js", "dist/core/plugins/ModuleRegistry.js", "dist/core/plugins/ModuleSdk.d.ts", "dist/cli/commands/modules.js", "docs/MODULE_ECOSYSTEM.md", "examples/modules/security-headers/index.mjs", "examples/modules/framework-fingerprint/index.mjs", "examples/modules/graphql-response/index.mjs", "examples/module-registry.example.json", "deploy/module-registry/compose.yaml",
     "dist/cli/index.js",
@@ -90,6 +91,9 @@ try {
   });
 
   const installedRoot = join(consumerDirectory, "node_modules", "routecairn");
+  const publishedLock = JSON.parse(await readFile(join(installedRoot, "npm-shrinkwrap.json"), "utf8"));
+  const reviewedLock = JSON.parse(await readFile(join(packageRoot, "package-lock.json"), "utf8"));
+  assert(JSON.stringify(publishedLock) === JSON.stringify(reviewedLock), "Installed package does not contain the reviewed dependency graph.");
   const cli = runNode([join(installedRoot, "dist", "cli", "index.js"), "--help"], consumerDirectory);
   assert(/Usage:\s+routecairn/i.test(cli.stdout), "Installed CLI did not render its help output.");
   assert(cli.stdout.includes("fleet") && cli.stdout.includes("initialize-evidence-storage"), "Installed CLI lacks distributed fleet and bucket administration commands.");

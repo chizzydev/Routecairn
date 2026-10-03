@@ -12,6 +12,8 @@ Release branches are not a compatibility boundary. The package version, changelo
 
 ## Candidate verification
 
+The published CLI includes `npm-shrinkwrap.json`, matching `package-lock.json`, so installations use the reviewed dependency graph. After npm updates the shrinkwrap, run `npm run runtime:lock:sync -- --from-shrinkwrap`. For a reviewed lockfile-only update, run `npm run runtime:lock:sync -- --write`. `runtime:lock:check` and the release gate reject divergence. Never regenerate dependency locks merely to bypass a failed audit.
+
 `npm run test:complete` recycles the coordinator through four serial forked shards. `npm run test:coverage` merges Vitest blob reports and enforces the original global thresholds once; each shard's partial coverage is never accepted as whole-suite coverage. A failed process stops the runner. Logs and merged JSON results are retained under `.routecairn-engineering-lab/test-runs/`, with final coverage in `.routecairn-coverage/`.
 
 Continuous assurance retains an installed, verified candidate archive as `candidate-package-<commit>`. It is a CI artifact, not a reviewed public release. The independent-review gate remains mandatory for publication.

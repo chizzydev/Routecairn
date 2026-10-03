@@ -1,3 +1,4 @@
+import { readBoundedFile } from "../core/files/BoundedFile.js";
 import { createRequire } from "node:module";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -15,14 +16,13 @@ export async function openDecideAcceptanceAccounts(options: { apiDirectory: stri
   const require = createRequire(resolve(root, "package.json"));
   const environmentPath = resolve(options.environmentFile ?? resolve(root, ".env"));
   if ((await stat(environmentPath)).size > 65536) throw new Error("OWNED_DECIDE_ENVIRONMENT_TOO_LARGE");
-  const environment = (require("dotenv") as { parse(bytes: Buffer): Record<string, string> }).parse(await readFile(environmentPath));
+  const environment = (require("dotenv") as { parse(bytes: Buffer): Record<string, string> }).parse(await readBoundedFile(environmentPath, 65536));
   if (!environment.DATABASE_URL) throw new Error("OWNED_DECIDE_DATABASE_CREDENTIAL_REQUIRED");
   const url = new URL(environment.DATABASE_URL);
   if (!["postgres:", "postgresql:"].includes(url.protocol) || !url.hostname || !url.username || !url.password) throw new Error("OWNED_DECIDE_DATABASE_CONFIG_INVALID");
   // pg connection-string SSL options override the explicit SSL object. Reject conflicting options.
   if ([...url.searchParams.keys()].some((key) => key.toLowerCase().startsWith("ssl"))) throw new Error("OWNED_DECIDE_DATABASE_SSL_OPTIONS_MUST_USE_CA_FILE");
-  const caInfo = await stat(options.databaseCaFile); if (!caInfo.isFile() || caInfo.size > 32768) throw new Error("OWNED_DECIDE_DATABASE_CA_INVALID");
-  const client = new pg.Client({ connectionString: url.toString(), ssl: { rejectUnauthorized: true, ca: await readFile(options.databaseCaFile, "utf8") }, connectionTimeoutMillis: 10000, query_timeout: 10000, statement_timeout: 10000, application_name: "RouteCairn-owned-disposable-acceptance" });
+  const client = new pg.Client({ connectionString: url.toString(), ssl: { rejectUnauthorized: true, ca: (await readBoundedFile(options.databaseCaFile, 32768)).toString("utf8") }, connectionTimeoutMillis: 10000, query_timeout: 10000, statement_timeout: 10000, application_name: "RouteCairn-owned-disposable-acceptance" });
   try {
     await client.connect();
     const stream = (client as unknown as { connection: { stream: { encrypted?: boolean; authorized?: boolean } } }).connection.stream;

@@ -1,0 +1,6 @@
+name: RouteCairn product and tooling analysis
+paths-ignore:
+  # Immutable evidence and publisher datasets are inputs, not executable product sources.
+  - acceptance/**
+  - benchmarks/scorecards/**
+  - standards/sources/**
