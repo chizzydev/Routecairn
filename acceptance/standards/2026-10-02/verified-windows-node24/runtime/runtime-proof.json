@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "realHttpRequests": 10,
+  "vulnerableOutcome": "PROVEN",
+  "secureOutcome": "SECURE_FOR_CASE",
+  "cliVerify": 0,
+  "cliValidate": 0,
+  "cliRejectEdited": 1,
+  "catalogSha256": "891e22e7757ece8d76f883e7960821f579b5c621e8bc01914f8a4a8fb717ec5c",
+  "mappingsSha256": "6af2866307f7dc58a5742b5bec0fdc973c0d045974635b04d952928aeea25c3c",
+  "files": {
+    "report.json": "d200983a3469c438bd1e1f18b555a3973edd53fc357cc7bb33a15d8f7d903bd5",
+    "report.md": "dd00fb04c035680d3b29ccbc1f4ffbe54f206f389220112a0d7003c2020ed554",
+    "report.html": "529c260e07c318ed477115d395d4677cbecbdcff74625aa1d34da76c3ececd6d",
+    "standards-coverage.json": "76b8f90eff1d8a1ba7ce46f9c39de253cd357ca375d9484383ea75146e18b786",
+    "standards-coverage.csv": "b52ec6fb2aa81c7cedcb23bc565421d422623de12f3a842901e2568b79572aa2",
+    "standards-verification.json": "fa5bae7d956057791c5a4cb2f8668ec05d82a5123bdba5084c2a7b0550e7cd72"
+  }
+}

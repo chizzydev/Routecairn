@@ -6,7 +6,7 @@ import { redactSensitiveUrl } from "../evidence/ValuePresenceAttestation.js";
 import { RequestSafetyBroker } from "../http/RequestSafetyBroker.js";
 import type { RequestAuditEntry } from "../http/HttpTypes.js";
 import { ScopeMatcher } from "../scope/ScopeMatcher.js";
-import type { ThirdPartyModuleBrokerBinding, ThirdPartyModuleManifest } from "../../dashboard/contracts/OperationalScaleSchemas.js";
+import { thirdPartyModuleBrokerBindingSchema, type ThirdPartyModuleBrokerBinding, type ThirdPartyModuleManifest } from "../../dashboard/contracts/OperationalScaleSchemas.js";
 
 const headerValue = z.string().max(4096).refine((value) => !/[\r\n\0]/.test(value), "Header values cannot contain control characters.");
 export const moduleRequestProposalSchema = z.object({
@@ -20,7 +20,7 @@ export const moduleRequestProposalSchema = z.object({
 
 export interface ModuleBrokerResponse {
   schemaVersion: 1;
-  outcome: "TRANSMITTED" | "POLICY_BLOCKED" | "BUDGET_BLOCKED";
+  outcome: "TRANSMITTED" | "POLICY_BLOCKED" | "BUDGET_BLOCKED" | "INCONCLUSIVE";
   safeUrl: string;
   method: "GET" | "HEAD" | "OPTIONS" | "POST";
   statusCode?: number;
@@ -48,6 +48,8 @@ export interface ModuleCapabilitySummary {
 
 export class ModuleCapabilityBroker {
   private readonly broker: RequestSafetyBroker;
+  private readonly cancellation = new AbortController();
+  private readonly approvalTimer: ReturnType<typeof setTimeout>;
   private readonly audits: RequestAuditEntry[] = [];
   private proposed = 0;
   private policyBlocked = 0;
@@ -55,6 +57,7 @@ export class ModuleCapabilityBroker {
   private readonly decisions: Array<{ method: string; outcome: string; statusClass?: string; errorCode?: string }> = [];
 
   public constructor(private readonly declaration: NonNullable<ThirdPartyModuleManifest["capabilities"]["requestBroker"]>, private readonly binding: ThirdPartyModuleBrokerBinding, packageDigest: string, private readonly now: () => number = Date.now) {
+    binding = thirdPartyModuleBrokerBindingSchema.parse(binding); this.binding = binding;
     validateApproval(binding, packageDigest, now());
     const target = new URL(binding.target);
     const authorization = binding.targetAuthorization ? new TargetAuthorizationGuard(binding.targetAuthorization) : undefined;
@@ -69,12 +72,15 @@ export class ModuleCapabilityBroker {
       bodyPreviewBytes: declaration.bodyPreviewBytes,
       maxResponseBytes: declaration.maxResponseBytes,
       maxRequests: declaration.maxRequests,
+      abortSignal: this.cancellation.signal,
       retry: { maxAttempts: 0, baseDelayMs: 1, maxDelayMs: 1, retryStatusCodes: [] }
     }, scopeMatcher, (entry) => this.audits.push(entry));
+    this.approvalTimer = setTimeout(() => this.cancel(), Math.max(1, Date.parse(binding.approval.expiresAt) - now())); this.approvalTimer.unref();
   }
 
   public async execute(input: unknown): Promise<ModuleBrokerResponse> {
     this.proposed += 1;
+    if (this.cancellation.signal.aborted) return this.blocked("POLICY_BLOCKED", "SDK_BROKER_CANCELLED", "redacted://module-request", "GET");
     if (this.proposed > this.declaration.maxRequests) return this.blocked("BUDGET_BLOCKED", "SDK_BROKER_REQUEST_BUDGET_EXHAUSTED", "redacted://module-request", "GET");
     if (this.now() < Date.parse(this.binding.approval.authorizedAt) || this.now() >= Date.parse(this.binding.approval.expiresAt)) return this.blocked("POLICY_BLOCKED", "SDK_BROKER_APPROVAL_INACTIVE", "redacted://module-request", "GET");
     let proposal: z.infer<typeof moduleRequestProposalSchema>;
@@ -88,8 +94,8 @@ export class ModuleCapabilityBroker {
     if (denied) return this.blocked("POLICY_BLOCKED", denied, safeUrl, proposal.method);
     let response: Awaited<ReturnType<RequestSafetyBroker["send"]>>;
     try { response = await this.broker.send({ url: url.toString(), method: proposal.method, headers: proposal.headers, ...(proposal.body !== undefined ? { body: proposal.body } : {}), retainBodyPreview: this.declaration.bodyPreviewBytes > 0, disableRetries: true, disableRedirects: true, skipCache: true }); }
-    catch { this.decisions.push({ method: proposal.method, outcome: "TRANSMITTED", errorCode: "SDK_BROKER_TRANSPORT_FAILURE" }); return Object.freeze({ schemaVersion: 1, outcome: "TRANSMITTED", safeUrl, method: proposal.method, headers: {}, responseTimeMs: 0, redirectCount: 0, errorCode: "SDK_BROKER_TRANSPORT_FAILURE" }); }
-    const outcome = response.error?.name === "RequestBudgetExceeded" ? "BUDGET_BLOCKED" : response.error && isPolicyError(response.error.name) ? "POLICY_BLOCKED" : "TRANSMITTED";
+    catch { const errorCode = this.cancellation.signal.aborted ? "SDK_BROKER_CANCELLED" : "SDK_BROKER_TRANSPORT_FAILURE"; this.decisions.push({ method: proposal.method, outcome: "INCONCLUSIVE", errorCode }); return Object.freeze({ schemaVersion: 1, outcome: "INCONCLUSIVE", safeUrl, method: proposal.method, headers: {}, responseTimeMs: 0, redirectCount: 0, errorCode }); }
+    const outcome = response.error?.name === "RequestBudgetExceeded" ? "BUDGET_BLOCKED" : response.error && isPolicyError(response.error.name) ? "POLICY_BLOCKED" : response.statusCode === undefined ? "INCONCLUSIVE" : "TRANSMITTED";
     if (outcome === "BUDGET_BLOCKED") this.budgetBlocked += 1;
     else if (outcome === "POLICY_BLOCKED") this.policyBlocked += 1;
     this.decisions.push({ method: proposal.method, outcome, ...(response.statusCode !== undefined ? { statusClass: `${Math.floor(response.statusCode / 100)}xx` } : {}), ...(response.error ? { errorCode: safeCode(response.error.name) } : {}) });
@@ -117,11 +123,14 @@ export class ModuleCapabilityBroker {
     return Object.freeze({ enabled: true, riskClass: this.declaration.riskClass, proposedRequests: this.proposed, transmittedRequests: snapshot.transmittedRequests, policyBlockedRequests: this.policyBlocked, budgetBlockedRequests: this.budgetBlocked, maxRequests: this.declaration.maxRequests, auditDigest: createHash("sha256").update(JSON.stringify({ decisions: this.decisions, brokerAudit: canonicalAudit })).digest("hex") });
   }
 
-  public async close(): Promise<void> { await this.broker.close(); }
+  public cancel(): void { clearTimeout(this.approvalTimer); this.cancellation.abort(); }
+  public async close(): Promise<void> { this.cancel(); await this.broker.close(); }
 
   private validateProposal(proposal: z.infer<typeof moduleRequestProposalSchema>, url: URL): string | undefined {
     if (!this.declaration.methods.includes(proposal.method)) return "SDK_BROKER_METHOD_NOT_DECLARED";
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash) return "SDK_BROKER_URL_FORBIDDEN";
+    if (url.origin !== this.binding.approval.targetOrigin) return "SDK_BROKER_APPROVAL_ORIGIN_MISMATCH";
+    if (url.pathname.includes("%")) return "SDK_BROKER_PATH_NOT_CANONICAL";
     if (!matchesPrefix(url.pathname, this.declaration.pathPrefixes)) return "SDK_BROKER_PATH_NOT_DECLARED";
     if (proposal.method === "POST" && (!this.declaration.allowNonMutatingPost || this.declaration.riskClass !== "MODERATE" || !proposal.nonMutating)) return "SDK_BROKER_POST_ATTESTATION_REQUIRED";
     if (proposal.method === "POST") { const approved = this.binding.approval.nonMutatingPosts.find((item) => item.path === url.pathname); if (url.origin !== this.binding.approval.targetOrigin || url.search || !approved || approved.bodySha256 !== createHash("sha256").update(proposal.body ?? "").digest("hex") || approved.headersSha256 !== headersDigest(proposal.headers)) return "SDK_BROKER_POST_APPROVAL_MISMATCH"; }

@@ -2,11 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 const roots = ["src", "apps/dashboard-ui/src"];
-const maximumLines = 2300;
-const temporaryBudgets = new Map([
-  ["apps/dashboard-ui/src/WorkflowSpecializedEditors.tsx", 2350],
-  ["apps/dashboard-ui/src/ScanStudio.tsx", 2510]
-]);
+const maximumLines = 1800;
 
 async function collect(directory) {
   const result = [];
@@ -22,7 +18,7 @@ const violations = [];
 for (const file of (await Promise.all(roots.map(collect))).flat()) {
   const relativePath = relative(process.cwd(), file).replaceAll("\\", "/");
   const lines = (await readFile(file, "utf8")).split(/\r?\n/u).length;
-  const limit = temporaryBudgets.get(relativePath) ?? maximumLines;
+  const limit = maximumLines;
   if (lines > limit) violations.push(`${relativePath}: ${lines} lines (limit ${limit})`);
 }
 if (violations.length > 0) {

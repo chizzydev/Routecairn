@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED",
+  "generatedAt": "2026-10-02T09:34:45.676Z",
+  "checks": [
+    "built-cli-service-start",
+    "relative-config-paths",
+    "environment-credentials",
+    "distinct-signing-role",
+    "reviewed-digest-signature",
+    "authenticated-publication",
+    "anonymous-discovery",
+    "exact-download",
+    "publisher-verification"
+  ],
+  "moduleId": "reference-security-headers",
+  "packageDigest": "bc27238eb232f9fd8ff038a33a5cfebab390348f3dab59690971aacf38e71c5d",
+  "keyId": "a291e5586348861e09703511d1ab2d0363a81d80f9785dd73f1f9f01b1d8581d",
+  "publicDeployment": false,
+  "independentlyOperated": false,
+  "cleanup": "CONFIRMED"
+}

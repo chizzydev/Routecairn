@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-02T03:19:08.209Z",
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "graphFingerprint": "4d5f772e8f667af6928a2b0e86ea7e8d50d462059959bef8d08c6061d03b70c7",
+  "coverage": {
+    "ACTOR": 3,
+    "ROLE": 1,
+    "TENANT": 0,
+    "OBJECT": 0,
+    "ROUTE": 4,
+    "PARAMETER": 2,
+    "OPERATION": 8,
+    "BROWSER_STATE": 0,
+    "CAPABILITY": 3,
+    "PRECONDITION": 1,
+    "EFFECT": 1,
+    "CLEANUP": 2,
+    "EDGES": 32,
+    "PATHS": 4,
+    "READ_ONLY_PATHS": 2,
+    "STATE_CHANGING_PATHS": 2
+  },
+  "sourceCaseFingerprint": "9e8e3407459737b7146b4dd0a05d030ecad2262df790c4a81f30f3333b2c4b86",
+  "replayCaseFingerprint": "9e8e3407459737b7146b4dd0a05d030ecad2262df790c4a81f30f3333b2c4b86",
+  "executionOutcome": "VERIFIED",
+  "cleanup": "CONFIRMED",
+  "checks": [
+    "REAL_HTTP_SOURCE_EXECUTION",
+    "EXACT_CONTRACT_GRAPH_BINDING",
+    "PRODUCER_CONSUMER_DEPENDENCY",
+    "NO_MUTATION_BEFORE_APPROVAL",
+    "EXPLICIT_REVIEW_REQUIRED",
+    "EXPIRED_APPROVAL_REJECTED",
+    "CHANGED_CONFIGURATION_REJECTED",
+    "REAL_HTTP_APPROVED_REPLAY",
+    "UNBOUND_EXECUTION_REJECTED",
+    "VERIFIED_RESTORATION",
+    "DATABASE_REOPEN_PERSISTENCE",
+    "CHANGED_MODEL_REQUIRES_FRESH_REVIEW"
+  ],
+  "trace": [
+    {
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    },
+    {
+      "method": "POST",
+      "path": "/withdraw"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    },
+    {
+      "method": "POST",
+      "path": "/restore"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    },
+    {
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    },
+    {
+      "method": "POST",
+      "path": "/withdraw"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    },
+    {
+      "method": "POST",
+      "path": "/restore"
+    },
+    {
+      "method": "GET",
+      "path": "/wallet"
+    }
+  ]
+}

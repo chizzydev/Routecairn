@@ -1,0 +1,24 @@
+services:
+  registry:
+    image: ${ROUTECAIRN_REGISTRY_REPOSITORY:?Supply a reviewed RouteCairn repository}@sha256:${ROUTECAIRN_REGISTRY_IMAGE_DIGEST:?Supply its reviewed immutable digest}
+    command: ["node", "dist/cli/index.js", "modules", "serve", "--config", "/configuration/registry.json"]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    restart: unless-stopped
+    environment:
+      ROUTECAIRN_MODULE_PUBLISH_TOKEN: ${ROUTECAIRN_MODULE_PUBLISH_TOKEN:?Supply a high entropy publication credential}
+      ROUTECAIRN_REGISTRY_TLS_NAME: ${ROUTECAIRN_REGISTRY_TLS_NAME:?Supply the certificate hostname}
+    ports: ["127.0.0.1:8788:8788"]
+    volumes:
+      - ./configuration:/configuration:ro
+      - ./packages:/packages
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:https').get({hostname:'127.0.0.1',port:8788,path:'/health',servername:process.env.ROUTECAIRN_REGISTRY_TLS_NAME,ca:require('node:fs').readFileSync('/configuration/tls/ca.pem')},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

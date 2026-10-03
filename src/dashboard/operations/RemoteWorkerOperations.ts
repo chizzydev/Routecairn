@@ -1,9 +1,10 @@
 import type { IncomingHttpHeaders } from "node:http";
 import type { WorkerRow } from "./RemoteWorkerService.js";
+import type { WorkerIdentityBinding } from "../contracts/OperationalScaleSchemas.js";
 
 export type MaybePromise<T> = T | Promise<T>;
 export interface RemoteWorkerOperations {
-  createEnrollment(input: { organizationId: string; nameHint?: string; expiresInMinutes: number }, actor: string): MaybePromise<{ enrollmentId: string; token: string; expiresAt: string }>;
+  createEnrollment(input: { organizationId: string; nameHint?: string; expiresInMinutes: number;workloadIdentity?:WorkerIdentityBinding }, actor: string): MaybePromise<{ enrollmentId: string; token: string; expiresAt: string }>;
   enroll(input: { token: string; name: string; publicKeyPem: string; capabilities: string[]; labels: Record<string, string> }): MaybePromise<{ workerId: string; generation: number; signatureProtocol: string }>;
   authenticate(method: string, path: string, body: unknown, headers: IncomingHttpHeaders): MaybePromise<WorkerRow>;
   heartbeat(worker: WorkerRow, input: { status: "ONLINE" | "DRAINING"; resources: unknown }): MaybePromise<void>;

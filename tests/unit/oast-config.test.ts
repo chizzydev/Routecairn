@@ -7,6 +7,15 @@ const tenantVariable = "ROUTECAIRN_TEST_OAST_TENANTS";
 afterEach(() => { delete process.env[signingVariable]; delete process.env[tenantVariable]; });
 
 describe("OAST service configuration", () => {
+  it("reserves DNS identity space and rejects invalid zone delegation and port collisions", () => {
+    expect(() => parse({ mode: "SELF_HOSTED", baseDomain: `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.test` })).toThrow(/signed callback labels/);
+    expect(() => parse({ mode: "SELF_HOSTED", dnsNameServers: ["ns1.unrelated.test"] })).toThrow(/authoritative zone/);
+    expect(() => parse({ mode: "SELF_HOSTED", dnsTcpPort: 7777 })).toThrow(/distinct/);
+  });
+  it("rejects shared or invalid bearer tokens without echoing secrets", () => {
+    const config = parse({ mode: "SELF_HOSTED", signingKeyEnv: signingVariable, tenantTokensEnv: tenantVariable }); process.env[signingVariable] = "s".repeat(32);
+    for (const tokens of [{ a: "a".repeat(24), b: "a".repeat(24) }, { a: "a".repeat(24) + "\r\n" }]) { process.env[tenantVariable] = JSON.stringify(tokens); expect(() => readOastServiceSecrets(config)).toThrow(/tenant API tokens/); }
+  });
   it("requires TLS for hosted mode and credential-free public origins", () => {
     expect(() => parse({ mode: "HOSTED", publicHttpsBaseUrl: "https://oast.example.test/" })).toThrow(/HTTPS listener/i);
     expect(() => parse({ mode: "HOSTED", httpsPort: 8443, tlsKeyPath: "key.pem", tlsCertPath: "cert.pem", publicHttpsBaseUrl: "http://oast.example.test/" })).toThrow(/HTTPS public base URL/i);

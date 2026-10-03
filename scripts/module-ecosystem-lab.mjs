@@ -1,0 +1,26 @@
+import { spawn } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+if (process.argv.length !== 4 || process.argv[2] !== "--output") throw new Error("Use --output FRESH_DIRECTORY.");
+const output = resolve(process.argv[3]); await mkdir(dirname(output), { recursive: true }); await mkdir(output);
+const tests = ["tests/unit/module-distribution.test.ts", "tests/integration/module-ecosystem.test.ts", "tests/integration/sandboxed-module-capability.test.ts", "tests/dashboard/operational-scale.test.ts", "apps/dashboard-ui/src/ModuleEcosystemPanel.test.tsx"];
+const snapshot = async () => {
+  const sources = {};
+  const walk = async (folder, prefix) => { for (const entry of (await readdir(folder, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) { if (entry.isSymbolicLink()) throw new Error("Source snapshots reject links."); if (["dist", "node_modules"].includes(entry.name)) continue; const name = `${prefix}${entry.name}`; if (entry.isDirectory()) await walk(join(folder, entry.name), `${name}/`); else sources[name] = sha256(await readFile(join(folder, entry.name))); } };
+  await walk(join(repository, "src"), "src/"); await walk(join(repository, "examples/modules"), "examples/modules/"); await walk(join(repository, "apps/dashboard-ui/src"), "apps/dashboard-ui/src/");
+  for (const file of [...tests, "tests/helpers/module-distribution.ts", "scripts/module-ecosystem-lab.mjs", "package.json", "package-lock.json", "docs/MODULE_ECOSYSTEM.md", "examples/module-registry.example.json", "deploy/module-registry/compose.yaml", ".github/workflows/continuous-assurance.yml"]) sources[file] = sha256(await readFile(join(repository, file)));
+  return sources;
+};
+const sources = await snapshot(), transient = join(repository, ".routecairn-module-lab", `vitest-${randomUUID()}.json`); await mkdir(dirname(transient), { recursive: true });
+const testExitCode = await new Promise((done, reject) => { const child = spawn(process.execPath, [join(repository, "node_modules/vitest/vitest.mjs"), "run", ...tests, "--pool=forks", "--maxWorkers=1", "--reporter=json", `--outputFile=${transient}`], { cwd: repository, windowsHide: true, env: { ...process.env, ROUTECAIRN_MODULE_LAB_OUTPUT: output }, stdio: "inherit" }); child.once("error", reject); child.once("exit", (code) => done(code ?? 1)); });
+let complete = testExitCode === 0, counts = {}, runtime = {}, failedTests = [];
+try { const result = JSON.parse(await readFile(transient, "utf8")); counts = { total: result.numTotalTests, passed: result.numPassedTests, failed: result.numFailedTests, skipped: result.numPendingTests }; failedTests = result.testResults.flatMap((file) => file.assertionResults.filter((test) => test.status === "failed").map((test) => test.fullName)); if (!counts.total || counts.total !== counts.passed || counts.failed || counts.skipped) complete = false; } catch { complete = false; } finally { await rm(transient, { force: true }); }
+try { const bytes = await readFile(join(output, "runtime-proof.json")), proof = JSON.parse(bytes); runtime = { sha256: sha256(bytes), checks: proof.checks.length, packs: proof.runtime.length, cleanup: proof.cleanup, isolation: proof.isolation }; if (proof.status !== "VERIFIED" || proof.checks.length !== 15 || proof.runtime.length !== 3 || proof.cleanup !== "CONFIRMED" || proof.publicDeployment !== false || proof.communityAdoption !== false || proof.independentlyOperated !== false) complete = false; } catch { complete = false; }
+const sourcesUnchanged = JSON.stringify(sources) === JSON.stringify(await snapshot()); if (!sourcesUnchanged) complete = false;
+const result = { schemaVersion: 1, generatedAt: new Date().toISOString(), status: complete ? "COMPLETED" : "FAILED", nodeVersion: process.version, platform: process.platform, testExitCode, tests: counts, failedTests, sourcesUnchanged, runtime, containerImage: process.env.ROUTECAIRN_MODULE_CONTAINER_IMAGE ?? null, provenance: "SELF_MAINTAINED_LOOPBACK", publicDeployment: false, independentlyOperated: false, communityAdoption: false, sources, limitations: ["All registry, signer and target exercises use owned loopback fixtures.", "Publisher and reviewer identities are fixture roles, not outside operators.", "Outside contributors, public registry operation and independent security review are not asserted.", ...(process.env.ROUTECAIRN_MODULE_CONTAINER_IMAGE ? [] : ["Container execution is configured but was not exercised in this process-mode run."])] };
+const bytes = Buffer.from(`${JSON.stringify(result, null, 2)}\n`); await writeFile(join(output, "module-ecosystem-lab-result.json"), bytes, { flag: "wx" }); await writeFile(join(output, "SHA256SUMS"), `${runtime.sha256 ? `${runtime.sha256}  runtime-proof.json\n` : ""}${sha256(bytes)}  module-ecosystem-lab-result.json\n`, { flag: "wx" }); process.stdout.write(`Module ecosystem lab: ${result.status}; ${join(output, "module-ecosystem-lab-result.json")}\n`); if (!complete) process.exitCode = 1;
+function sha256(value) { return createHash("sha256").update(value).digest("hex"); }

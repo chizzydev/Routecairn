@@ -15,6 +15,24 @@ import type { RouteCairnReport } from "../../src/reports/ReportTypes.js";
 import { advancedEngineIds } from "../../src/dashboard/contracts/AdvancedEngineSchemas.js";
 
 describe("dashboard closure workflows", () => {
+  it("drains a terminal SSE backlog across pages and resumes from an exact persisted sequence", async () => {
+    const dir=tempDir("routecairn-sse-backlog-");
+    try{
+      const database=new DashboardDatabase(resolveDashboardPaths(dir).databasePath);database.migrate();
+      const scanId="77777777-7777-4777-8777-777777777777";seedScan(database,scanId,"COMPLETED");
+      for(let i=0;i<237;i++)database.appendEvent(scanId,"MODULE_PROGRESS",`event-${i}`,{index:i,padding:"x".repeat(1024)});
+      database.appendEvent(scanId,"SCAN_COMPLETED","Done",{});database.close();
+      const handle=await startDashboardServer({dataDir:dir,uiDistDir:resolve("apps","dashboard-ui","dist")});
+      try{
+        const auth=await authenticate(handle.url,handle.bootstrapUrl);
+        const stream=await fetch(`${handle.url}/api/scans/${scanId}/stream`,{headers:{cookie:auth.cookie},signal:AbortSignal.timeout(10000)});
+        const text=await stream.text(),sequences=Array.from(text.matchAll(/^id: (\d+)$/gm),match=>Number(match[1]));
+        expect(sequences).toHaveLength(238);expect(new Set(sequences).size).toBe(238);expect(sequences).toEqual([...sequences].sort((a,b)=>a-b));expect(text).toContain("event: SCAN_COMPLETED");
+        const replay=await fetch(`${handle.url}/api/scans/${scanId}/stream`,{headers:{cookie:auth.cookie,"last-event-id":String(sequences[199])},signal:AbortSignal.timeout(10000)});
+        const replayIds=Array.from((await replay.text()).matchAll(/^id: (\d+)$/gm),match=>Number(match[1]));expect(replayIds).toEqual(sequences.slice(200));
+      }finally{await handle.close();}
+    }finally{cleanup(dir);}
+  });
   it("serves overview, scan detail, finding detail, and proof-pack listing from real persisted data", async () => {
     const dir = tempDir("routecairn-dashboard-closure-api-");
     try {

@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, sign, verify } from "node:crypto";
+import { createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, createHash, createHmac, randomBytes, sign, verify } from "node:crypto";
 import { z } from "zod";
 import { benchmarkManifestSchema, type BenchmarkManifest } from "./BenchmarkSchemas.js";
 
@@ -20,21 +20,24 @@ export const blindBenchmarkPackSchema = z.object({
   }).strict(),
   sealedTruth: z.object({
     algorithm: z.literal("AES-256-GCM"), kdf: z.literal("SHA-256"), iv: z.string().min(16).max(64), authTag: z.string().min(16).max(64),
-    ciphertext: z.string().min(20), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/), publicDigest: z.string().regex(/^[a-f0-9]{64}$/)
+    aad: z.literal("PUBLIC_V1").optional(), ciphertext: z.string().min(20).max(16 * 1024 * 1024), manifestDigest: z.string().regex(/^[a-f0-9]{64}$/), publicDigest: z.string().regex(/^[a-f0-9]{64}$/)
   }).strict()
 }).strict();
 
 export type BlindBenchmarkPack = z.infer<typeof blindBenchmarkPackSchema>;
 
-export function sealBenchmarkManifest(rawManifest: unknown, secret: string): BlindBenchmarkPack {
+export function sealBenchmarkManifest(rawManifest: unknown, secret: string, signer?: { privateKeyPem: string; keyId: string }): BlindBenchmarkPack {
   requireSecret(secret); const parsed = benchmarkManifestSchema.parse(rawManifest);
+  if (parsed.corpus?.signature && !signer) throw new Error("BENCHMARK_SIGNED_TRUTH_RESEAL_REQUIRES_SIGNER");
   const cases = parsed.cases.map((item) => ({ ...item, blindId: createHmac("sha256", secret).update(`${parsed.id}\0${item.id}`).digest("hex") }));
-  const manifest = benchmarkManifestSchema.parse({ ...parsed, cases, ...(parsed.corpus ? { corpus: { ...parsed.corpus, blinded: true } } : {}) });
+  const prepared = benchmarkManifestSchema.parse({ ...parsed, cases, ...(parsed.corpus ? { corpus: { ...parsed.corpus, signature: undefined, blinded: true } } : {}) });
+  const manifest = signer ? signBenchmarkManifest(prepared, signer.privateKeyPem, signer.keyId) : prepared;
   const publicCases = manifest.cases.map((item) => ({ blindId: item.blindId!, ...(item.category ? { category: item.category } : {}), ...(item.language ? { language: item.language } : {}), ...(item.framework ? { framework: item.framework } : {}), ...(item.weaknessId ? { weaknessId: item.weaknessId } : {}), complexity: item.complexity ?? "SINGLE_STEP" })).sort((left, right) => left.blindId.localeCompare(right.blindId));
   const publicValue = { benchmarkId: manifest.id, label: manifest.label, caseCount: manifest.cases.length, ...(manifest.corpus?.version ? { corpusVersion: manifest.corpus.version } : {}), cases: publicCases };
   const iv = randomBytes(12); const key = keyFor(secret); const cipher = createCipheriv("aes-256-gcm", key, iv); const plaintext = Buffer.from(canonicalJson(manifest));
+  cipher.setAAD(Buffer.from(canonicalJson(publicValue)));
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]); const authTag = cipher.getAuthTag();
-  return blindBenchmarkPackSchema.parse({ schemaVersion: 1, kind: "ROUTECAIRN_BLIND_BENCHMARK_PACK", public: publicValue, sealedTruth: { algorithm: "AES-256-GCM", kdf: "SHA-256", iv: iv.toString("base64"), authTag: authTag.toString("base64"), ciphertext: ciphertext.toString("base64"), manifestDigest: digest(manifest), publicDigest: digest(publicValue) } });
+  return blindBenchmarkPackSchema.parse({ schemaVersion: 1, kind: "ROUTECAIRN_BLIND_BENCHMARK_PACK", public: publicValue, sealedTruth: { algorithm: "AES-256-GCM", kdf: "SHA-256", aad: "PUBLIC_V1", iv: iv.toString("base64"), authTag: authTag.toString("base64"), ciphertext: ciphertext.toString("base64"), manifestDigest: digest(manifest), publicDigest: digest(publicValue) } });
 }
 
 export function openBenchmarkPack(rawPack: unknown, secret: string): BenchmarkManifest {
@@ -42,11 +45,14 @@ export function openBenchmarkPack(rawPack: unknown, secret: string): BenchmarkMa
   if (digest(pack.public) !== pack.sealedTruth.publicDigest) throw new Error("BENCHMARK_BLIND_PUBLIC_DIGEST_MISMATCH");
   try {
     const decipher = createDecipheriv("aes-256-gcm", keyFor(secret), Buffer.from(pack.sealedTruth.iv, "base64")); decipher.setAuthTag(Buffer.from(pack.sealedTruth.authTag, "base64"));
+    // Older packs lack AAD; new packs advertise the authenticated envelope version.
+    if (pack.sealedTruth.aad === "PUBLIC_V1") decipher.setAAD(Buffer.from(canonicalJson(pack.public)));
     const plaintext = Buffer.concat([decipher.update(Buffer.from(pack.sealedTruth.ciphertext, "base64")), decipher.final()]).toString("utf8");
     const manifest = benchmarkManifestSchema.parse(JSON.parse(plaintext));
     if (digest(manifest) !== pack.sealedTruth.manifestDigest) throw new Error("BENCHMARK_BLIND_MANIFEST_DIGEST_MISMATCH");
     if (manifest.id !== pack.public.benchmarkId || manifest.cases.length !== pack.public.caseCount) throw new Error("BENCHMARK_BLIND_PUBLIC_TRUTH_MISMATCH");
-    const publicIds = new Set(pack.public.cases.map((item) => item.blindId)); if (manifest.cases.some((item) => !item.blindId || !publicIds.has(item.blindId))) throw new Error("BENCHMARK_BLIND_CASE_MISMATCH");
+    const publicIds = new Set(pack.public.cases.map((item) => item.blindId));
+    if (publicIds.size !== pack.public.caseCount || new Set(manifest.cases.map((item) => item.blindId)).size !== manifest.cases.length || manifest.cases.some((item) => !item.blindId || !publicIds.has(item.blindId))) throw new Error("BENCHMARK_BLIND_CASE_MISMATCH");
     return manifest;
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("BENCHMARK_")) throw error;
@@ -57,6 +63,7 @@ export function openBenchmarkPack(rawPack: unknown, secret: string): BenchmarkMa
 export function signBenchmarkManifest(rawManifest: unknown, privateKeyPem: string, keyId: string): BenchmarkManifest {
   const manifest = benchmarkManifestSchema.parse(rawManifest); if (!manifest.corpus) throw new Error("BENCHMARK_CORPUS_PROVENANCE_REQUIRED");
   const { signature: _signature, ...corpus } = manifest.corpus; const unsigned = { ...manifest, corpus };
+  if (createPrivateKey(privateKeyPem).asymmetricKeyType !== "ed25519") throw new Error("BENCHMARK_CORPUS_KEY_TYPE_INVALID");
   const value = sign(null, Buffer.from(canonicalJson(unsigned)), privateKeyPem).toString("base64");
   return benchmarkManifestSchema.parse({ ...manifest, corpus: { ...manifest.corpus, signature: { algorithm: "Ed25519", keyId, value } } });
 }
@@ -66,6 +73,7 @@ export function verifyBenchmarkManifest(rawManifest: unknown, publicKeyPem: stri
   if (!manifest.corpus || !signature) throw new Error("BENCHMARK_CORPUS_SIGNATURE_REQUIRED");
   if (expectedKeyId && signature.keyId !== expectedKeyId) throw new Error("BENCHMARK_CORPUS_KEY_ID_MISMATCH");
   const { signature: _signature, ...corpus } = manifest.corpus; const unsigned = { ...manifest, corpus };
+  if (createPublicKey(publicKeyPem).asymmetricKeyType !== "ed25519") throw new Error("BENCHMARK_CORPUS_KEY_TYPE_INVALID");
   if (!verify(null, Buffer.from(canonicalJson(unsigned)), publicKeyPem, Buffer.from(signature.value, "base64"))) throw new Error("BENCHMARK_CORPUS_SIGNATURE_INVALID");
   return manifest;
 }

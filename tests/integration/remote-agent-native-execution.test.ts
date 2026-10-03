@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { createHash, generateKeyPairSync, randomUUID, verify } from "node:crypto";
 import { startDashboardServer } from "../../src/dashboard/server/DashboardServer.js";
 import { enrollAgent, runAgent } from "../../src/cli/commands/agent.js";
 import { exampleScope } from "../../src/config/defaults.js";
@@ -12,6 +13,20 @@ const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
 
 describe("turnkey signed remote agent", () => {
+  it("finishes a leased job across transient ingress refusals using fresh signed nonces", async () => {
+    const directory=await mkdtemp(join(tmpdir(),"routecairn-agent-refusal-"));directories.push(directory);const pair=generateKeyPairSync("ed25519"),workerId=randomUUID(),jobId=randomUUID(),nonces=new Set<string>();let heartbeatAttempts=0,completionAttempts=0,completed=false;
+    const server=createServer(async(request,response)=>{
+      const parts:Buffer[]=[];for await(const part of request)parts.push(Buffer.from(part));const bytes=Buffer.concat(parts),body=JSON.parse(bytes.toString()),nonce=String(request.headers["x-routecairn-nonce"]),timestamp=String(request.headers["x-routecairn-timestamp"]);
+      const message=['routecairn-agent-ed25519-v1','POST',request.url!,timestamp,nonce,createHash('sha256').update(bytes).digest('hex')].join('\n');
+      if(nonces.has(nonce)||!verify(null,Buffer.from(message),pair.publicKey,Buffer.from(String(request.headers['x-routecairn-signature']),'base64url'))){response.writeHead(401).end();return;}nonces.add(nonce);
+      const send=(status:number,value:unknown)=>response.writeHead(status,{'content-type':'application/json'}).end(JSON.stringify(value));
+      if(request.url?.endsWith('/heartbeat')){heartbeatAttempts++;send(heartbeatAttempts<=2?503:200,{ok:true});return;}
+      if(request.url?.endsWith('/claim')){send(200,{job:{id:jobId,kind:'PING',payload:{},leaseToken:'x'.repeat(43),leaseExpiresAt:new Date(Date.now()+60000).toISOString()}});return;}
+      if(request.url?.endsWith('/complete')){completionAttempts++;if(completionAttempts===1){send(503,{error:'INGRESS_DRAINING'});return;}completed=body.status==='COMPLETED'&&body.result?.pong===true;send(200,{ok:true});return;}
+      send(404,{});
+    });await new Promise<void>(done=>server.listen(0,'127.0.0.1',done));
+    try{const statePath=join(directory,'agent.json');await writeFile(statePath,JSON.stringify({server:`http://127.0.0.1:${(server.address() as AddressInfo).port}`,workerId,privateKeyPem:pair.privateKey.export({format:'pem',type:'pkcs8'}).toString(),publicKeyPem:pair.publicKey.export({format:'pem',type:'spki'}).toString(),capabilities:['ping']}));await runAgent({state:statePath,once:true,workspace:directory});expect(completed).toBe(true);expect(completionAttempts).toBe(2);expect(heartbeatAttempts).toBe(4);expect(nonces.size).toBe(7);}finally{await new Promise<void>(done=>server.close(()=>done()));}
+  });
   it("executes native scan, module, and export jobs without an installed handler", async () => {
     const directory = await mkdtemp(join(tmpdir(), "routecairn-native-agent-")); directories.push(directory);
     const workspace = join(directory, "workspace"); const statePath = join(workspace, "agent-state.json");

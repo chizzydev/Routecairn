@@ -1,4 +1,4 @@
-import { context, metrics, SpanStatusCode, trace, type Span, type Tracer } from "@opentelemetry/api";
+import { context, metrics, SpanStatusCode, trace, type Span, type Tracer, type Counter, type Histogram } from "@opentelemetry/api";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -10,10 +10,10 @@ const secretField = /(password|passwd|secret|token|cookie|authorization|private.
 
 export class ControlPlaneTelemetry {
   private sdk?: NodeSDK;
-  private readonly tracer: Tracer;
-  private readonly requestCounter;
-  private readonly jobCounter;
-  private readonly duration;
+  private tracer: Tracer;
+  private requestCounter:Counter;
+  private jobCounter:Counter;
+  private duration:Histogram;
   public constructor(private readonly config: ControlPlaneConfig["telemetry"]) {
     this.tracer = trace.getTracer(config.serviceName);
     const meter = metrics.getMeter(config.serviceName);
@@ -30,6 +30,11 @@ export class ControlPlaneTelemetry {
       metricReader: new PeriodicExportingMetricReader({ exporter: new OTLPMetricExporter({ url: `${base}/v1/metrics` }), exportIntervalMillis: 15_000 })
     });
     await this.sdk.start();
+    this.tracer=trace.getTracer(this.config.serviceName);
+    const meter=metrics.getMeter(this.config.serviceName);
+    this.requestCounter=meter.createCounter("routecairn.control_plane.requests");
+    this.jobCounter=meter.createCounter("routecairn.control_plane.jobs");
+    this.duration=meter.createHistogram("routecairn.control_plane.duration_ms",{unit:"ms"});
   }
   public countRequest(route: string, status: number): void { this.requestCounter.add(1, { route: safeLabel(route), status: String(status) }); }
   public countJob(kind: string, state: string): void { this.jobCounter.add(1, { kind: safeLabel(kind), state: safeLabel(state) }); }

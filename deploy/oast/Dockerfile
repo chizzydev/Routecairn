@@ -16,6 +16,6 @@ COPY --from=build /app/dist ./dist
 RUN mkdir -p /var/lib/routecairn-oast && chown -R node:node /app /var/lib/routecairn-oast
 USER node
 EXPOSE 8080/tcp 8443/tcp 5353/tcp 5353/udp
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 CMD ["node", "-e", "fetch('http://127.0.0.1:8080/readyz',{signal:AbortSignal.timeout(2000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
 ENTRYPOINT ["node", "dist/cli/index.js", "oast", "serve"]
 CMD ["--config", "/etc/routecairn/oast.json"]

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { Database } from "better-sqlite3";
+import { isConclusiveAdaptiveOutcome, isVerifiedAdaptiveCleanup } from "../execution/AdaptiveEvidenceSafety.js";
 import type { RouteCairnReport } from "../../reports/ReportTypes.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import { redactDashboardValue, safeJson } from "../security/Redaction.js";
@@ -66,7 +67,7 @@ function contractObservation(workflowId: string, moduleId: string, alias: string
     || Array.isArray(item.actions) && item.actions.length === 0
     || Array.isArray(item.steps) && (item.steps as Array<Record<string, unknown>>).every((step) => step.stateChanging !== true)
   );
-  const failed = /INCONCLUSIVE|ERROR|UNPARSEABLE|RATE_LIMITED/.test(outcome) || (!readOnlyCleanup && /FAILED|NOT_REACHED|REQUIRED|UNKNOWN/.test(cleanupOutcome));
+  const failed = !isConclusiveAdaptiveOutcome(outcome) || (cleanupOutcome !== "" && !readOnlyCleanup && !isVerifiedAdaptiveCleanup(cleanupOutcome));
   const matched = typeof item.matchedExpectation === "boolean" ? item.matchedExpectation : outcome === "PASS" ? true : outcome === "FAIL" ? false : undefined;
   const semantics = Object.fromEntries(["category", "surface", "resource", "operation", "actor", "boundary", "kind", "routeAliases", "protocols", "actorModel", "actorAliases", "resourceAliases", "targetType"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));
   const result = Object.fromEntries(["outcome", "observedDecision", "cleanupOutcome", "reasonCode", "identityConfirmed", "preStateVerified", "postStateVerified"].flatMap((key) => item[key] === undefined ? [] : [[key, item[key]]]));

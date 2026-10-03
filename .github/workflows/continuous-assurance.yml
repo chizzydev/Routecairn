@@ -59,7 +59,7 @@ jobs:
   quality:
     name: Static quality and coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -69,6 +69,8 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint
+      - run: npm run standards:check
+      - run: npm run dashboard:typecheck
       - run: npm run architecture:check
       - run: npm run release:verify
       - name: Coverage gate
@@ -108,7 +110,6 @@ jobs:
 
   mutation-safety:
     name: Critical safety mutation score
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -176,7 +177,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build, pack, install, and exercise the published artifact
-        run: npm run package:smoke
+        run: npm run package:smoke -- --pack-destination .routecairn-release/ci
+      - name: Retain the verified candidate package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: candidate-package-${{ github.sha }}
+          path: .routecairn-release/ci/*.tgz
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90
 
   control-plane-image:
     name: Self-hosted control-plane image acceptance
@@ -234,7 +243,7 @@ jobs:
           retention-days: 30
 
   credibility-corpus:
-    name: Public 240-case detection scorecard
+    name: Public 576-case repeated detection scorecard
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -243,9 +252,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
       - run: npm ci
       - name: Build and execute the multi-language credibility corpus
-        run: npm run build && node dist/cli/index.js benchmark credibility --python python3 --repetitions 1 --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-credibility
+        run: npm run build && node dist/cli/index.js benchmark credibility --python python3 --go go --repetitions 3 --baseline benchmarks/scorecards/2.0.0/reference-windows-node24/benchmark-result.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-credibility
       - name: Preserve the versioned public scorecard and raw evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -256,20 +272,247 @@ jobs:
           include-hidden-files: true
           retention-days: 90
 
+  native-oast:
+    name: Native OAST / ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Install pinned isolated parser/template runtimes
+        run: |
+          python -m pip install --disable-pip-version-check --only-binary=:all: --target .routecairn-oast-lab/python Jinja2==3.1.6 MarkupSafe==3.0.3
+      - name: Execute native TLS/DNS and active OAST runtime acceptance
+        run: npm run acceptance:oast -- --python-path .routecairn-oast-lab/python --output .routecairn-oast-lab/evidence
+      - name: Preserve native OAST evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-oast-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-oast-lab/evidence/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 90
+
   assurance-gate:
     name: Required assurance gate
     if: always()
-    needs: [quality, test-shards, cross-platform, browser-chromium, release-package, control-plane-image, broader-acceptance, credibility-corpus]
+    needs: [mutation-safety, quality, test-shards, cross-platform, browser-chromium, release-package, control-plane-image, broader-acceptance, credibility-corpus, native-oast, attack-graph, protocol-semantics, module-ecosystem, module-container, scale-native, scale-kubernetes]
     runs-on: ubuntu-latest
     steps:
       - name: Reject incomplete assurance
         env:
-          CROSS_PLATFORM: ${{ needs.cross-platform.result }}
-          QUALITY: ${{ needs.quality.result }}
-          TEST_SHARDS: ${{ needs.test-shards.result }}
-          BROWSER: ${{ needs.browser-chromium.result }}
-          RELEASE_PACKAGE: ${{ needs.release-package.result }}
-          CONTROL_PLANE_IMAGE: ${{ needs.control-plane-image.result }}
-          BROADER_ACCEPTANCE: ${{ needs.broader-acceptance.result }}
-          CREDIBILITY: ${{ needs.credibility-corpus.result }}
-        run: test "$QUALITY" = success && test "$TEST_SHARDS" = success && test "$CROSS_PLATFORM" = success && test "$BROWSER" = success && test "$RELEASE_PACKAGE" = success && test "$CONTROL_PLANE_IMAGE" = success && test "$BROADER_ACCEPTANCE" = success && test "$CREDIBILITY" = success
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          node -e 'const jobs=JSON.parse(process.env.NEEDS_JSON); const failed=Object.entries(jobs).filter(([,job])=>job.result!=="success"); if(failed.length){console.error(failed.map(([name,job])=>name+": "+job.result).join("\n"));process.exit(1);}'
+
+  protocol-semantics:
+    name: Native protocol and intermediary acceptance
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Download committed native proxy versions and verify archive hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $PWD '.routecairn-protocol-lab/tools'
+          New-Item -ItemType Directory -Path $tools -Force | Out-Null
+          $archives = @(
+            @{ Name='caddy'; Url='https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_windows_amd64.zip'; Sha256='1708333f79e274c7697285afe6d592ab39314e0b131e9ec6bea08ad27df62ebf' },
+            @{ Name='nginx'; Url='https://nginx.org/download/nginx-1.31.6.zip'; Sha256='bb65edcfc22a2214a4afaac59f038f560c02b98d4b49c5dca1206d3cc5d631c9' }
+          )
+          foreach ($archive in $archives) {
+            $zip = Join-Path $tools ($archive.Name + '.zip')
+            Invoke-WebRequest -Uri $archive.Url -OutFile $zip
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $archive.Sha256) { throw 'Native archive checksum mismatch.' }
+            Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tools $archive.Name)
+          }
+          "ROUTECAIRN_CADDY_BINARY=$(Join-Path $tools 'caddy/caddy.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ROUTECAIRN_NGINX_BINARY=$(Join-Path $tools 'nginx/nginx-1.31.6/nginx.exe')" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Run module, native datagram and real intermediary acceptance
+        run: npm run acceptance:protocol-semantics -- --output .routecairn-protocol-lab/ci
+      - name: Preserve protocol deployment evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: protocol-semantics-${{ github.sha }}-${{ github.run_attempt }}
+          path: .routecairn-protocol-lab/ci/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  attack-graph:
+    name: Attack graph / ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm run dashboard:build
+      - name: Graph, compiler, approval, runtime cleanup and UI gate
+        run: npm run acceptance:attack-graph -- --output .routecairn-attack-graph-lab/ci
+      - name: Preserve attack graph operational evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: attack-graph-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-attack-graph-lab/ci/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  module-ecosystem:
+    name: Module ecosystem / ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run acceptance:modules -- --output .routecairn-module-lab/ci
+      - name: Retain signed distribution and execution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: module-ecosystem-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-module-lab/ci/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  module-container:
+    name: Network-isolated module execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Resolve official Node runtime to an immutable container digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull node:24.13.0-bookworm-slim
+          image=$(docker image inspect --format '{{index .RepoDigests 0}}' node:24.13.0-bookworm-slim)
+          [[ "$image" =~ @sha256:[a-f0-9]{64}$ ]]
+          echo "ROUTECAIRN_MODULE_CONTAINER_IMAGE=$image" >> "$GITHUB_ENV"
+      - run: npm run acceptance:modules -- --output .routecairn-module-lab/container-ci
+      - name: Preserve container runtime proof and digest
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: module-container-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-module-lab/container-ci/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 30
+
+  scale-native:
+    name: Live PostgreSQL / MinIO / KMS SDK / identities
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install checksum-pinned native services and source-built MinIO
+        shell: pwsh
+        run: ./scripts/setup-scale-lab.ps1
+      - run: npm run build:release
+      - run: npm run acceptance:scale -- --output .routecairn-scale-lab/ci-native
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scale-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-scale-lab/ci-native/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+
+  scale-kubernetes:
+    name: Actual Helm fleet and zone-bound worker pods
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install verified pinned kind and Helm tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .routecairn-scale-lab/tools
+          curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.29.0/kind-linux-amd64 -o .routecairn-scale-lab/tools/kind
+          curl -fsSL https://github.com/kubernetes-sigs/kind/releases/download/v0.29.0/kind-linux-amd64.sha256sum | sed 's/kind-linux-amd64/.routecairn-scale-lab\/tools\/kind/' | sha256sum --check
+          chmod +x .routecairn-scale-lab/tools/kind
+          curl -fsSL https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz -o .routecairn-scale-lab/tools/helm.tar.gz
+          expected=$(curl -fsSL https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz.sha256sum | cut -d ' ' -f 1)
+          echo "$expected  .routecairn-scale-lab/tools/helm.tar.gz" | sha256sum --check
+          tar -xzf .routecairn-scale-lab/tools/helm.tar.gz -C .routecairn-scale-lab/tools
+          echo "$PWD/.routecairn-scale-lab/tools/linux-amd64" >> "$GITHUB_PATH"
+      - name: Build the release and pinned MinIO source image
+        run: |
+          npm run build:release
+          docker build -f deploy/control-plane/Dockerfile -t routecairn/scale-lab:ci .
+          docker build -f deploy/control-plane/Minio.Dockerfile -t routecairn/minio:07c3a429bfed .
+      - name: Create an isolated cluster and preload images
+        run: |
+          .routecairn-scale-lab/tools/kind create cluster --name routecairn-scale-ci --kubeconfig .routecairn-scale-lab/kubeconfig --wait 120s
+          kubectl --kubeconfig .routecairn-scale-lab/kubeconfig config rename-context kind-routecairn-scale-ci routecairn-scale-ci
+          .routecairn-scale-lab/tools/kind load docker-image --name routecairn-scale-ci routecairn/scale-lab:ci routecairn/minio:07c3a429bfed
+      - name: Run chart deployment and cleanup acceptance
+        run: npm run acceptance:scale:kubernetes -- --context routecairn-scale-ci --kubeconfig .routecairn-scale-lab/kubeconfig --image routecairn/scale-lab:ci --output .routecairn-scale-lab/ci-kubernetes
+      - if: always()
+        run: .routecairn-scale-lab/tools/kind delete cluster --name routecairn-scale-ci
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scale-kubernetes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .routecairn-scale-lab/ci-kubernetes/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

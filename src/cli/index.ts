@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerStandardsCommand } from "./commands/standards.js";
 import { Command } from "commander";
 import { registerDiffCommand } from "./commands/diff.js";
 import { registerDashboardCommand } from "./commands/dashboard.js";
@@ -18,6 +19,8 @@ import { registerValidateBroaderExternalCommand } from "./commands/validateBroad
 import { registerBenchmarkCommand } from "./commands/benchmark.js";
 import { registerAgentCommand } from "./commands/agent.js";
 import { registerOastCommand } from "./commands/oast.js";
+import { registerModulesCommand } from "./commands/modules.js";
+import { registerFleetCommand } from "./commands/fleet.js";
 import { AppError } from "../core/errors/AppError.js";
 import { createLogger } from "../core/logging/Logger.js";
 
@@ -49,6 +52,9 @@ export function createCli(): Command {
   registerBenchmarkCommand(program);
   registerAgentCommand(program);
   registerOastCommand(program);
+  registerModulesCommand(program);
+  registerFleetCommand(program);
+  registerStandardsCommand(program);
 
   return program;
 }

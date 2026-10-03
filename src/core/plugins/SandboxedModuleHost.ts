@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -22,8 +22,14 @@ const outputSchema = z.object({
 });
 
 export class SandboxedModuleHost {
+  public constructor(private readonly containerImage = process.env.ROUTECAIRN_MODULE_CONTAINER_IMAGE) {
+    if (containerImage && !/^[a-zA-Z0-9./:_-]+@sha256:[a-f0-9]{64}$/.test(containerImage)) throw new Error("SDK_CONTAINER_IMAGE_DIGEST_REQUIRED");
+  }
   public validatePackage(packageDirectory: string, manifestInput: unknown): { manifest: ThirdPartyModuleManifest; digest: string; entrypoint: string } {
     const manifest = thirdPartyModuleManifestSchema.parse(manifestInput); const root = realpathSync(resolve(packageDirectory)); const entrypoint = realpathSync(resolve(root, manifest.entrypoint));
+    const embeddedPath = resolve(root, "routecairn.module.json");
+    if (lstatSync(embeddedPath).size > 256 * 1024 || lstatSync(embeddedPath).isSymbolicLink()) throw new Error("SDK_MANIFEST_INVALID");
+    if (JSON.stringify(thirdPartyModuleManifestSchema.parse(JSON.parse(readFileSync(embeddedPath, "utf8")))) !== JSON.stringify(manifest)) throw new Error("SDK_MANIFEST_MISMATCH");
     if (entrypoint !== root && !entrypoint.startsWith(`${root}\\`) && !entrypoint.startsWith(`${root}/`)) throw new Error("SDK_ENTRYPOINT_OUTSIDE_PACKAGE");
     const stat = statSync(entrypoint); if (!stat.isFile() || stat.size > 2 * 1024 * 1024) throw new Error("SDK_ENTRYPOINT_INVALID");
     validateSchema(manifest.inputSchema);
@@ -36,10 +42,11 @@ export class SandboxedModuleHost {
     assertNoSecretFields(input, 0);
     assertSchema(input, validated.manifest.inputSchema, "$", 0);
     if (brokerBinding && !validated.manifest.capabilities.requestBroker) throw new Error("SDK_REQUEST_BROKER_NOT_DECLARED");
-    let capabilityBroker: ModuleCapabilityBroker | undefined; let snapshotDirectory: string | undefined;
+    let capabilityBroker: ModuleCapabilityBroker | undefined; let snapshotDirectory: string | undefined; let containerName: string | undefined;
     try {
     capabilityBroker = brokerBinding && validated.manifest.capabilities.requestBroker ? new ModuleCapabilityBroker(validated.manifest.capabilities.requestBroker, brokerBinding, validated.digest) : undefined;
     snapshotDirectory = snapshotPackage(realpathSync(resolve(packageDirectory)), validated.digest); const snapshotEntrypoint = realpathSync(resolve(snapshotDirectory, validated.manifest.entrypoint));
+    if (this.containerImage) { const permissions = (path: string): void => { const stat = lstatSync(path); chmodSync(path, stat.isDirectory() ? 0o755 : 0o444); if (stat.isDirectory()) for (const name of readdirSync(path)) permissions(join(path, name)); }; permissions(snapshotDirectory); }
     const runner = fileURLToPath(new URL("./ThirdPartyModuleRunner.mjs", import.meta.url));
     const args = [
       permissionFlag(),
@@ -51,11 +58,15 @@ export class SandboxedModuleHost {
       String(validated.manifest.outputLimit)
     ];
     return await new Promise((resolvePromise, reject) => {
-      const child = spawn(process.execPath, args, { cwd: snapshotDirectory, env: { PATH: process.env.PATH ?? "", SystemRoot: process.env.SystemRoot ?? "", TEMP: process.env.TEMP ?? "", TMP: process.env.TMP ?? "" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      containerName = this.containerImage ? `routecairn-module-${randomUUID()}` : undefined;
+      if (this.containerImage && [snapshotDirectory!, runner].some((path) => /[,\r\n]/.test(path))) throw new Error("SDK_CONTAINER_MOUNT_PATH_INVALID");
+      const memory = validated.manifest.permissions.maxMemoryMb + 64;
+      const launchArgs = this.containerImage ? ["run", "--rm", "--name", containerName!, "--interactive", "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--pids-limit=32", `--memory=${memory}m`, `--memory-swap=${memory}m`, "--cpus=1", "--user=65534:65534", "--mount", `type=bind,source=${snapshotDirectory},target=/package,readonly`, "--mount", `type=bind,source=${runner},target=/runtime/runner.mjs,readonly`, "--workdir=/package", this.containerImage, "node", ...args.slice(0, 1), `--allow-fs-read=${validated.manifest.permissions.filesystem === "PACKAGE_READ_ONLY" ? "/package" : `/package/${validated.manifest.entrypoint}`}`, "--allow-fs-read=/runtime/runner.mjs", `--max-old-space-size=${validated.manifest.permissions.maxMemoryMb}`, "/runtime/runner.mjs", `/package/${validated.manifest.entrypoint}`, String(validated.manifest.outputLimit)] : args;
+      const child = spawn(this.containerImage ? "docker" : process.execPath, launchArgs, { cwd: snapshotDirectory, env: { PATH: process.env.PATH ?? "", SystemRoot: process.env.SystemRoot ?? "", TEMP: process.env.TEMP ?? "", TMP: process.env.TMP ?? "" }, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       let stdout = Buffer.alloc(0); let stdoutBytes = 0; let stderr = ""; let settled = false; let finalResult: unknown; let finalCount = 0; const requestIds = new Set<string>(); const rpcTasks = new Set<Promise<void>>();
       const finish = (error?: Error, value?: z.infer<typeof outputSchema> & { capabilitySummary: ModuleCapabilitySummary }) => { if (settled) return; settled = true; clearTimeout(timer); error ? reject(error) : resolvePromise(value!); };
-      const fail = (error: Error) => { child.kill("SIGKILL"); finish(error); };
-      const timer = setTimeout(() => { child.kill("SIGKILL"); finish(new Error("SDK_RUNTIME_LIMIT_EXCEEDED")); }, validated.manifest.permissions.maxRuntimeMs); timer.unref();
+      const fail = (error: Error) => { capabilityBroker?.cancel(); child.kill("SIGKILL"); finish(error); };
+      const timer = setTimeout(() => fail(new Error("SDK_RUNTIME_LIMIT_EXCEEDED")), validated.manifest.permissions.maxRuntimeMs); timer.unref();
       const rpcLimit = Math.min(20 * 1024 * 1024, 2 * 1024 * 1024 + (validated.manifest.capabilities.requestBroker?.maxRequests ?? 0) * ((validated.manifest.capabilities.requestBroker?.maxRequestBytes ?? 0) + 64 * 1024));
       const writeRpc = (value: unknown) => { if (!child.stdin.destroyed && child.stdin.writable) child.stdin.write(`${JSON.stringify(value)}\n`); };
       const processLine = (line: Buffer) => {
@@ -74,17 +85,18 @@ export class SandboxedModuleHost {
         })();
         rpcTasks.add(task); void task.finally(() => rpcTasks.delete(task));
       };
-      child.stdout.on("data", (chunk: Buffer) => { stdoutBytes += chunk.length; if (stdoutBytes > rpcLimit) return fail(new Error("SDK_OUTPUT_LIMIT_EXCEEDED")); stdout = Buffer.concat([stdout, chunk]); let newline: number; while ((newline = stdout.indexOf(0x0a)) >= 0) { const line = stdout.subarray(0, newline); stdout = stdout.subarray(newline + 1); if (line.length) processLine(line); } });
+      child.stdout.on("data", (chunk: Buffer) => { if (settled) return; stdoutBytes += chunk.length; if (stdoutBytes > rpcLimit) return fail(new Error("SDK_OUTPUT_LIMIT_EXCEEDED")); stdout = Buffer.concat([stdout, chunk]); let newline: number; while (!settled && (newline = stdout.indexOf(0x0a)) >= 0) { const line = stdout.subarray(0, newline); stdout = stdout.subarray(newline + 1); if (line.length) processLine(line); } if (stdout.length > Math.max(1024 * 1024, (validated.manifest.capabilities.requestBroker?.maxRequestBytes ?? 0) + 64 * 1024)) fail(new Error("SDK_RPC_MESSAGE_LIMIT_EXCEEDED")); });
       child.stderr.on("data", (chunk) => { if (stderr.length < 4000) stderr += String(chunk); });
       child.stdin.on("error", () => undefined);
       child.once("error", (error) => finish(error));
       child.once("exit", async (code) => { if (settled) return; if (stdout.length) processLine(stdout); await Promise.allSettled([...rpcTasks]); if (settled) return; if (code !== 0) return finish(new Error(`SDK_PROCESS_FAILED:${safe(stderr)}`)); if (finalCount !== 1) return finish(new Error("SDK_OUTPUT_INVALID")); try { const output = outputSchema.parse(finalResult); finish(undefined, { ...output, capabilitySummary: capabilityBroker?.summary() ?? disabledCapabilitySummary() }); } catch (error) { finish(error instanceof Error ? error : new Error("SDK_OUTPUT_INVALID")); } });
       writeRpc({ protocolVersion: 1, type: "init", input: JSON.parse(serialized), capabilities: { requestBroker: Boolean(capabilityBroker) } });
-    }); } finally { await capabilityBroker?.close(); if (snapshotDirectory) rmSync(snapshotDirectory, { recursive: true, force: true }); }
+    }); } finally { await capabilityBroker?.close(); if (containerName) await removeModuleContainer(containerName); if (snapshotDirectory) rmSync(snapshotDirectory, { recursive: true, force: true }); }
   }
 }
 
 export function sandboxExecutionId(): string { return randomUUID(); }
+async function removeModuleContainer(name: string): Promise<void> { await new Promise<void>((done, reject) => { const child = spawn("docker", ["rm", "--force", name], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true }); let stderr = ""; child.stderr.on("data", (chunk) => { if (stderr.length < 2000) stderr += String(chunk); }); const timer = setTimeout(() => { child.kill("SIGKILL"); reject(new Error("SDK_CONTAINER_CLEANUP_FAILED")); }, 5000); child.once("error", () => { clearTimeout(timer); reject(new Error("SDK_CONTAINER_CLEANUP_FAILED")); }); child.once("exit", (code) => { clearTimeout(timer); if (code === 0 || /No such container/i.test(stderr)) done(); else reject(new Error("SDK_CONTAINER_CLEANUP_FAILED")); }); }); }
 function safe(value: string): string { return /\b(SDK_[A-Z0-9_]{3,100})\b/.exec(value.toUpperCase())?.[1] ?? "RUNTIME"; }
 
 function permissionFlag(): string {
@@ -93,13 +105,15 @@ function permissionFlag(): string {
 }
 
 function digestPackage(root: string): string {
-  const files: string[] = []; let bytes = 0;
-  const walk = (directory: string): void => {
+  const files: string[] = []; let bytes = 0; let entries = 0;
+  const walk = (directory: string, depth = 0): void => {
+    if (depth > 16) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED");
     for (const name of readdirSync(directory).sort()) {
+      if (++entries > 512) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED");
       if (["node_modules", ".git"].includes(name)) throw new Error("SDK_PACKAGE_DIRECTORY_REJECTED");
       const path = resolve(directory, name); const stat = lstatSync(path);
       if (stat.isSymbolicLink()) throw new Error("SDK_PACKAGE_SYMLINK_REJECTED");
-      if (stat.isDirectory()) walk(path);
+      if (stat.isDirectory()) walk(path, depth + 1);
       else if (stat.isFile()) { files.push(path); bytes += stat.size; }
       else throw new Error("SDK_PACKAGE_ENTRY_REJECTED");
       if (files.length > 256 || bytes > 10 * 1024 * 1024) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED");
@@ -113,8 +127,9 @@ function digestPackage(root: string): string {
 
 function snapshotPackage(sourceRoot: string, expectedDigest: string): string {
   const destination = mkdtempSync(join(tmpdir(), "routecairn-module-snapshot-"));
+  let files = 0; let bytes = 0; let entries = 0;
   try {
-    const copy = (directory: string): void => { for (const name of readdirSync(directory).sort()) { if (["node_modules", ".git"].includes(name)) throw new Error("SDK_PACKAGE_DIRECTORY_REJECTED"); const source = resolve(directory, name); const stat = lstatSync(source); const target = resolve(destination, relative(sourceRoot, source)); if (stat.isSymbolicLink()) throw new Error("SDK_PACKAGE_SYMLINK_REJECTED"); if (stat.isDirectory()) { mkdirSync(target, { recursive: true }); copy(source); } else if (stat.isFile()) { mkdirSync(dirname(target), { recursive: true }); copyFileSync(source, target); } else throw new Error("SDK_PACKAGE_ENTRY_REJECTED"); } };
+    const copy = (directory: string, depth = 0): void => { if (depth > 16) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED"); for (const name of readdirSync(directory).sort()) { if (++entries > 512) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED"); if (["node_modules", ".git"].includes(name)) throw new Error("SDK_PACKAGE_DIRECTORY_REJECTED"); const source = resolve(directory, name); const stat = lstatSync(source); const target = resolve(destination, relative(sourceRoot, source)); if (stat.isSymbolicLink()) throw new Error("SDK_PACKAGE_SYMLINK_REJECTED"); if (stat.isDirectory()) { mkdirSync(target, { recursive: true }); copy(source, depth + 1); } else if (stat.isFile()) { if (++files > 256 || (bytes += stat.size) > 10 * 1024 * 1024) throw new Error("SDK_PACKAGE_LIMIT_EXCEEDED"); mkdirSync(dirname(target), { recursive: true }); copyFileSync(source, target); } else throw new Error("SDK_PACKAGE_ENTRY_REJECTED"); } };
     copy(sourceRoot); if (digestPackage(destination) !== expectedDigest) throw new Error("SDK_PACKAGE_CHANGED_DURING_SNAPSHOT"); return destination;
   } catch (error) { rmSync(destination, { recursive: true, force: true }); throw error; }
 }

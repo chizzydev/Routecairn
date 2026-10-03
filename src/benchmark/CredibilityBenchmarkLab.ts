@@ -19,16 +19,23 @@ import { benchmarkAuthProfiles } from "./ComprehensiveBenchmarkFixture.js";
 
 type Control = "vulnerable" | "secure" | "near-miss";
 interface Target { id: string; language: string; framework: string; origin: string; reset(): Promise<void>; close(): Promise<void> }
-export interface CredibilityBenchmarkOptions { output?: string; repetitions?: number; baseline?: BenchmarkResult; release?: string; build?: string; pythonCommand?: string }
+export interface CredibilityBenchmarkOptions { output?: string; repetitions?: number; baseline?: BenchmarkResult; release?: string; build?: string; pythonCommand?: string; goCommand?: string }
 
-const variantsPerCategory = 20;
-const targetsRequired = 2;
+const variantsPerCategory = 12;
+export const credibilityCategories = ["object", "function", "sql", "sql-boolean", "sql-union", "redirect", "authentication", "second-order", "nosql", "crlf", "template", "traversal"] as const;
+export const credibilityTargetMatrix = [
+  { id: "node-http", language: "TypeScript", framework: "node:http" },
+  { id: "python-http", language: "Python", framework: "http.server" },
+  { id: "python-wsgi", language: "Python", framework: "wsgiref" },
+  { id: "go-http", language: "Go", framework: "net/http" }
+] as const;
+const targetsRequired = credibilityTargetMatrix.length;
 
-/** Runs 240 real HTTP cases against independently implemented Node and Python fixtures. */
+/** Runs 576 HTTP cases across four process-owned implementations in three languages. */
 export async function runCredibilityBenchmark(options: CredibilityBenchmarkOptions = {}) {
-  const repetitions = options.repetitions ?? 1; if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 10) throw new Error("BENCHMARK_REPETITIONS_INVALID");
+  const repetitions = options.repetitions ?? 3; if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 10) throw new Error("BENCHMARK_REPETITIONS_INVALID");
   const parent = resolve(options.output ?? tmpdir()); await mkdir(parent, { recursive: true }); const directory = await mkdtemp(join(parent, "routecairn-credibility-"));
-  const targets = await startTargets(options.pythonCommand); const previousMutationDirectory = process.env.ROUTECAIRN_MUTATION_DIR;
+  const targets = await startTargets(options.pythonCommand, options.goCommand, directory); const previousMutationDirectory = process.env.ROUTECAIRN_MUTATION_DIR;
   try {
     if (targets.length !== targetsRequired) throw new Error("BENCHMARK_CREDIBILITY_TARGET_MATRIX_INCOMPLETE");
     const runs: BenchmarkRunInput[] = [];
@@ -40,9 +47,13 @@ export async function runCredibilityBenchmark(options: CredibilityBenchmarkOptio
           await target.reset(); const targetDirectory = join(directory, "scans", `run-${repetition + 1}`, target.id); process.env.ROUTECAIRN_MUTATION_DIR = join(directory, "mutation-journals", `run-${repetition + 1}`, target.id);
           const scopeValue = scopeSchema.parse({ ...exampleScope, program: `RouteCairn credibility corpus ${target.id}`, allowedDomains: ["127.0.0.1"], disallowedPaths: [], allowedMethods: ["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"], rateLimitPerSecond: 50, concurrency: 5, respectRobotsTxt: false });
           const scope = await writeJson(targetDirectory, "scope.json", scopeValue); const auth = await writeJson(targetDirectory, "auth.json", benchmarkAuthProfiles(target.origin).primary);
-          const apiGraphql = await writeJson(targetDirectory, "api-graphql.json", apiInput(target)); const activeVulnerability = await writeJson(targetDirectory, "active-vulnerability.json", activeInput(target)); const authenticationLifecycle = await writeJson(targetDirectory, "authentication-lifecycle.json", lifecycleInput(target));
-          const scan = await runScanCommand(`${target.origin}/healthz`, { scope, auth, apiGraphql, activeVulnerability, authenticationLifecycle, profile: "quick", includeModules: ["api-graphql-authorization", "active-vulnerability-validation", "authentication-lifecycle"], replaceProfileModules: true, output: join(targetDirectory, "scan"), maxRequests: "700", cleanupReservedRequests: "100" });
-          const report = JSON.parse(await readFile(scan.reportPath, "utf8")) as RouteCairnReport; requestCount += report.requestAudit.reduce((sum, item) => sum + (item.transmittedRequests ?? (item.outcome === "sent" ? 1 : 0)), 0); reports.push(report);
+          const apiGraphql = await writeJson(targetDirectory, "api-graphql.json", apiInput(target)); const authenticationLifecycle = await writeJson(targetDirectory, "authentication-lifecycle.json", lifecycleInput(target));
+          const active = activeInput(target);
+          for (let offset = 0; offset < active.cases.length; offset += 100) {
+            const activeVulnerability = await writeJson(targetDirectory, `active-vulnerability-${offset}.json`, { ...active, cases: active.cases.slice(offset, offset + 100), maxCases: Math.min(100, active.cases.length - offset) });
+            const scan = await runScanCommand(`${target.origin}/healthz`, { scope, auth, ...(offset === 0 ? { apiGraphql, authenticationLifecycle } : {}), activeVulnerability, profile: "quick", includeModules: offset === 0 ? ["api-graphql-authorization", "active-vulnerability-validation", "authentication-lifecycle"] : ["active-vulnerability-validation"], replaceProfileModules: true, output: join(targetDirectory, `scan-${offset}`), maxRequests: "900", cleanupReservedRequests: offset === 0 ? "60" : "0" });
+            const report = JSON.parse(await readFile(scan.reportPath, "utf8")) as RouteCairnReport; requestCount += report.requestAudit.reduce((sum, item) => sum + (item.transmittedRequests ?? (item.outcome === "sent" ? 1 : 0)), 0); reports.push(report);
+          }
         }
         const report = mergeReports(reports); const runDirectory = join(directory, "scans", `run-${repetition + 1}`); await writeFile(join(runDirectory, "report.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
         const cpu = process.cpuUsage(cpuBefore); runs.push({ report, telemetry: { runtimeMs: performance.now() - started, peakRssBytes, requestCount, transmittedRequestCount: requestCount, cpuUserMicros: cpu.user, cpuSystemMicros: cpu.system } });
@@ -59,15 +70,15 @@ export async function runCredibilityBenchmark(options: CredibilityBenchmarkOptio
 
 export function credibilityTruthManifest(targets: readonly Pick<Target, "id" | "language" | "framework">[]): BenchmarkManifest {
   const cases: BenchmarkTruthCase[] = [];
-  for (const target of targets) for (const category of ["object", "function", "sql", "redirect", "authentication", "second-order"] as const) for (let index = 0; index < variantsPerCategory; index += 1) {
-    const control = controlFor(index); const id = caseId(target.id, category, control, index); const positive = control === "vulnerable"; const workflowId = ["object", "function"].includes(category) ? "api-graphql-authorization" : ["sql", "redirect"].includes(category) ? "active-vulnerability-validation" : "authentication-lifecycle";
-    const categoryName = ({ object: "OBJECT_AUTHORIZATION", function: "FUNCTION_AUTHORIZATION", sql: "SQL_INJECTION", redirect: "OPEN_REDIRECT", authentication: "AUTHENTICATION_LIFECYCLE", "second-order": "SECOND_ORDER_STATE" } as const)[category];
+  for (const target of targets) for (const category of credibilityCategories) for (let index = 0; index < variantsPerCategory; index += 1) {
+    const control = controlFor(index); const id = caseId(target.id, category, control, index); const positive = control === "vulnerable"; const workflowId = ["object", "function"].includes(category) ? "api-graphql-authorization" : !["authentication", "second-order"].includes(category) ? "active-vulnerability-validation" : "authentication-lifecycle";
+    const categoryName = ({ object: "OBJECT_AUTHORIZATION", function: "FUNCTION_AUTHORIZATION", sql: "SQL_INJECTION", redirect: "OPEN_REDIRECT", authentication: "AUTHENTICATION_LIFECYCLE", "second-order": "SECOND_ORDER_STATE", "sql-boolean": "SQL_BOOLEAN_INJECTION", "sql-union": "SQL_UNION_INJECTION", nosql: "NOSQL_INJECTION", crlf: "CRLF_INJECTION", template: "TEMPLATE_INJECTION", traversal: "PATH_TRAVERSAL" } as const)[category];
     cases.push({ id, label: `${target.framework} ${category} ${control} mutant ${index}`, expected: positive ? "FINDING" : "NO_FINDING", selectors: [{ workflowId, caseId: id }], category: categoryName, tags: [target.language, target.framework, category, positive ? "positive" : control === "near-miss" ? "negative-control-near-miss" : "negative-control", "mutant"], language: target.language, framework: target.framework, weaknessId: weakness(category), control: positive ? "VULNERABLE" : control === "near-miss" ? "NEAR_MISS" : "SECURE", complexity: category === "authentication" ? "MULTI_STEP" : category === "second-order" ? "SECOND_ORDER" : "SINGLE_STEP", mutation: { lineage: `${target.id}/${category}/${positive ? "vulnerable" : "secure"}`, operator: mutationOperator(category, index), generation: index + 1 }, required: true });
   }
-  return { schemaVersion: 1, id: "routecairn-public-credibility-corpus", label: "RouteCairn multi-language detection credibility corpus", description: "Versioned public corpus with executable positive, secure, near-miss, multi-step, second-order, and deterministic mutant cases across independent Node and Python HTTP implementations.", cases,
-    thresholds: { minRecall: 1, maxFalsePositiveRate: 0, maxInconclusiveRate: 0, minCoverageCompleteness: 1, minRepetitions: 1, minCasesPerCategory: 40, requireBalancedCategories: true, minCleanupObservationsPerRun: 80, maxCleanupFailures: 0, maxP95RuntimeMs: 240_000, maxPeakRssBytes: 2_500_000_000, maxRequestsPerAssessedCase: 8, minCorpusCases: 240, minPositiveCases: 120, minNegativeCases: 120, minLanguages: 2, minFrameworks: 2, minNearMissControls: 60, minMultiStepCases: 40, minSecondOrderCases: 40, minMutantCases: 240, minYoudenIndex: 1 },
+  return { schemaVersion: 1, id: "routecairn-public-credibility-corpus", label: "RouteCairn multi-language detection credibility corpus", description: "Versioned public corpus with executable positive, secure, near-miss, multi-step, second-order, and deterministic mutant cases across separate Node, Python HTTP/WSGI and Go implementations. These remain self-maintained behavior fixtures, not external acceptance evidence.", cases,
+    thresholds: { minRecall: 1, maxFalsePositiveRate: 0, maxInconclusiveRate: 0, minCoverageCompleteness: 1, minRepetitions: 3, minCasesPerCategory: targets.length * variantsPerCategory, requireBalancedCategories: true, minCleanupObservationsPerRun: targets.length * variantsPerCategory * 2, maxCleanupFailures: 0, maxP95RuntimeMs: 900_000, maxPeakRssBytes: 2_500_000_000, maxRequestsPerAssessedCase: 8, minCorpusCases: cases.length, minPositiveCases: cases.length / 2, minNegativeCases: cases.length / 2, minLanguages: 3, minFrameworks: 4, minNearMissControls: cases.length / 4, minMultiStepCases: targets.length * variantsPerCategory, minSecondOrderCases: targets.length * variantsPerCategory, minMutantCases: cases.length, minYoudenIndex: 1, minCategories: 12, minStabilityRate: 1, minCategoryRecall: 1, maxCategoryFalsePositiveRate: 0, maxCategoryInconclusiveRate: 0 },
     regression: { maxRecallDrop: 0, maxFalsePositiveRateIncrease: 0, maxInconclusiveRateIncrease: 0, maxCoverageDrop: 0, maxYoudenIndexDrop: 0, maxRuntimeIncreaseRatio: 1, maxMemoryIncreaseRatio: 0.75, maxRequestIncreaseRatio: 0.2, failOnCaseRegression: true },
-    corpus: { version: "1.0.0", publisher: "RouteCairn public benchmark laboratory", publishedAt: "2026-09-26T00:00:00.000Z", license: "MIT", independence: "SELF_MAINTAINED", blinded: false }, metadata: { fixture: true, deterministicMutants: true, externalTargetsTested: false, caseCount: cases.length } };
+    corpus: { version: "2.0.0", publisher: "RouteCairn public benchmark laboratory", publishedAt: "2026-09-29T00:00:00.000Z", license: "MIT", independence: "SELF_MAINTAINED", blinded: false }, metadata: { fixture: true, deterministicMutants: true, externalTargetsTested: false, caseCount: cases.length } };
 }
 
 function apiInput(target: Target) {
@@ -81,9 +92,18 @@ function apiInput(target: Target) {
 }
 
 function activeInput(target: Target) {
-  const proof = { allowedRedirectOrigins: [], secureStatuses: [], vulnerableStatuses: [] }; const cases: unknown[] = [];
-  for (const category of ["sql", "redirect"] as const) for (let index = 0; index < variantsPerCategory; index += 1) { const control = controlFor(index); const id = caseId(target.id, category, control, index); const variant = `v${String(index).padStart(2, "0")}`; cases.push({ id, label: id, vulnerabilityClass: category === "sql" ? "SQL_INJECTION" : "OPEN_REDIRECT", actorId: "anonymous", environment: "LOCAL_FIXTURE", request: { url: `${target.origin}/${category === "sql" ? "search" : "redirect"}/${control}/${variant}?${category === "sql" ? "q=fixture" : "next=%2Fhome"}`, method: "GET", headers: {}, injection: { location: "QUERY", name: category === "sql" ? "q" : "next", originalValue: category === "sql" ? "fixture" : "/home" }, operatorConfirmedNonMutating: false }, proof }); }
-  return { schemaVersion: 1, maxRequests: 300, maxResponseBytes: 65_536, maxCases: cases.length, actors: [{ id: "anonymous", safeAlias: "Anonymous", authSlot: "anonymous", relationship: "PUBLIC" }], discovery: { enabled: false, classes: [], maxCandidates: 0, queryParametersOnly: true, includeAuthenticated: false }, cases };
+  const cases: unknown[] = [];
+  const families = ["sql", "sql-boolean", "sql-union", "redirect", "nosql", "crlf", "template", "traversal"] as const;
+  const classes = { sql: "SQL_INJECTION", "sql-boolean": "SQL_INJECTION", "sql-union": "SQL_INJECTION", redirect: "OPEN_REDIRECT", nosql: "NOSQL_INJECTION", crlf: "CRLF_INJECTION", template: "TEMPLATE_INJECTION", traversal: "PATH_TRAVERSAL" };
+  const techniques = { sql: "ERROR", "sql-boolean": "BOOLEAN", "sql-union": "UNION", redirect: "OAUTH_MIX_UP", nosql: "OPERATOR", crlf: "CRLF", template: "SECOND_ORDER", traversal: "PARSER_CANARY" };
+  for (const category of families) for (let index = 0; index < variantsPerCategory; index += 1) {
+    const control = controlFor(index); const id = caseId(target.id, category, control, index); const original = category === "redirect" ? "/home" : category === "traversal" ? "fixture.txt" : "fixture";
+    const name = category === "redirect" ? "next" : "q"; const family = category === "sql" ? "search" : category;
+    cases.push({ id, label: id, vulnerabilityClass: classes[category], actorId: "anonymous", environment: "LOCAL_FIXTURE", request: { url: `${target.origin}/${family}/${control}/v${String(index).padStart(2, "0")}?${name}=${encodeURIComponent(original)}`, method: "GET", headers: {}, injection: { location: "QUERY", name, originalValue: original }, operatorConfirmedNonMutating: false },
+      proof: { allowedRedirectOrigins: [], secureStatuses: category === "template" || category === "traversal" ? [422] : [], vulnerableStatuses: [], ...(category === "nosql" ? { marker: "CORPUS_PRIVATE_DOCUMENT" } : category === "traversal" ? { marker: "CORPUS_PRIVATE_FILE" } : {}) },
+      strategy: { techniques: [techniques[category]], encodings: ["PLAIN"], maxStrategies: 1, approvedRisks: ["PASSIVE_DIFFERENTIAL", ...(category === "template" ? ["STATEFUL_CANARY"] : [])] } });
+  }
+  return { schemaVersion: 1, maxRequests: 500, maxResponseBytes: 65_536, maxCases: Math.min(100, cases.length), actors: [{ id: "anonymous", safeAlias: "Anonymous", authSlot: "anonymous", relationship: "PUBLIC" }], discovery: { enabled: false, classes: [], maxCandidates: 0, queryParametersOnly: true, includeAuthenticated: false }, cases };
 }
 
 function lifecycleInput(target: Target) {
@@ -104,7 +124,20 @@ function mergeReports(reports: readonly RouteCairnReport[]): RouteCairnReport {
 }
 function mergeReportSection(target: Record<string, unknown>, reports: readonly RouteCairnReport[], key: string, arrays: readonly string[]): void { const sections = reports.map((item) => (item as unknown as Record<string, unknown>)[key]).filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")); if (!sections.length) return; const section = { ...sections[0] }; for (const name of arrays) section[name] = sections.flatMap((item) => Array.isArray(item[name]) ? item[name] as unknown[] : []); target[key] = section; }
 
-async function startTargets(pythonCommand = process.env.ROUTECAIRN_PYTHON ?? "python"): Promise<Target[]> { const node = await startNodeTarget(); try { return [node, await startPythonTarget(pythonCommand)]; } catch (error) { await node.close(); throw error; } }
+async function startTargets(pythonCommand = process.env.ROUTECAIRN_PYTHON ?? "python", goCommand = process.env.ROUTECAIRN_GO ?? "go", directory: string): Promise<Target[]> {
+  const targets: Target[] = [];
+  try {
+    targets.push(await startNodeTarget());
+    targets.push(await startPythonTarget(pythonCommand));
+    targets.push(await startPythonTarget(pythonCommand, true));
+    const script = fileURLToPath(new URL("./fixtures/credibility-go.go", import.meta.url));
+    const executable = join(directory, process.platform === "win32" ? "credibility-go.exe" : "credibility-go");
+    await new Promise<void>((done, reject) => { const build = spawn(goCommand, ["build", "-o", executable, script], { stdio: "ignore", windowsHide: true, env: { ...process.env, GOTOOLCHAIN: "local" } }); const timer = setTimeout(() => { build.kill(); reject(new Error("BENCHMARK_GO_BUILD_TIMEOUT")); }, 120_000); build.once("error", (error) => { clearTimeout(timer); reject(error); }); build.once("exit", (code) => { clearTimeout(timer); code === 0 ? done() : reject(new Error("BENCHMARK_GO_BUILD_FAILED")); }); });
+    const child = spawn(executable, [], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    try { const port = await readPythonPort(child); targets.push({ ...credibilityTargetMatrix[3], origin: `http://127.0.0.1:${port}`, reset: async () => { /* case cleanup is authoritative */ }, close: async () => closeChild(child) }); } catch (error) { await closeChild(child); throw error; }
+    return targets;
+  } catch (error) { await Promise.allSettled(targets.map((target) => target.close())); throw error; }
+}
 
 async function startNodeTarget(): Promise<Target> {
   const state = new Map<string, string>(); const server = createServer((request, response) => { void handleNode(request, response, state).catch(() => json(response, 400, { error: "invalid_request" })); }); await new Promise<void>((resolvePromise, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolvePromise(); }); });
@@ -117,6 +150,15 @@ async function handleNode(request: IncomingMessage, response: ServerResponse, st
   if (family === "object") return vulnerable ? json(response, 200, variantIndex % 2 ? { id: "tenant-a-object", tenantId: "tenant-a", record: { dialect: variantIndex } } : { id: "tenant-a-object", tenantId: "tenant-a", variant }) : near ? json(response, 200, variantIndex % 2 ? { kind: "public-help", record: { id: "documentation-example" } } : { kind: "public-help", variant }) : json(response, deniedStatus(variantIndex), { error: variantIndex % 2 ? "resource_hidden" : "forbidden" });
   if (family === "admin") return vulnerable ? json(response, 200, variantIndex % 2 ? { privileged: true, result: { dialect: variantIndex } } : { privileged: true, variant }) : near ? json(response, 200, variantIndex % 2 ? { kind: "public-capability-description", capability: { privileged: false } } : { kind: "public-capability-description", variant }) : json(response, deniedStatus(variantIndex), { error: variantIndex % 2 ? "capability_hidden" : "forbidden" });
   if (family === "search") { const injected = /['"]|%2[27]/i.test(url.search); return vulnerable && injected ? json(response, [400, 422, 500][variantIndex % 3]!, { error: sqlDialect(variantIndex) }) : json(response, 200, { matches: [], variant }); }
+  if (["sql-boolean", "sql-union", "nosql", "crlf", "template", "traversal"].includes(family)) {
+    const q = url.searchParams.get("q") ?? "fixture";
+    if (family === "sql-boolean") return json(response, 200, { matches: vulnerable && q.includes("1'='2") ? [] : ["fixture"] });
+    if (family === "sql-union") { const marker = /UNION SELECT '([^']+)'/i.exec(q)?.[1]; return json(response, 200, { matches: vulnerable && marker ? [marker] : [] }); }
+    if (family === "nosql") { let operator = false; try { operator = typeof JSON.parse(q).$ne === "string"; } catch { /* scalar query */ } return json(response, 200, { matches: vulnerable && operator ? ["CORPUS_PRIVATE_DOCUMENT"] : [] }); }
+    if (family === "crlf") { const header = /\r\nX-RouteCairn-Proof: ([A-Za-z0-9_]+)/.exec(q)?.[1]; if (vulnerable && header) response.setHeader("x-routecairn-proof", header); return json(response, 200, { accepted: true }); }
+    if (family === "template") { if (!vulnerable && q.includes("{{")) return json(response, 422, { error: "literal_only", ...(near ? { example: q } : {}) }); return json(response, 200, { rendered: vulnerable ? q.replace("{{7*7}}", "49") : q }); }
+    if (family === "traversal") { if (!vulnerable && q.includes("../")) return json(response, 422, { error: "path_rejected", ...(near ? { example: "../documentation.txt" } : {}) }); return json(response, 200, { content: vulnerable && q.includes("../") ? "CORPUS_PRIVATE_FILE" : "public file" }); }
+  }
   if (family === "redirect") { response.writeHead([301, 302, 307, 308][variantIndex % 4]!, { location: vulnerable ? url.searchParams.get("next") ?? "/home" : near ? `https://routecairn.invalid.example/safe/${variantIndex}` : `/home?variant=${variantIndex}`, "content-length": "0" }).end(); return; }
   if (family === "auth" && operation === "login" && request.method === "POST") { const fields = new URLSearchParams(await requestBody(request)); const known = fields.get("username") === "known@benchmark.test"; if (vulnerable && !known) return json(response, 404, { error: "account_not_found", recovery: true }); return json(response, near ? 404 : 401, { error: "invalid_credentials" }); }
   if (family === "auth" && operation === "cleanup" && request.method === "POST") { response.writeHead(204).end(); return; }
@@ -124,17 +166,17 @@ async function handleNode(request: IncomingMessage, response: ServerResponse, st
   json(response, 404, { error: "not_found" });
 }
 
-async function startPythonTarget(command: string): Promise<Target> {
-  const script = fileURLToPath(new URL("./fixtures/credibility-python.py", import.meta.url)); const child = spawn(command, [script], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true }); const port = await readPythonPort(child); const origin = `http://127.0.0.1:${port}`;
-  return { id: "python-http", language: "Python", framework: "http.server", origin, reset: async () => { /* every case cleanup is authoritative */ }, close: async () => closeChild(child) };
+async function startPythonTarget(command: string, wsgi = false): Promise<Target> {
+  const script = fileURLToPath(new URL("./fixtures/credibility-python.py", import.meta.url)); const child = spawn(command, [script, ...(wsgi ? ["--wsgi"] : [])], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true }); let port: number; try { port = await readPythonPort(child); } catch (error) { await closeChild(child); throw error; } const origin = `http://127.0.0.1:${port}`;
+  return { id: wsgi ? "python-wsgi" : "python-http", language: "Python", framework: wsgi ? "wsgiref" : "http.server", origin, reset: async () => { /* every case cleanup is authoritative */ }, close: async () => closeChild(child) };
 }
 type FixtureChild = ChildProcessByStdio<null, Readable, Readable>;
 async function readPythonPort(child: FixtureChild): Promise<number> { return new Promise((resolvePromise, reject) => { let stdout = ""; let stderr = ""; const timer = setTimeout(() => { cleanup(); child.kill(); reject(new Error("BENCHMARK_PYTHON_START_TIMEOUT")); }, 10_000); const cleanup = () => { clearTimeout(timer); child.stdout.off("data", onData); child.stderr.off("data", onError); child.off("error", fail); child.off("exit", exited); }; const fail = (error: Error) => { cleanup(); reject(error); }; const exited = () => fail(new Error(`BENCHMARK_PYTHON_EXITED:${stderr.slice(0, 240)}`)); const onError = (data: Buffer) => { stderr += data.toString("utf8"); }; const onData = (data: Buffer) => { stdout += data.toString("utf8"); const newline = stdout.indexOf("\n"); if (newline < 0) return; try { const value = JSON.parse(stdout.slice(0, newline)) as { port?: unknown }; if (!Number.isInteger(value.port) || Number(value.port) < 1) throw new Error(); cleanup(); resolvePromise(Number(value.port)); } catch { fail(new Error("BENCHMARK_PYTHON_PORT_INVALID")); } }; child.stdout.on("data", onData); child.stderr.on("data", onError); child.once("error", fail); child.once("exit", exited); }); }
 async function closeChild(child: FixtureChild): Promise<void> { if (child.exitCode !== null) return; child.kill(); await Promise.race([once(child, "exit"), new Promise((resolvePromise) => setTimeout(resolvePromise, 2000))]); if (child.exitCode === null) child.kill("SIGKILL"); }
 
-function controlFor(index: number): Control { return index < 10 ? "vulnerable" : index < 15 ? "secure" : "near-miss"; }
-function caseId(target: string, category: string, control: Control, index: number): string { const targets: Record<string, string> = { "node-http": "nh", "python-http": "ph" }; const categories: Record<string, string> = { object: "obj", function: "fn", sql: "sql", redirect: "red", authentication: "auth", "second-order": "so" }; const controls: Record<Control, string> = { vulnerable: "v", secure: "s", "near-miss": "n" }; return `${targets[target] ?? target.slice(0, 8)}-${categories[category] ?? category.slice(0, 8)}-${controls[control]}-${String(index).padStart(2, "0")}`; }
-function weakness(category: string): string { return ({ object: "CWE-639", function: "CWE-862", sql: "CWE-89", redirect: "CWE-601", authentication: "CWE-204", "second-order": "CWE-116" } as Record<string, string>)[category]!; }
+function controlFor(index: number): Control { return index < 6 ? "vulnerable" : index < 9 ? "secure" : "near-miss"; }
+function caseId(target: string, category: string, control: Control, index: number): string { const targets: Record<string, string> = { "node-http": "nh", "python-http": "ph", "python-wsgi": "pw", "go-http": "gh" }; const categories: Record<string, string> = { object: "obj", function: "fn", sql: "sql", redirect: "red", authentication: "auth", "second-order": "so" }; const controls: Record<Control, string> = { vulnerable: "v", secure: "s", "near-miss": "n" }; return `${targets[target] ?? target.slice(0, 8)}-${categories[category] ?? category.slice(0, 8)}-${controls[control]}-${String(index).padStart(2, "0")}`; }
+function weakness(category: string): string { return ({ object: "CWE-639", function: "CWE-862", sql: "CWE-89", redirect: "CWE-601", authentication: "CWE-204", "second-order": "CWE-116", "sql-boolean": "CWE-89", "sql-union": "CWE-89", nosql: "CWE-943", crlf: "CWE-113", template: "CWE-1336", traversal: "CWE-22" } as Record<string, string>)[category]!; }
 function mutationOperator(category: string, index: number): string { const operators: Record<string, string[]> = { object: ["denial-status", "response-shape", "nested-public-lookalike"], function: ["denial-status", "capability-shape", "nested-boolean-lookalike"], sql: ["database-error-dialect", "error-status", "literal-canary-neutralization"], redirect: ["redirect-status", "origin-lookalike", "relative-location"], authentication: ["account-error-status", "response-shape", "equal-error-control"], "second-order": ["stored-value-encoding", "state-key-layout", "cleanup-path"] }; const values = operators[category] ?? ["route-layout"]; return values[index % values.length]!; }
 function deniedStatus(index: number): number { return [401, 403, 404][index % 3]!; }
 function sqlDialect(index: number): string { return ["SQL syntax error near corpus canary", "PostgreSQL error: unterminated quoted string", "MySQL warning: invalid query", "ORA-00933 corpus fixture", "SQLSTATE[42000] corpus fixture"][index % 5]!; }

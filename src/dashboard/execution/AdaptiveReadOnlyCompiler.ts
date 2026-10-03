@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { adaptiveCredentialHeaderNames, adaptiveHttpUrl, createAdaptiveResponseMatcher, isAnonymousAdaptiveRequest, isConclusiveAdaptiveOutcome } from "./AdaptiveEvidenceSafety.js";
 import type { RouteCairnReport } from "../../reports/ReportTypes.js";
 import { apiGraphqlInputSchema } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
 import { billingEntitlementInputSchema } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
@@ -7,6 +8,7 @@ import { operationalEndpointSecurityInputSchema } from "../../modules/operationa
 import { supabaseAuthorizationInputSchema } from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
 
 export interface AdaptiveRouteEvidence {
+  origin?: string;
   protocol: "REST" | "GRAPHQL";
   method: string;
   pathTemplate: string;
@@ -37,6 +39,7 @@ export interface AdaptiveCompiledReadOnlyCase {
  */
 export function compileRouteReadOnlyCase(report: RouteCairnReport, route: AdaptiveRouteEvidence): AdaptiveCompiledReadOnlyCase | undefined {
   if (route.stateChanging || !["GET", "HEAD", "OPTIONS"].includes(route.method)) return;
+  if (route.origin && route.origin !== new URL(report.target).origin) return;
   const url = executableUrl(report.target, route.pathTemplate);
   if (!url) return;
   const observed = exactAnonymousObservation(report, url, route.method);
@@ -78,7 +81,7 @@ export function compileGraphqlIntrospectionCase(report: RouteCairnReport, path: 
   const url = executableUrl(report.target, path);
   if (!url) return;
   const observed = exactAnonymousObservation(report, url, "POST");
-  const prior = report.apiGraphql?.checks.find((check) => check.kind === "GRAPHQL_INTROSPECTION" && check.routeAliases.some((alias) => report.apiGraphql?.inventory.some((route) => route.safeAlias === alias && route.path === url.pathname)));
+  const prior = report.apiGraphql?.checks.find((check) => check.kind === "GRAPHQL_INTROSPECTION" && isConclusiveAdaptiveOutcome(check.outcome) && report.scanPlan.apiGraphql?.actors.some((actor) => actor.safeAlias === check.actorAlias && actor.authSlot === "anonymous") && check.routeAliases.some((alias) => report.apiGraphql?.inventory.some((route) => route.safeAlias === alias && route.path === url.pathname)));
   if (!observed && !prior) return;
   const expectedClassification = prior?.introspectionClassification && prior.introspectionClassification !== "INCONCLUSIVE" ? prior.introspectionClassification : "OBSERVE";
   const id = `adaptive-graphql-${digest(url.pathname).slice(0, 16)}`;
@@ -104,6 +107,7 @@ export function compileGraphqlIntrospectionCase(report: RouteCairnReport, path: 
 
 export function compileOperationalHealthCase(report: RouteCairnReport, route: AdaptiveRouteEvidence): AdaptiveCompiledReadOnlyCase | undefined {
   if (!/\/(?:health|healthz|status|ready|readiness|live|liveness)\/?$/i.test(route.pathTemplate) || !["GET", "HEAD"].includes(route.method) || route.stateChanging) return;
+  if (route.origin && route.origin !== new URL(report.target).origin) return;
   const url = executableUrl(report.target, route.pathTemplate);
   if (!url) return;
   const observed = exactAnonymousObservation(report, url, route.method);
@@ -135,7 +139,7 @@ export function compileOperationalHealthCase(report: RouteCairnReport, route: Ad
 export function compileSupabaseReadOnlyCase(report: RouteCairnReport, resource: AdaptiveSupabaseEvidence): AdaptiveCompiledReadOnlyCase | undefined {
   const observation = report.supabaseAuthorization?.observations.find((item) => item.resource === resource.resource && item.operation === "SELECT" && item.actor === "ANONYMOUS" && ["GET", "HEAD"].includes(item.method));
   const projectOrigin = report.supabaseAuthorization?.projectOrigin;
-  if (!observation || !projectOrigin) return;
+  if (!observation || !projectOrigin || !isConclusiveAdaptiveOutcome(observation.observedDecision) || !/^[a-f0-9]{64}$/i.test(observation.comparisonFingerprint) || !observation.statusCode) return;
   const url = safeSupabaseUrl(projectOrigin, observation.url);
   if (!url) return;
   const expectedDecision = observation.expectedDecision;
@@ -169,6 +173,7 @@ export function compileSupabaseReadOnlyCase(report: RouteCairnReport, resource: 
  */
 export function compileBillingReadOnlyCase(report: RouteCairnReport, route: AdaptiveRouteEvidence): AdaptiveCompiledReadOnlyCase | undefined {
   if (route.stateChanging || !["GET", "HEAD"].includes(route.method)) return;
+  if (route.origin && route.origin !== new URL(report.target).origin) return;
   const url = executableUrl(report.target, route.pathTemplate);
   if (!url || !/(?:checkout|billing|payment|subscription|plan|entitlement|premium|refund|invoice)/i.test(url.pathname)) return;
   const observed = exactAnonymousObservation(report, url, route.method);
@@ -209,6 +214,7 @@ export function compileBillingReadOnlyCase(report: RouteCairnReport, route: Adap
  */
 export function compileBusinessInvariantReadOnlyCase(report: RouteCairnReport, route: AdaptiveRouteEvidence): AdaptiveCompiledReadOnlyCase | undefined {
   if (route.stateChanging || !["GET", "HEAD"].includes(route.method)) return;
+  if (route.origin && route.origin !== new URL(report.target).origin) return;
   const url = executableUrl(report.target, route.pathTemplate);
   if (!url || !/(?:state|balance|entitlement|subscription|order|cart|quota|limit|invoice|account|profile)/i.test(url.pathname)) return;
   const observed = exactAnonymousObservation(report, url, route.method);
@@ -246,10 +252,11 @@ function compiled(engineId: AdaptiveCompiledReadOnlyCase["engineId"], engineConf
 }
 
 function exactAnonymousObservation(report: RouteCairnReport, url: URL, method: string): { statusCode: number; bodyHash?: string; contentType?: string; auditOutcome: string } | undefined {
-  const audit = report.requestAudit.find((item) => item.method.toUpperCase() === method && sameUrl(item.requestedUrl, url.toString()) && item.outcome === "sent" && !Object.keys(item.requestHeaders).some((name) => /^(?:authorization|cookie|proxy-authorization|x-api-key|apikey)$/i.test(name)));
+  const matchResponse = createAdaptiveResponseMatcher(report.requestAudit ?? [], report.responses ?? [], report.target);
+  const audit = (report.requestAudit ?? []).find((item) => item.method.toUpperCase() === method && sameUrl(item.requestedUrl, url.toString()) && isAnonymousAdaptiveRequest(item, adaptiveCredentialHeaderNames(report)) && matchResponse(item));
   if (!audit) return;
-  const response = report.responses.find((item) => item.method === method && sameUrl(item.requestedUrl, url.toString()) && item.statusCode !== undefined);
-  if (!response?.statusCode) return;
+  const response = matchResponse(audit);
+  if (!response?.statusCode || response.statusCode < 100 || response.statusCode > 599) return;
   return { statusCode: response.statusCode, ...(response.bodyHash ? { bodyHash: response.bodyHash } : {}), ...(response.contentType ? { contentType: response.contentType } : {}), auditOutcome: audit.outcome };
 }
 
@@ -278,7 +285,7 @@ function executableUrl(target: string, path: string): URL | undefined {
 
 function safeSupabaseUrl(origin: string, raw: string): URL | undefined {
   try {
-    const value = new URL(raw, origin);
+    const value = adaptiveHttpUrl(raw, origin); if (!value || value.hash) return;
     if (value.origin !== new URL(origin).origin || value.username || value.password || !isStablePath(value.pathname)) return;
     for (const [name, candidate] of value.searchParams) {
       if (!["select", "limit", "offset", "order"].includes(name) || candidate.length > 160 || /(?:bearer|token|secret|password|signature|@)/i.test(candidate)) return;

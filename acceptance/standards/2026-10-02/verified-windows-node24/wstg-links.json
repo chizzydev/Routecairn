@@ -1,0 +1,494 @@
+{
+  "generatedAt": "2026-10-02T20:54:31.998Z",
+  "framework": "OWASP_WSTG",
+  "version": "4.2",
+  "checked": 97,
+  "passed": 97,
+  "results": [
+    {
+      "id": "WSTG-v42-APIT-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/12-API_Testing/01-Testing_GraphQL/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/01-Testing_for_Credentials_Transported_over_an_Encrypted_Channel/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/02-Testing_for_Default_Credentials/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/03-Testing_for_Weak_Lock_Out_Mechanism/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/04-Testing_for_Bypassing_Authentication_Schema/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/05-Testing_for_Vulnerable_Remember_Password/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/06-Testing_for_Browser_Cache_Weaknesses/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/07-Testing_for_Weak_Password_Policy/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/08-Testing_for_Weak_Security_Question_Answer/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/09-Testing_for_Weak_Password_Change_or_Reset_Functionalities/"
+    },
+    {
+      "id": "WSTG-v42-ATHN-10",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/04-Authentication_Testing/10-Testing_for_Weaker_Authentication_in_Alternative_Channel/"
+    },
+    {
+      "id": "WSTG-v42-ATHZ-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/05-Authorization_Testing/01-Testing_Directory_Traversal_File_Include/"
+    },
+    {
+      "id": "WSTG-v42-ATHZ-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/05-Authorization_Testing/02-Testing_for_Bypassing_Authorization_Schema/"
+    },
+    {
+      "id": "WSTG-v42-ATHZ-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/05-Authorization_Testing/03-Testing_for_Privilege_Escalation/"
+    },
+    {
+      "id": "WSTG-v42-ATHZ-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/05-Authorization_Testing/04-Testing_for_Insecure_Direct_Object_References/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/01-Test_Business_Logic_Data_Validation/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/02-Test_Ability_to_Forge_Requests/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/03-Test_Integrity_Checks/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/04-Test_for_Process_Timing/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/05-Test_Number_of_Times_a_Function_Can_Be_Used_Limits/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/06-Testing_for_the_Circumvention_of_Work_Flows/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/07-Test_Defenses_Against_Application_Misuse/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/08-Test_Upload_of_Unexpected_File_Types/"
+    },
+    {
+      "id": "WSTG-v42-BUSL-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/10-Business_Logic_Testing/09-Test_Upload_of_Malicious_Files/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/01-Testing_for_DOM-based_Cross_Site_Scripting/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/02-Testing_for_JavaScript_Execution/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/03-Testing_for_HTML_Injection/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/04-Testing_for_Client-side_URL_Redirect/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/05-Testing_for_CSS_Injection/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/06-Testing_for_Client-side_Resource_Manipulation/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/07-Testing_Cross_Origin_Resource_Sharing/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/08-Testing_for_Cross_Site_Flashing/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/09-Testing_for_Clickjacking/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-10",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/10-Testing_WebSockets/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-11",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/11-Testing_Web_Messaging/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-12",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/12-Testing_Browser_Storage/"
+    },
+    {
+      "id": "WSTG-v42-CLNT-13",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/11-Client-side_Testing/13-Testing_for_Cross_Site_Script_Inclusion/"
+    },
+    {
+      "id": "WSTG-v42-CONF-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/01-Test_Network_Infrastructure_Configuration/"
+    },
+    {
+      "id": "WSTG-v42-CONF-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/02-Test_Application_Platform_Configuration/"
+    },
+    {
+      "id": "WSTG-v42-CONF-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/03-Test_File_Extensions_Handling_for_Sensitive_Information/"
+    },
+    {
+      "id": "WSTG-v42-CONF-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information/"
+    },
+    {
+      "id": "WSTG-v42-CONF-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/05-Enumerate_Infrastructure_and_Application_Admin_Interfaces/"
+    },
+    {
+      "id": "WSTG-v42-CONF-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/06-Test_HTTP_Methods/"
+    },
+    {
+      "id": "WSTG-v42-CONF-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/07-Test_HTTP_Strict_Transport_Security/"
+    },
+    {
+      "id": "WSTG-v42-CONF-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/08-Test_RIA_Cross_Domain_Policy/"
+    },
+    {
+      "id": "WSTG-v42-CONF-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/09-Test_File_Permission/"
+    },
+    {
+      "id": "WSTG-v42-CONF-10",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/10-Test_for_Subdomain_Takeover/"
+    },
+    {
+      "id": "WSTG-v42-CONF-11",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/11-Test_Cloud_Storage/"
+    },
+    {
+      "id": "WSTG-v42-CRYP-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/01-Testing_for_Weak_Transport_Layer_Security/"
+    },
+    {
+      "id": "WSTG-v42-CRYP-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/02-Testing_for_Padding_Oracle/"
+    },
+    {
+      "id": "WSTG-v42-CRYP-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/03-Testing_for_Sensitive_Information_Sent_via_Unencrypted_Channels/"
+    },
+    {
+      "id": "WSTG-v42-CRYP-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/09-Testing_for_Weak_Cryptography/04-Testing_for_Weak_Encryption/"
+    },
+    {
+      "id": "WSTG-v42-ERRH-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/01-Testing_For_Improper_Error_Handling/"
+    },
+    {
+      "id": "WSTG-v42-ERRH-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/08-Testing_for_Error_Handling/02-Testing_for_Stack_Traces/"
+    },
+    {
+      "id": "WSTG-v42-IDNT-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/03-Identity_Management_Testing/01-Test_Role_Definitions/"
+    },
+    {
+      "id": "WSTG-v42-IDNT-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/03-Identity_Management_Testing/02-Test_User_Registration_Process/"
+    },
+    {
+      "id": "WSTG-v42-IDNT-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/03-Identity_Management_Testing/03-Test_Account_Provisioning_Process/"
+    },
+    {
+      "id": "WSTG-v42-IDNT-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/03-Identity_Management_Testing/04-Testing_for_Account_Enumeration_and_Guessable_User_Account/"
+    },
+    {
+      "id": "WSTG-v42-IDNT-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/03-Identity_Management_Testing/05-Testing_for_Weak_or_Unenforced_Username_Policy/"
+    },
+    {
+      "id": "WSTG-v42-INFO-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/01-Conduct_Search_Engine_Discovery_Reconnaissance_for_Information_Leakage/"
+    },
+    {
+      "id": "WSTG-v42-INFO-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/02-Fingerprint_Web_Server/"
+    },
+    {
+      "id": "WSTG-v42-INFO-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/03-Review_Webserver_Metafiles_for_Information_Leakage/"
+    },
+    {
+      "id": "WSTG-v42-INFO-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/04-Enumerate_Applications_on_Webserver/"
+    },
+    {
+      "id": "WSTG-v42-INFO-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/05-Review_Webpage_Content_for_Information_Leakage/"
+    },
+    {
+      "id": "WSTG-v42-INFO-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/"
+    },
+    {
+      "id": "WSTG-v42-INFO-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/07-Map_Execution_Paths_Through_Application/"
+    },
+    {
+      "id": "WSTG-v42-INFO-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework/"
+    },
+    {
+      "id": "WSTG-v42-INFO-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/09-Fingerprint_Web_Application/"
+    },
+    {
+      "id": "WSTG-v42-INFO-10",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/10-Map_Application_Architecture/"
+    },
+    {
+      "id": "WSTG-v42-INPV-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/01-Testing_for_Reflected_Cross_Site_Scripting/"
+    },
+    {
+      "id": "WSTG-v42-INPV-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/02-Testing_for_Stored_Cross_Site_Scripting/"
+    },
+    {
+      "id": "WSTG-v42-INPV-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/03-Testing_for_HTTP_Verb_Tampering/"
+    },
+    {
+      "id": "WSTG-v42-INPV-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution/"
+    },
+    {
+      "id": "WSTG-v42-INPV-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/06-Testing_for_LDAP_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/07-Testing_for_XML_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/08-Testing_for_SSI_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/09-Testing_for_XPath_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-10",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/10-Testing_for_IMAP_SMTP_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-11",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11-Testing_for_Code_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-12",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/12-Testing_for_Command_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-13",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/13-Testing_for_Buffer_Overflow/"
+    },
+    {
+      "id": "WSTG-v42-INPV-14",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/14-Testing_for_Incubated_Vulnerability/"
+    },
+    {
+      "id": "WSTG-v42-INPV-15",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/15-Testing_for_HTTP_Splitting_Smuggling/"
+    },
+    {
+      "id": "WSTG-v42-INPV-16",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/16-Testing_for_HTTP_Incoming_Requests/"
+    },
+    {
+      "id": "WSTG-v42-INPV-17",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/17-Testing_for_Host_Header_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-18",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server-side_Template_Injection/"
+    },
+    {
+      "id": "WSTG-v42-INPV-19",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/19-Testing_for_Server-Side_Request_Forgery/"
+    },
+    {
+      "id": "WSTG-v42-SESS-01",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/01-Testing_for_Session_Management_Schema/"
+    },
+    {
+      "id": "WSTG-v42-SESS-02",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/02-Testing_for_Cookies_Attributes/"
+    },
+    {
+      "id": "WSTG-v42-SESS-03",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/03-Testing_for_Session_Fixation/"
+    },
+    {
+      "id": "WSTG-v42-SESS-04",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/04-Testing_for_Exposed_Session_Variables/"
+    },
+    {
+      "id": "WSTG-v42-SESS-05",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/05-Testing_for_Cross_Site_Request_Forgery/"
+    },
+    {
+      "id": "WSTG-v42-SESS-06",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/06-Testing_for_Logout_Functionality/"
+    },
+    {
+      "id": "WSTG-v42-SESS-07",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/07-Testing_Session_Timeout/"
+    },
+    {
+      "id": "WSTG-v42-SESS-08",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/08-Testing_for_Session_Puzzling/"
+    },
+    {
+      "id": "WSTG-v42-SESS-09",
+      "status": 200,
+      "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/06-Session_Management_Testing/09-Testing_for_Session_Hijacking/"
+    }
+  ]
+}

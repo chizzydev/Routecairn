@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const assets = [
+  ["src/standards/catalog/official-catalog.json", "dist/standards/catalog/official-catalog.json"],
   ["src/core/plugins/ThirdPartyModuleRunner.mjs", "dist/core/plugins/ThirdPartyModuleRunner.mjs"],
+  ["src/benchmark/fixtures/credibility-go.go", "dist/benchmark/fixtures/credibility-go.go"],
   ["src/benchmark/fixtures/credibility-python.py", "dist/benchmark/fixtures/credibility-python.py"]
 ];
 

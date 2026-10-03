@@ -19,10 +19,41 @@ try {
   const names = new Set(packResult.files.map((entry) => String(entry.path).replace(/^package\//, "").replaceAll("\\", "/")));
 
   const required = [
+    "dist/standards/catalog/official-catalog.json", "dist/standards/StandardsCoverageValidation.js", "dist/cli/commands/standards.js", "standards/NOTICE.md", "standards/sources.lock.json", "docs/STANDARDS_ACCOUNTING.md",
+    "dist/core/plugins/ModuleDistribution.js", "dist/core/plugins/ModuleRegistry.js", "dist/core/plugins/ModuleSdk.d.ts", "dist/cli/commands/modules.js", "docs/MODULE_ECOSYSTEM.md", "examples/modules/security-headers/index.mjs", "examples/modules/framework-fingerprint/index.mjs", "examples/modules/graphql-response/index.mjs", "examples/module-registry.example.json", "deploy/module-registry/compose.yaml",
     "dist/cli/index.js",
     "dist/dashboard/server/DashboardServer.js",
     "dist/core/plugins/ThirdPartyModuleRunner.mjs",
     "dist/modules/protocolSecurity/NativeHttp3Worker.js",
+    "dist/benchmark/IndependentBenchmark.js",
+    "dist/modules/activeVulnerability/ActiveOAuthJourney.js",
+    "dist/modules/activeVulnerability/ActiveFileFixtures.js",
+    "docs/ACTIVE_VULNERABILITY_OPERATIONS.md",
+    "docs/OAST_OPERATIONS.md",
+    "docs/ATTACK_GRAPH_OPERATIONS.md",
+    "docs/PROTOCOL_SEMANTICS_OPERATIONS.md",
+    "dist/modules/protocolSecurity/NativeWebTransport.js",
+    "dist/modules/protocolSecurity/ProtocolGraphqlMultipart.js",
+    "dist/modules/protocolSecurity/ProtocolGrpcFrames.js",
+    "dist/dashboard/execution/AdaptiveEvidenceSafety.js",
+    "dist/modules/apiGraphql/GraphqlDocumentSafety.js",
+    "dist/dashboard/execution/AdaptiveAttackStateGraph.js",
+    "dist/oast/OastDns.js",
+    "dist/oast/OastDnsTransport.js",
+    "dist/oast/OastDeploymentVerification.js",
+    "deploy/oast/compose.yaml",
+    "examples/oast-deployment-verification.example.json",
+    "dist/benchmark/fixtures/credibility-python.py",
+    "dist/benchmark/fixtures/credibility-go.go",
+    "benchmarks/routecairn-credibility-corpus-v2.json",
+    "docs/INDEPENDENT_BENCHMARK.md",
+    "docs/EXTERNAL_ACCEPTANCE.md",
+    "dist/validation/ExternalAcceptanceReadiness.js",
+    "dist/validation/OwnedAcceptanceHistory.js",
+    "dist/validation/OwnedDecideExercise.js",
+    "dist/validation/DecideAcceptanceAccounts.js",
+    "dist/validation/OwnedSupabaseExercise.js",
+    "dist/validation/SupabaseAcceptanceStore.js",
     "apps/dashboard-ui/dist/index.html",
     "examples/protocol-security.example.json",
     "examples/active-vulnerability-validation.example.json",
@@ -43,7 +74,7 @@ try {
     [/\.d\.ts$/, "declaration files"]
   ];
   for (const [pattern, description] of forbidden) {
-    const match = [...names].find((name) => pattern.test(name));
+    const match = [...names].find((name) => name !== "dist/core/plugins/ModuleSdk.d.ts" && pattern.test(name));
     assert(!match, `Published package contains ${description}: ${match}`);
   }
 
@@ -61,7 +92,26 @@ try {
   const installedRoot = join(consumerDirectory, "node_modules", "routecairn");
   const cli = runNode([join(installedRoot, "dist", "cli", "index.js"), "--help"], consumerDirectory);
   assert(/Usage:\s+routecairn/i.test(cli.stdout), "Installed CLI did not render its help output.");
+  assert(cli.stdout.includes("fleet") && cli.stdout.includes("initialize-evidence-storage"), "Installed CLI lacks distributed fleet and bucket administration commands.");
+  const standardsVerification = JSON.parse(runNode([join(installedRoot, "dist/cli/index.js"), "standards", "verify"], consumerDirectory).stdout);
+  assert(standardsVerification.status === "VERIFIED" && standardsVerification.counts.OWASP_ASVS === 345 && standardsVerification.counts.OWASP_WSTG === 97 && standardsVerification.builtInMappings === 111, "Installed standards catalog/mappings failed verification.");
+  const fleetHelp=runNode([join(installedRoot,"dist/cli/index.js"),"fleet","--help"],consumerDirectory);
+  assert(fleetHelp.stdout.includes("--tls-ca") && fleetHelp.stdout.includes("--trust-proxy"), "Installed fleet CLI lacks TLS/ingress controls.");
   assert(cli.stdout.includes("external-acceptance"), "Installed CLI did not expose the external-acceptance workflow.");
+  const modulesHelp = runNode([join(installedRoot, "dist", "cli", "index.js"), "modules", "--help"], consumerDirectory);
+  assert(modulesHelp.stdout.includes("request-signature") && modulesHelp.stdout.includes("install"), "Installed CLI is missing module distribution commands.");
+  const moduleCli = (...args) => JSON.parse(runNode([join(installedRoot, "dist/cli/index.js"), "modules", ...args], consumerDirectory).stdout);
+  const privateKeyPath = join(consumerDirectory, "publisher.key"), publicKeyPath = join(consumerDirectory, "publisher.pub"), trustPath = join(consumerDirectory, "module-trust.json"), payloadPath = join(consumerDirectory, "module-payload.json"), bundlePath = join(consumerDirectory, "module-bundle.json");
+  const generatedKey = moduleCli("keygen", "--private-key", privateKeyPath, "--public-key", publicKeyPath);
+  const expiresAt = new Date(Date.now() + 3600_000).toISOString();
+  await writeFile(trustPath, JSON.stringify({ schemaVersion: 1, publishers: [{ publisher: "package-smoke", modulePrefixes: ["reference"], publicKeyPem: await readFile(publicKeyPath, "utf8"), keyId: generatedKey.keyId, notBefore: new Date(Date.now() - 1000).toISOString(), expiresAt }], revokedKeyIds: [], revokedPackageDigests: [] }));
+  const builtModule = moduleCli("build", "--directory", join(installedRoot, "examples/modules/security-headers"), "--publisher", "package-smoke", "--expires-at", expiresAt, "--output", payloadPath);
+  moduleCli("sign", "--payload", payloadPath, "--private-key", privateKeyPath, "--output", bundlePath);
+  assert(moduleCli("review", "--bundle", bundlePath, "--trust", trustPath).packageApproval === "REQUIRED", "Installed module review lost separate approval.");
+  const installedModule = moduleCli("install", "--bundle", bundlePath, "--trust", trustPath, "--root", join(consumerDirectory, "modules"), "--digest", builtModule.packageDigest);
+  assert(installedModule.approved === false && installedModule.packageDigest === builtModule.packageDigest, "Installed signed module changed digest or granted execution approval.");
+  const oastHelp = runNode([join(installedRoot, "dist", "cli", "index.js"), "oast", "--help"], consumerDirectory);
+  assert(oastHelp.stdout.includes("verify-deployment"), "Installed CLI did not expose public OAST deployment verification.");
 
   const installedAcceptance = join(consumerDirectory, "installed-package-acceptance.mjs");
   await writeFile(installedAcceptance, `
@@ -102,6 +152,7 @@ try {
   assert(protocolSummary?.nativeHttp3 === true, "Installed package did not execute native HTTP/3 acceptance.");
   assert(protocolSummary?.externalCurlRequired === false, "Installed package protocol acceptance still depends on curl.");
   assert(Array.isArray(protocolSummary?.lanes) && protocolSummary.lanes.every((lane) => lane.status === "PASSED"), "Installed package protocol acceptance reported a failed lane.");
+  assert(protocolSummary.lanes.some((lane) => lane.name === "webtransport-native" && lane.checks?.certificateVerification === true && lane.checks?.deniedStatus === 403), "Installed package did not execute verified WebTransport acceptance.");
   const protocolEvidence = JSON.parse(await readFile(join(protocolSummary.outputDirectory, "protocol-acceptance.json"), "utf8"));
   assert(protocolEvidence?.evidenceSha256 === protocolSummary.evidenceSha256, "Installed package protocol evidence digest does not match its summary.");
 

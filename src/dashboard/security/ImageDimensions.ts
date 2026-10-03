@@ -1,4 +1,4 @@
-import { openSync, closeSync, readSync, statSync } from "node:fs";
+import { openSync, closeSync, readSync, fstatSync, constants } from "node:fs";
 
 const maximumHeaderBytes = 1024 * 1024;
 export const maximumPreviewDimension = 16_384;
@@ -7,10 +7,14 @@ export const maximumPreviewPixels = 100_000_000;
 export interface SafeImageDimensions { width: number; height: number; contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; }
 
 export function inspectImageDimensions(path: string, declaredContentType: string): SafeImageDimensions {
-  const size = statSync(path).size;
-  const buffer = Buffer.alloc(Math.min(size, maximumHeaderBytes));
-  const descriptor = openSync(path, "r");
-  try { readSync(descriptor, buffer, 0, buffer.length, 0); } finally { closeSync(descriptor); }
+  const descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  let buffer: Buffer;
+  try {
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile()) throw new Error("Unsafe image file.");
+    buffer = Buffer.alloc(Math.min(stat.size, maximumHeaderBytes));
+    readSync(descriptor, buffer, 0, buffer.length, 0);
+  } finally { closeSync(descriptor); }
   const result = parseImage(buffer);
   if (!result) throw new Error("Image format or dimensions could not be validated.");
   if (result.contentType !== declaredContentType) throw new Error("Image content does not match its declared MIME type.");

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-02T04:22:04.475Z",
+  "provenance": "SELF_MAINTAINED_LOOPBACK_NATIVE_CADDY_NGINX",
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "deploymentSha256": "27ab357e85a0bd0318f3fbc0f38a171f37dc3f5b65374edb3bfc18a88717dc43",
+  "binaries": {
+    "caddy": "5cb9ab71e5756ce72840b8234177a2f40c8b4ab47a806b8e841e2b784e9df62b",
+    "nginx": "2429269c8ea20ce6c5040bb4eb5fd78a28003dfa272f66d146338320353c5f62"
+  },
+  "hopIds": [
+    "caddy",
+    "nginx"
+  ],
+  "frontendProtocols": [
+    "H1",
+    "H2",
+    "H3"
+  ],
+  "upstreamProtocols": [
+    "H1",
+    "H1"
+  ],
+  "cleanup": "CONFIRMED",
+  "report": {
+    "enabled": true,
+    "plannedCases": 4,
+    "executedCases": 4,
+    "passedCases": 2,
+    "failedCases": 0,
+    "inconclusiveCases": 2,
+    "blockedCases": 0,
+    "observations": [
+      {
+        "caseId": "chain-CL_TE",
+        "label": "chain-CL_TE",
+        "kind": "PROXY_CHAIN_DESYNCHRONIZATION",
+        "riskClass": "CRITICAL",
+        "actorAlias": "fixture-owner",
+        "outcome": "INCONCLUSIVE",
+        "reason": "PROXY_CHAIN_MATRIX_INCOMPLETE_OR_AMBIGUITY_ONLY",
+        "messageCount": 0,
+        "eventCount": 0,
+        "comparisonFingerprint": "be3c755d28919a4c40c5f22d565e27359a450766cd6e64ab4b1ba598a9c7d4b8",
+        "structuralCount": 1
+      },
+      {
+        "caseId": "chain-TE_CL",
+        "label": "chain-TE_CL",
+        "kind": "PROXY_CHAIN_DESYNCHRONIZATION",
+        "riskClass": "CRITICAL",
+        "actorAlias": "fixture-owner",
+        "outcome": "INCONCLUSIVE",
+        "reason": "PROXY_CHAIN_MATRIX_INCOMPLETE_OR_AMBIGUITY_ONLY",
+        "messageCount": 0,
+        "eventCount": 0,
+        "comparisonFingerprint": "042dc2bfb0f20284e7bb05a5c5de3be72a0ec32256274eea25ddd382e4734384",
+        "structuralCount": 1
+      },
+      {
+        "caseId": "chain-H2",
+        "label": "chain-H2",
+        "kind": "PROXY_CHAIN_DESYNCHRONIZATION",
+        "riskClass": "CRITICAL",
+        "actorAlias": "fixture-owner",
+        "outcome": "PASS",
+        "reason": "VERIFIED_PROXY_CHAIN_REJECTED_AMBIGUITY",
+        "messageCount": 0,
+        "eventCount": 0,
+        "comparisonFingerprint": "4711ea0bc794b88d43a2c45ea872cf683fea64d040b6d050e6582cbf0be076e3",
+        "structuralCount": 1
+      },
+      {
+        "caseId": "chain-H3",
+        "label": "chain-H3",
+        "kind": "PROXY_CHAIN_DESYNCHRONIZATION",
+        "riskClass": "CRITICAL",
+        "actorAlias": "fixture-owner",
+        "outcome": "PASS",
+        "reason": "VERIFIED_PROXY_CHAIN_REJECTED_AMBIGUITY",
+        "messageCount": 0,
+        "eventCount": 0,
+        "comparisonFingerprint": "7af43384cc19cff8f449ee2ca5250e3d66965e465b0804b0abb76c522acdb831",
+        "structuralCount": 1
+      }
+    ],
+    "notes": [
+      "Streaming payloads are bounded and represented only by counts and structural outcomes.",
+      "WebTransport credentials, when used, are explicit secret-backed application datagrams because the native client does not inject HTTP authentication headers into Extended CONNECT.",
+      "State changes require expiring non-production authorization and verified cleanup.",
+      "HTTP/3 uses the packaged native QUIC runtime with pinned DNS and no HTTP/2 or HTTP/1.1 downgrade."
+    ]
+  }
+}

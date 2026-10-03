@@ -1,13 +1,15 @@
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { createSocket, type Socket as UdpSocket } from "node:dgram";
-import { createServer as createTcpServer, type Server as TcpServer, type Socket } from "node:net";
+import { createServer as createTcpServer, isIP, type Server as TcpServer, type Socket } from "node:net";
 import { readFile } from "node:fs/promises";
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual, X509Certificate } from "node:crypto";
+import type { Server as HttpsServer } from "node:https";
 import { z } from "zod";
 import type { Server } from "node:http";
 import type { OastServiceConfig } from "./OastConfig.js";
 import { OastStore } from "./OastStore.js";
+import { answerOastDns, oastDnsIdentity, parseOastDnsQuery } from "./OastDns.js";
 
 const leaseRequestSchema = z.object({
   tenantId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/), workerId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/), jobId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/), caseId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/),
@@ -17,32 +19,45 @@ const leaseRequestSchema = z.object({
 export class OastService {
   private readonly store: OastStore;
   private http?: Server;
-  private https?: Server;
+  private https?: HttpsServer;
   private udp?: UdpSocket;
   private tcp?: TcpServer;
+  private readonly sockets = new Set<Socket>();
+  private closed = false;
+  private closing?: Promise<void>;
+  private tlsExpiresAt = 0;
+  private windowStartedAt = 0;
+  private requestsInWindow = 0;
+  private maintenance?: NodeJS.Timeout;
 
   public constructor(private readonly config: OastServiceConfig, private readonly secrets: { signingKey: Buffer; tenantTokens: ReadonlyMap<string, string> }) {
     const httpBase = config.publicHttpBaseUrl ?? (config.mode === "SELF_HOSTED" ? `http://${displayHost(config.listenHost)}:${config.httpPort}/` : undefined);
     const httpsBase = config.publicHttpsBaseUrl ?? (config.mode === "SELF_HOSTED" && config.httpsPort ? `https://${displayHost(config.listenHost)}:${config.httpsPort}/` : undefined);
-    this.store = new OastStore(config.databasePath, secrets.signingKey, config.baseDomain.toLowerCase(), httpBase, httpsBase, config.maxLeaseSeconds, config.maxEventsPerLease);
+    this.store = new OastStore(config.databasePath, secrets.signingKey, config.baseDomain.toLowerCase(), httpBase, httpsBase, config.maxLeaseSeconds, config.maxEventsPerLease, Date.now, { maxLeases: config.maxLeases ?? 10000, evidenceRetentionSeconds: config.evidenceRetentionSeconds ?? 7 * 86400 });
   }
 
   public async start(): Promise<void> {
+    if (this.http || this.closed) throw new Error("OAST_SERVICE_ALREADY_STARTED_OR_CLOSED");
     try {
     this.http = createHttpServer((request, response) => { void this.handleHttp(request, response, "HTTP"); });
     hardenHttpServer(this.http);
+    this.http.on("connection", (socket) => this.trackSocket(socket));
     await listen(this.http, this.config.httpPort, this.config.listenHost);
     if (this.config.httpsPort && this.config.tlsKeyPath && this.config.tlsCertPath) {
       const [key, cert] = await Promise.all([readFile(this.config.tlsKeyPath), readFile(this.config.tlsCertPath)]);
-      this.https = createHttpsServer({ key, cert }, (request, response) => { void this.handleHttp(request, response, "HTTPS"); });
+      this.validateCertificate(cert);
+      this.https = createHttpsServer({ key, cert, minVersion: "TLSv1.2", handshakeTimeout: 5000 }, (request, response) => { void this.handleHttp(request, response, "HTTPS"); });
       hardenHttpServer(this.https);
+      this.https.on("connection", (socket) => this.trackSocket(socket as Socket));
       await listen(this.https, this.config.httpsPort, this.config.listenHost);
     }
     this.udp = createSocket(this.config.listenHost.includes(":") ? "udp6" : "udp4");
     this.udp.on("message", (message, remote) => { try { const response = this.handleDns(message, remote.address); if (response) this.udp?.send(response, remote.port, remote.address, () => undefined); } catch { /* Reject malformed or failed callbacks without terminating the listener. */ } });
     await bindUdp(this.udp, this.config.dnsUdpPort, this.config.listenHost);
-    this.tcp = createTcpServer((socket) => this.handleDnsTcp(socket));
+    this.tcp = createTcpServer((socket) => { if (this.trackSocket(socket)) this.handleDnsTcp(socket); });
     await listenTcp(this.tcp, this.config.dnsTcpPort, this.config.listenHost);
+    this.store.prune();
+    this.maintenance = setInterval(() => this.store.prune(), 60000); this.maintenance.unref();
     } catch (error) {
       await this.close().catch(() => undefined);
       throw error;
@@ -50,16 +65,47 @@ export class OastService {
   }
 
   public async close(): Promise<void> {
-    await Promise.all([closeServer(this.http), closeServer(this.https), closeUdp(this.udp), closeTcp(this.tcp)]);
-    this.store.close();
+    if (this.closing) return this.closing;
+    this.closed = true; clearInterval(this.maintenance);
+    for (const socket of this.sockets) socket.destroy();
+    this.closing = (async () => { await Promise.all([closeServer(this.http), closeServer(this.https), closeUdp(this.udp), closeTcp(this.tcp)]); this.store.close(); })();
+    return this.closing;
+  }
+
+  /** Renew certificates atomically, without restarting or losing leases. */
+  public async reloadTls(): Promise<void> {
+    if (!this.https || this.closed || !this.config.tlsKeyPath || !this.config.tlsCertPath) throw new Error("OAST_TLS_LISTENER_UNAVAILABLE");
+    const [key, cert] = await Promise.all([readFile(this.config.tlsKeyPath), readFile(this.config.tlsCertPath)]);
+    const expiry = this.validateCertificate(cert, false);
+    this.https.setSecureContext({ key, cert, minVersion: "TLSv1.2" }); this.tlsExpiresAt = expiry;
+  }
+
+  private validateCertificate(cert: Buffer, update = true): number {
+    const leaf = new X509Certificate(cert), expiry = Date.parse(leaf.validTo);
+    if (Date.parse(leaf.validFrom) > Date.now() || expiry <= Date.now()) throw new Error("OAST_TLS_CERTIFICATE_NOT_CURRENT");
+    const host = new URL(this.config.publicHttpsBaseUrl ?? `https://${displayHost(this.config.listenHost)}`).hostname.replace(/^\[|\]$/g, "");
+    if (!(isIP(host) ? leaf.checkIP(host) : leaf.checkHost(host))) throw new Error("OAST_TLS_CERTIFICATE_HOST_MISMATCH");
+    if (update) this.tlsExpiresAt = expiry; return expiry;
+  }
+
+  private trackSocket(socket: Socket): boolean {
+    socket.on("error", () => undefined);
+    if (this.closed || this.sockets.size >= (this.config.maxConnections ?? 200)) { socket.destroy(); return false; }
+    this.sockets.add(socket); socket.once("close", () => this.sockets.delete(socket)); return true;
+  }
+  private allowRequest(): boolean {
+    const now = Date.now(); if (now - this.windowStartedAt >= 1000) { this.windowStartedAt = now; this.requestsInWindow = 0; }
+    return ++this.requestsInWindow <= (this.config.maxRequestsPerSecond ?? 500);
   }
 
   private async handleHttp(request: IncomingMessage, response: ServerResponse, protocol: "HTTP" | "HTTPS"): Promise<void> {
     try {
       const url = new URL(request.url ?? "/", `${protocol.toLowerCase()}://oast.invalid`);
       if (request.method === "GET" && url.pathname === "/healthz") return json(response, 200, { status: "ok", mode: this.config.mode });
+      if (request.method === "GET" && url.pathname === "/readyz") { const ready = !this.closed && !!this.tcp?.listening && (!this.https || this.tlsExpiresAt > Date.now() + 60000); return json(response, ready ? 200 : 503, { ready, serviceConfigSha256: this.config.sourceSha256 ?? createHash("sha256").update(JSON.stringify(this.config)).digest("hex") }); }
+      if (!this.allowRequest()) return json(response, 429, { error: "service_request_limit" });
       const management = url.pathname === "/v1/leases" || /^\/v1\/leases\/[a-z0-9_-]{16,32}\/events$/.test(url.pathname);
-      if (management && this.config.mode === "HOSTED" && protocol !== "HTTPS") return json(response, 426, { error: "https_required" });
+      if (management && protocol !== "HTTPS" && (this.config.mode === "HOSTED" || !isLoopbackAddress(request.socket.remoteAddress))) return json(response, 426, { error: "https_required" });
       if (request.method === "POST" && url.pathname === "/v1/leases") {
         if (!String(request.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) return json(response, 415, { error: "application_json_required" });
         const body = leaseRequestSchema.safeParse(JSON.parse((await readBody(request, this.config.maxRequestBytes)).toString("utf8")));
@@ -89,55 +135,36 @@ export class OastService {
         return json(response, recorded.replay ? 409 : recorded.accepted ? 202 : 429, { accepted: recorded.accepted, replay: recorded.replay });
       }
       json(response, 404, { error: "not_found" });
-    } catch (error) { json(response, error instanceof Error && error.message === "REQUEST_TOO_LARGE" ? 413 : 400, { error: "invalid_request" }); }
+    } catch (error) { if (!response.destroyed) json(response, error instanceof Error && error.message === "OAST_LEASE_LIMIT" ? 429 : error instanceof Error && error.message === "REQUEST_TOO_LARGE" ? 413 : 400, { error: "invalid_request" }); }
   }
 
-  private handleDns(message: Buffer, source: string): Buffer | undefined {
-    const parsed = parseDnsQuery(message);
+  private handleDns(message: Buffer, source: string, tcp = false): Buffer | undefined {
+    if (!this.allowRequest()) return;
+    const parsed = parseOastDnsQuery(message);
     if (!parsed) return;
-    const identity = identityFromDnsName(parsed.name, this.config.baseDomain);
-    if (!identity) return dnsResponse(message, parsed, undefined, this.config);
-    const lease = this.store.validateIdentity(identity.leaseId, identity.signature, "DNS");
-    if (!lease) return dnsResponse(message, parsed, undefined, this.config);
-    this.store.record(lease, "DNS", source, `${parsed.name}\0${parsed.type}`);
-    return dnsResponse(message, parsed, parsed.type === 28 ? "AAAA" : parsed.type === 1 ? "A" : undefined, this.config);
+    const identity = oastDnsIdentity(parsed.name, this.config.baseDomain);
+    const lease = identity ? this.store.validateIdentity(identity.leaseId, identity.signature, "DNS") : undefined;
+    if (lease) this.store.record(lease, "DNS", source, `${parsed.name}\0${parsed.type}`);
+    return answerOastDns(message, parsed, !!lease, this.config, tcp);
   }
 
   private handleDnsTcp(socket: Socket): void {
-    let pending = Buffer.alloc(0); let expected: number | undefined;
+    let pending = Buffer.alloc(0); let expected: number | undefined; let handled = false;
     socket.on("data", (chunk: Buffer) => {
+      if (handled) return;
       pending = Buffer.concat([pending, chunk]);
-      if (pending.length > 65537) return socket.destroy();
+      if (pending.length > 4098) return socket.destroy();
       if (expected === undefined && pending.length >= 2) { expected = pending.readUInt16BE(0); pending = pending.subarray(2); }
+      if (expected !== undefined && (expected < 17 || expected > 4096)) return socket.destroy();
       if (expected === undefined || pending.length < expected) return;
-      try { const response = this.handleDns(pending.subarray(0, expected), socket.remoteAddress ?? "unknown"); if (response) { const prefix = Buffer.alloc(2); prefix.writeUInt16BE(response.length); socket.end(Buffer.concat([prefix, response])); } else socket.end(); }
+      handled = true;
+      try { const response = this.handleDns(pending.subarray(0, expected), socket.remoteAddress ?? "unknown", true); if (response) { const prefix = Buffer.alloc(2); prefix.writeUInt16BE(response.length); socket.end(Buffer.concat([prefix, response])); } else socket.end(); }
       catch { socket.destroy(); }
     });
     socket.setTimeout(5000, () => socket.destroy());
   }
 }
 
-interface DnsQuery { name: string; type: number; questionEnd: number }
-function parseDnsQuery(message: Buffer): DnsQuery | undefined {
-  const flags = message.length >= 4 ? message.readUInt16BE(2) : 0xffff;
-  if (message.length < 17 || message.readUInt16BE(4) !== 1 || (flags & 0x8000) !== 0 || (flags & 0x7800) !== 0) return;
-  let offset = 12; const labels: string[] = [];
-  while (offset < message.length) { const size = message[offset++]!; if (size === 0) break; if (size > 63 || offset + size > message.length) return; const label = message.subarray(offset, offset + size).toString("ascii"); if (!/^[A-Za-z0-9_-]+$/.test(label)) return; labels.push(label); offset += size; }
-  if (labels.length < 3 || offset + 4 > message.length) return;
-  if (message.readUInt16BE(offset + 2) !== 1) return;
-  return { name: labels.join(".").toLowerCase(), type: message.readUInt16BE(offset), questionEnd: offset + 4 };
-}
-function dnsResponse(query: Buffer, parsed: DnsQuery, answer: "A" | "AAAA" | undefined, config: OastServiceConfig): Buffer {
-  const header = Buffer.from(query.subarray(0, 12)); header.writeUInt16BE(answer ? 0x8180 : 0x8183, 2); header.writeUInt16BE(answer ? 1 : 0, 6); header.writeUInt16BE(0, 8); header.writeUInt16BE(0, 10);
-  const question = query.subarray(12, parsed.questionEnd);
-  if (!answer) return Buffer.concat([header, question]);
-  const data = answer === "A" ? Buffer.from(config.dnsAnswerIpv4.split(".").map(Number)) : ipv6Bytes(config.dnsAnswerIpv6);
-  const record = Buffer.alloc(12); record.writeUInt16BE(0xc00c, 0); record.writeUInt16BE(answer === "A" ? 1 : 28, 2); record.writeUInt16BE(1, 4); record.writeUInt32BE(30, 6); record.writeUInt16BE(data.length, 10);
-  return Buffer.concat([header, question, record, data]);
-}
-function identityFromDnsName(name: string, baseDomain: string): { leaseId: string; signature: string } | undefined { const suffix = `.${baseDomain.toLowerCase()}`; if (!name.endsWith(suffix)) return; const labels = name.slice(0, -suffix.length).split("."); return labels.length === 2 ? { leaseId: labels[0]!, signature: labels[1]! } : undefined; }
-function ipv6Bytes(value: string): Buffer { const normalized = value.includes(".") ? replaceEmbeddedIpv4(value) : value; const [left, right = ""] = normalized.split("::"); const a = left ? left.split(":") : []; const b = right ? right.split(":") : []; const parts = [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill("0"), ...b]; const output = Buffer.alloc(16); parts.slice(0, 8).forEach((part, index) => output.writeUInt16BE(Number.parseInt(part || "0", 16), index * 2)); return output; }
-function replaceEmbeddedIpv4(value: string): string { const boundary = value.lastIndexOf(":"); const octets = value.slice(boundary + 1).split(".").map(Number); return `${value.slice(0, boundary)}:${((octets[0]! << 8) | octets[1]!).toString(16)}:${((octets[2]! << 8) | octets[3]!).toString(16)}`; }
 async function readBody(request: IncomingMessage, maximum: number): Promise<Buffer> { const chunks: Buffer[] = []; let size = 0; for await (const chunk of request) { const value = Buffer.from(chunk); size += value.length; if (size > maximum) throw new Error("REQUEST_TOO_LARGE"); chunks.push(value); } return Buffer.concat(chunks); }
 function json(response: ServerResponse, status: number, value: unknown): void { response.statusCode = status; response.setHeader("cache-control", "no-store"); response.setHeader("pragma", "no-cache"); response.setHeader("x-content-type-options", "nosniff"); response.setHeader("content-type", "application/json; charset=utf-8"); response.end(value === undefined ? undefined : JSON.stringify(value)); }
 function bearer(request: IncomingMessage): string | undefined { const match = /^Bearer ([A-Za-z0-9._~-]{20,200})$/.exec(String(request.headers.authorization ?? "")); return match?.[1]; }
@@ -146,10 +173,11 @@ function canonicalQueryKeys(url: URL): string { return [...new Set([...url.searc
 function canonicalHeaderNames(request: IncomingMessage): string { return Object.keys(request.headers).map((name) => name.toLowerCase()).filter((name) => !["authorization", "cookie", "proxy-authorization"].includes(name)).sort().join(","); }
 function bodyHash(value: Buffer): string { return value.length ? createHash("sha256").update(value).digest("hex") : "empty"; }
 function displayHost(value: string): string { return value.includes(":") ? `[${value}]` : value; }
+function isLoopbackAddress(value?: string): boolean { return !!value && (value === "::1" || /^127\./.test(value) || /^::ffff:127\./i.test(value)); }
 function hardenHttpServer(server: Server): void { server.requestTimeout = 10_000; server.headersTimeout = 5_000; server.keepAliveTimeout = 5_000; server.maxHeadersCount = 50; server.maxRequestsPerSocket = 100; }
 function listen(server: Server, port: number, host: string): Promise<void> { return new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, () => { server.off("error", reject); resolve(); }); }); }
 function listenTcp(server: TcpServer, port: number, host: string): Promise<void> { return new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, () => { server.off("error", reject); resolve(); }); }); }
 function bindUdp(socket: UdpSocket, port: number, host: string): Promise<void> { return new Promise((resolve, reject) => { socket.once("error", reject); socket.bind(port, host, () => { socket.off("error", reject); resolve(); }); }); }
 function closeServer(server?: Server): Promise<void> { return !server ? Promise.resolve() : new Promise((resolve) => server.close(() => resolve())); }
 function closeTcp(server?: TcpServer): Promise<void> { return !server ? Promise.resolve() : new Promise((resolve) => server.close(() => resolve())); }
-function closeUdp(socket?: UdpSocket): Promise<void> { return !socket ? Promise.resolve() : new Promise((resolve) => { socket.once("close", resolve); socket.close(); }); }
+function closeUdp(socket?: UdpSocket): Promise<void> { return !socket ? Promise.resolve() : new Promise((resolve) => { socket.once("close", resolve); try { socket.close(); } catch { resolve(); } }); }

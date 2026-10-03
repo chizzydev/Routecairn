@@ -1,6 +1,11 @@
 .git
 .github
 .routecairn
+.routecairn*
+.acceptance-keys
+.codex
+acceptance
+benchmarks/scorecards
 node_modules
 dist
 apps/dashboard-ui/dist
@@ -9,4 +14,10 @@ reports
 *.log
 *.tgz
 .env
+.env.*
 deploy/control-plane/secrets
+deploy/module-registry/configuration
+deploy/module-registry/packages
+deploy/oast/secrets
+deploy/oast/tls
+deploy/oast/oast.json

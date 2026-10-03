@@ -1,0 +1,6 @@
+{
+  "namespace": "routecairn-scale-0a66aa37",
+  "cleanup": "CONFIRMED",
+  "success": false,
+  "failure": "SERVICE_READINESS_TIMEOUT"
+}

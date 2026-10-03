@@ -5,7 +5,7 @@ import { planProtocolSecurity, protocolSecurityInputSchema } from "../../src/mod
 const target = "https://app.example.com";
 const actor = { id: "anon", safeAlias: "anonymous", authSlot: "anonymous" as const, relationship: "untrusted" };
 const expectation = { decision: "DENY" as const, allowedStatuses: [200], deniedStatuses: [401, 403], minMessages: 0 };
-const defaultScope = { program: "test", allowedDomains: ["app.example.com"], disallowedPaths: [], allowedMethods: ["GET", "POST"] as Array<"GET" | "POST">, rateLimitPerSecond: 10, concurrency: 2, maxDepth: 2, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn-Test" };
+const defaultScope = { program: "test", allowedDomains: ["app.example.com"], disallowedPaths: [], allowedMethods: ["GET", "POST", "CONNECT"] as Array<"GET" | "POST" | "CONNECT">, rateLimitPerSecond: 10, concurrency: 2, maxDepth: 2, sameOriginOnly: true, includeSubdomains: false, respectRobotsTxt: false, userAgent: "RouteCairn-Test" };
 
 describe("protocol security planner", () => {
   it("plans bounded streaming, gRPC, multipart, HTTP/2, and HTTP/3 cases", () => {

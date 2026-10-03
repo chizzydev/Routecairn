@@ -113,7 +113,7 @@ export class ExposureReviewModule implements RouteCairnPlugin {
       findings.push(this.exposureFinding(response, "Config Exposure", "Configuration file is publicly reachable", secretMatches.length > 0 ? "High" : "Medium", ["exposure", "config"], "Config-like path returned a successful response."));
     }
 
-    if (/debug|telescope|_debugbar|phpinfo|\.log$/i.test(pathname)) {
+    if ((/debug|telescope|_debugbar|phpinfo/i.test(pathname) || /\.log$/i.test(pathname))) {
       findings.push(this.exposureFinding(response, "Debug/Dev Path", "Debug or log path is publicly reachable", "Medium", ["exposure", "debug"], "Debug/log path returned a successful response."));
     }
 

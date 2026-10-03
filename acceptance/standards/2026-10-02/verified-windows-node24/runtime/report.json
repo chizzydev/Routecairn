@@ -1,0 +1,1645 @@
+{
+  "routeCairnVersion": "0.1.0",
+  "target": "http://127.0.0.1:54212/",
+  "mode": "quick",
+  "profile": {
+    "name": "quick",
+    "displayName": "Quick Recon",
+    "description": "Fast first-pass reconnaissance with core discovery and low scan volume.",
+    "mode": "quick",
+    "modules": [
+      "baseline",
+      "api-mapper",
+      "parameter-analysis",
+      "active-vulnerability-validation"
+    ],
+    "limits": {
+      "maxDepth": 1,
+      "rateLimitPerSecond": 4,
+      "concurrency": 1,
+      "requestTimeoutMs": 10000,
+      "bodyPreviewBytes": 4096,
+      "maxResponseBytes": 16384,
+      "maxRequests": 80,
+      "cleanupReservedRequests": 0,
+      "maxScanDurationMs": 120000,
+      "retry": {
+        "maxAttempts": 1,
+        "baseDelayMs": 250,
+        "maxDelayMs": 1000,
+        "retryStatusCodes": [
+          408,
+          429,
+          500,
+          502,
+          503,
+          504
+        ]
+      }
+    },
+    "browserUse": "off",
+    "authComparisonDepth": "none",
+    "proofMode": false,
+    "reportFocus": [
+      "surface map",
+      "technologies",
+      "API hints",
+      "manual testing leads"
+    ]
+  },
+  "scanPlan": {
+    "schemaVersion": 1,
+    "profile": "quick",
+    "displayName": "Quick Recon",
+    "description": "Fast first-pass reconnaissance with core discovery and low scan volume.",
+    "metadata": {
+      "requestedProfile": "quick",
+      "resolvedProfile": "quick",
+      "createdAt": "2026-10-02T20:53:54.309Z"
+    },
+    "modules": [
+      {
+        "id": "baseline",
+        "phase": "baseline",
+        "settings": {},
+        "limits": {},
+        "includedBecause": [
+          "profile:quick",
+          "capability:baseline"
+        ]
+      },
+      {
+        "id": "api-mapper",
+        "phase": "analysis",
+        "settings": {},
+        "limits": {},
+        "includedBecause": [
+          "profile:quick",
+          "capability:api"
+        ]
+      },
+      {
+        "id": "parameter-analysis",
+        "phase": "analysis",
+        "settings": {},
+        "limits": {},
+        "includedBecause": [
+          "profile:quick",
+          "capability:api"
+        ]
+      },
+      {
+        "id": "active-vulnerability-validation",
+        "phase": "analysis",
+        "settings": {},
+        "limits": {},
+        "includedBecause": [
+          "profile:quick",
+          "capability:active-vulnerability-validation"
+        ]
+      }
+    ],
+    "skippedModules": [
+      {
+        "id": "browser-crawler",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "authenticated-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "role-comparison",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "state-aware-api",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "object-pair-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "field-exposure-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "authorization-matrix-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "collection-authorization-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "bulk-authorization-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "file-authorization-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "equivalent-route-testing",
+        "reason": "disabled-by-profile"
+      },
+      {
+        "id": "proof-mode",
+        "reason": "disabled-by-profile"
+      }
+    ],
+    "limits": {
+      "maxDepth": 1,
+      "rateLimitPerSecond": 4,
+      "concurrency": 1,
+      "requestTimeoutMs": 10000,
+      "bodyPreviewBytes": 4096,
+      "maxResponseBytes": 16384,
+      "maxRequests": 80,
+      "cleanupReservedRequests": 0,
+      "maxScanDurationMs": 120000,
+      "retry": {
+        "maxAttempts": 1,
+        "baseDelayMs": 250,
+        "maxDelayMs": 1000,
+        "retryStatusCodes": [
+          408,
+          429,
+          500,
+          502,
+          503,
+          504
+        ]
+      }
+    },
+    "authentication": {
+      "required": false,
+      "level": "none",
+      "requireSingleProfile": false,
+      "requireAccountPair": false,
+      "hasSingleProfile": false,
+      "hasAccountPair": false
+    },
+    "evidence": {
+      "level": "minimal",
+      "collectRequestAudit": true,
+      "collectBodyPreview": false,
+      "requireReproducibleEvidence": false,
+      "retainProofBlocks": false
+    },
+    "output": {
+      "json": true,
+      "markdown": true,
+      "html": true,
+      "stableForDiff": false,
+      "includePlan": true,
+      "includeRequestAudit": true
+    },
+    "failurePolicy": "continue-on-module-error",
+    "optionalModulesMayBeSkipped": true,
+    "reportFocus": [
+      "surface map",
+      "technologies",
+      "API hints",
+      "manual testing leads"
+    ],
+    "activeVulnerability": {
+      "schemaVersion": 1,
+      "enabled": true,
+      "targetOrigin": "http://127.0.0.1:54212",
+      "maxRequests": 16,
+      "maxResponseBytes": 131072,
+      "maxCases": 2,
+      "actors": [
+        {
+          "id": "public",
+          "safeAlias": "Public",
+          "authSlot": "anonymous",
+          "relationship": "PUBLIC"
+        }
+      ],
+      "discovery": {
+        "enabled": false,
+        "classes": [],
+        "maxCandidates": 0,
+        "queryParametersOnly": true,
+        "includeAuthenticated": false,
+        "compilerVersion": 1
+      },
+      "cases": [
+        {
+          "id": "vulnerable",
+          "label": "vulnerable SQL control",
+          "vulnerabilityClass": "SQL_INJECTION",
+          "actorId": "public",
+          "environment": "LOCAL_FIXTURE",
+          "request": {
+            "method": "GET",
+            "headers": {},
+            "injection": {
+              "location": "QUERY",
+              "name": "q",
+              "originalValue": "<redacted>"
+            },
+            "operatorConfirmedNonMutating": false,
+            "url": "redacted://active-vulnerability/vulnerable"
+          },
+          "proof": {
+            "allowedRedirectOrigins": [],
+            "secureStatuses": [],
+            "vulnerableStatuses": []
+          },
+          "strategy": {
+            "profile": "CONSERVATIVE",
+            "techniques": [
+              "ERROR"
+            ],
+            "encodings": [
+              "PLAIN"
+            ],
+            "maxStrategies": 1,
+            "boundedDelayMs": 400,
+            "timingSamples": 2,
+            "approvedRisks": [
+              "PASSIVE_DIFFERENTIAL"
+            ],
+            "sqlDialect": "AUTO",
+            "noSqlDialect": "MONGODB",
+            "unionColumns": 1,
+            "unionMarkerColumn": 1
+          },
+          "comparisonFingerprint": "68220850b2578a7bc05c5d0a20470d0f619a0734ac7fe407d02de87f52debe95",
+          "source": "EXPLICIT"
+        },
+        {
+          "id": "secure",
+          "label": "secure SQL control",
+          "vulnerabilityClass": "SQL_INJECTION",
+          "actorId": "public",
+          "environment": "LOCAL_FIXTURE",
+          "request": {
+            "method": "GET",
+            "headers": {},
+            "injection": {
+              "location": "QUERY",
+              "name": "q",
+              "originalValue": "<redacted>"
+            },
+            "operatorConfirmedNonMutating": false,
+            "url": "redacted://active-vulnerability/secure"
+          },
+          "proof": {
+            "allowedRedirectOrigins": [],
+            "secureStatuses": [],
+            "vulnerableStatuses": []
+          },
+          "strategy": {
+            "profile": "CONSERVATIVE",
+            "techniques": [
+              "ERROR"
+            ],
+            "encodings": [
+              "PLAIN"
+            ],
+            "maxStrategies": 1,
+            "boundedDelayMs": 400,
+            "timingSamples": 2,
+            "approvedRisks": [
+              "PASSIVE_DIFFERENTIAL"
+            ],
+            "sqlDialect": "AUTO",
+            "noSqlDialect": "MONGODB",
+            "unionColumns": 1,
+            "unionMarkerColumn": 1
+          },
+          "comparisonFingerprint": "bf5ea198f97e69669c843cc11b1c76e98306c88a51fd725a721061aca86da6aa",
+          "source": "EXPLICIT"
+        }
+      ],
+      "notes": [
+        "RouteCairn generates bounded canaries and controls; operators do not need to author attack strings.",
+        "Discovery compiles only same-origin GET query parameters already observed by this scan and cannot authorize mutations.",
+        "PROVEN requires a paired differential, browser execution, verification marker, callback, contract, or protocol sentinel. A changed response alone remains INCONCLUSIVE.",
+        "Strategies are technique-, encoding-, request-, delay-, sample-, and risk-bounded; this engine is not an unrestricted fuzzer.",
+        "Stateful canaries require same-origin verification and cancellation-safe cleanup; elevated compute and protocol ambiguity are staging-only."
+      ]
+    }
+  },
+  "program": "Authorized Security Test",
+  "scope": {
+    "allowedDomains": [
+      "127.0.0.1"
+    ],
+    "disallowedPaths": [],
+    "allowedMethods": [
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ],
+    "rateLimitPerSecond": 4,
+    "concurrency": 1,
+    "sameOriginOnly": true,
+    "includeSubdomains": true
+  },
+  "transport": {
+    "poolingEnabled": true,
+    "http2Enabled": false,
+    "maxOrigins": 64,
+    "maxConnectionsPerOrigin": 4,
+    "maxConcurrentHttp2Streams": 32,
+    "maxHeaderSizeBytes": 16384,
+    "keepAliveTimeoutMs": 10000,
+    "keepAliveMaxTimeoutMs": 30000,
+    "maxConnectionLifetimeMs": 120000,
+    "maxRequestsPerConnection": 1000,
+    "dnsCacheTtlMs": 0,
+    "requestsDispatched": 10,
+    "poolHits": 9,
+    "poolMisses": 1,
+    "pinRotations": 0,
+    "originEvictions": 0,
+    "connectionsCreated": 1,
+    "http1Connections": 1,
+    "http2Connections": 0,
+    "dnsResolutions": 10,
+    "dnsCacheHits": 0,
+    "blockedResolutions": 0,
+    "peakOriginPools": 1,
+    "estimatedConnectionReuses": 9,
+    "activeOriginPools": 0
+  },
+  "metadata": {
+    "startedAt": "2026-10-02T20:53:54.311Z",
+    "completedAt": "2026-10-02T20:53:56.721Z",
+    "durationMs": 2410,
+    "totalRequests": 10,
+    "failedRequests": 0
+  },
+  "requestBudget": {
+    "maxRequests": 80,
+    "cleanupReservedRequests": 0,
+    "scanCapacity": 80,
+    "scanTransmitted": 10,
+    "cleanupTransmitted": 0,
+    "totalTransmitted": 10,
+    "scanRemaining": 70,
+    "cleanupRemaining": 0,
+    "inFlight": 0,
+    "queued": 0
+  },
+  "baseline": {
+    "probes": [
+      {
+        "url": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-0-dssva4m9",
+        "statusCode": 200,
+        "contentLength": 22,
+        "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f"
+      },
+      {
+        "url": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-1-5q13yf0o",
+        "statusCode": 200,
+        "contentLength": 22,
+        "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f"
+      },
+      {
+        "url": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-2-f2n50tau",
+        "statusCode": 200,
+        "contentLength": 22,
+        "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f"
+      }
+    ],
+    "notes": [
+      "Non-existing paths repeatedly returned HTTP 200.",
+      "Non-existing paths shared the same body hash."
+    ],
+    "wildcardStatusCode": 200,
+    "repeatedBodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+    "repeatedContentLength": 22
+  },
+  "scopeDecisions": [
+    {
+      "allowed": true,
+      "reason": "allowed",
+      "normalizedUrl": "http://127.0.0.1:54212/"
+    },
+    {
+      "allowed": true,
+      "reason": "allowed",
+      "normalizedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-0-dssva4m9"
+    },
+    {
+      "allowed": true,
+      "reason": "allowed",
+      "normalizedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-1-5q13yf0o"
+    },
+    {
+      "allowed": true,
+      "reason": "allowed",
+      "normalizedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-2-f2n50tau"
+    }
+  ],
+  "requestAudit": [
+    {
+      "requestId": "77c6eaa7-5a09-4ada-985c-480803d64923",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "39209fe3-0b8d-47c0-8856-a51423c8902e",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "10c538d1-ab61-4021-8eda-0c3bdc4ab23d",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "42a05588-e2bb-458f-bff9-cf8b7c9ba9f5",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "39468993-ff1f-4256-a2a9-ab5f87d6889c",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "8fa0daea-a1b1-40bd-a2b3-46de1b23f720",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "ae0a0419-b72b-4d7c-8354-4bd3a40fa3b0",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 500,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "3fba3be7-ac6c-4242-85b9-4175c5458450",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "84ae6d2b-2d3f-4674-b440-85c642f87fb2",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    },
+    {
+      "requestId": "8928b6c4-9091-43bc-be03-634a4f06bf5f",
+      "requestedUrl": "redacted://active-vulnerability/audit",
+      "finalUrl": "redacted://active-vulnerability/audit",
+      "method": "GET",
+      "outcome": "sent",
+      "statusCode": 200,
+      "requestHeaders": {},
+      "redirectChain": []
+    }
+  ],
+  "responses": [
+    {
+      "requestedUrl": "http://127.0.0.1:54212/",
+      "finalUrl": "http://127.0.0.1:54212/",
+      "method": "GET",
+      "statusCode": 200,
+      "headers": {
+        "content-type": "text/plain",
+        "date": "Fri, 02 Oct 2026 20:53:54 GMT",
+        "connection": "keep-alive",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+      "responseTimeMs": 28,
+      "redirectChain": [],
+      "contentLength": 22,
+      "bytesRead": 22,
+      "streamTruncated": false,
+      "rangeIgnored": false,
+      "contentType": "text/plain",
+      "requestId": "77c6eaa7-5a09-4ada-985c-480803d64923"
+    },
+    {
+      "requestedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-0-dssva4m9",
+      "finalUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-0-dssva4m9",
+      "method": "GET",
+      "statusCode": 200,
+      "headers": {
+        "content-type": "text/plain",
+        "date": "Fri, 02 Oct 2026 20:53:54 GMT",
+        "connection": "keep-alive",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+      "responseTimeMs": 10,
+      "redirectChain": [],
+      "contentLength": 22,
+      "bytesRead": 22,
+      "streamTruncated": false,
+      "rangeIgnored": false,
+      "contentType": "text/plain",
+      "requestId": "39209fe3-0b8d-47c0-8856-a51423c8902e"
+    },
+    {
+      "requestedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-1-5q13yf0o",
+      "finalUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-1-5q13yf0o",
+      "method": "GET",
+      "statusCode": 200,
+      "headers": {
+        "content-type": "text/plain",
+        "date": "Fri, 02 Oct 2026 20:53:54 GMT",
+        "connection": "keep-alive",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+      "responseTimeMs": 3,
+      "redirectChain": [],
+      "contentLength": 22,
+      "bytesRead": 22,
+      "streamTruncated": false,
+      "rangeIgnored": false,
+      "contentType": "text/plain",
+      "requestId": "10c538d1-ab61-4021-8eda-0c3bdc4ab23d"
+    },
+    {
+      "requestedUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-2-f2n50tau",
+      "finalUrl": "http://127.0.0.1:54212/.routecairn-nonexistent-murfxpvo-2-f2n50tau",
+      "method": "GET",
+      "statusCode": 200,
+      "headers": {
+        "content-type": "text/plain",
+        "date": "Fri, 02 Oct 2026 20:53:55 GMT",
+        "connection": "keep-alive",
+        "keep-alive": "timeout=5",
+        "transfer-encoding": "chunked"
+      },
+      "bodyHash": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+      "responseTimeMs": 2,
+      "redirectChain": [],
+      "contentLength": 22,
+      "bytesRead": 22,
+      "streamTruncated": false,
+      "rangeIgnored": false,
+      "contentType": "text/plain",
+      "requestId": "42a05588-e2bb-458f-bff9-cf8b7c9ba9f5"
+    }
+  ],
+  "technologies": [],
+  "apiMapper": {
+    "endpoints": [],
+    "graphQlEndpoints": [],
+    "notes": [
+      "No API endpoints were classified."
+    ]
+  },
+  "parameterAnalysis": {
+    "analyzedUrls": [],
+    "totalParameters": 0,
+    "highRiskParameters": [],
+    "riskSummary": {
+      "objectId": 0,
+      "authorizationSensitive": 0,
+      "businessLogic": 0,
+      "harmlessNavigation": 0
+    },
+    "workflowTargets": [],
+    "notes": [
+      "No URL or API parameters were identified in the current scan evidence."
+    ]
+  },
+  "activeVulnerability": {
+    "enabled": true,
+    "compilerVersion": 1,
+    "explicitCases": 2,
+    "discoveredCases": 0,
+    "plannedCases": 2,
+    "executedCases": 2,
+    "provenCases": 1,
+    "secureCases": 1,
+    "inconclusiveCases": 0,
+    "blockedCases": 0,
+    "notAssessedCases": 0,
+    "requestsTransmitted": 6,
+    "requestBudget": 16,
+    "coverage": [
+      {
+        "vulnerabilityClass": "SQL_INJECTION",
+        "planned": 2,
+        "proven": 1,
+        "secure": 1,
+        "inconclusive": 0,
+        "blocked": 0,
+        "notAssessed": 0
+      }
+    ],
+    "cases": [
+      {
+        "caseId": "vulnerable",
+        "label": "vulnerable SQL control",
+        "vulnerabilityClass": "SQL_INJECTION",
+        "actorAlias": "Public",
+        "source": "EXPLICIT",
+        "outcome": "PROVEN",
+        "reasonCode": "DATABASE_ERROR_DIFFERENTIAL_CONFIRMED",
+        "comparisonFingerprint": "68220850b2578a7bc05c5d0a20470d0f619a0734ac7fe407d02de87f52debe95",
+        "requests": [
+          {
+            "phase": "BASELINE",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 200,
+            "responseTimeMs": 3,
+            "bodyFingerprint": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+            "bodyLength": 22,
+            "contentType": "text/plain"
+          },
+          {
+            "phase": "CONTROL",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 200,
+            "responseTimeMs": 2,
+            "bodyFingerprint": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+            "bodyLength": 22,
+            "contentType": "text/plain"
+          },
+          {
+            "phase": "PROBE",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 500,
+            "responseTimeMs": 3,
+            "bodyFingerprint": "6df5c45102a04abdde4ba3ee35aaa6fdefb277ac159cf912c6ccf243eb820888",
+            "bodyLength": 16,
+            "contentType": "text/plain"
+          }
+        ],
+        "proofSignals": [
+          "database-error-differential"
+        ],
+        "strategiesPlanned": 1,
+        "strategiesExecuted": 1,
+        "cleanup": "NOT_REQUIRED",
+        "notes": [
+          "The class-specific proof threshold was met; human review remains required."
+        ]
+      },
+      {
+        "caseId": "secure",
+        "label": "secure SQL control",
+        "vulnerabilityClass": "SQL_INJECTION",
+        "actorAlias": "Public",
+        "source": "EXPLICIT",
+        "outcome": "SECURE_FOR_CASE",
+        "reasonCode": "SQL_CANARY_NO_DIFFERENTIAL",
+        "comparisonFingerprint": "bf5ea198f97e69669c843cc11b1c76e98306c88a51fd725a721061aca86da6aa",
+        "requests": [
+          {
+            "phase": "BASELINE",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 200,
+            "responseTimeMs": 10,
+            "bodyFingerprint": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+            "bodyLength": 22,
+            "contentType": "text/plain"
+          },
+          {
+            "phase": "CONTROL",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 200,
+            "responseTimeMs": 11,
+            "bodyFingerprint": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+            "bodyLength": 22,
+            "contentType": "text/plain"
+          },
+          {
+            "phase": "PROBE",
+            "strategyId": "error:plain",
+            "technique": "ERROR",
+            "risk": "PASSIVE_DIFFERENTIAL",
+            "encoding": "PLAIN",
+            "method": "GET",
+            "statusCode": 200,
+            "responseTimeMs": 3,
+            "bodyFingerprint": "ce0cdfe0f1c8b1394d72347d64375ac311f24e5759dc468446d9b5f9b9f3c04f",
+            "bodyLength": 22,
+            "contentType": "text/plain"
+          }
+        ],
+        "proofSignals": [],
+        "strategiesPlanned": 1,
+        "strategiesExecuted": 1,
+        "cleanup": "NOT_REQUIRED",
+        "notes": [
+          "No vulnerability was demonstrated by this exact bounded case."
+        ]
+      }
+    ],
+    "notes": [
+      "RouteCairn generates bounded canaries and controls; operators do not need to author attack strings.",
+      "Discovery compiles only same-origin GET query parameters already observed by this scan and cannot authorize mutations.",
+      "PROVEN requires a paired differential, browser execution, verification marker, callback, contract, or protocol sentinel. A changed response alone remains INCONCLUSIVE.",
+      "Strategies are technique-, encoding-, request-, delay-, sample-, and risk-bounded; this engine is not an unrestricted fuzzer.",
+      "Stateful canaries require same-origin verification and cancellation-safe cleanup; elevated compute and protocol ambiguity are staging-only.",
+      "Executed 2 bounded case(s): 2 explicit and 0 discovery-compiled.",
+      "Payloads, original values, credentials, response bodies, and callback tokens are omitted from reports."
+    ]
+  },
+  "discoveredUrls": [],
+  "findings": [
+    {
+      "id": "active-c01d4456afb013cc",
+      "title": "sql injection: vulnerable SQL control",
+      "type": "SQL Injection",
+      "severity": "High",
+      "confidence": "High",
+      "url": "redacted://active-vulnerability/vulnerable",
+      "method": "GET",
+      "statusCode": 500,
+      "evidence": {
+        "url": "redacted://active-vulnerability/vulnerable",
+        "method": "GET",
+        "statusCode": 500,
+        "source": "assisted-workflow:active-vulnerability-validation:vulnerable",
+        "bodyHash": "6df5c45102a04abdde4ba3ee35aaa6fdefb277ac159cf912c6ccf243eb820888",
+        "responseHeaders": {},
+        "severityReason": "High severity with High confidence assigned by RouteCairn rule evidence: active-vulnerability:vulnerable:DATABASE_ERROR_DIFFERENTIAL_CONFIRMED. Tags: active-validation, sql_injection, source:explicit, technique:error, workflow-case:vulnerable, human-review-required, assisted-finding-accepted.",
+        "reproductionNotes": [
+          "Workflow active-vulnerability-validation; case vulnerable.",
+          "Re-run the immutable case with the same actor and target contract.",
+          "Proof signals: database-error-differential.",
+          "Generated payloads, callback tokens, values, credentials, and response content are intentionally omitted.",
+          "Human confirmation is required before proof-pack or customer-report inclusion."
+        ]
+      },
+      "impact": "The confirmed sql injection behavior can violate server-side trust boundaries for data, browser execution, network access, request parsing, or application state.",
+      "recommendation": "Remove the confirmed sql injection data/control-flow path with typed input handling, context-specific encoding, allowlists, parser alignment, and server-side authorization; keep this case as a regression.",
+      "manualTestingSuggestions": [
+        "Confirm the result in the disposable authorized environment and inspect the server-side data/control flow.",
+        "Retest the unchanged comparison fingerprint after remediation."
+      ],
+      "tags": [
+        "active-validation",
+        "sql_injection",
+        "source:explicit",
+        "technique:error",
+        "workflow-case:vulnerable",
+        "human-review-required",
+        "assisted-finding-accepted"
+      ],
+      "falsePositiveStatus": "likely-valid",
+      "sourceModule": "active-vulnerability-validation",
+      "timestamp": "2026-10-02T20:53:56.688Z",
+      "riskScore": 75,
+      "workflow": {
+        "workflowId": "active-vulnerability-validation",
+        "caseId": "vulnerable",
+        "evidenceRef": "evidence://active-vulnerability-validation/vulnerable/68a661da5ed009fbcd742299c41d31d41ea3c761fc6e145e8c0ec0dbae7bde1f",
+        "proofPackRefs": [],
+        "proofPackReadiness": "REQUIRES_HUMAN_REVIEW",
+        "comparisonFingerprint": "68220850b2578a7bc05c5d0a20470d0f619a0734ac7fe407d02de87f52debe95",
+        "assessmentOutcome": "PROVEN",
+        "humanReviewState": "REQUIRED",
+        "cleanupOutcome": "NOT_REQUIRED",
+        "cleanupFailed": false
+      },
+      "customerSafeRemediation": "Remove the confirmed sql injection data/control-flow path with typed input handling, context-specific encoding, allowlists, parser alignment, and server-side authorization; keep this case as a regression."
+    }
+  ],
+  "execution": {
+    "status": "COMPLETED",
+    "partial": false,
+    "reason": "Planned execution completed.",
+    "checkpointAt": "2026-10-02T20:53:56.741Z",
+    "cleanup": {
+      "state": "CLEAR",
+      "cases": []
+    }
+  },
+  "standardsCoverage": {
+    "schemaVersion": 2,
+    "generatedAt": "2026-10-02T20:53:56.721Z",
+    "catalog": {
+      "wstg": "4.2",
+      "wstgSnapshotDate": "2026-10-02",
+      "asvs": "5.0.0",
+      "apiSecurityTop10": "2023",
+      "cwe": "4.20",
+      "capec": "3.9",
+      "sha256": "891e22e7757ece8d76f883e7960821f579b5c621e8bc01914f8a4a8fb717ec5c",
+      "sourceLockSha256": "02728fb53cc7a48884e6f305920f16b5c6d7a27b52400ccd61b5f00580bb2fe3",
+      "sources": [
+        {
+          "framework": "OWASP_WSTG",
+          "version": "4.2",
+          "file": "wstg-4.2.json",
+          "url": "https://raw.githubusercontent.com/OWASP/wstg/dd33419e10edb22b78d89325a6c2aad9f184e3a2/checklist/checklist.json",
+          "revision": "dd33419e10edb22b78d89325a6c2aad9f184e3a2",
+          "license": "CC-BY-SA-4.0",
+          "bytes": 56530,
+          "sha256": "12e11356b02fc9d6ea1b65554145e14dfdffceb9829ff9d93edf14d3654bdf3c"
+        },
+        {
+          "framework": "OWASP_ASVS",
+          "version": "5.0.0",
+          "file": "asvs-5.0.0.json",
+          "url": "https://raw.githubusercontent.com/OWASP/ASVS/60437a5ed660f757ab9a8d9e0b7181a06492446a/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+          "revision": "60437a5ed660f757ab9a8d9e0b7181a06492446a",
+          "license": "CC-BY-SA-4.0",
+          "bytes": 162870,
+          "sha256": "8201b20eec2908c3380ac600c91c8ba746346fbb808859366abb232027532311"
+        },
+        {
+          "framework": "OWASP_API_TOP_10",
+          "version": "2023",
+          "file": "api-2023.md",
+          "url": "https://raw.githubusercontent.com/OWASP/API-Security/33cea37b2ffde3e2e62f6b5d79a029a22a846633/editions/2023/en/0x11-t10.md",
+          "revision": "33cea37b2ffde3e2e62f6b5d79a029a22a846633",
+          "license": "CC-BY-SA-4.0",
+          "bytes": 4331,
+          "sha256": "c396a9fc70a64ea6bccba608b482a99750f00f0ad6c283d6fbdd5c4d936040a3"
+        },
+        {
+          "framework": "CWE",
+          "version": "4.20",
+          "file": "cwe-4.20.xml.zip",
+          "url": "https://cwe.mitre.org/data/xml/cwec_v4.20.xml.zip",
+          "license": "MITRE Terms of Use",
+          "bytes": 2021351,
+          "sha256": "3976f599e5e5200219a3108bb896d06e2a88fbb293369e1883cb423a5e9d7d50"
+        },
+        {
+          "framework": "CAPEC",
+          "version": "3.9",
+          "file": "capec-3.9.xml",
+          "url": "https://capec.mitre.org/data/xml/capec_v3.9.xml",
+          "license": "MITRE Terms of Use",
+          "bytes": 3849998,
+          "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d"
+        }
+      ],
+      "counts": {
+        "OWASP_WSTG": 97,
+        "OWASP_ASVS": 345,
+        "OWASP_API_TOP_10": 10,
+        "CWE": 969,
+        "CAPEC": 615
+      }
+    },
+    "validation": {
+      "policy": "FAIL_ON_UNMAPPED",
+      "mappingScope": "BOUNDED_CASE_ASSOCIATION",
+      "mappingSha256": "6af2866307f7dc58a5742b5bec0fdc973c0d045974635b04d952928aeea25c3c"
+    },
+    "frameworkTotals": [
+      {
+        "framework": "OWASP_WSTG",
+        "catalogEntries": 97,
+        "activeEntries": 97,
+        "mappedEntries": 4,
+        "conclusiveEntries": 1,
+        "unassessedEntries": 96
+      },
+      {
+        "framework": "OWASP_ASVS",
+        "catalogEntries": 345,
+        "activeEntries": 345,
+        "mappedEntries": 2,
+        "conclusiveEntries": 1,
+        "unassessedEntries": 344
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "catalogEntries": 10,
+        "activeEntries": 10,
+        "mappedEntries": 1,
+        "conclusiveEntries": 0,
+        "unassessedEntries": 10
+      },
+      {
+        "framework": "CWE",
+        "catalogEntries": 969,
+        "activeEntries": 944,
+        "mappedEntries": 2,
+        "conclusiveEntries": 1,
+        "unassessedEntries": 943
+      },
+      {
+        "framework": "CAPEC",
+        "catalogEntries": 615,
+        "activeEntries": 558,
+        "mappedEntries": 1,
+        "conclusiveEntries": 1,
+        "unassessedEntries": 557
+      }
+    ],
+    "accounting": {
+      "plannedModules": 4,
+      "executedCases": 6,
+      "directlyMappedCases": 6,
+      "supportingOnlyCases": 0,
+      "unmappedCases": 0,
+      "findings": 1,
+      "noFindings": 1,
+      "inconclusive": 0,
+      "blocked": 0,
+      "observed": 4
+    },
+    "cases": [
+      {
+        "moduleId": "active-vulnerability-validation",
+        "caseId": "secure",
+        "label": "secure SQL control",
+        "outcome": "NO_FINDING",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [],
+        "evidenceRefs": [
+          "standards-evidence://active-vulnerability-validation/2d882209449cbe00354b8f73ea28e967"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INPV-05",
+            "title": "Testing for SQL Injection",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_ASVS",
+            "id": "v5.0.0-1.2.4",
+            "title": "Verify that data selection or database queries (e.g., SQL, HQL, NoSQL, Cypher) use parameterized queries, ORMs, entity frameworks, or are otherwise protected from SQL Injection and other database injection attacks. This is also relevant when writing stored procedures.",
+            "url": "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "CWE",
+            "id": "CWE-89",
+            "title": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+            "url": "https://cwe.mitre.org/data/definitions/89.html",
+            "strength": "SUPPORTING"
+          },
+          {
+            "framework": "CAPEC",
+            "id": "CAPEC-66",
+            "title": "SQL Injection",
+            "url": "https://capec.mitre.org/data/definitions/66.html",
+            "strength": "SUPPORTING"
+          }
+        ]
+      },
+      {
+        "moduleId": "active-vulnerability-validation",
+        "caseId": "vulnerable",
+        "label": "vulnerable SQL control",
+        "outcome": "FINDING",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [
+          "active-c01d4456afb013cc"
+        ],
+        "evidenceRefs": [
+          "standards-evidence://active-vulnerability-validation/b8032fc2a864299ea550966e286c7247"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INPV-05",
+            "title": "Testing for SQL Injection",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_ASVS",
+            "id": "v5.0.0-1.2.4",
+            "title": "Verify that data selection or database queries (e.g., SQL, HQL, NoSQL, Cypher) use parameterized queries, ORMs, entity frameworks, or are otherwise protected from SQL Injection and other database injection attacks. This is also relevant when writing stored procedures.",
+            "url": "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "CWE",
+            "id": "CWE-89",
+            "title": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+            "url": "https://cwe.mitre.org/data/definitions/89.html",
+            "strength": "SUPPORTING"
+          },
+          {
+            "framework": "CAPEC",
+            "id": "CAPEC-66",
+            "title": "SQL Injection",
+            "url": "https://capec.mitre.org/data/definitions/66.html",
+            "strength": "SUPPORTING"
+          }
+        ]
+      },
+      {
+        "moduleId": "baseline",
+        "caseId": "probe/1/438f6e023249a62a",
+        "label": "Baseline response probe",
+        "outcome": "OBSERVED",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [],
+        "evidenceRefs": [
+          "standards-evidence://baseline/c7c93ff8957d40391c529231f8f5733b"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-04",
+            "title": "Enumerate Applications on Webserver",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/04-Enumerate_Applications_on_Webserver/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-06",
+            "title": "Identify Application Entry Points",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_API_TOP_10",
+            "id": "API9:2023",
+            "title": "Improper Inventory Management",
+            "url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+            "strength": "DIRECT"
+          }
+        ]
+      },
+      {
+        "moduleId": "baseline",
+        "caseId": "probe/2/bd91d38cd2632033",
+        "label": "Baseline response probe",
+        "outcome": "OBSERVED",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [],
+        "evidenceRefs": [
+          "standards-evidence://baseline/b33d89ba72089aed4c2df33d8b4d32e3"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-04",
+            "title": "Enumerate Applications on Webserver",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/04-Enumerate_Applications_on_Webserver/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-06",
+            "title": "Identify Application Entry Points",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_API_TOP_10",
+            "id": "API9:2023",
+            "title": "Improper Inventory Management",
+            "url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+            "strength": "DIRECT"
+          }
+        ]
+      },
+      {
+        "moduleId": "baseline",
+        "caseId": "probe/3/7902c0ca9e4076c9",
+        "label": "Baseline response probe",
+        "outcome": "OBSERVED",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [],
+        "evidenceRefs": [
+          "standards-evidence://baseline/1a0092c1adf96389da1831e5c9e0baa0"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-04",
+            "title": "Enumerate Applications on Webserver",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/04-Enumerate_Applications_on_Webserver/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-06",
+            "title": "Identify Application Entry Points",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_API_TOP_10",
+            "id": "API9:2023",
+            "title": "Improper Inventory Management",
+            "url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+            "strength": "DIRECT"
+          }
+        ]
+      },
+      {
+        "moduleId": "parameter-analysis",
+        "caseId": "module-review",
+        "label": "parameter-analysis completed review",
+        "outcome": "OBSERVED",
+        "executed": true,
+        "requestTransmitted": true,
+        "findingIds": [],
+        "evidenceRefs": [
+          "standards-evidence://parameter-analysis/47fac628566bd2b5741a58da0d878e5f"
+        ],
+        "references": [
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INFO-06",
+            "title": "Identify Application Entry Points",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_WSTG",
+            "id": "WSTG-v42-INPV-04",
+            "title": "Testing for HTTP Parameter Pollution",
+            "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution/",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "OWASP_ASVS",
+            "id": "v5.0.0-2.2.1",
+            "title": "Verify that input is validated to enforce business or functional expectations for that input. This should either use positive validation against an allow list of values, patterns, and ranges, or be based on comparing the input to an expected structure and logical limits according to predefined rules. For L1, this can focus on input which is used to make specific business or security decisions. For L2 and up, this should apply to all input.",
+            "url": "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+            "strength": "DIRECT"
+          },
+          {
+            "framework": "CWE",
+            "id": "CWE-20",
+            "title": "Improper Input Validation",
+            "url": "https://cwe.mitre.org/data/definitions/20.html",
+            "strength": "SUPPORTING"
+          }
+        ]
+      }
+    ],
+    "requirements": [
+      {
+        "framework": "CAPEC",
+        "id": "CAPEC-66",
+        "title": "SQL Injection",
+        "url": "https://capec.mitre.org/data/definitions/66.html",
+        "directCases": 0,
+        "supportingCases": 2,
+        "findings": 1,
+        "noFindings": 1,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 0,
+        "caseIds": [
+          "active-vulnerability-validation/secure",
+          "active-vulnerability-validation/vulnerable"
+        ]
+      },
+      {
+        "framework": "CWE",
+        "id": "CWE-20",
+        "title": "Improper Input Validation",
+        "url": "https://cwe.mitre.org/data/definitions/20.html",
+        "directCases": 0,
+        "supportingCases": 1,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 1,
+        "caseIds": [
+          "parameter-analysis/module-review"
+        ]
+      },
+      {
+        "framework": "CWE",
+        "id": "CWE-89",
+        "title": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+        "url": "https://cwe.mitre.org/data/definitions/89.html",
+        "directCases": 0,
+        "supportingCases": 2,
+        "findings": 1,
+        "noFindings": 1,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 0,
+        "caseIds": [
+          "active-vulnerability-validation/secure",
+          "active-vulnerability-validation/vulnerable"
+        ]
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "id": "API9:2023",
+        "title": "Improper Inventory Management",
+        "url": "https://owasp.org/API-Security/editions/2023/en/0xa9-improper-inventory-management/",
+        "directCases": 3,
+        "supportingCases": 0,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 3,
+        "caseIds": [
+          "baseline/probe/1/438f6e023249a62a",
+          "baseline/probe/2/bd91d38cd2632033",
+          "baseline/probe/3/7902c0ca9e4076c9"
+        ]
+      },
+      {
+        "framework": "OWASP_ASVS",
+        "id": "v5.0.0-1.2.4",
+        "title": "Verify that data selection or database queries (e.g., SQL, HQL, NoSQL, Cypher) use parameterized queries, ORMs, entity frameworks, or are otherwise protected from SQL Injection and other database injection attacks. This is also relevant when writing stored procedures.",
+        "url": "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+        "directCases": 2,
+        "supportingCases": 0,
+        "findings": 1,
+        "noFindings": 1,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 0,
+        "caseIds": [
+          "active-vulnerability-validation/secure",
+          "active-vulnerability-validation/vulnerable"
+        ]
+      },
+      {
+        "framework": "OWASP_ASVS",
+        "id": "v5.0.0-2.2.1",
+        "title": "Verify that input is validated to enforce business or functional expectations for that input. This should either use positive validation against an allow list of values, patterns, and ranges, or be based on comparing the input to an expected structure and logical limits according to predefined rules. For L1, this can focus on input which is used to make specific business or security decisions. For L2 and up, this should apply to all input.",
+        "url": "https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+        "directCases": 1,
+        "supportingCases": 0,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 1,
+        "caseIds": [
+          "parameter-analysis/module-review"
+        ]
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-INFO-04",
+        "title": "Enumerate Applications on Webserver",
+        "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/04-Enumerate_Applications_on_Webserver/",
+        "directCases": 3,
+        "supportingCases": 0,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 3,
+        "caseIds": [
+          "baseline/probe/1/438f6e023249a62a",
+          "baseline/probe/2/bd91d38cd2632033",
+          "baseline/probe/3/7902c0ca9e4076c9"
+        ]
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-INFO-06",
+        "title": "Identify Application Entry Points",
+        "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/01-Information_Gathering/06-Identify_Application_Entry_Points/",
+        "directCases": 4,
+        "supportingCases": 0,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 4,
+        "caseIds": [
+          "baseline/probe/1/438f6e023249a62a",
+          "baseline/probe/2/bd91d38cd2632033",
+          "baseline/probe/3/7902c0ca9e4076c9",
+          "parameter-analysis/module-review"
+        ]
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-INPV-04",
+        "title": "Testing for HTTP Parameter Pollution",
+        "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/04-Testing_for_HTTP_Parameter_Pollution/",
+        "directCases": 1,
+        "supportingCases": 0,
+        "findings": 0,
+        "noFindings": 0,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 1,
+        "caseIds": [
+          "parameter-analysis/module-review"
+        ]
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-INPV-05",
+        "title": "Testing for SQL Injection",
+        "url": "https://wstg.owasp.org/v4.2/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection/",
+        "directCases": 2,
+        "supportingCases": 0,
+        "findings": 1,
+        "noFindings": 1,
+        "inconclusive": 0,
+        "blocked": 0,
+        "observed": 0,
+        "caseIds": [
+          "active-vulnerability-validation/secure",
+          "active-vulnerability-validation/vulnerable"
+        ]
+      }
+    ],
+    "wstgAreas": [
+      {
+        "id": "INFO",
+        "title": "Information Gathering",
+        "status": "PARTIAL",
+        "executedCases": 4,
+        "conclusiveCases": 0,
+        "requirementIds": [
+          "WSTG-v42-INFO-04",
+          "WSTG-v42-INFO-06"
+        ],
+        "catalogRequirements": 10,
+        "mappedRequirements": 2,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "CONF",
+        "title": "Configuration and Deployment Management Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 11,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "IDNT",
+        "title": "Identity Management Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 5,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "ATHN",
+        "title": "Authentication Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 10,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "ATHZ",
+        "title": "Authorization Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 4,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "SESS",
+        "title": "Session Management Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 9,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "INPV",
+        "title": "Input Validation Testing",
+        "status": "PARTIAL",
+        "executedCases": 3,
+        "conclusiveCases": 2,
+        "requirementIds": [
+          "WSTG-v42-INPV-04",
+          "WSTG-v42-INPV-05"
+        ],
+        "catalogRequirements": 19,
+        "mappedRequirements": 2,
+        "conclusiveRequirements": 1
+      },
+      {
+        "id": "ERRH",
+        "title": "Testing for Error Handling",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 2,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "CRYP",
+        "title": "Testing for Weak Cryptography",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 4,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "BUSL",
+        "title": "Business Logic Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 9,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "CLNT",
+        "title": "Client-side Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 13,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      },
+      {
+        "id": "APIT",
+        "title": "API Testing",
+        "status": "NOT_ASSESSED",
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "requirementIds": [],
+        "catalogRequirements": 1,
+        "mappedRequirements": 0,
+        "conclusiveRequirements": 0
+      }
+    ],
+    "apiRiskObjectives": [
+      {
+        "id": "API4:2023",
+        "title": "Unrestricted Resource Consumption",
+        "engineIds": [],
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "status": "NOT_ASSESSED"
+      },
+      {
+        "id": "API6:2023",
+        "title": "Unrestricted Access to Sensitive Business Flows",
+        "engineIds": [],
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "status": "NOT_ASSESSED"
+      },
+      {
+        "id": "API10:2023",
+        "title": "Unsafe Consumption of APIs",
+        "engineIds": [],
+        "executedCases": 0,
+        "conclusiveCases": 0,
+        "status": "NOT_ASSESSED"
+      }
+    ],
+    "gaps": [
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-CRYP-01",
+        "title": "Transport cryptography",
+        "priority": "HIGH",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-ERRH-01",
+        "title": "Error handling",
+        "priority": "MEDIUM",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      },
+      {
+        "framework": "OWASP_WSTG",
+        "id": "WSTG-v42-CLNT-01",
+        "title": "DOM client-side injection",
+        "priority": "HIGH",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "id": "API4:2023",
+        "title": "Unrestricted Resource Consumption",
+        "priority": "HIGH",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "id": "API6:2023",
+        "title": "Sensitive Business Flow Abuse",
+        "priority": "HIGH",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "id": "API10:2023",
+        "title": "Unsafe Consumption of APIs",
+        "priority": "HIGH",
+        "status": "NOT_ASSESSED",
+        "reason": "No retained executed case mapped directly to this coverage objective."
+      }
+    ],
+    "notes": [
+      "Coverage records executed or attempted RouteCairn cases; it does not certify conformance with an entire standard.",
+      "A requirement is only counted from retained case evidence. Planned modules and absent cases do not count as coverage.",
+      "CWE and CAPEC references classify applicable weakness and attack patterns; they are supporting mappings rather than verification requirements.",
+      "Inconclusive and blocked cases remain distinct and never count as a passing verification.",
+      "A direct mapping associates a bounded case with a requirement; it does not establish that every clause or verification level was tested.",
+      "WSTG 4.2 has no dedicated JWT, OAuth, prototype-pollution or deserialization identifier; those cases use applicable published ASVS/CWE/CAPEC references."
+    ]
+  }
+}

@@ -1,0 +1,429 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-02T03:25:39.294286+00:00",
+  "status": "COMPLETED",
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "tests": {
+    "total": 84,
+    "passed": 84,
+    "failed": 0,
+    "skipped": 0
+  },
+  "files": [
+    {
+      "path": "tests/dashboard/advanced-engine-dashboard.test.ts",
+      "status": "passed",
+      "definitionSha256": "166a9b34aca95024541051c8e601edc55dce7c7cd2a92deadc2c6910ab8f2013",
+      "checks": [
+        {
+          "name": "dashboard-native advanced engines ships a schema-valid, target-bound starter for every advanced builder",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines accepts every dashboard starter through the scan-create contract without a server path",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines plans inline Supabase authorization without a filesystem manifest and binds its safe contract digest",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines rejects mixed inline and legacy-file sources for the same executable contract",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines plans inline safe inventory imports without persisting source documents in the safe summary",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines previews physical request capacity for learned automation, pre-handover setup, and signed URL follows",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines accepts and binds an inline origin-isolated transport policy",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard-native advanced engines fails capability parity if any advanced engine loses its dashboard operation contract",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/dashboard/immutable-plan-execution.test.ts",
+      "status": "passed",
+      "definitionSha256": "39cc5fa683680ca9ec053ea027b21b3bb680973a619a609d035f59636584d10c",
+      "checks": [
+        {
+          "name": "dashboard immutable reviewed plan execution executes the verified snapshot and rejects a manifest changed while its job is queued",
+          "status": "passed"
+        },
+        {
+          "name": "dashboard immutable reviewed plan execution rejects encrypted snapshot tampering before launching the queued worker",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/integration/api-graphql.test.ts",
+      "status": "passed",
+      "definitionSha256": "c176135c42050a8baee185480c579fce38a38bd028e0ec9334bc1f7a81a3368b",
+      "checks": [
+        {
+          "name": "API and GraphQL authorization integration executes route, authorization, method, GraphQL, schema, exposure, tenant, and version checks through the CLI",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/integration/authentication-lifecycle.test.ts",
+      "status": "passed",
+      "definitionSha256": "83b8943719e9f89c9a55059fe82cdc834abc216218e2c569f53888e302c3376b",
+      "checks": [
+        {
+          "name": "authentication lifecycle integration executes native TOTP and local test-inbox fixtures without persisting their values",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle integration learns a browser login and automatically executes compiled lifecycle cases",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle integration executes rotation, enumeration, replay, and cleanup through the safety broker without secret persistence",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle integration durably marks failed cleanup and blocks later state-changing cases",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle integration enforces the plan-wide scan deadline and retains abort-aware lifecycle evidence",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/integration/business-invariant.test.ts",
+      "status": "passed",
+      "definitionSha256": "a593657bb215095bce90ba1ab384bdd0e0e64ad910b20cbb66881a6f4f3f75f7",
+      "checks": [
+        {
+          "name": "business invariant integration proves a concurrent one-time-action violation, verifies cleanup, and persists only redacted structural evidence",
+          "status": "passed"
+        },
+        {
+          "name": "business invariant integration runs the explicit manifest through the public CLI path",
+          "status": "passed"
+        },
+        {
+          "name": "business invariant integration marks failed cleanup durably and blocks every later invariant mutation",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/api-graphql-planner.test.ts",
+      "status": "passed",
+      "definitionSha256": "a8d5ce88ad48671ef63ac85950d81a7b8f6859569ff3b62535c0e40d1654a3b5",
+      "checks": [
+        {
+          "name": "API and GraphQL planner changes comparison identity when a route, actor boundary, or expected value changes",
+          "status": "passed"
+        },
+        {
+          "name": "API and GraphQL planner builds a bounded structural plan without persisting authentication material",
+          "status": "passed"
+        },
+        {
+          "name": "API and GraphQL planner rejects GraphQL mutations, alias count mismatches, literal secrets, and unsafe REST POST",
+          "status": "passed"
+        },
+        {
+          "name": "API and GraphQL planner rejects unsafe object inventory and inconsistent authorization matrices",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/authentication-lifecycle-planner.test.ts",
+      "status": "passed",
+      "definitionSha256": "e49b6f2297ce291a115c0ffb807ae93fe622370e060690dc8e865f1bc6b3cbfd",
+      "checks": [
+        {
+          "name": "authentication lifecycle planner plans every lifecycle category and creates secret-free stable comparison fingerprints",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle planner hashes authorization identities and accepts only referenced worker-held secrets",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle planner changes the contract fingerprint when an assertion value changes",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle planner plans native fixture actions and compiles turnkey provider calls",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle planner plans the complete OIDC callback action and exposes only declared transient captures",
+          "status": "passed"
+        },
+        {
+          "name": "authentication lifecycle planner rejects implicit mutations, literal secrets, missing cleanup, and out-of-scope requests",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/business-invariant-planner.test.ts",
+      "status": "passed",
+      "definitionSha256": "99cc3a4cf8871ecbf661975129b0b8ddc269ea2857a9267fcc7146ad36fe8b5b",
+      "checks": [
+        {
+          "name": "business invariant planner plans bounded multi-step, duplicate, state-machine, and cleanup contracts without persisting authority or secrets",
+          "status": "passed"
+        },
+        {
+          "name": "business invariant planner rejects forward capture references, literal credentials, unsafe concurrency, and expired authorization",
+          "status": "passed"
+        },
+        {
+          "name": "business invariant planner changes the contract fingerprint when an invariant threshold changes",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/request-safety-broker.test.ts",
+      "status": "passed",
+      "definitionSha256": "f342a36d1abaa130c8e7abc25f3fd3938e917f60e909525e0f6c50e96c98b64d",
+      "checks": [
+        {
+          "name": "RequestSafetyBroker exposes native protocol headers only transiently and retains redacted evidence",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks out-of-scope redirects and records safe skipped redirect evidence",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker deduplicates requests globally across clients created by the scan context",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not share cached responses between Account A and Account B",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not share cached responses between anonymous and authenticated requests",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not share cached responses between tenant contexts",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker reuses cached responses within the same safe authentication context",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker preserves authentication-aware cache isolation across redirects and retries",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker redacts auth material from request audit metadata",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker enforces the scan-wide request budget from the resolved plan",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker counts redirects against the scan-wide request budget",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker counts retry attempts against the scan-wide request budget",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not exceed the global request budget during concurrent sends",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker accounts blocked browser requests as policy events without consuming network budget",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser POST before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser PUT before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser PATCH before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser DELETE before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser TRACE before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser PROPFIND before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker blocks browser CUSTOM before network budget is consumed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker permits browser GET when otherwise in scope",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker permits browser HEAD when otherwise in scope",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker permits browser OPTIONS when otherwise in scope",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker uses one shared network budget for browser and direct HTTP requests",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker checks browser redirect hops against scope before network budget is spent",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker charges browser redirect hops that reach the network to the shared budget",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker atomically reserves the final shared browser request budget under concurrent preflight calls",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not expose secrets in browser cache diagnostics or audit events",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker redacts sensitive query values from direct HTTP audit events without changing the transmitted URL",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker attests sensitive query, header, and cookie values without retaining their raw material",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker keeps cached response analysis transient while every public clone remains scrubbed",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker correlates the same value within one scan, including cache reuse, but not across scans",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker does not reuse cached POST responses and records salted body fingerprints without raw IDs",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker pins a hostname request to the RouteCairn-resolved address while preserving Host authority",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker fails closed on mixed public and private DNS answers before transmission",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker re-resolves redirect destinations and blocks newly prohibited answers",
+          "status": "passed"
+        },
+        {
+          "name": "RequestSafetyBroker re-resolves retry attempts and blocks a prohibited retry destination",
+          "status": "passed"
+        },
+        {
+          "name": "controlled mutation broker boundary blocks PATCH by default and DELETE even when controlled mutation transport is enabled",
+          "status": "passed"
+        },
+        {
+          "name": "controlled mutation broker boundary never caches or retries enabled mutations and refuses mutation redirects",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/unit/scope.test.ts",
+      "status": "passed",
+      "definitionSha256": "21b3c84ad7ac83d4e9e75b9165e23f42a7c7acb1a1cf1780a954be2909285aa6",
+      "checks": [
+        {
+          "name": "ScopeMatcher allows same-origin URLs for allowed domains",
+          "status": "passed"
+        },
+        {
+          "name": "ScopeMatcher rejects out-of-scope domains",
+          "status": "passed"
+        },
+        {
+          "name": "ScopeMatcher rejects disallowed paths",
+          "status": "passed"
+        },
+        {
+          "name": "ScopeMatcher rejects unsafe methods that are not in scope",
+          "status": "passed"
+        },
+        {
+          "name": "ScopeMatcher allows wildcard subdomains when same-origin is disabled",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "path": "tests/dashboard/execution/production-mutation-case-compiler.test.ts",
+      "status": "passed",
+      "definitionSha256": "9ce2c1f3ca16e88b3941a8733a1c471819c2e79421825a03c848af2d0b7fe984",
+      "checks": [
+        {
+          "name": "production mutation compiler compiles separate actor identity and object precondition contracts with explicit JSON semantics",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler rejects a target that is not classified production",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler derives exact execution semantics without request credentials or bodies",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler executes identity before a differently shaped precondition and preserves both bindings",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler stops at the exact identity endpoint when the configured actor assertions fail",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler authenticates normalized contracts regardless of optional field insertion order",
+          "status": "passed"
+        },
+        {
+          "name": "production mutation compiler binds intent into approvals and never reports an authorized acceptance transition as a vulnerability",
+          "status": "passed"
+        }
+      ]
+    }
+  ]
+}

@@ -445,7 +445,7 @@ function isRouteTemplate(value: string): boolean {
 }
 
 function isAssetReference(value: string): boolean {
-  return /(?:^|\/)static\/|\.(?:js|css|map|json)$/i.test(value);
+  return /(?:^|\/)static\//i.test(value) || /\.(?:js|css|map|json)$/i.test(value);
 }
 
 function isConcreteRoute(value: string): boolean {

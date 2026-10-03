@@ -1,5 +1,6 @@
+import { readBoundedFileSync } from "../security/BoundedFile.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
@@ -26,9 +27,7 @@ export class HistoricalReportImporter {
 
   public importReport(reportPath: string, organizationId?: string): ImportResult {
     const canonical = safeContainedPath(reportPath, [resolve("reports"), this.paths.reportsDir]);
-    const stat = statSync(canonical);
-    if (stat.size > maxImportBytes) throw new Error("Report file is too large to import safely.");
-    const raw = readFileSync(canonical, "utf8");
+    const raw = readBoundedFileSync(canonical, maxImportBytes).toString("utf8");
     const report = JSON.parse(raw) as RouteCairnReport;
     const reportFingerprint = safeHash(raw);
     const sourceFingerprint = safeHash(`${organizationId ?? "default"}\0${canonical}`);
@@ -56,7 +55,7 @@ export class HistoricalReportImporter {
         type: "JSON_REPORT",
         name: "imported-report.json",
         path: canonical,
-        size: stat.size,
+        size: Buffer.byteLength(raw),
         contentType: "application/json",
         hash: createHash("sha256").update(raw).digest("hex")
       });

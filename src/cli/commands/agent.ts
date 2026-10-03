@@ -9,7 +9,7 @@ import { Agent, fetch } from "undici";
 export interface EnrollOptions { server: string; token: string; name: string; state: string; capability: string[]; networkZone?: string; tlsCa?: string; tlsCert?: string; tlsKey?: string; workloadIdentityTokenFile?: string }
 export interface RunOptions { state: string; handler?: string; once?: boolean; interval?: string; workspace?: string; maxJobMs?: string; requestTimeoutMs?: string }
 export interface AgentState { server: string; workerId: string; privateKeyPem: string; publicKeyPem: string; capabilities: string[]; transport?: { tlsCaFile?: string; tlsCertFile?: string; tlsKeyFile?: string; workloadIdentityTokenFile?: string } }
-interface AgentJob { id: string; kind: string; payload: Record<string, unknown>; leaseToken: string }
+interface AgentJob { id: string; kind: string; payload: Record<string, unknown>; leaseToken: string; leaseExpiresAt?:string }
 interface AgentHandler { handle?: (job: AgentJob, context: { signal: AbortSignal; workspace: string }) => Promise<Record<string, unknown>> }
 
 export function registerAgentCommand(program: Command): void {
@@ -99,6 +99,8 @@ export async function runAgent(options: RunOptions): Promise<void> {
 }
 
 async function executeJob(state: AgentState, job: AgentJob, external: AgentHandler | undefined, workspace: string, maxJobMs: number, requestTimeoutMs: number, transport: AgentTransport): Promise<void> {
+  const leaseRemaining=job.leaseExpiresAt?Date.parse(job.leaseExpiresAt)-Date.now():60_000;
+  if(!Number.isFinite(leaseRemaining)||leaseRemaining<=0)throw new Error("AGENT_JOB_LEASE_DEADLINE_INVALID");
   const controller = new AbortController();
   let renewing = false;
   let renewalError: unknown;
@@ -110,7 +112,7 @@ async function executeJob(state: AgentState, job: AgentJob, external: AgentHandl
     void signedRequest(state, `/api/remote-agents/worker/jobs/${job.id}/renew`, { leaseToken: job.leaseToken }, requestTimeoutMs, transport)
       .catch((error) => { renewalError = error; controller.abort(error); })
       .finally(() => { renewing = false; });
-  }, 20_000);
+  }, Math.min(20_000,Math.max(250,Math.floor(leaseRemaining/3))));
   timer.unref();
   try {
     await signedRequest(state, "/api/remote-agents/worker/heartbeat", { status: "ONLINE", resources: { cpuPercent: 0, memoryBytes: process.memoryUsage().rss, activeJobs: 1 } }, requestTimeoutMs, transport);
@@ -129,6 +131,8 @@ async function executeJob(state: AgentState, job: AgentJob, external: AgentHandl
 }
 
 async function signedRequest(state: AgentState, path: string, body: Record<string, unknown>, timeoutMs: number, transport: AgentTransport): Promise<unknown> {
+  const deadline=Date.now()+timeoutMs;
+  for(let attempt=0;attempt<3;attempt++){
   const timestamp = new Date().toISOString();
   const nonce = randomBytes(24).toString("base64url");
   const serialized = canonical(body);
@@ -146,10 +150,15 @@ async function signedRequest(state: AgentState, path: string, body: Record<strin
       ...await transport.identityHeaders()
     },
     body: serialized,
-    signal: AbortSignal.timeout(timeoutMs), ...(transport.dispatcher ? { dispatcher: transport.dispatcher } : {})
+    signal: AbortSignal.timeout(Math.max(1,deadline-Date.now())), ...(transport.dispatcher ? { dispatcher: transport.dispatcher } : {})
   });
+  // An ingress refusal did not execute this request. Re-sign each bounded retry with a fresh nonce.
+  // Claims are not retried here: a lost successful claim must recover through its durable lease.
+  if(response.status===503&&!path.endsWith('/claim')&&attempt<2&&Date.now()+500<deadline){await response.body?.cancel();await delay(250*(attempt+1));continue;}
   if (!response.ok) throw new Error(`Remote worker request failed (${response.status}).`);
   return response.json();
+  }
+  throw new Error("AGENT_REQUEST_RETRY_LIMIT");
 }
 
 function origin(value: string): string {

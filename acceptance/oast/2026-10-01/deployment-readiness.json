@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "assessedAt": "2026-10-01T08:27:20.000Z",
+  "status": "BLOCKED_DEPLOYMENT_ACCESS",
+  "ownerAuthorizedProjectReuse": true,
+  "associatedDomain": "decide.com.ng",
+  "observedParentNameservers": ["nsa.whogohost.com", "nsb.whogohost.com"],
+  "observedApplicationHosts": ["www.decide.com.ng", "decide-api-production-8aa7.up.railway.app"],
+  "projectConfigurationChecked": ["decide-api/.env", "decide-web/.env.local", "decide-web/.env.production", "dm/.env"],
+  "dnsAdministratorSessionAvailable": false,
+  "publicDnsHostAccessAvailable": false,
+  "publicDeploymentVerified": false,
+  "externalOastExecutionRetained": false,
+  "independentlyOperated": false,
+  "observations": [
+    "Project configurations identify application origins and application credentials; no DNS administrator or OAST host credentials were found in those files.",
+    "The GO54 DNS administrator page displays its login form; no authenticated administrator session was available.",
+    "Both configured AWS CLI profiles report expired sessions.",
+    "The active Google Cloud project has Cloud DNS and Compute Engine APIs disabled.",
+    "The Supabase session is available, but is not access to the domain's authoritative DNS or a public port-53 host.",
+    "Compose configuration validation passed. Container image deployment was not executed locally."
+  ],
+  "requiredInputs": [
+    "Authenticated DNS administrator access for an approved callback subdomain of decide.com.ng.",
+    "An approved host with a stable public address, deployment access, UDP/TCP 53 and HTTPS ingress.",
+    "A publicly trusted TLS certificate and reviewed public deployment manifest."
+  ],
+  "localEvidence": "current-windows-node24/oast-lab-result.json"
+}

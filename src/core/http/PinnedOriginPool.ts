@@ -3,6 +3,7 @@ import type { Dispatcher } from "undici";
 import { createBoundPinnedConnector, type PinnedDestination } from "./PinnedHttpTransport.js";
 
 export interface PinnedTransportSettings {
+  trustedCaPem?: string | undefined;
   poolingEnabled: boolean;
   http2Enabled: boolean;
   maxOrigins: number;
@@ -93,7 +94,7 @@ export class PinnedOriginPool {
   private createPool(pin: PinnedDestination, persistent: boolean): Pool {
     const allowHttp2 = this.settings.http2Enabled && pin.protocol === "https:";
     return new Pool(pin.origin, {
-      connect: createBoundPinnedConnector(pin, { allowHttp2, timeoutMs: this.settings.keepAliveMaxTimeoutMs, onConnect: (protocol) => { this.counters.connectionsCreated += 1; if (protocol === "h2") this.counters.http2Connections += 1; else this.counters.http1Connections += 1; } }),
+      connect: createBoundPinnedConnector(pin, { allowHttp2, timeoutMs: this.settings.keepAliveMaxTimeoutMs, ...(this.settings.trustedCaPem ? { tlsCa: this.settings.trustedCaPem } : {}), onConnect: (protocol) => { this.counters.connectionsCreated += 1; if (protocol === "h2") this.counters.http2Connections += 1; else this.counters.http1Connections += 1; } }),
       connections: persistent ? this.settings.maxConnectionsPerOrigin : 1,
       pipelining: 1,
       allowH2: allowHttp2,

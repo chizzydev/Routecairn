@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "fixtureOnly": true,
+  "externalTargetsTested": false,
+  "independence": "SELF_MAINTAINED",
+  "blinded": false,
+  "runtime": {
+    "node": "24.13.0",
+    "python": "3.12.10",
+    "go": "1.27.1",
+    "platform": "win32"
+  },
+  "scannerRelease": "0.1.0",
+  "workingTreeModified": true,
+  "notes": [
+    "Three real scanner executions; scoring was repeated with the current evaluator to include provenance and interval rendering.",
+    "Compressed raw merged scanner reports retain each target's observations and request audits.",
+    "No independent external or blinded evidence is claimed."
+  ],
+  "reports": {
+    "reports/run-1.json.gz": {
+      "compressedSha256": "f84631131d189780f11d792ce9e821b170250c29341c29a60f1ba9d94519aa47",
+      "uncompressedSha256": "d149192cf7e9f3c5e9cd603ab399f597ce94558ea6d5e727531d4b52953b30e3"
+    },
+    "reports/run-2.json.gz": {
+      "compressedSha256": "467eb7ad4ea418be2911291eb2fc06e422898cfe52a941fdc128b8eb71e15907",
+      "uncompressedSha256": "e7fffe97648dea10d953d6ad2b983f8cff6acd97cb6ea45054a2ec56f87f0c74"
+    },
+    "reports/run-3.json.gz": {
+      "compressedSha256": "d7ac825676cd8c7c54c24e6e6fcd788fa5bf5baaee61ecb45e05c39c0d893276",
+      "uncompressedSha256": "9b3519dc6b76a595e4482d0303d5d60f23e6b3fc234822a351dd9a514301b9dd"
+    }
+  }
+}

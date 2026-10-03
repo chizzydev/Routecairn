@@ -56,7 +56,12 @@ export const benchmarkThresholdsSchema = z.object({
   minMultiStepCases: z.number().int().min(0).max(5000).optional(),
   minSecondOrderCases: z.number().int().min(0).max(5000).optional(),
   minMutantCases: z.number().int().min(0).max(5000).optional(),
-  minYoudenIndex: z.number().min(-1).max(1).optional()
+  minYoudenIndex: z.number().min(-1).max(1).optional(),
+  minCategories: z.number().int().min(1).max(500).optional(),
+  minStabilityRate: z.number().min(0).max(1).optional(),
+  minCategoryRecall: z.number().min(0).max(1).optional(),
+  maxCategoryFalsePositiveRate: z.number().min(0).max(1).optional(),
+  maxCategoryInconclusiveRate: z.number().min(0).max(1).optional()
 }).strict().default({});
 
 export const benchmarkRegressionPolicySchema = z.object({

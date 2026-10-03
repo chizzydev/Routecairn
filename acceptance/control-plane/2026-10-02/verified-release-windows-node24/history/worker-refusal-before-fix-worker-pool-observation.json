@@ -1,0 +1,61 @@
+{
+  "workers": [
+    {
+      "id": "71ab0c0e-2455-4812-a9e4-bdb9c56e43ab",
+      "name": "owned-public-pool",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "public-pool"
+      }
+    },
+    {
+      "id": "f94cfc66-6dd5-4707-ab15-6066c5a55422",
+      "name": "owned-private-pool",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "private-pool"
+      }
+    },
+    {
+      "id": "d8014cb7-7aa3-4990-9a9e-a2b8771b1b98",
+      "name": "kubernetes-owned-worker",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "private"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": "411ec732-5afa-4be6-8df8-066c0da049b0",
+      "status": "LEASED",
+      "networkZone": "public-pool",
+      "assignedWorkerId": "71ab0c0e-2455-4812-a9e4-bdb9c56e43ab",
+      "error": null
+    },
+    {
+      "id": "33e254ae-d7e5-4488-9dd7-00758f3d0f07",
+      "status": "LEASED",
+      "networkZone": "private-pool",
+      "assignedWorkerId": "f94cfc66-6dd5-4707-ab15-6066c5a55422",
+      "error": null
+    },
+    {
+      "id": "1f81e5b4-2f51-48aa-a770-9bfe5a3ce1c2",
+      "status": "COMPLETED",
+      "networkZone": "private",
+      "assignedWorkerId": "d8014cb7-7aa3-4990-9a9e-a2b8771b1b98",
+      "error": null
+    }
+  ],
+  "expected": {
+    "jobs": [
+      "33e254ae-d7e5-4488-9dd7-00758f3d0f07",
+      "411ec732-5afa-4be6-8df8-066c0da049b0"
+    ],
+    "workers": [
+      "f94cfc66-6dd5-4707-ab15-6066c5a55422",
+      "71ab0c0e-2455-4812-a9e4-bdb9c56e43ab"
+    ]
+  }
+}

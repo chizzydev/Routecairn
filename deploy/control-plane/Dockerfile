@@ -13,6 +13,9 @@ WORKDIR /opt/routecairn
 COPY --from=build /opt/routecairn/package.json ./package.json
 COPY --from=build /opt/routecairn/node_modules ./node_modules
 COPY --from=build /opt/routecairn/dist ./dist
+COPY --from=build /opt/routecairn/examples ./examples
+COPY --from=build /opt/routecairn/benchmarks ./benchmarks
+COPY --from=build /opt/routecairn/docs ./docs
 COPY --from=build /opt/routecairn/apps/dashboard-ui/dist ./apps/dashboard-ui/dist
 RUN mkdir -p /var/lib/routecairn && chown -R node:node /var/lib/routecairn /opt/routecairn
 

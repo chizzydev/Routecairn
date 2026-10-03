@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "classification": "SELF_MAINTAINED_LOCAL_KUBERNETES",
+  "context": "routecairn-scale-local",
+  "namespace": "routecairn-scale-226ec6a6",
+  "checks": [
+    "live in-cluster PostgreSQL, MinIO and OpenTelemetry Collector",
+    "actual Helm deployment: three fleet replicas and one persistent dashboard",
+    "installed image code hashes match current built release",
+    "authenticated dashboard approval/enrollment/job creation and fleet completion",
+    "two actual TLS-connected worker pods with distinct signing identities and network-zone placement",
+    "fleet pod replacement with three ready replicas",
+    "fleet scale out to four replicas and return to three",
+    "dashboard persistent-volume restart preserves session and organization identity"
+  ],
+  "runtimeHashes": {
+    "dist/controlPlane/FleetServer.js": "34dd53031db7a78fbea3b3caa0ce5936d35586da5832e28b7e6ce3a87df6d176",
+    "dist/controlPlane/PostgresControlPlane.js": "05479cbad00e7ba9d8f727672cdee2f29f9d22cd9512972f2f8c789552c78937",
+    "dist/controlPlane/PostgresRemoteWorkerService.js": "f1df531ab39c1835a7a0d30b2b6bf37e76dbcac37f6bc91fa32680f59d356b8b",
+    "dist/controlPlane/WorkloadIdentity.js": "112cb44c377a3f2c3579970e7058e5431cb231e4c8012434e8d743c2c8a83228",
+    "dist/controlPlane/ObjectStorage.js": "06d9324a6d10a1d9e0433f724066b8264b876c94b680cdbbea61536482b8cd3b",
+    "dist/cli/commands/agent.js": "1c8cb41b561bd3c9148c0e56dd8b2061a48b70ac9ad5ddfb669e057953a10978",
+    "dist/dashboard/server/DashboardServer.js": "b4a7208002f7737f14f991fb223b82992179edbedb625595d2bde377d4343a3c",
+    "package.json": "90bff7e8daabe85d411001dcac2743e57fb6a8311d4d1633996301206ad7b0b8"
+  },
+  "nodeVersion": "v1.33.5+k3s1",
+  "pods": [
+    {
+      "role": "fleet-edge",
+      "image": [
+        "caddy:2.10.2-alpine"
+      ],
+      "imageIds": [
+        "docker.io/library/caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d"
+      ],
+      "ready": true
+    },
+    {
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": false
+    },
+    {
+      "role": "objects",
+      "image": [
+        "routecairn/minio:07c3a429bfed"
+      ],
+      "imageIds": [
+        "sha256:45da6430c89e524abae85e4c5db3619f26e28c71d47a86608d8e74f8a915a5ee"
+      ],
+      "ready": true
+    },
+    {
+      "role": "otel",
+      "image": [
+        "otel/opentelemetry-collector-contrib:0.135.0"
+      ],
+      "imageIds": [
+        "docker.io/otel/opentelemetry-collector-contrib@sha256:89107a3a8f4636a396927edf7025bb9614b8da2d92f4cc3f43109e8d115736e2"
+      ],
+      "ready": true
+    },
+    {
+      "role": "postgres",
+      "image": [
+        "postgres:17-alpine"
+      ],
+      "imageIds": [
+        "docker.io/library/postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn-dashboard",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn-worker",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    },
+    {
+      "role": "routecairn-worker",
+      "image": [
+        "routecairn/scale-lab:20261002-retry-fixed"
+      ],
+      "imageIds": [
+        "sha256:0aa02907871bbed6a7f112832c43cc5dc7549f351f57c1a9ad478aa24d8372c5"
+      ],
+      "ready": true
+    }
+  ],
+  "awsKmsExecuted": false,
+  "hsmExecuted": false,
+  "publicDeployment": false,
+  "multiNodeCluster": false
+}

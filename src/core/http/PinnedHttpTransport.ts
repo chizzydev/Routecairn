@@ -44,14 +44,14 @@ type Connector = (options: ConnectorOptions, callback: ConnectorCallback) => voi
 const defaultDnsTimeoutMs = 3000;
 const defaultMaxDnsAnswers = 16;
 
-export function createPinnedConnector(options: Partial<DestinationPolicyOptions> = {}): Connector {
+export function createPinnedConnector(options: Partial<DestinationPolicyOptions> & { tlsCa?: string | Buffer } = {}): Connector {
   const policy: DestinationPolicyOptions = {
     allowedPrivateOrigins: options.allowedPrivateOrigins ?? [],
     dnsTimeoutMs: options.dnsTimeoutMs ?? defaultDnsTimeoutMs,
     maxDnsAnswers: options.maxDnsAnswers ?? defaultMaxDnsAnswers,
     ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {})
   };
-  const baseConnector = createUndiciConnector({ keepAlive: false, maxCachedSessions: 0, allowH2: false, timeout: policy.dnsTimeoutMs });
+  const baseConnector = createUndiciConnector({ keepAlive: false, maxCachedSessions: 0, allowH2: false, timeout: policy.dnsTimeoutMs, rejectUnauthorized: true, ...(options.tlsCa ? { ca: options.tlsCa } : {}) });
 
   return (connectOptions, callback) => {
     resolvePinnedDestination(connectOptions, policy)
@@ -87,8 +87,8 @@ export function createPinnedConnector(options: Partial<DestinationPolicyOptions>
 /** A connector permanently bound to one already-validated origin/address pair.
  * It is safe to reuse only for that exact origin. The remote socket is checked
  * again after connect and TLS continues to authenticate the original hostname. */
-export function createBoundPinnedConnector(pin: PinnedDestination, options: { allowHttp2: boolean; timeoutMs: number; onConnect?: (protocol: "http/1.1" | "h2") => void }): Connector {
-  const baseConnector = createUndiciConnector({ keepAlive: true, keepAliveInitialDelay: 1000, maxCachedSessions: 100, allowH2: options.allowHttp2, timeout: options.timeoutMs });
+export function createBoundPinnedConnector(pin: PinnedDestination, options: { allowHttp2: boolean; timeoutMs: number; tlsCa?: string | Buffer; onConnect?: (protocol: "http/1.1" | "h2") => void }): Connector {
+  const baseConnector = createUndiciConnector({ keepAlive: true, keepAliveInitialDelay: 1000, maxCachedSessions: 100, allowH2: options.allowHttp2, timeout: options.timeoutMs, rejectUnauthorized: true, ...(options.tlsCa ? { ca: options.tlsCa } : {}) });
   return (connectOptions, callback) => {
     let requested: PinnedDestination;
     try {

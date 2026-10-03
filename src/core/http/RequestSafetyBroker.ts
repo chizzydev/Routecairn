@@ -41,6 +41,7 @@ export class RequestSafetyBroker {
   private readonly timeoutMs: number;
   private readonly maxResponseBytes: number;
   private readonly dnsResolver: RequestBrokerOptions["dnsResolver"];
+  private readonly tlsCa: string | undefined;
 
   public constructor(
     options: RequestBrokerOptions,
@@ -53,6 +54,7 @@ export class RequestSafetyBroker {
     this.timeoutMs = options.timeoutMs;
     this.maxResponseBytes = options.maxResponseBytes;
     this.dnsResolver = options.dnsResolver;
+    this.tlsCa = options.connectionPool?.settings.trustedCaPem ?? options.transport?.trustedCaPem;
     this.controlledMutationEnabled = options.controlledMutationEnabled === true;
     this.controlledDeletionEnabled = options.controlledDeletionEnabled === true;
     this.controlledRaceEnabled = options.controlledRaceEnabled === true;
@@ -115,7 +117,7 @@ export class RequestSafetyBroker {
     if (Object.entries(requestInput.headers).some(([name, value]) => /[\r\n]/.test(name) || /[\r\n]/.test(value) || ["host", "content-length", "transfer-encoding", "connection", "proxy-connection", "expect", "upgrade", "trailer"].includes(name.toLowerCase()))) return blockedRawResponse(requestInput.url, "RAW_HTTP1_FRAMING_HEADER_BLOCKED");
     const authorizationDenied = this.scopeMatcher.authorization?.reserve(scopeDecision.normalizedUrl, requestInput.method, requestInput.body);
     if (authorizationDenied) return blockedRawResponse(requestInput.url, authorizationDenied);
-    const operation = () => sendRawHttp1({ ...requestInput, url: scopeDecision.normalizedUrl!, timeoutMs: this.timeoutMs, maxResponseBytes: this.maxResponseBytes, userAgent: this.userAgent, ...(this.abortSignal ? { abortSignal: this.abortSignal } : {}), targetOrigin: this.scopeMatcher.targetOrigin(), ...(this.dnsResolver ? { dnsResolver: this.dnsResolver } : {}) });
+    const operation = () => sendRawHttp1({ ...requestInput, ...(this.tlsCa ? { tlsCa: this.tlsCa } : {}), url: scopeDecision.normalizedUrl!, timeoutMs: this.timeoutMs, maxResponseBytes: this.maxResponseBytes, userAgent: this.userAgent, ...(this.abortSignal ? { abortSignal: this.abortSignal } : {}), targetOrigin: this.scopeMatcher.targetOrigin(), ...(this.dnsResolver ? { dnsResolver: this.dnsResolver } : {}) });
     const response = await this.queue.run(async () => {
       if (this.coordination) {
         const dispatched = await this.coordination.ledger.transmit(this.coordination.lane, this.abortSignal, operation, { onReserved: () => { this.sentRequestCount += 1; } });
@@ -203,6 +205,7 @@ export class RequestSafetyBroker {
       if (scopedRequest.transientBodyConsumer && rawResponse.bodyPreview !== undefined) {
         scopedRequest.transientBodyConsumer(rawResponse.bodyPreview);
       }
+      scopedRequest.transientResponseConsumer?.({ ...(rawResponse.statusCode !== undefined ? { statusCode: rawResponse.statusCode } : {}), headers: rawResponse.headers, ...(rawResponse.redirectLocation ? { redirectLocation: rawResponse.redirectLocation } : {}) });
       return attachTransientResponseAnalysis(sanitizeResponse(rawResponse, observation), rawResponse);
     });
 
@@ -642,7 +645,7 @@ function sanitizeResponse(response: HttpResponse, observation: TransientValueObs
   const scrubbedHeaders = Object.fromEntries(
     Object.entries(response.headers).map(([name, value]) => [
       name,
-      Array.isArray(value) ? value.map((item) => scrubObservedValues(item, observation)) : scrubObservedValues(value, observation)
+      Array.isArray(value) ? value.map((item) => scrubObservedValues(["location", "content-location"].includes(name.toLowerCase()) ? redactSensitiveUrl(item) : item, observation)) : scrubObservedValues(["location", "content-location"].includes(name.toLowerCase()) ? redactSensitiveUrl(value) : value, observation)
     ])
   );
   return {

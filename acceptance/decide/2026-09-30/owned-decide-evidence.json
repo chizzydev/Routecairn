@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "standard": "ROUTECAIRN_OWNED_TARGET_HISTORY_V1",
+  "product": "Decide",
+  "status": "PARTIAL_EXTERNAL_EVIDENCE",
+  "historicalSummaryAt": "2026-09-07T00:18:00+01:00",
+  "retainedAt": "2026-09-30T19:49:24.399Z",
+  "sourceSummarySha256": "50e7982749fe6aac4a200c7193c43a1bf3583faabe3ca1d574da7843a164c72a",
+  "targets": {
+    "web": "https://www.decide.com.ng",
+    "api": "https://decide-api-production-8aa7.up.railway.app"
+  },
+  "assessments": [
+    {
+      "name": "publicWeb",
+      "historicalOutcome": "ASSESSED",
+      "reportAvailable": true,
+      "scanId": "b4c46a8e-5462-449f-8196-12ca9f6fc4ad",
+      "rawReportSha256": "bca53bd76d70d98f6747fe802a9c07ea765ef74e377945bdd13cd5e2e757a582",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "COMPLETED",
+      "partial": false,
+      "reportCleanupState": "CLEAR",
+      "findingCount": 9,
+      "findings": [
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Admin/Login Panel",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Interesting But Needs Manual Testing",
+          "severity": "Low"
+        },
+        {
+          "type": "Security Header Issue",
+          "severity": "Low"
+        }
+      ],
+      "summaryCountMatchesReport": true,
+      "assessment": "HISTORICAL_EXECUTION_RETAINED"
+    },
+    {
+      "name": "apiAuthorization",
+      "historicalOutcome": "ASSESSED",
+      "reportAvailable": true,
+      "scanId": "08f86de3-6e09-42f2-b97c-5f32d07d88a0",
+      "rawReportSha256": "95d3674426b2691364f2349a56f5ddecdcba398669af2bf203260f4b91c67e01",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "COMPLETED",
+      "partial": false,
+      "reportCleanupState": "CLEAR",
+      "findingCount": 0,
+      "findings": [],
+      "summaryCountMatchesReport": true,
+      "assessment": "HISTORICAL_EXECUTION_RETAINED"
+    },
+    {
+      "name": "authenticationLifecycle",
+      "historicalOutcome": "ASSESSED_WITH_FINDING",
+      "reportAvailable": true,
+      "scanId": "09dae4ce-54c9-44aa-9263-75437d1ec714",
+      "rawReportSha256": "bc2b66b736851a47c265d73b17006d5b5b1eb1b73d4d9199641afb77253a3701",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "COMPLETED",
+      "partial": false,
+      "reportCleanupState": "CLEAR",
+      "findingCount": 1,
+      "findings": [
+        {
+          "type": "Authentication Lifecycle Issue",
+          "severity": "High"
+        }
+      ],
+      "summaryCountMatchesReport": true,
+      "assessment": "HISTORICAL_EXECUTION_RETAINED"
+    },
+    {
+      "name": "authenticatedBrowser",
+      "historicalOutcome": "ASSESSED",
+      "reportAvailable": true,
+      "scanId": "9282a900-61b3-4e7d-a5c5-29becd673927",
+      "rawReportSha256": "87e9c56dbd8543cead175bbe4dea748f5b45b83fda8731419c104efb37dd2aec",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "COMPLETED",
+      "partial": false,
+      "reportCleanupState": "CLEAR",
+      "findingCount": 0,
+      "findings": [],
+      "summaryCountMatchesReport": true,
+      "assessment": "HISTORICAL_EXECUTION_RETAINED"
+    },
+    {
+      "name": "controlledMutationAndRollback",
+      "historicalOutcome": "ACCEPTANCE_PATH_VERIFIED",
+      "reportAvailable": true,
+      "scanId": "cef60339-42da-45e4-9c81-8f0ee3289845",
+      "rawReportSha256": "3f91e93e8f766734d8e791a59c81dc09238ce05d1759034d5a1c91500f8f9f07",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "COMPLETED",
+      "partial": false,
+      "reportCleanupState": "CLEAR",
+      "findingCount": 1,
+      "findings": [
+        {
+          "type": "Privilege Mutation Issue",
+          "severity": "High"
+        }
+      ],
+      "summaryCountMatchesReport": true,
+      "assessment": "HISTORICAL_EXECUTION_RETAINED"
+    },
+    {
+      "name": "externalRestartRecovery",
+      "historicalOutcome": "ASSESSED",
+      "reportAvailable": true,
+      "scanId": "21484cb5-ffe5-4032-a599-e1ec7c96d84b",
+      "rawReportSha256": "fc3ef3f84ad557eaaf062d2ecd487225ec0bd50affa7d669e64457388afc714d",
+      "routeCairnVersion": "0.1.0",
+      "executionStatus": "INTERRUPTED",
+      "partial": true,
+      "reportCleanupState": "REQUIRED",
+      "findingCount": 0,
+      "findings": [],
+      "summaryCountMatchesReport": true,
+      "assessment": "REVIEW_REQUIRED"
+    },
+    {
+      "name": "webhookAndSyntheticBilling",
+      "historicalOutcome": "NOT_ASSESSED",
+      "reportAvailable": false
+    },
+    {
+      "name": "postRemediationRerun",
+      "historicalOutcome": "NOT_ASSESSED",
+      "reportAvailable": false
+    }
+  ],
+  "recoveryJournal": {
+    "rawSha256": "99222a8e4d14da53bf64c67f61d0a5c2e462d2032ef7b1b9ab6f12a07f46e714",
+    "latestStages": [
+      {
+        "caseIdSha256": "df8b7be404d269534f2b93cc1f1fe527a1a8cd46e616db5a4f88aba404982e17",
+        "stage": "ROLLBACK_VERIFIED",
+        "timestamp": "2026-09-06T22:33:13.718Z"
+      },
+      {
+        "caseIdSha256": "b7c6bafdc4143cf1bd80d8231b09991aad7c7e5f4ca4ae0d5d09e489d2488d20",
+        "stage": "ROLLBACK_VERIFIED",
+        "timestamp": "2026-09-06T22:33:19.525Z"
+      },
+      {
+        "caseIdSha256": "2b3ca1b9e61e247e1787244d4c41dd0c4862c39f13264a6b7e43a0808e0f187c",
+        "stage": "ROLLBACK_VERIFIED",
+        "timestamp": "2026-09-06T22:44:57.456Z"
+      },
+      {
+        "caseIdSha256": "69241fd862bbfab3cf37a94f6ea2b4cc27fc658c8eef36acf15c3c48cfb64a65",
+        "stage": "ROLLBACK_VERIFIED",
+        "timestamp": "2026-09-06T23:42:39.203Z"
+      }
+    ]
+  },
+  "reportedHistoricalCleanup": {
+    "allDisposableUsersDeleted": true,
+    "sessionsRemaining": 0,
+    "controlledMutationStateRestored": true,
+    "credentialsRemovedAfterRuns": true
+  },
+  "publicAvailability": [
+    {
+      "kind": "web",
+      "url": "https://www.decide.com.ng/",
+      "method": "HEAD",
+      "statusCode": 200,
+      "responseBodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "responseBytes": 0,
+      "checkedAt": "2026-09-30T19:49:23.165Z",
+      "assessment": "PUBLIC_ENDPOINT_REACHABLE"
+    },
+    {
+      "kind": "api",
+      "url": "https://decide-api-production-8aa7.up.railway.app/health",
+      "method": "GET",
+      "statusCode": 200,
+      "responseBodySha256": "a29ee2b15c494311c52521766e44af56a3ad2248e7a8ab465e5206463c13d288",
+      "responseBytes": 15,
+      "checkedAt": "2026-09-30T19:49:24.399Z",
+      "assessment": "PUBLIC_ENDPOINT_REACHABLE"
+    }
+  ],
+  "independentOperatorVerified": false,
+  "releaseArtifactVerified": false,
+  "fullEightLaneAcceptance": false,
+  "limitations": [
+    "Historical owned-target reports are unsigned; their integrity hashes are newly retained, not historical attestations.",
+    "The interrupted recovery report remains partial. The later journal and historical cleanup declaration are separate evidence.",
+    "No tenant model was assessed. Supabase, GraphQL, Auth0/Cognito, signed portals and independent operator evidence are not supplied by these reports.",
+    "Historical webhook/billing and post-remediation assessments were NOT_ASSESSED.",
+    "Public endpoint availability is read-only and cannot establish authenticated authorization, provider or remediation acceptance.",
+    "Historical disposable accounts and credentials were removed; fresh approved credentials are required for authenticated reruns."
+  ]
+}

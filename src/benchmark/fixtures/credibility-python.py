@@ -59,6 +59,30 @@ class Handler(BaseHTTPRequestHandler):
                 dialects = ["SQL syntax error near corpus canary", "PostgreSQL error: unterminated quoted string", "MySQL warning: invalid query", "ORA-00933 corpus fixture", "SQLSTATE[42000] corpus fixture"]
                 return self.reply([400, 422, 500][variant_index % 3], {"error": dialects[variant_index % len(dialects)]})
             return self.reply(200, {"matches": [], "variant": variant})
+        if family in ("sql-boolean", "sql-union", "nosql", "crlf", "template", "traversal"):
+            query = parse_qs(parsed.query).get("q", ["fixture"])[0]
+            if family == "sql-boolean":
+                return self.reply(200, {"matches": [] if vulnerable and "1'='2" in query else ["fixture"]})
+            if family == "sql-union":
+                match = re.search(r"UNION SELECT '([^']+)'", query, re.I)
+                return self.reply(200, {"matches": [match.group(1)] if vulnerable and match else []})
+            if family == "nosql":
+                try:
+                    operator = isinstance(json.loads(query).get("$ne"), str)
+                except (ValueError, AttributeError):
+                    operator = False
+                return self.reply(200, {"matches": ["CORPUS_PRIVATE_DOCUMENT"] if vulnerable and operator else []})
+            if family == "crlf":
+                match = re.search(r"\r\nX-RouteCairn-Proof: ([A-Za-z0-9_]+)", query)
+                return self.reply_headers(200, {"accepted": True}, {"x-routecairn-proof": match.group(1)} if vulnerable and match else {})
+            if family == "template":
+                if not vulnerable and "{{" in query:
+                    return self.reply(422, {"error": "literal_only", "example": query if near else ""})
+                return self.reply(200, {"rendered": query.replace("{{7*7}}", "49") if vulnerable else query})
+            if family == "traversal":
+                if not vulnerable and "../" in query:
+                    return self.reply(422, {"error": "path_rejected", "example": "../documentation.txt" if near else ""})
+                return self.reply(200, {"content": "CORPUS_PRIVATE_FILE" if vulnerable and "../" in query else "public file"})
         if family == "redirect":
             destination = parse_qs(parsed.query).get("next", ["/home"])[0]
             if vulnerable:
@@ -91,6 +115,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def form(self):
         length = int(self.headers.get("content-length", "0"))
+        if length > 65536:
+            raise ValueError("fixture request too large")
         raw = self.rfile.read(length).decode("utf-8", "replace")
         content_type = self.headers.get("content-type", "")
         if "application/json" in content_type:
@@ -101,11 +127,16 @@ class Handler(BaseHTTPRequestHandler):
         return {key: values[0] for key, values in parse_qs(raw).items()}
 
     def reply(self, status, value):
+        return self.reply_headers(status, value, {})
+
+    def reply_headers(self, status, value, headers):
         payload = json.dumps(value, separators=(",", ":")).encode()
         self.send_response(status)
         self.send_header("content-type", "application/json")
         self.send_header("cache-control", "no-store")
         self.send_header("content-length", str(len(payload)))
+        for name, value in headers.items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -120,7 +151,51 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("content-length", "0")
         self.end_headers()
 
-server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+class WsgiHandler(Handler):
+    def __init__(self, environ):
+        self.path = environ["PATH_INFO"] + "?" + environ.get("QUERY_STRING", "")
+        self.command = environ["REQUEST_METHOD"]
+        self.rfile = environ["wsgi.input"]
+        self.headers = {"content-length": environ.get("CONTENT_LENGTH", "0"), "content-type": environ.get("CONTENT_TYPE", "")}
+        self.status = 500
+        self.response_headers = []
+        self.payload = b""
+
+    def reply_headers(self, status, value, headers):
+        self.status = status
+        self.payload = json.dumps(value, separators=(",", ":")).encode()
+        self.response_headers = [("Content-Type", "application/json"), ("Content-Length", str(len(self.payload))), ("Cache-Control", "no-store")] + list(headers.items())
+
+    def redirect(self, location, status=302):
+        self.status = status
+        self.payload = b""
+        self.response_headers = [("Location", location), ("Content-Length", "0")]
+
+    def empty(self, status):
+        self.status = status
+        self.payload = b""
+        self.response_headers = [("Content-Length", "0")]
+
+if "--wsgi" in sys.argv:
+    from wsgiref.simple_server import make_server, WSGIRequestHandler
+    from http import HTTPStatus
+
+    class QuietRequestHandler(WSGIRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+    def application(environ, start_response):
+        handler = WsgiHandler(environ)
+        try:
+            handler.route()
+        except (ValueError, KeyError):
+            handler.reply(400, {"error": "invalid_request"})
+        start_response(str(handler.status) + " " + HTTPStatus(handler.status).phrase, handler.response_headers)
+        return [handler.payload]
+
+    server = make_server("127.0.0.1", 0, application, handler_class=QuietRequestHandler)
+else:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 print(json.dumps({"port": server.server_address[1]}), flush=True)
 try:
     server.serve_forever()

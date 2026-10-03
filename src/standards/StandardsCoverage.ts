@@ -1,9 +1,12 @@
+import { priorityGaps } from "./StandardsCoverageObjectives.js";
+import { validateStandardsCoverage } from "./StandardsCoverageValidation.js";
 import { createHash } from "node:crypto";
 import type { Finding } from "../core/findings/Finding.js";
 import type { RouteCairnReport } from "../reports/ReportTypes.js";
-import { referencesFor, wstgAreaFor, wstgAreas } from "./StandardsCatalog.js";
+import { assertStandardsReference, officialCatalogEntries, standardsCatalogIdentity, referencesFor, wstgAreaFor, wstgAreas } from "./StandardsCatalog.js";
+import { standardsMappingSha256 } from "./OfficialCatalogIdentity.js";
 import { mappingFor, mappingForFinding } from "./StandardsMappings.js";
-import type { StandardsCoverageCase, StandardsCoverageGap, StandardsCoverageOutcome, StandardsCoverageReport, StandardsReference, StandardsRequirementCoverage } from "./StandardsCoverageTypes.js";
+import type { StandardsCoverageCase, StandardsCoverageOutcome, StandardsCoverageReport, StandardsReference, StandardsRequirementCoverage } from "./StandardsCoverageTypes.js";
 
 type CoverageInput = Omit<RouteCairnReport, "standardsCoverage"> & { standardsCoverage?: never };
 type UnknownRecord = Record<string, unknown>;
@@ -28,7 +31,7 @@ export function buildStandardsCoverage(report: CoverageInput): StandardsCoverage
   const findings = report.findings ?? [];
   const add = (input: AddCaseInput): void => {
     const caseId = safeCaseId(input.caseId);
-    if (!caseId) return;
+    if (!caseId) throw new Error("STANDARDS_CASE_ID_REQUIRED");
     const key = `${input.moduleId}/${caseId}`;
     const linkedFindings = findingsForCase(findings, input.moduleId, caseId);
     const outcome = classifyOutcome(input, linkedFindings.length > 0);
@@ -54,12 +57,23 @@ export function buildStandardsCoverage(report: CoverageInput): StandardsCoverage
   collectUnlinkedFindings(findings, cases, add);
 
   const caseList = [...cases.values()].sort((left, right) => left.moduleId.localeCompare(right.moduleId) || left.caseId.localeCompare(right.caseId));
+  const unmapped = caseList.filter((item) => item.references.length === 0);
+  if (unmapped.length) throw new Error(`STANDARDS_UNMAPPED_CASES ${unmapped.map((item) => `${item.moduleId}/${item.caseId}`).join(", ").slice(0, 1000)}`);
+  for (const item of caseList) for (const reference of item.references) assertStandardsReference(reference);
   const requirements = requirementCoverage(caseList);
+  const frameworkTotals = standardsCatalogIdentity.sources.map((source) => {
+    const active = officialCatalogEntries.filter((entry) => entry.framework === source.framework && !/deprecated|obsolete/i.test(entry.status ?? ""));
+    const mapped = requirements.filter((entry) => entry.framework === source.framework);
+    const conclusiveEntries = mapped.filter((entry) => entry.findings + entry.noFindings > 0).length;
+    return { framework: source.framework, catalogEntries: standardsCatalogIdentity.counts[source.framework], activeEntries: active.length, mappedEntries: mapped.length, conclusiveEntries, unassessedEntries: active.length - conclusiveEntries };
+  });
   const areas = wstgAreas.map((area) => {
     const relevant = caseList.filter((item) => item.references.some((reference) => reference.framework === "OWASP_WSTG" && wstgAreaFor(reference.id) === area.id && reference.strength === "DIRECT"));
     const conclusiveCases = relevant.filter((item) => item.outcome === "FINDING" || item.outcome === "NO_FINDING").length;
     const requirementIds = [...new Set(relevant.flatMap((item) => item.references.filter((reference) => reference.framework === "OWASP_WSTG" && wstgAreaFor(reference.id) === area.id && reference.strength === "DIRECT").map((reference) => reference.id)))].sort((left, right) => naturalId(left).localeCompare(naturalId(right), undefined, { numeric: true }));
-    return { id: area.id, title: area.title, status: relevant.length === 0 ? "NOT_ASSESSED" as const : conclusiveCases === 0 ? "PARTIAL" as const : "COVERED" as const, executedCases: relevant.length, conclusiveCases, requirementIds };
+    const catalogRequirements = officialCatalogEntries.filter((entry) => entry.framework === "OWASP_WSTG" && wstgAreaFor(entry.id) === area.id).length;
+    const conclusiveRequirements = requirements.filter((entry) => entry.framework === "OWASP_WSTG" && wstgAreaFor(entry.id) === area.id && entry.findings + entry.noFindings > 0).length;
+    return { id: area.id, title: area.title, status: relevant.length === 0 ? "NOT_ASSESSED" as const : conclusiveRequirements < catalogRequirements ? "PARTIAL" as const : "COVERED" as const, executedCases: relevant.length, conclusiveCases, requirementIds, catalogRequirements, mappedRequirements: requirementIds.length, conclusiveRequirements };
   });
   const counts = countOutcomes(caseList);
   const apiRiskObjectives = ([
@@ -71,10 +85,12 @@ export function buildStandardsCoverage(report: CoverageInput): StandardsCoverage
     const conclusiveCases = relevant.filter((item) => item.outcome === "FINDING" || item.outcome === "NO_FINDING").length;
     return { ...objective, engineIds: [...new Set(relevant.map((item) => item.moduleId))].sort(), executedCases: relevant.length, conclusiveCases, status: relevant.length === 0 ? "NOT_ASSESSED" as const : conclusiveCases === 0 ? "PARTIAL" as const : "COVERED" as const };
   });
-  return {
-    schemaVersion: 1,
+  const coverage: StandardsCoverageReport = {
+    schemaVersion: 2,
     generatedAt: report.metadata.completedAt,
-    catalog: { wstg: "latest", wstgSnapshotDate: "2026-09-28", asvs: "5.0.0", apiSecurityTop10: "2023", cwe: "current", capec: "current" },
+    catalog: standardsCatalogIdentity,
+    validation: { policy: "FAIL_ON_UNMAPPED", mappingScope: "BOUNDED_CASE_ASSOCIATION", mappingSha256: standardsMappingSha256 },
+    frameworkTotals,
     accounting: {
       plannedModules: report.scanPlan.modules.length,
       executedCases: caseList.length,
@@ -92,9 +108,13 @@ export function buildStandardsCoverage(report: CoverageInput): StandardsCoverage
       "Coverage records executed or attempted RouteCairn cases; it does not certify conformance with an entire standard.",
       "A requirement is only counted from retained case evidence. Planned modules and absent cases do not count as coverage.",
       "CWE and CAPEC references classify applicable weakness and attack patterns; they are supporting mappings rather than verification requirements.",
-      "Inconclusive and blocked cases remain distinct and never count as a passing verification."
+      "Inconclusive and blocked cases remain distinct and never count as a passing verification.",
+      "A direct mapping associates a bounded case with a requirement; it does not establish that every clause or verification level was tested.",
+      "WSTG 4.2 has no dedicated JWT, OAuth, prototype-pollution or deserialization identifier; those cases use applicable published ASVS/CWE/CAPEC references."
     ]
   };
+  validateStandardsCoverage(coverage);
+  return coverage;
 }
 
 function collectStructuredCases(report: CoverageInput, add: (value: AddCaseInput) => void): void {
@@ -122,7 +142,8 @@ function collectStructuredCases(report: CoverageInput, add: (value: AddCaseInput
   for (const block of report.proofMode?.blocks ?? []) {
     const findingId = block.source === "finding" ? block.id.replace(/^proof-/, "") : undefined;
     const finding = findingId ? report.findings.find((item) => item.id === findingId) : undefined;
-    const mapping = finding ? mappingForFinding(finding.type) : mappingFor("object-pair-testing");
+    const specific = finding ? mappingForFinding(finding.type) : undefined;
+    const mapping = specific && referencesFor(specific).length ? specific : finding ? mappingFor(finding.sourceModule ?? "", finding.type) : mappingFor("object-pair-testing");
     add({ moduleId: "proof-mode", caseId: block.id, label: block.title, discriminator: block.source, outcome: block.comparisons.some((comparison) => comparison.response.error) ? "INCONCLUSIVE" : "OBSERVED", requestTransmitted: block.comparisons.length > 0, references: referencesFor(mapping) });
   }
   if (report.browserCrawl?.authentication) add({ moduleId: "browser-crawler", caseId: "authenticated-browser-bootstrap", label: "Authenticated browser bootstrap", discriminator: "BROWSER_STORAGE", outcome: report.browserCrawl.authentication.bootstrapSucceeded ? "PASS" : "BLOCKED", requestTransmitted: report.browserCrawl.authentication.bootstrapSucceeded });
@@ -152,7 +173,8 @@ function collectCompletedModuleReviews(report: CoverageInput, add: (value: AddCa
   const moduleReviews = new Set(["header-review", "cookie-review", "cors-review", "method-review", "exposure-review", "parameter-analysis", "vulnerability-workflows", "workflow-validation"]);
   for (const plan of report.scanPlan.modules) if (moduleReviews.has(plan.id)) {
     const moduleFindings = report.findings.filter((finding) => finding.sourceModule === plan.id);
-    add({ moduleId: plan.id, caseId: "module-review", label: `${plan.id} completed review`, discriminator: plan.id, outcome: moduleFindings.length ? "FAIL" : "PASS", finding: moduleFindings.length > 0, requestTransmitted: report.metadata.totalRequests > 0 });
+    if (report.metadata.totalRequests === 0 && moduleFindings.length === 0) continue;
+    add({ moduleId: plan.id, caseId: "module-review", label: `${plan.id} completed review`, discriminator: plan.id, outcome: moduleFindings.length ? "FAIL" : "OBSERVED", finding: moduleFindings.length > 0, requestTransmitted: report.metadata.totalRequests > 0 });
   }
 }
 
@@ -163,7 +185,7 @@ function collectUnlinkedFindings(findings: readonly Finding[], cases: Map<string
     add({ moduleId: finding.sourceModule || "finding-analysis", caseId, label: finding.title, discriminator: finding.type, outcome: "FAIL", finding: true, requestTransmitted: true, evidenceRefs: [evidenceRef(finding.sourceModule || "finding-analysis", caseId)] });
     const key = `${finding.sourceModule || "finding-analysis"}/${caseId}`;
     const item = cases.get(key);
-    if (item && item.references.length === 0) cases.set(key, { ...item, findingIds: [finding.id], references: referencesFor(mappingForFinding(finding.type)) });
+    if (item) cases.set(key, { ...item, findingIds: [finding.id], references: item.references.length ? item.references : referencesFor(mappingForFinding(finding.type)) });
   }
 }
 
@@ -186,25 +208,6 @@ function requirementCoverage(cases: readonly StandardsCoverageCase[]): Standards
     observed: linked.filter((item) => item.outcome === "OBSERVED").length,
     caseIds: [...new Set(linked.map(caseKey))].sort()
   })).sort((left, right) => left.framework.localeCompare(right.framework) || naturalId(left.id).localeCompare(naturalId(right.id), undefined, { numeric: true }));
-}
-
-function priorityGaps(requirements: readonly StandardsRequirementCoverage[]): StandardsCoverageGap[] {
-  const targets = [
-    { framework: "OWASP_WSTG" as const, id: "WSTG-CRYP-01", title: "Transport cryptography", priority: "HIGH" as const },
-    { framework: "OWASP_WSTG" as const, id: "WSTG-ERRH-01", title: "Error handling", priority: "MEDIUM" as const },
-    { framework: "OWASP_WSTG" as const, id: "WSTG-CLNT-01", title: "DOM client-side injection", priority: "HIGH" as const },
-    { framework: "OWASP_WSTG" as const, id: "WSTG-INJT-05", title: "Generalized database injection", priority: "HIGH" as const },
-    { framework: "OWASP_API_TOP_10" as const, id: "API4:2023", title: "Unrestricted Resource Consumption", priority: "HIGH" as const },
-    { framework: "OWASP_API_TOP_10" as const, id: "API6:2023", title: "Sensitive Business Flow Abuse", priority: "HIGH" as const },
-    { framework: "OWASP_API_TOP_10" as const, id: "API10:2023", title: "Unsafe Consumption of APIs", priority: "HIGH" as const }
-  ];
-  return targets.flatMap<StandardsCoverageGap>((target) => {
-    const item = requirements.find((entry) => entry.framework === target.framework && entry.id === target.id);
-    if (!item) return [{ ...target, status: "NOT_ASSESSED", reason: "No retained executed case mapped directly to this coverage objective." }];
-    if (item.directCases === 0) return [{ ...target, status: "SUPPORTING_ONLY", reason: "Only weakness or attack-pattern classification is available; no direct standards verification case was retained." }];
-    if (item.findings + item.noFindings === 0) return [{ ...target, status: "INCONCLUSIVE_ONLY", reason: "Mapped cases were observed, blocked, or inconclusive and do not provide a conclusive verification result." }];
-    return [];
-  });
 }
 
 function classifyOutcome(input: AddCaseInput, linkedFinding: boolean): StandardsCoverageOutcome {

@@ -420,7 +420,7 @@ function SafeObjectList({ values }: { values: Array<Record<string, unknown>> }):
 
 function SafeJson({ value }: { value: string }): React.ReactElement {
   let parsed: unknown = value;
-  try { parsed = JSON.parse(value); } catch { parsed = value; }
+  try { parsed = JSON.parse(value); } catch { /* The original string remains the safe rendering value. */ }
   return <pre className="safe-evidence-json">{JSON.stringify(parsed, null, 2)}</pre>;
 }
 

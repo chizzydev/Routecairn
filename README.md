@@ -1139,6 +1139,8 @@ Stored XSS, second-order, prototype, CSRF, cache-poisoning, cache-deception, acc
 
 Findings require a class-specific proof signal such as a paired query differential, offline browser source-to-sink execution, a verification/callback marker, claim-bound identity evidence, a non-sensitive fixture hash, an exact redirect/cache contract, or a clean-versus-contaminated framing sentinel. A changed response alone stays `INCONCLUSIVE`. Payloads, original values, callback tokens, credentials, bodies, JWTs, and cleanup commands stay transient; reports retain only redacted strategy metadata, hashes, statuses, timing values, proof signals, cleanup state, and immutable comparison fingerprints.
 
+Native authorization-server journeys, extended file formats, canary-bound processing receipts and verified proxy-chain matrices are documented in [Active vulnerability operations](docs/ACTIVE_VULNERABILITY_OPERATIONS.md). Reproduce the real OIDC/parser/Caddy/nginx lab with `npm run acceptance:active`; retained results remain explicitly local and owner-operated.
+
 #### Native OAST collaborator
 
 RouteCairn includes a bounded collaborator service for blind SSRF, XXE, command-injection, and template-execution proof. It issues a separate HMAC-signed DNS/HTTP/HTTPS identity and random polling token for every case strategy, binds the lease to tenant, worker, job, and case fingerprints, accepts callbacks only while the lease is active, and de-duplicates callback replays. Delayed polling is capped at 60 seconds per strategy. Reports retain event time, delay, protocol, and keyed or one-way fingerprints; raw source addresses, callback bodies, query values, headers, tenant IDs, worker IDs, job IDs, case binding values, and tenant tokens are never evidence.
@@ -1164,6 +1166,8 @@ routecairn scan https://app.example.com `
 Self-hosted mode permits plain HTTP management only on a loopback origin. Hosted mode requires a credential-free public HTTPS origin, a local HTTPS listener, and TLS key/certificate paths. Delegate the configured callback subdomain to the service's authoritative DNS address and expose both UDP and TCP DNS. Keep the management/callback listeners behind normal network rate controls and persistent storage. The service also ships with [`deploy/oast/Dockerfile`](deploy/oast/Dockerfile); mount the JSON configuration, TLS material, and SQLite data directory, then supply both secret environment variables at runtime. `examples/oast-service.hosted.example.json` shows the hosted contract.
 
 Native OAST is opt-in per case. `OAST_CALLBACK` requires the `OUT_OF_BAND_CALLBACK` approval, `LOCAL_FIXTURE` or `AUTHORIZED_STAGING`, one exact plain identity, an enabled protocol, and a top-level service contract. Command and template cases additionally declare their runtime dialect. XXE requires HTTP or HTTPS so the external entity is actually dereferenced. A missing callback remains inconclusive.
+
+The service now serves authoritative SOA/NS/glue and bounded UDP/TCP DNS answers, refuses recursion outside its zone, supports TLS certificate reload, retains evidence across restarts, caps connections/requests/leases and reports failed lease cleanup. Reproduce verified HTTPS and real urllib/SAX/shell/Jinja runtime proofs with `npm run acceptance:oast -- --python-path .routecairn-oast-lab/python --output acceptance/oast/NEW-RUN`. Public deployment uses [`deploy/oast/compose.yaml`](deploy/oast/compose.yaml) and `routecairn oast verify-deployment --manifest reviewed-oast.json --output public-oast-result.json`. See [OAST operations](docs/OAST_OPERATIONS.md) for delegation, TLS renewal, storage, limits and evidence requirements. Local hosted-mode tests do not establish a public authoritative deployment.
 
 ### Batch 50A–50B: Assisted Findings and Trust Review
 
@@ -1236,10 +1240,16 @@ node dist/cli/index.js external-acceptance keygen `
   --public-key .acceptance-keys/operator.public.pem
 
 # Copy and replace every placeholder, release digest, target URL and action in the example.
+node dist/cli/index.js external-acceptance prepare `
+  --manifest approved-manifest.json `
+  --release-artifact .routecairn-release/routecairn-0.1.0.tgz `
+  --bindings approved-bindings.json --trust operator-trust.json `
+  --output .routecairn-external-acceptance/readiness.json
 $env:ROUTECAIRN_ACCEPTANCE_SIGNING_KEY = Get-Content .acceptance-keys/operator.private.pem -Raw
 node dist/cli/index.js external-acceptance run `
-  --manifest examples/external-acceptance.example.json `
+  --manifest approved-manifest.json `
   --release-artifact .routecairn-release/routecairn-0.1.0.tgz `
+  --bindings approved-bindings.json --trust operator-trust.json `
   --signing-key-env ROUTECAIRN_ACCEPTANCE_SIGNING_KEY `
   --output .routecairn-external-acceptance
 
@@ -1248,6 +1258,7 @@ node dist/cli/index.js external-acceptance verify `
   --bundle (Join-Path $run.FullName external-acceptance-bundle.json) `
   --release-artifact .routecairn-release/routecairn-0.1.0.tgz `
   --manifest (Join-Path $run.FullName external-acceptance-manifest.json) `
+  --bindings approved-bindings.json --trust operator-trust.json `
   --trusted-public-key .acceptance-keys/operator.public.pem
 ```
 
@@ -1258,6 +1269,8 @@ Transport is DNS-pinned and origin-isolated, does not follow redirects, bounds r
 The final bundle is an in-toto v1 statement in a DSSE envelope signed with the independent operator's Ed25519 key. Its subject is the exact npm release tarball digest; its predicate binds the RouteCairn version and commit, authorization proof, operator identity, complete eight-lane result, cleanup outcomes, reproducibility references, manifest digest and evidence digest. Verification requires the exact release artifact and an operator public key obtained independently of the bundle. A locally generated key or self-run target remains useful engineering evidence but is not represented as third-party acceptance: the external schema requires an explicit independent-operator declaration, and the published organization and key ID remain visible.
 
 External validation is recorded per product and per lane; it is never inferred from the local fixture. RouteCairn has completed its first authorized external acceptance against disposable accounts on the owned Decide production web/API target. That run covered public scanning, authenticated Account A/B API authorization, login and browser traffic learning, authentication lifecycle assertions, a reversible profile mutation, authoritative rollback, forced worker interruption, partial-evidence ingestion, dashboard restart, encrypted-checkpoint recovery with a fresh credential, and stable comparison evidence. Every disposable user and session was removed after its case. The run did not claim tenant isolation because Decide has no tenant model, and webhook/synthetic-billing validation remained `NOT_ASSESSED` because no test-provider fixture was available; no real payment was attempted. Retained evidence lives in the operator's dashboard data directory and is not a general security certification of Decide or another target.
+
+The actual Decide history is now projected into `acceptance/decide/2026-09-30/`, preserving six report byte digests, finding and execution states, the later rollback journal, and two new public endpoint checks. It remains `PARTIAL_EXTERNAL_EVIDENCE`: the interrupted report stays partial, the refresh-token finding is retained, and missing provider/remediation coverage stays unassessed. The original credentials were deleted. [External acceptance operations](docs/EXTERNAL_ACCEPTANCE.md) describes the complete preparation, trust and evidence workflow. Independent execution rejects placeholders and requires real digest-bound owner approval, reproduction and deployment files plus a separately vetted operator. GraphQL subscription actions require native WebSocket/SSE proof. Fixture signatures and legacy bundles cannot produce `independentAcceptanceVerified: true`.
 
 Every additional live product still requires its own URL, explicit authorization and approved scope, never-test paths, disposable credentials and roles, identity endpoints, exact read/mutation/rollback contracts, and any protected endpoint. Dashboard plans must remain inside the registered target scope, and external results must preserve `NOT_ASSESSED`, `INCONCLUSIVE`, and `NOT_APPLICABLE` instead of turning missing fixtures into passes.
 
@@ -1288,7 +1301,7 @@ The proof contract is persisted on every run lane, so editing or replacing the e
 
 ### Measured effectiveness benchmark laboratory
 
-RouteCairn includes two executable benchmark laboratories. The fast regression laboratory retains 30 broad capability cases. The public credibility corpus executes 240 cases against separate TypeScript/`node:http` and Python/`http.server` processes: 120 positives, 60 ordinary secure controls and 60 near-miss negative controls across object authorization, function authorization, SQL injection, open redirect, authentication differentials and second-order stored-state behavior. Every case is a deterministic mutant with recorded lineage, operator and generation. Forty cases are multi-step and another 40 are second-order. Results include recall, precision, false-positive rate, Youden's index, inconclusive rate, coverage completeness, conclusive coverage, cross-run stability, runtime, peak resident memory, user/system CPU, physical requests, transmitted requests, requests per assessed case, and runtime per request.
+RouteCairn includes two executable benchmark laboratories. The fast regression laboratory retains 30 broad capability cases. The public v2 credibility corpus executes 576 behavior fixtures across TypeScript/`node:http`, Python/`http.server`, Python/`wsgiref` and Go/`net/http`: 288 positives, 144 ordinary secure controls and 144 near-miss controls. Its 12 categories cover object and function authorization, SQL error/boolean/union techniques, NoSQL operators, open redirects, CRLF, template execution, traversal, authentication differentials and second-order stored state. It includes 48 multi-step and 48 second-order cases. Python transports share handler logic; injection responses include simulations rather than real vulnerable runtimes. These remain self-maintained regression fixtures. Results include quality, per-category gates, cross-run stability, cleanup, resource measurements and Wilson 95% intervals over unique cases; repeated mutants are correlated and do not establish real-world accuracy.
 
 ```powershell
 npm run build
@@ -1299,7 +1312,7 @@ node dist/cli/index.js benchmark local `
   --output .routecairn-benchmarks
 
 node dist/cli/index.js benchmark credibility `
-  --repetitions 1 `
+  --repetitions 3 `
   --release 0.1.0 `
   --build $env:GITHUB_SHA `
   --output .routecairn-credibility
@@ -1309,9 +1322,9 @@ Every invocation creates a fresh directory and writes `benchmark-result.json`, `
 
 The 30-case laboratory covers 15 independently reported categories: REST object and function authorization, SQL injection, open redirect, SSE, GraphQL mutation, multipart upload, Supabase table RLS, storage and RPC, authentication lifecycle behavior, signed-link expiry, billing authorization, one-time-token race handling and cleanup, and authenticated browser/JavaScript secret-boundary behavior. The larger credibility corpus adds language, framework, CWE, complexity and control-type score slices. Corpus-composition gates enforce minimum positive, negative, near-miss, mutant, multi-step, second-order, language and framework counts, so shrinking or homogenizing the corpus fails rather than silently improving its score.
 
-CI executes three complete fast-laboratory repetitions on every supported operating-system and Node.js combination against the committed `benchmarks/routecairn-comprehensive-detection-baseline.json`. A separate required Ubuntu job executes the 240-case multi-language corpus and retains a commit-addressed public scorecard and its raw scanner evidence for 90 days. A recall, false-positive, inconclusive, coverage, Youden, stability, case-level, runtime, memory, request-efficiency or corpus-composition regression fails its applicable job. Refresh a committed baseline only after reviewing a successful candidate result and intentionally accepting the changed detector contract or resource envelope.
+CI executes three complete fast-laboratory repetitions on every supported operating-system and Node.js combination against the committed `benchmarks/routecairn-comprehensive-detection-baseline.json`. A separate Ubuntu job executes three repetitions of the 576-case multi-language corpus and retains a commit-addressed public scorecard and raw scanner evidence for 90 days. Go and Python 3 are required. A quality, stability, case-level, runtime, memory, cleanup, request-efficiency or corpus-composition gate failure fails its applicable job. Refresh a committed baseline only after reviewing a successful candidate result and intentionally accepting the changed detector contract or resource envelope.
 
-The machine-readable public corpus is `benchmarks/routecairn-credibility-corpus-v1.json`; the first committed reference scorecard and its exact manifest/JUnit evidence are in `benchmarks/scorecards/1.0.0/reference-windows-node22/`. Regenerate the corpus deterministically with `routecairn benchmark corpus generate-public --output <file>`. An independent laboratory can maintain a separate manifest and publish it with an Ed25519 signature: `benchmark corpus sign` embeds the key identity and `benchmark corpus verify` rejects modified or incorrectly attributed corpora. For genuinely blinded evaluation, `benchmark corpus seal` removes expectations, selectors, tags and identifying labels from the public view, randomizes public case order by opaque ID and AES-256-GCM seals the complete truth; `benchmark evaluate --blind-pack <file> --blind-key-env <name> --corpus-public-key <file> --corpus-key-id <id>` reveals truth only inside the evaluator after scan reports already exist and verifies its publisher before scoring. The secret must be at least 32 bytes and is read only from the named environment variable. This provides the technical boundary for independent maintainers and blind holdouts without pretending that the bundled self-maintained corpus is independent.
+The current machine-readable public corpus is `benchmarks/routecairn-credibility-corpus-v2.json`; its three-repetition reference scorecard and compressed raw report evidence are in `benchmarks/scorecards/2.0.0/reference-windows-node24/`. Historical v1 evidence remains in `benchmarks/scorecards/1.0.0/reference-windows-node22/`. Regenerate the corpus with `routecairn benchmark corpus generate-public --output <file>`. `benchmark corpus seal --private-key <file> --key-id <id>` signs the prepared blinded truth and authenticates the public envelope with AES-GCM. `benchmark independent run` executes approved digest-bound contracts without a truth key, then signs report, pack and release commitments. `benchmark independent evaluate` requires separate trusted publisher/operator keys, rejects replayed or tampered evidence and weak policies, and emits an explicit independent verification artifact. See [independent benchmark operations](docs/INDEPENDENT_BENCHMARK.md) for the complete workflow and its attestation limits. No independently maintained corpus or signed external execution has been supplied; bundled results retain `SELF_MAINTAINED`, `blinded: false` and `externalTargetsTested: false`.
 
 For external intentionally vulnerable suites, declare exact expected findings and negative controls with `examples/benchmark.manifest.example.json`, then evaluate one or more repetitions:
 
@@ -1333,6 +1346,8 @@ Telemetry files contain `runtimeMs`, `peakRssBytes`, `requestCount`, optional `t
 ### Adaptive security model and test recommendations
 
 The **Adaptive Security** workspace implements an evidence-bound loop: observe a completed registered-target scan, reduce it to a canonical secret-free model, compile sufficiently proven read-only observations into complete tests, retain underspecified or mutating discoveries as reviewable proposals, link a same-target execution, verify completion of the relevant engine, and learn from the next scan. Completed dashboard scans create candidate model snapshots automatically; historical completed/imported reports can be analyzed explicitly. An operator accepts the exact SHA-256-bound model as the expected baseline, and later snapshots expose route, origin, administrative path, API version, GraphQL contract, API-field, browser-field, cookie, actor/role, Supabase resource, lifecycle-category, build, and full workflow-contract drift.
+
+Operating instructions and reproducible HTTP execution proof are documented in [Attack-state graph operation](docs/ATTACK_GRAPH_OPERATIONS.md). The dashboard supports path filtering, pagination and relationship/evidence inspection.
 
 Each snapshot also contains a bounded evidence-backed attack-state graph. It models actors, roles, tenants, owned objects, routes, parameters, operations, browser states, tokens/invitations/signed capabilities, preconditions, effects, cleanup states, and producer/consumer dependencies between requests. Nodes, relationships, and paths retain only safe labels, normalized paths, contract fingerprints, producer identities, and evidence strength. The builder caps nodes, relationships, paths, evidence per item, and path length; reports when a cap was reached; and uses stable SHA-256 identities so additions, removals, ownership changes, capability flows, and state-changing paths can be reviewed as model drift. Removal drift is suppressed when the later graph lacks equivalent producer coverage or either graph was truncated.
 
@@ -1545,6 +1560,10 @@ The data directory contains the SQLite database, generated dashboard reports, pr
 ### SQLite Choice
 
 RouteCairn uses `better-sqlite3` for dashboard persistence. Node's built-in `node:sqlite` exists on the inspected runtime, but it still emits an experimental warning here, so dashboard v1 uses a mature local SQLite driver with explicit SQL migrations, prepared statements, transactions, foreign keys, WAL mode, busy timeout, and schema version metadata.
+
+## Distributed fleet deployment verification
+
+The PostgreSQL fleet ingress scales independently through `routecairn fleet`. The dashboard remains a persistent SQLite singleton protected by a PostgreSQL ownership lock. Helm and Compose deploy these roles separately. Native PostgreSQL, source-built MinIO, an OTLP collector, OIDC/mTLS and multi-replica Kubernetes acceptance are provided; managed AWS KMS, HSM and multi-node HA are not claimed. See [operations and proof limits](docs/HORIZONTAL_SCALE_OPERATIONS.md).
 
 SQLite remains the zero-service local provider. Setting `ROUTECAIRN_CONTROL_PLANE_MODE=distributed` and `ROUTECAIRN_DATABASE_URL` selects the PostgreSQL control-plane provider for shared fleet state, durable jobs, replay records, event outbox entries, object metadata, leader leases, and scheduling fencing tokens. The provider runs idempotent, advisory-lock-protected migrations at startup and refuses readiness when its schema is unavailable.
 
@@ -1921,3 +1940,15 @@ The CLI defaults to the dashboard’s canonical `controlled-mutations` directory
 Continuous assurance splits the complete Vitest inventory into four isolated single-worker shards with a 4 GiB heap. Platform jobs run smaller operating system boundary suites, so Windows, macOS, and both supported Node LTS lines do not repeat the entire suite. CodeQL runs its security and quality query suite on pushes, pull requests, and a weekly schedule.
 
 Release compatibility is defined in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md), the tag process in [docs/RELEASING.md](docs/RELEASING.md), and changes in [CHANGELOG.md](CHANGELOG.md). A tag cannot publish until its package version and changelog agree and an active trusted independent reviewer has signed an accepted, unexpired, commit-bound security review attestation with no unresolved critical or high findings.
+
+### Verified protocol semantics
+
+See [protocol semantics operations](docs/PROTOCOL_SEMANTICS_OPERATIONS.md) for explicit CONNECT scope, private CA configuration, full-module runtime acceptance, real Caddy/nginx H1/H2/H3 ingress with H1/H2 upstream matrices, retained evidence and interpretation limits. Run `npm run acceptance:protocol-semantics -- --output FRESH_DIRECTORY` with approved Caddy and nginx binary paths. The installed `validate-protocol-fixtures` command includes native WebTransport acceptance.
+
+### Signed module distribution
+
+The native module registry supports immutable publisher-signed bundles, reviewed digest signing, exact downloads, safe installation, independent trust roots and key/package revocation. CLI `routecairn modules` exposes the workflow; Operations → Modules retains separate package review and target approval, signed metadata and execution results. SDK 2 reference packs cover browser headers, explicit framework hints and read-only GraphQL envelopes. Strict signing and optional digest-pinned network-isolated containers are supported. See [module operations and contribution guide](docs/MODULE_ECOSYSTEM.md). The retained acceptance is self-maintained loopback evidence; public hosting and genuine outside community adoption are not claimed.
+
+### Official standards accounting and strict evidence validation
+
+Complete pinned publisher catalogs, fail-on-unmapped build/report gates, versioned identifiers, catalog denominators and verification/export commands are documented in [Standards accounting](docs/STANDARDS_ACCOUNTING.md). Retained mappings describe bounded case evidence and do not certify entire-standard compliance.

@@ -1,5 +1,6 @@
+import { readBoundedFileSync } from "../security/BoundedFile.js";
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
@@ -457,15 +458,16 @@ export class OrganizationStateMergeService {
 
   private readPortableArtifact(path:string,expectedSize:number):Buffer{
     if(!isAbsolute(path)||!Number.isSafeInteger(expectedSize)||expectedSize<0||expectedSize>128*1024*1024)throw new Error("CLOUD_SYNC_ARTIFACT_SIZE_OR_PATH_REJECTED");
-    const actual=realpathSync(path),stat=lstatSync(actual);
-    if(!stat.isFile()||stat.size!==expectedSize)throw new Error("CLOUD_SYNC_ARTIFACT_SIZE_OR_PATH_REJECTED");
+    const actual=realpathSync(path);
     const root=realpathSync(dirname(this.database.databasePath));
     const allowed=["reports","proof-packs","artifacts","integrations"].some((directory)=>{
       const candidate=resolve(root,directory),rel=relative(candidate,actual);
       return rel!==""&&!rel.startsWith(`..${sep}`)&&rel!==".."&&!isAbsolute(rel);
     });
     if(!allowed)throw new Error("CLOUD_SYNC_ARTIFACT_PATH_REJECTED");
-    return readFileSync(actual);
+    const bytes=readBoundedFileSync(actual,expectedSize);
+    if(bytes.length!==expectedSize)throw new Error("CLOUD_SYNC_ARTIFACT_SIZE_OR_PATH_REJECTED");
+    return bytes;
   }
 
   private applyCredential(organizationId:string,entity:OrganizationStateEntity,secret:CredentialProfileSecret):void {

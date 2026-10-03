@@ -24,7 +24,7 @@ spec:
         - name: control-plane
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["dashboard","--mode","server","--host","0.0.0.0","--port","4711","--data-dir","/var/lib/routecairn","--trust-proxy"]
+          args: ["fleet","--host","0.0.0.0","--port","4711","--trust-proxy"]
           ports: [{ name: http, containerPort: 4711 }]
           env:
             - { name: ROUTECAIRN_CONTROL_PLANE_MODE, value: distributed }
@@ -36,23 +36,19 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ .Values.postgres.secretName }}, key: {{ .Values.postgres.urlKey }} } }
             - { name: ROUTECAIRN_POSTGRES_POOL_SIZE, value: {{ .Values.postgres.poolSize | quote }} }
             - { name: ROUTECAIRN_POSTGRES_STATEMENT_TIMEOUT_MS, value: {{ .Values.postgres.statementTimeoutMs | quote }} }
-            - name: ROUTECAIRN_SESSION_SECRET
-              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.name }}, key: {{ .Values.secrets.sessionSecretKey }} } }
-            - name: ROUTECAIRN_MUTATION_COORDINATOR_SECRET
-              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.name }}, key: {{ .Values.secrets.mutationCoordinatorSecretKey }} } }
-            - { name: ROUTECAIRN_BOOTSTRAP_OWNER_LOGIN, value: {{ .Values.bootstrapOwnerLogin | quote }} }
-            - name: ROUTECAIRN_BOOTSTRAP_OWNER_PASSWORD
-              valueFrom: { secretKeyRef: { name: {{ .Values.secrets.name }}, key: {{ .Values.secrets.bootstrapOwnerPasswordKey }}, optional: true } }
             - { name: ROUTECAIRN_EVIDENCE_S3_BUCKET, value: {{ required "objectStorage.bucket is required" .Values.objectStorage.bucket | quote }} }
+            - { name: ROUTECAIRN_EVIDENCE_S3_ENCRYPTION, value: {{ .Values.objectStorage.encryption | quote }} }
             - { name: ROUTECAIRN_EVIDENCE_S3_PREFIX, value: {{ .Values.objectStorage.prefix | quote }} }
             - { name: ROUTECAIRN_EVIDENCE_S3_PATH_STYLE, value: {{ .Values.objectStorage.pathStyle | quote }} }
+          {{- if .Values.objectStorage.credentialsSecretName }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ .Values.objectStorage.credentialsSecretName }}, key: {{ .Values.objectStorage.accessKeyKey }} } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.objectStorage.credentialsSecretName }}, key: {{ .Values.objectStorage.secretKeyKey }} } }
+          {{- end }}
             - { name: AWS_REGION, value: {{ .Values.objectStorage.region | quote }} }
             - { name: ROUTECAIRN_EVIDENCE_S3_ENDPOINT, value: {{ .Values.objectStorage.endpoint | quote }} }
             - { name: ROUTECAIRN_EVIDENCE_KMS_KEY_ID, value: {{ .Values.objectStorage.kmsKeyId | quote }} }
-          {{- if and .Values.keyManagement.masterKeyKmsKeyId .Values.keyManagement.ciphertextSecretName }}
-            - { name: ROUTECAIRN_MASTER_KEY_KMS_KEY_ID, value: {{ .Values.keyManagement.masterKeyKmsKeyId | quote }} }
-            - { name: ROUTECAIRN_MASTER_KEY_KMS_CIPHERTEXT_FILE, value: /var/run/routecairn/kms/master-key.ciphertext }
-          {{- end }}
             - { name: ROUTECAIRN_WORKLOAD_IDENTITY_REQUIRED, value: {{ .Values.workloadIdentity.required | quote }} }
             - { name: ROUTECAIRN_WORKLOAD_IDENTITY_ISSUERS, value: {{ .Values.workloadIdentity.issuers | quote }} }
             - { name: ROUTECAIRN_WORKLOAD_IDENTITY_AUDIENCE, value: {{ .Values.workloadIdentity.audience | quote }} }
@@ -74,21 +70,11 @@ spec:
           {{- if .Values.postgres.tls.secretName }}
             - { name: postgres-tls, mountPath: /var/run/routecairn/postgres, readOnly: true }
           {{- end }}
-          {{- if and .Values.keyManagement.masterKeyKmsKeyId .Values.keyManagement.ciphertextSecretName }}
-            - { name: kms-master-key, mountPath: /var/run/routecairn/kms, readOnly: true }
-          {{- end }}
       volumes:
         - { name: data, emptyDir: {} }
         - { name: tmp, emptyDir: {} }
       {{- if .Values.postgres.tls.secretName }}
-        - { name: postgres-tls, secret: { secretName: {{ .Values.postgres.tls.secretName }}, defaultMode: 0400 } }
-      {{- end }}
-      {{- if and .Values.keyManagement.masterKeyKmsKeyId .Values.keyManagement.ciphertextSecretName }}
-        - name: kms-master-key
-          secret:
-            secretName: {{ .Values.keyManagement.ciphertextSecretName }}
-            defaultMode: 0400
-            items: [{ key: {{ .Values.keyManagement.ciphertextSecretKey }}, path: master-key.ciphertext }]
+        - { name: postgres-tls, secret: { secretName: {{ .Values.postgres.tls.secretName }}, defaultMode: 0440 } }
       {{- end }}
       nodeSelector: {{- toYaml .Values.nodeSelector | nindent 8 }}
       tolerations: {{- toYaml .Values.tolerations | nindent 8 }}

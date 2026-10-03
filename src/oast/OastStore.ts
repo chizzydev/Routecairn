@@ -8,7 +8,7 @@ interface LeaseRow { id: string; signature: string; expires_at: string; poll_tok
 
 export class OastStore {
   private readonly db: Database.Database;
-  public constructor(path: string, private readonly signingKey: Buffer, private readonly baseDomain: string, private readonly publicHttpBaseUrl: string | undefined, private readonly publicHttpsBaseUrl: string | undefined, private readonly maxLeaseSeconds: number, private readonly maxEventsPerLease: number, private readonly now: () => number = Date.now) {
+  public constructor(path: string, private readonly signingKey: Buffer, private readonly baseDomain: string, private readonly publicHttpBaseUrl: string | undefined, private readonly publicHttpsBaseUrl: string | undefined, private readonly maxLeaseSeconds: number, private readonly maxEventsPerLease: number, private readonly now: () => number = Date.now, private readonly limits = { maxLeases: 10000, evidenceRetentionSeconds: 7 * 86400 }) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL"); this.db.pragma("busy_timeout = 5000"); this.db.pragma("foreign_keys = ON");
@@ -18,10 +18,21 @@ export class OastStore {
       CREATE INDEX IF NOT EXISTS idx_oast_events_lease ON oast_events(lease_id, observed_at);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_oast_events_lease_protocol ON oast_events(lease_id, protocol);
       CREATE INDEX IF NOT EXISTS idx_oast_leases_expiry ON oast_leases(expires_at);
+      CREATE TABLE IF NOT EXISTS oast_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     `);
+    const keyId = this.keyedHash("routecairn-oast-signing-key-v1");
+    const legacyLease = this.db.prepare("SELECT * FROM oast_leases LIMIT 1").get() as LeaseRow | undefined;
+    if (legacyLease && !safeEqual(legacyLease.signature, this.signature(legacyLease.id, legacyLease.expires_at, "DNS"))) { this.db.close(); throw new Error("OAST_SIGNING_KEY_CHANGED"); }
+    const retainedKey = this.db.prepare("SELECT value FROM oast_metadata WHERE key='signing_key_id'").get() as { value: string } | undefined;
+    if (retainedKey && retainedKey.value !== keyId) { this.db.close(); throw new Error("OAST_SIGNING_KEY_CHANGED"); }
+    this.db.prepare("INSERT OR IGNORE INTO oast_metadata(key,value) VALUES('signing_key_id',?)").run(keyId);
+    const retainedZone = this.db.prepare("SELECT value FROM oast_metadata WHERE key='base_domain'").get() as { value: string } | undefined;
+    if (retainedZone && retainedZone.value !== this.baseDomain) { this.db.close(); throw new Error("OAST_ZONE_CHANGED"); }
+    this.db.prepare("INSERT OR IGNORE INTO oast_metadata(key,value) VALUES('base_domain',?)").run(this.baseDomain);
   }
 
   public createLease(request: OastLeaseRequest): OastLeaseIdentity {
+    this.prune();
     const ttl = Math.min(this.maxLeaseSeconds, Math.max(30, request.ttlSeconds));
     const leaseId = randomBytes(16).toString("hex");
     const expiresAt = new Date(this.now() + ttl * 1000).toISOString();
@@ -30,8 +41,11 @@ export class OastStore {
     const httpsSignature = this.signature(leaseId, expiresAt, "HTTPS");
     const pollToken = randomBytes(32).toString("base64url");
     const bindingFingerprint = this.keyedHash([request.tenantId, request.workerId, request.jobId, request.caseId].join("\0"));
-    this.db.prepare("INSERT INTO oast_leases(id,signature,expires_at,poll_token_hash,binding_fingerprint,status,protocols_json,created_at) VALUES(?,?,?,?,?,'ACTIVE',?,?)")
-      .run(leaseId, dnsSignature, expiresAt, hash(pollToken), bindingFingerprint, JSON.stringify([...new Set(request.protocols)]), new Date(this.now()).toISOString());
+    this.db.transaction(() => {
+      if ((this.db.prepare("SELECT COUNT(*) AS count FROM oast_leases").get() as { count: number }).count >= this.limits.maxLeases) throw new Error("OAST_LEASE_LIMIT");
+      this.db.prepare("INSERT INTO oast_leases(id,signature,expires_at,poll_token_hash,binding_fingerprint,status,protocols_json,created_at) VALUES(?,?,?,?,?,'ACTIVE',?,?)")
+        .run(leaseId, dnsSignature, expiresAt, hash(pollToken), bindingFingerprint, JSON.stringify([...new Set(request.protocols)]), new Date(this.now()).toISOString());
+    }).immediate();
     const dnsName = `${leaseId}.${dnsSignature}.${this.baseDomain}`;
     return { leaseId, expiresAt, dnsName, ...(this.publicHttpBaseUrl ? { httpUrl: new URL(`/c/${leaseId}/${httpSignature}`, this.publicHttpBaseUrl).toString() } : {}), ...(this.publicHttpsBaseUrl ? { httpsUrl: new URL(`/c/${leaseId}/${httpsSignature}`, this.publicHttpsBaseUrl).toString() } : {}), pollUrl: `/v1/leases/${leaseId}/events`, pollToken, bindingFingerprint };
   }
@@ -44,6 +58,9 @@ export class OastStore {
   }
 
   public record(row: LeaseRow, protocol: OastProtocol, source: string, requestMaterial: string): { accepted: boolean; replay: boolean } {
+    return this.db.transaction(() => this.recordTransaction(row, protocol, source, requestMaterial)).immediate();
+  }
+  private recordTransaction(row: LeaseRow, protocol: OastProtocol, source: string, requestMaterial: string): { accepted: boolean; replay: boolean } {
     const current = this.db.prepare("SELECT status,expires_at FROM oast_leases WHERE id=?").get(row.id) as Pick<LeaseRow, "status" | "expires_at"> | undefined;
     if (!current || current.status !== "ACTIVE" || Date.parse(current.expires_at) <= this.now()) return { accepted: false, replay: false };
     const requestFingerprint = this.keyedHash(`${protocol}\0${requestMaterial}`);
@@ -76,7 +93,8 @@ export class OastStore {
     this.db.prepare("UPDATE oast_leases SET status='REVOKED' WHERE id=?").run(leaseId); return true;
   }
 
-  public close(): void { this.db.close(); }
+  public prune(): number { return this.db.prepare("DELETE FROM oast_leases WHERE expires_at <= ?").run(new Date(this.now() - this.limits.evidenceRetentionSeconds * 1000).toISOString()).changes; }
+  public close(): void { if (this.db.open) this.db.close(); }
   private signature(leaseId: string, expiresAt: string, protocol: OastProtocol): string { return createHmac("sha256", this.signingKey).update(leaseId).update("\0").update(expiresAt).update("\0").update(protocol).digest("hex").slice(0, 32); }
   private keyedHash(value: string): string { return createHmac("sha256", this.signingKey).update(value).digest("hex"); }
 }

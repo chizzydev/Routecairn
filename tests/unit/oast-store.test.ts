@@ -11,6 +11,14 @@ afterEach(async () => {
 });
 
 describe("OAST lease store", () => {
+  it("bounds retained leases, preserves delayed evidence after expiry and rejects silent key changes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "routecairn-oast-retention-")); directories.push(directory); const path = join(directory, "oast.sqlite"); let clock = Date.now(); const key = Buffer.from("s".repeat(32));
+    const open = () => new OastStore(path, key, "oast.example.test", undefined, undefined, 300, 3, () => clock, { maxLeases: 1, evidenceRetentionSeconds: 60 });
+    let store = open(); const request = { tenantId: "tenant", workerId: "worker", jobId: "job", caseId: "case", ttlSeconds: 30, protocols: ["DNS"] as const }; const lease = store.createLease(request);
+    expect(() => store.createLease(request)).toThrow("OAST_LEASE_LIMIT"); store.close(); store = open(); expect(store.poll(lease.leaseId, lease.pollToken)?.status).toBe("ACTIVE");
+    clock += 31000; expect(store.prune()).toBe(0); expect(store.poll(lease.leaseId, lease.pollToken)?.status).toBe("EXPIRED"); clock += 60000; expect(store.prune()).toBe(1); expect(store.poll(lease.leaseId, lease.pollToken)).toBeUndefined(); store.createLease(request); store.close();
+    expect(() => new OastStore(path, Buffer.from("different-key-that-has-32-bytes!!"), "oast.example.test", undefined, undefined, 300, 3)).toThrow("OAST_SIGNING_KEY_CHANGED");
+  });
   it("binds signed identities, rejects replays, expires leases, and exposes only fingerprints", async () => {
     const directory = await mkdtemp(join(tmpdir(), "routecairn-oast-store-")); directories.push(directory);
     let clock = Date.parse("2026-01-01T00:00:00.000Z");
@@ -29,8 +37,8 @@ describe("OAST lease store", () => {
     expect(store.validateIdentity(lease.leaseId, signature, "HTTP")).toBeUndefined();
     expect(store.validateIdentity(lease.leaseId, httpsSignature, "HTTPS")).toBeUndefined();
 
-    expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\00\0empty")).toEqual({ accepted: true, replay: false });
-    expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\00\0empty")).toEqual({ accepted: false, replay: true });
+    expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\u00000\0empty")).toEqual({ accepted: true, replay: false });
+    expect(store.record(row!, "HTTP", "198.51.100.10", "GET\0/c/id/sig\0\0accept\u00000\0empty")).toEqual({ accepted: false, replay: true });
     expect(store.record(row!, "HTTP", "198.51.100.11", "POST\0/c/id/sig\0q\0content-type\08\0different")).toEqual({ accepted: false, replay: true });
     const polled = store.poll(lease.leaseId, lease.pollToken)!;
     expect(polled.events).toHaveLength(1);

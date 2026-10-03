@@ -3,7 +3,7 @@ import { runProtocolAcceptance } from "../../validation/ProtocolAcceptance.js";
 
 export function registerValidateProtocolFixturesCommand(program: Command): void {
   program.command("validate-protocol-fixtures")
-    .description("Run dedicated WebSocket, GraphQL subscription, multipart cleanup, gRPC, TLS HTTP/2, and native HTTP/3 acceptance fixtures.")
+    .description("Run dedicated WebSocket, GraphQL subscription, multipart cleanup, gRPC, TLS HTTP/2, native WebTransport, and HTTP/3 acceptance fixtures.")
     .option("--output <directory>", "Parent for a fresh evidence directory; existing evidence is never reused.")
     .action(async (options: { output?: string }) => {
       const summary = await runProtocolAcceptance(options.output);

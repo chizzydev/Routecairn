@@ -1,0 +1,629 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED",
+  "catalog": {
+    "wstg": "4.2",
+    "wstgSnapshotDate": "2026-10-02",
+    "asvs": "5.0.0",
+    "apiSecurityTop10": "2023",
+    "cwe": "4.20",
+    "capec": "3.9",
+    "sha256": "891e22e7757ece8d76f883e7960821f579b5c621e8bc01914f8a4a8fb717ec5c",
+    "sourceLockSha256": "02728fb53cc7a48884e6f305920f16b5c6d7a27b52400ccd61b5f00580bb2fe3",
+    "sources": [
+      {
+        "framework": "OWASP_WSTG",
+        "version": "4.2",
+        "file": "wstg-4.2.json",
+        "url": "https://raw.githubusercontent.com/OWASP/wstg/dd33419e10edb22b78d89325a6c2aad9f184e3a2/checklist/checklist.json",
+        "revision": "dd33419e10edb22b78d89325a6c2aad9f184e3a2",
+        "license": "CC-BY-SA-4.0",
+        "bytes": 56530,
+        "sha256": "12e11356b02fc9d6ea1b65554145e14dfdffceb9829ff9d93edf14d3654bdf3c"
+      },
+      {
+        "framework": "OWASP_ASVS",
+        "version": "5.0.0",
+        "file": "asvs-5.0.0.json",
+        "url": "https://raw.githubusercontent.com/OWASP/ASVS/60437a5ed660f757ab9a8d9e0b7181a06492446a/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+        "revision": "60437a5ed660f757ab9a8d9e0b7181a06492446a",
+        "license": "CC-BY-SA-4.0",
+        "bytes": 162870,
+        "sha256": "8201b20eec2908c3380ac600c91c8ba746346fbb808859366abb232027532311"
+      },
+      {
+        "framework": "OWASP_API_TOP_10",
+        "version": "2023",
+        "file": "api-2023.md",
+        "url": "https://raw.githubusercontent.com/OWASP/API-Security/33cea37b2ffde3e2e62f6b5d79a029a22a846633/editions/2023/en/0x11-t10.md",
+        "revision": "33cea37b2ffde3e2e62f6b5d79a029a22a846633",
+        "license": "CC-BY-SA-4.0",
+        "bytes": 4331,
+        "sha256": "c396a9fc70a64ea6bccba608b482a99750f00f0ad6c283d6fbdd5c4d936040a3"
+      },
+      {
+        "framework": "CWE",
+        "version": "4.20",
+        "file": "cwe-4.20.xml.zip",
+        "url": "https://cwe.mitre.org/data/xml/cwec_v4.20.xml.zip",
+        "license": "MITRE Terms of Use",
+        "bytes": 2021351,
+        "sha256": "3976f599e5e5200219a3108bb896d06e2a88fbb293369e1883cb423a5e9d7d50"
+      },
+      {
+        "framework": "CAPEC",
+        "version": "3.9",
+        "file": "capec-3.9.xml",
+        "url": "https://capec.mitre.org/data/xml/capec_v3.9.xml",
+        "license": "MITRE Terms of Use",
+        "bytes": 3849998,
+        "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d"
+      }
+    ],
+    "counts": {
+      "OWASP_WSTG": 97,
+      "OWASP_ASVS": 345,
+      "OWASP_API_TOP_10": 10,
+      "CWE": 969,
+      "CAPEC": 615
+    }
+  },
+  "builtInMappings": 111,
+  "mappings": [
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "SQL_INJECTION",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "NOSQL_INJECTION",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "REFLECTED_XSS",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "STORED_XSS",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "DOM_XSS",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "SECOND_ORDER_INJECTION",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "CRLF_INJECTION",
+      "references": 5
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "PROTOTYPE_POLLUTION",
+      "references": 2
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "JWT_VALIDATION",
+      "references": 8
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "OAUTH_VALIDATION",
+      "references": 7
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "FILE_PROCESSING",
+      "references": 13
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "SSRF",
+      "references": 5
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "COMMAND_INJECTION",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "TEMPLATE_INJECTION",
+      "references": 3
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "PATH_TRAVERSAL",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "CSRF",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "OPEN_REDIRECT",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "CACHE_POISONING",
+      "references": 6
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "CACHE_DECEPTION",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "UNSAFE_DESERIALIZATION",
+      "references": 3
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "XXE",
+      "references": 4
+    },
+    {
+      "moduleId": "active-vulnerability-validation",
+      "discriminator": "HTTP_DESYNCHRONIZATION",
+      "references": 6
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "OBJECT_AUTHORIZATION",
+      "references": 5
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "FUNCTION_AUTHORIZATION",
+      "references": 7
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "FIELD_AUTHORIZATION",
+      "references": 6
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "TENANT_ISOLATION",
+      "references": 5
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "METHOD_CONFUSION",
+      "references": 11
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "GRAPHQL_INTROSPECTION",
+      "references": 4
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "GRAPHQL_ALIAS_LIMIT",
+      "references": 7
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "GRAPHQL_BATCH_LIMIT",
+      "references": 7
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "VERSION_BOUNDARY",
+      "references": 7
+    },
+    {
+      "moduleId": "api-graphql-authorization",
+      "discriminator": "SCHEMA_INVENTORY",
+      "references": 3
+    },
+    {
+      "moduleId": "api-mapper",
+      "discriminator": "",
+      "references": 3
+    },
+    {
+      "moduleId": "api-probe",
+      "discriminator": "",
+      "references": 3
+    },
+    {
+      "moduleId": "auth-surface",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "authenticated-testing",
+      "discriminator": "",
+      "references": 8
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "LOGIN_ENUMERATION_RESISTANCE",
+      "references": 7
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "SESSION_ROTATION_AFTER_LOGIN",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "SESSION_FIXATION",
+      "references": 5
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "LOGOUT_INVALIDATION",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "PASSWORD_CHANGE_SESSION_INVALIDATION",
+      "references": 2
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "SESSION_REVOCATION",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "IDLE_EXPIRATION",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "ABSOLUTE_EXPIRATION",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "REFRESH_TOKEN_ROTATION",
+      "references": 2
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "PASSWORD_RESET_TOKEN_BINDING",
+      "references": 4
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "PASSWORD_RESET_TOKEN_REPLAY",
+      "references": 4
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "PASSWORD_RESET_ACCOUNT_CONFUSION",
+      "references": 4
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "EMAIL_VERIFICATION_BYPASS",
+      "references": 3
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "ACCOUNT_LINKING_CONFUSION",
+      "references": 9
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "OAUTH_OIDC_STATE_REDIRECT_VALIDATION",
+      "references": 9
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "MFA_ENROLLMENT_REMOVAL",
+      "references": 4
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "PASSKEY_ENROLLMENT_REMOVAL",
+      "references": 4
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "RECOVERY_CODE_LIFECYCLE",
+      "references": 2
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "ADMIN_INVITATION_LIFECYCLE",
+      "references": 8
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "TENANT_INVITATION_LIFECYCLE",
+      "references": 8
+    },
+    {
+      "moduleId": "authentication-lifecycle",
+      "discriminator": "DISABLED_USER_SESSION_BEHAVIOR",
+      "references": 2
+    },
+    {
+      "moduleId": "authorization-matrix-testing",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "baseline",
+      "discriminator": "",
+      "references": 3
+    },
+    {
+      "moduleId": "billing-entitlement-security",
+      "discriminator": "",
+      "references": 9
+    },
+    {
+      "moduleId": "browser-crawler",
+      "discriminator": "",
+      "references": 4
+    },
+    {
+      "moduleId": "bulk-authorization-testing",
+      "discriminator": "",
+      "references": 14
+    },
+    {
+      "moduleId": "business-invariant",
+      "discriminator": "",
+      "references": 9
+    },
+    {
+      "moduleId": "collection-authorization-testing",
+      "discriminator": "",
+      "references": 5
+    },
+    {
+      "moduleId": "controlled-race",
+      "discriminator": "",
+      "references": 15
+    },
+    {
+      "moduleId": "cookie-review",
+      "discriminator": "",
+      "references": 4
+    },
+    {
+      "moduleId": "cors-review",
+      "discriminator": "",
+      "references": 4
+    },
+    {
+      "moduleId": "equivalent-route-testing",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "exposure-review",
+      "discriminator": "",
+      "references": 9
+    },
+    {
+      "moduleId": "field-exposure-testing",
+      "discriminator": "",
+      "references": 6
+    },
+    {
+      "moduleId": "file-authorization-testing",
+      "discriminator": "",
+      "references": 5
+    },
+    {
+      "moduleId": "header-review",
+      "discriminator": "",
+      "references": 6
+    },
+    {
+      "moduleId": "js-intelligence",
+      "discriminator": "",
+      "references": 6
+    },
+    {
+      "moduleId": "link-portal-export-security",
+      "discriminator": "",
+      "references": 13
+    },
+    {
+      "moduleId": "method-review",
+      "discriminator": "",
+      "references": 4
+    },
+    {
+      "moduleId": "nextjs-review",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "object-pair-testing",
+      "discriminator": "",
+      "references": 5
+    },
+    {
+      "moduleId": "operational-endpoint-security",
+      "discriminator": "",
+      "references": 9
+    },
+    {
+      "moduleId": "parameter-analysis",
+      "discriminator": "",
+      "references": 4
+    },
+    {
+      "moduleId": "path-discovery",
+      "discriminator": "",
+      "references": 3
+    },
+    {
+      "moduleId": "privilege-mutation-testing",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "WEBSOCKET",
+      "references": 9
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "SSE",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_MUTATION",
+      "references": 3
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_SUBSCRIPTION",
+      "references": 10
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "WEBSOCKET_AUTH_STATE_MACHINE",
+      "references": 9
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_INCREMENTAL",
+      "references": 3
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_PERSISTED_QUERY",
+      "references": 3
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_FEDERATION",
+      "references": 3
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRAPHQL_SUBSCRIPTION_REAUTH",
+      "references": 10
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRPC_UNARY",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRPC_SERVER_STREAM",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRPC_CLIENT_STREAM",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "GRPC_BIDI_STREAM",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "MULTIPART_UPLOAD",
+      "references": 8
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "WEBTRANSPORT_DATAGRAM",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "STREAMING_UPLOAD_INTERRUPT",
+      "references": 8
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "COMPRESSION_BOUNDARY",
+      "references": 8
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "CROSS_PROTOCOL_IDENTITY",
+      "references": 8
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "PROXY_CHAIN_DESYNCHRONIZATION",
+      "references": 6
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "HTTP2_AUTHORIZATION",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "HTTP2_DESYNCHRONIZATION",
+      "references": 6
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "HTTP3_AUTHORIZATION",
+      "references": 7
+    },
+    {
+      "moduleId": "protocol-security",
+      "discriminator": "HTTP3_DESYNCHRONIZATION",
+      "references": 6
+    },
+    {
+      "moduleId": "role-comparison",
+      "discriminator": "",
+      "references": 7
+    },
+    {
+      "moduleId": "secret-boundary",
+      "discriminator": "",
+      "references": 3
+    },
+    {
+      "moduleId": "state-aware-api",
+      "discriminator": "",
+      "references": 8
+    },
+    {
+      "moduleId": "supabase-authorization",
+      "discriminator": "",
+      "references": 5
+    },
+    {
+      "moduleId": "tech-fingerprint",
+      "discriminator": "",
+      "references": 2
+    },
+    {
+      "moduleId": "vulnerability-workflows",
+      "discriminator": "",
+      "references": 9
+    },
+    {
+      "moduleId": "workflow-validation",
+      "discriminator": "",
+      "references": 9
+    }
+  ]
+}

@@ -16,7 +16,8 @@ export const controlPlaneConfigSchema = z.object({
     z.object({ kind: z.literal("local") }).strict(),
     z.object({
       kind: z.literal("s3"), bucket: nonEmpty, region: nonEmpty, endpoint: z.string().url().optional(),
-      forcePathStyle: z.boolean(), prefix: z.string().regex(/^[a-zA-Z0-9/_.-]{0,200}$/), kmsKeyId: nonEmpty.optional(), accessKeyId: nonEmpty.optional(), secretAccessKey: nonEmpty.optional()
+      forcePathStyle: z.boolean(), prefix: z.string().regex(/^[a-zA-Z0-9/_.-]{0,200}$/), kmsKeyId: nonEmpty.optional(), accessKeyId: nonEmpty.optional(), secretAccessKey: nonEmpty.optional(),
+      encryption: z.enum(["AES256", "aws:kms", "provider"]).default("AES256")
     }).strict()
   ]),
   leader: z.object({ leaseMs: z.number().int().min(5_000).max(300_000) }).strict(),
@@ -24,16 +25,20 @@ export const controlPlaneConfigSchema = z.object({
   telemetry: z.object({ serviceName: nonEmpty, otlpEndpoint: z.string().url().optional(), logLevel: z.enum(["debug", "info", "warn", "error"]) }).strict(),
   workloadIdentity: z.object({
     required: z.boolean(),
-    trustedIssuers: z.array(z.string().url()).max(20),
+    trustedIssuers: z.array(z.string().url().refine((value)=>{const url=new URL(value);return url.protocol==="https:"&&!url.username&&!url.password&&!url.search&&!url.hash;},"Workload issuers require exact HTTPS identities.")).max(20),
     audience: nonEmpty.optional(),
+    directMtls: z.boolean().default(false),
     mtlsProxySecret: z.string().min(32).optional()
   }).strict()
 }).strict().superRefine((value, context) => {
   if (value.mode === "distributed" && !value.postgres) context.addIssue({ code: z.ZodIssueCode.custom, path: ["postgres"], message: "Distributed mode requires PostgreSQL." });
-  if (value.workloadIdentity.required && value.workloadIdentity.trustedIssuers.length === 0 && !value.workloadIdentity.mtlsProxySecret) {
+  if (value.workloadIdentity.required && value.workloadIdentity.trustedIssuers.length === 0 && !value.workloadIdentity.mtlsProxySecret && !value.workloadIdentity.directMtls) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["workloadIdentity"], message: "Required workload identity needs a trusted issuer or authenticated mTLS proxy." });
   }
   if (value.objectStorage.kind === "s3" && Boolean(value.objectStorage.accessKeyId) !== Boolean(value.objectStorage.secretAccessKey)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["objectStorage"], message: "S3 access key and secret key must be supplied together." });
+  if (value.objectStorage.kind === "s3" && value.objectStorage.encryption === "aws:kms" && !value.objectStorage.kmsKeyId) context.addIssue({ code: z.ZodIssueCode.custom, path: ["objectStorage"], message: "KMS encryption requires a key identity." });
+  if(value.workloadIdentity.trustedIssuers.length&&!value.workloadIdentity.audience)context.addIssue({code:z.ZodIssueCode.custom,path:["workloadIdentity","audience"],message:"Workload OIDC requires an audience."});
+  if(value.postgres?.ssl&&Boolean(value.postgres.ssl.cert)!==Boolean(value.postgres.ssl.key))context.addIssue({code:z.ZodIssueCode.custom,path:["postgres","ssl"],message:"PostgreSQL client certificates require their matching key."});
 });
 
 export type ControlPlaneConfig = z.infer<typeof controlPlaneConfigSchema>;
@@ -59,6 +64,7 @@ export function controlPlaneConfigFromEnv(environment: NodeJS.ProcessEnv = proce
       ...(value(environment.ROUTECAIRN_EVIDENCE_S3_ENDPOINT) ? { endpoint: value(environment.ROUTECAIRN_EVIDENCE_S3_ENDPOINT) } : {}),
       forcePathStyle: environment.ROUTECAIRN_EVIDENCE_S3_PATH_STYLE === "true",
       prefix: value(environment.ROUTECAIRN_EVIDENCE_S3_PREFIX) ?? "routecairn",
+      encryption: value(environment.ROUTECAIRN_EVIDENCE_S3_ENCRYPTION) ?? (value(environment.ROUTECAIRN_EVIDENCE_KMS_KEY_ID) ? "aws:kms" : "AES256"),
       ...(value(environment.ROUTECAIRN_EVIDENCE_KMS_KEY_ID) ? { kmsKeyId: value(environment.ROUTECAIRN_EVIDENCE_KMS_KEY_ID) } : {}),
       ...(secretFile(environment, "AWS_ACCESS_KEY_ID") ? { accessKeyId: secretFile(environment, "AWS_ACCESS_KEY_ID") } : {}),
       ...(secretFile(environment, "AWS_SECRET_ACCESS_KEY") ? { secretAccessKey: secretFile(environment, "AWS_SECRET_ACCESS_KEY") } : {})
@@ -73,6 +79,7 @@ export function controlPlaneConfigFromEnv(environment: NodeJS.ProcessEnv = proce
     workloadIdentity: {
       required: environment.ROUTECAIRN_WORKLOAD_IDENTITY_REQUIRED === "true",
       trustedIssuers: csv(environment.ROUTECAIRN_WORKLOAD_IDENTITY_ISSUERS),
+      directMtls: environment.ROUTECAIRN_WORKLOAD_IDENTITY_DIRECT_MTLS === "true",
       ...(value(environment.ROUTECAIRN_WORKLOAD_IDENTITY_AUDIENCE) ? { audience: value(environment.ROUTECAIRN_WORKLOAD_IDENTITY_AUDIENCE) } : {}),
       ...(secretFile(environment, "ROUTECAIRN_MTLS_PROXY_SECRET") ? { mtlsProxySecret: secretFile(environment, "ROUTECAIRN_MTLS_PROXY_SECRET") } : {})
     }

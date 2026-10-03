@@ -1,12 +1,13 @@
 services:
   control-plane:
-    environment:
+    environment: &distributed-environment
       ROUTECAIRN_CONTROL_PLANE_MODE: distributed
       ROUTECAIRN_DATABASE_URL_FILE: /run/secrets/database-url
       ROUTECAIRN_EVIDENCE_S3_BUCKET: routecairn-evidence
       ROUTECAIRN_EVIDENCE_S3_ENDPOINT: http://object-storage:9000
       ROUTECAIRN_EVIDENCE_S3_PATH_STYLE: "true"
       ROUTECAIRN_EVIDENCE_S3_PREFIX: routecairn
+      ROUTECAIRN_EVIDENCE_S3_ENCRYPTION: provider
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID_FILE: /run/secrets/object-storage-access-key
       AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/object-storage-secret-key
@@ -18,8 +19,23 @@ services:
       - object-storage-secret-key
     depends_on:
       postgres: { condition: service_healthy }
-      object-storage: { condition: service_healthy }
+      object-storage-init: { condition: service_completed_successfully }
       otel-collector: { condition: service_started }
+
+  fleet:
+    build: { context: ../.., dockerfile: deploy/control-plane/Dockerfile }
+    restart: unless-stopped
+    command: [fleet, --host, 0.0.0.0, --port, "4711", --trust-proxy]
+    deploy: { replicas: 2 }
+    environment: *distributed-environment
+    secrets: [database-url, object-storage-access-key, object-storage-secret-key]
+    networks: [control-plane]
+    depends_on:
+      postgres: { condition: service_healthy }
+      object-storage-init: { condition: service_completed_successfully }
+
+  caddy:
+    volumes: [./Caddyfile.distributed:/etc/caddy/Caddyfile:ro]
 
   postgres:
     image: postgres:17-alpine
@@ -38,7 +54,8 @@ services:
       retries: 20
 
   object-storage:
-    image: minio/minio:RELEASE.2025-05-24T17-08-30Z
+    image: routecairn/minio:07c3a429bfed
+    build: { context: ../.., dockerfile: deploy/control-plane/Minio.Dockerfile }
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:
@@ -48,21 +65,23 @@ services:
     volumes: [routecairn-objects:/data]
     networks: [control-plane]
     healthcheck:
-      test: [CMD, mc, ready, local]
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:9000/minio/health/ready || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 20
 
   object-storage-init:
-    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    build: { context: ../.., dockerfile: deploy/control-plane/Dockerfile }
     restart: "no"
     depends_on: { object-storage: { condition: service_healthy } }
-    entrypoint: [/bin/sh, -ec]
-    command:
-      - |
-        export MC_HOST_local="http://$$(cat /run/secrets/object-storage-access-key):$$(cat /run/secrets/object-storage-secret-key)@object-storage:9000"
-        mc mb --ignore-existing local/routecairn-evidence
-        mc version enable local/routecairn-evidence
+    command: [initialize-evidence-storage]
+    environment:
+      ROUTECAIRN_EVIDENCE_S3_BUCKET: routecairn-evidence
+      ROUTECAIRN_EVIDENCE_S3_ENDPOINT: http://object-storage:9000
+      ROUTECAIRN_EVIDENCE_S3_PATH_STYLE: "true"
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID_FILE: /run/secrets/object-storage-access-key
+      AWS_SECRET_ACCESS_KEY_FILE: /run/secrets/object-storage-secret-key
     secrets: [object-storage-access-key, object-storage-secret-key]
     networks: [control-plane]
 

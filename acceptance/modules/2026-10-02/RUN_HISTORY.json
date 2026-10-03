@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "current": "verified-release-windows-node24",
+  "runs": [
+    {
+      "artifact": "verified-current-windows-node24/module-ecosystem-lab-result.json",
+      "status": "COMPLETED",
+      "tests": {
+        "total": 57,
+        "passed": 57,
+        "failed": 0,
+        "skipped": 0
+      },
+      "selection": "SUPERSEDED"
+    },
+    {
+      "artifact": "verified-final-windows-node24/module-ecosystem-lab-result.json",
+      "status": "FAILED",
+      "tests": {
+        "total": 59,
+        "passed": 58,
+        "failed": 1,
+        "skipped": 0
+      },
+      "selection": "SUPERSEDED"
+    },
+    {
+      "artifact": "verified-release-windows-node24/module-ecosystem-lab-result.json",
+      "status": "COMPLETED",
+      "tests": {
+        "total": 59,
+        "passed": 59,
+        "failed": 0,
+        "skipped": 0
+      },
+      "selection": "CURRENT"
+    }
+  ],
+  "note": "Earlier evidence is preserved. A failed rerun hit the old CLI workflow test timeout; the final run uses bounded child processes, teardown and a sufficient workflow deadline."
+}

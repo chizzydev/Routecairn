@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "baseDomain": "callbacks.security.example.com",
+  "apiBaseUrl": "https://callbacks.security.example.com/",
+  "apiTokenEnv": "ROUTECAIRN_OAST_API_TOKEN",
+  "tenantId": "owned-acceptance",
+  "workerId": "deployment-verifier",
+  "jobId": "reviewed-deployment",
+  "nameservers": ["ns1.callbacks.security.example.com"],
+  "serverAddresses": ["203.0.113.10"],
+  "protocols": ["DNS", "HTTP", "HTTPS"],
+  "authorization": {
+    "ownerApproved": true,
+    "baseDomain": "callbacks.security.example.com",
+    "expiresAt": "2026-01-01T00:00:00.000Z",
+    "referenceSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "deployment": {
+    "releaseArtifactSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "serviceConfigSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

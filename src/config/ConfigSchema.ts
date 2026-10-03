@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { X509Certificate } from "node:crypto";
 
 export const scanModeSchema = z.enum([
   "quick",
@@ -18,7 +19,7 @@ export const scopeSchema = z.object({
   program: z.string().min(1),
   allowedDomains: z.array(z.string().min(1)).min(1),
   disallowedPaths: z.array(z.string().startsWith("/")).default([]),
-  allowedMethods: z.array(z.enum(["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE"])).default(["GET", "HEAD", "OPTIONS"]),
+  allowedMethods: z.array(z.enum(["GET", "HEAD", "OPTIONS", "POST", "PATCH", "PUT", "DELETE", "CONNECT"])).default(["GET", "HEAD", "OPTIONS"]),
   rateLimitPerSecond: z.number().positive().max(50).default(3),
   concurrency: z.number().int().positive().max(50).default(5),
   maxDepth: z.number().int().min(0).max(10).default(2),
@@ -29,6 +30,11 @@ export const scopeSchema = z.object({
 });
 
 export const transportConfigSchema = z.object({
+  trustedCaPem: z.string().max(262144).refine((value) => {
+    const certificates = value.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+    if (!certificates?.length || value.replace(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g, "").trim()) return false;
+    try { return certificates.every((certificate) => new X509Certificate(certificate).ca); } catch { return false; }
+  }, "Trust configuration must contain only valid CA certificates.").optional(),
   poolingEnabled: z.boolean().default(true),
   http2Enabled: z.boolean().default(false),
   maxOrigins: z.number().int().min(1).max(1024).default(64),

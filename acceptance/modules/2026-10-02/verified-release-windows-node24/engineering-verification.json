@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED",
+  "generatedAt": "2026-10-02T09:36:54.465Z",
+  "ecosystem": {
+    "passed": 59,
+    "failed": 0,
+    "skipped": 0,
+    "sourcesStillMatch": true
+  },
+  "regression": {
+    "passed": 60,
+    "failed": 0,
+    "skipped": 0
+  },
+  "builtCliService": {
+    "checks": 9,
+    "cleanup": "CONFIRMED"
+  },
+  "release": {
+    "artifact": ".routecairn-module-lab/release-package/routecairn-0.1.0.tgz",
+    "sha256": "4e50ba84ed3852eefb99d445324736a6d4adcea4dc82a0c9a829dd840b57caa6",
+    "installedPackageVerified": true,
+    "installedSignedModuleWorkflow": true,
+    "installedProtocolWebTransportAcceptance": true,
+    "requiredInputs": 77
+  },
+  "gates": {
+    "releaseBuild": "PASSED",
+    "lint": "PASSED",
+    "format": "PASSED",
+    "architecture": "PASSED",
+    "composeConfiguration": "PASSED",
+    "diffWhitespace": "PASSED"
+  },
+  "publicDeployment": false,
+  "containerRuntime": "NOT_EXERCISED_DOCKER_UNAVAILABLE",
+  "communityAdoption": false,
+  "independentlyOperated": false
+}

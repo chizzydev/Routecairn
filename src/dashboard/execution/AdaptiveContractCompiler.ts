@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isConclusiveAdaptiveOutcome, isVerifiedAdaptiveCleanup, isReadOnlyAdaptiveApiOperation } from "./AdaptiveEvidenceSafety.js";
 import type { RouteCairnReport } from "../../reports/ReportTypes.js";
 import { validateAdvancedEngineInput, type AdvancedEngineId } from "../contracts/AdvancedEngineSchemas.js";
 
@@ -34,6 +35,7 @@ export function compileExecutedContracts(report: RouteCairnReport): AdaptiveComp
   if (!plan) return [];
   const sources: ContractSource[] = [
     source("api-graphql-authorization", plan.apiGraphql, report.apiGraphql?.checks, "API/GraphQL"),
+    source("authentication-lifecycle", plan.authenticationLifecycle, report.authenticationLifecycle?.observations, "authentication lifecycle"),
     source("link-portal-export-security", plan.linkPortalSecurity, report.linkPortalSecurity?.observations, "link/portal/export"),
     source("operational-endpoint-security", plan.operationalEndpointSecurity, report.operationalEndpointSecurity?.observations, "operational endpoint"),
     source("business-invariant", plan.businessInvariant, report.businessInvariant?.observations, "business invariant"),
@@ -53,14 +55,15 @@ function compileSource(sourceValue: ContractSource): AdaptiveCompiledContract[] 
   const exact = cases.filter((item) => {
     const fingerprint = fingerprintOf(item);
     const observation = observations.find((candidate) => fingerprintOf(candidate) === fingerprint);
-    return Boolean(fingerprint && observation && conclusive(observation) && cleanupSafe(item, observation));
+    return Boolean(fingerprint && observation && conclusive(observation) && cleanupSafe(item, observation, sourceValue.engineId));
   });
   if (!exact.length) return [];
 
   return exact.flatMap((casePlan) => {
     const observation = observations.find((candidate) => fingerprintOf(candidate) === fingerprintOf(casePlan))!;
     const config = inputForCase(sourceValue.engineId, sourceValue.plan, casePlan);
-    if (!config) return [];
+    if (!config || containsUnreplayableCredential(config)) return [];
+    if (sourceValue.engineId === "api-graphql-authorization" && !isReadOnlyApiReplay(config)) return [];
     const mutation = isMutation(sourceValue.engineId, config);
     const approvalProbe = mutation ? authorizeConfiguration(config, {
       reviewedAt: new Date(Date.now() - 1_000).toISOString(),
@@ -98,6 +101,7 @@ export function authorizeConfiguration(configuration: Record<string, unknown>, a
   for (const item of records(value.cases)) {
     const current = isRecord(item.authorization) ? item.authorization : {};
     const ticket = approval.rationale.slice(0, 160);
+    if (current.mode === "CONTROLLED_LIFECYCLE") item.authorization = { mode: "CONTROLLED_LIFECYCLE", environment: current.environment, confirmation: "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING", authorizedBy: approval.reviewedBy, changeTicket: ticket, authorizedAt: approval.reviewedAt, expiresAt: approval.expiresAt, disposableAccounts: true, productionAcknowledged: current.environment === "PRODUCTION" };
     if (current.mode === "CONTROLLED_INVARIANT") item.authorization = { mode: "CONTROLLED_INVARIANT", environment: current.environment, confirmation: "I_AUTHORIZE_CONTROLLED_BUSINESS_INVARIANT_TESTING", authorizedBy: approval.reviewedBy, changeTicket: ticket, authorizedAt: approval.reviewedAt, expiresAt: approval.expiresAt, disposableEntities: true, productionAcknowledged: current.environment === "PRODUCTION" };
     if (current.mode === "CONTROLLED_LINK_FLOW") item.authorization = { mode: "CONTROLLED_LINK_FLOW", environment: current.environment, confirmation: "I_AUTHORIZE_CONTROLLED_LINK_PORTAL_EXPORT_TESTING", authorizedBy: approval.reviewedBy, changeTicket: ticket, authorizedAt: approval.reviewedAt, expiresAt: approval.expiresAt, disposableResource: true, productionAcknowledged: current.environment === "PRODUCTION" };
     if (current.mode === "CONTROLLED_OPERATIONAL_FLOW") item.authorization = { mode: "CONTROLLED_OPERATIONAL_FLOW", environment: current.environment, confirmation: "I_AUTHORIZE_CONTROLLED_OPERATIONAL_ENDPOINT_TESTING", authorizedBy: approval.reviewedBy, changeTicket: ticket, authorizedAt: approval.reviewedAt, expiresAt: approval.expiresAt, disposableTarget: true, productionAcknowledged: current.environment === "PRODUCTION" };
@@ -111,6 +115,8 @@ function inputForCase(engineId: ContractSource["engineId"], plan: Record<string,
   if (engineId === "api-graphql-authorization") {
     const routeIds = new Set<string>();
     for (const key of ["routeId", "baselineRouteId", "candidateRouteId"]) if (typeof casePlan[key] === "string") routeIds.add(casePlan[key] as string);
+    const routePlans = records(plan.routes);
+    for (const id of routeIds) { const route = routePlans.find((item) => item.id === id); if (typeof route?.schemaSourceId === "string") routeIds.add(route.schemaSourceId); if (routeIds.size > 100) return; }
     const actorId = String(casePlan.actorId ?? "");
     const routes = records(plan.routes).filter((item) => routeIds.has(String(item.id))).map((item) => {
       const value = stripPlanFields(item);
@@ -120,6 +126,10 @@ function inputForCase(engineId: ContractSource["engineId"], plan: Record<string,
     });
     const actors = records(plan.actors).filter((item) => item.id === actorId).map(stripPlanFields);
     return select(plan, ["schemaVersion", "maxRequests", "maxResponseBytes", "maxJsonDepth", "maxGraphqlDocumentBytes", "maxGraphqlAliases", "maxGraphqlBatchOperations"], { actors, routes, checks: [cleanCase] });
+  }
+  if (engineId === "authentication-lifecycle") {
+    if (records(casePlan.steps).some((step) => step.providerCall || (Array.isArray(step.fixtureActions) && step.fixtureActions.length))) return;
+    return select(plan, ["schemaVersion", "maxCases", "maxStepsPerCase", "maxRequests", "maxResponseBytes"], { fixtures: {}, cases: [authorizationTemplate(cleanCase)] });
   }
   if (engineId === "link-portal-export-security") {
     const actorIds = new Set(records(casePlan.steps).map((item) => String(item.actorId)));
@@ -157,6 +167,7 @@ function inputForCase(engineId: ContractSource["engineId"], plan: Record<string,
 function authorizationTemplate(value: Record<string, unknown>): Record<string, unknown> {
   const auth = isRecord(value.authorization) ? value.authorization : {};
   if (auth.mode === "OBSERVE_ONLY") value.authorization = { mode: "OBSERVE_ONLY", environment: auth.environment };
+  else if (auth.mode === "CONTROLLED_LIFECYCLE") value.authorization = { mode: auth.mode, environment: auth.environment, disposableAccounts: true, productionAcknowledged: auth.environment === "PRODUCTION" };
   else if (auth.mode === "CONTROLLED_INVARIANT") value.authorization = { mode: auth.mode, environment: auth.environment, disposableEntities: true, productionAcknowledged: auth.environment === "PRODUCTION" };
   else if (auth.mode === "CONTROLLED_LINK_FLOW") value.authorization = { mode: auth.mode, environment: auth.environment, disposableResource: true, productionAcknowledged: auth.environment === "PRODUCTION" };
   else if (auth.mode === "CONTROLLED_OPERATIONAL_FLOW") value.authorization = { mode: auth.mode, environment: auth.environment, disposableTarget: true, productionAcknowledged: auth.environment === "PRODUCTION" };
@@ -179,12 +190,13 @@ function stripPlanFields(input: Record<string, unknown>): Record<string, unknown
 
 function conclusive(observation: Record<string, unknown>): boolean {
   const outcome = String(observation.outcome ?? observation.observedDecision ?? "").toUpperCase();
-  return outcome !== "" && !/(?:BLOCKED|INCONCLUSIVE|ERROR|FAILED|NOT_ASSESSED)/.test(outcome);
+  return isConclusiveAdaptiveOutcome(outcome);
 }
 
-function cleanupSafe(casePlan: Record<string, unknown>, observation: Record<string, unknown>): boolean {
+function cleanupSafe(casePlan: Record<string, unknown>, observation: Record<string, unknown>, engineId: string): boolean {
+  if (engineId === "api-graphql-authorization") return casePlan.cleanupRequired !== true;
   if (!casePlan.cleanupRequired && !containsStateChanging(casePlan)) return true;
-  return /^(?:PASSED|VERIFIED|ROLLBACK_VERIFIED|RESTORED|SUCCESS|NOT_REQUIRED)$/i.test(String(observation.cleanupOutcome ?? ""));
+  return isVerifiedAdaptiveCleanup(observation.cleanupOutcome);
 }
 
 function isMutation(engineId: string, configuration: Record<string, unknown>): boolean {
@@ -195,7 +207,7 @@ function isMutation(engineId: string, configuration: Record<string, unknown>): b
 function containsStateChanging(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsStateChanging);
   if (!isRecord(value)) return false;
-  if (value.stateChanging === true) return true;
+  if (value.stateChanging === true || (typeof value.method === "string" && !["GET", "HEAD", "OPTIONS"].includes(value.method) && value.stateChanging !== false)) return true;
   return Object.values(value).some(containsStateChanging);
 }
 
@@ -208,7 +220,7 @@ function authenticationRequirement(value: unknown): AdaptiveAuthenticationRequir
 function requestCount(value: Record<string, unknown>): number {
   const cases = records(value.cases);
   if (cases.length) return Math.max(1, cases.reduce((sum, item) => sum + records(item.steps).reduce((stepSum, step) => stepSum + Number(isRecord(step.execution) ? step.execution.attempts ?? 1 : 1), 0) + records(item.preState).length + records(item.actions).reduce((actionSum, action) => actionSum + Number(isRecord(action.execution) ? action.execution.attempts ?? 1 : 1), 0) + records(item.postState).length + records(item.cleanup).length + records(item.cleanupVerification).length, 0));
-  return Math.max(1, records(value.checks).length);
+  return Math.max(1, records(value.routes).filter((route) => ["SCHEMA", "DOCUMENTATION"].includes(String(route.kind))).length + records(value.checks).reduce((sum, check) => sum + (check.kind === "VERSION_BOUNDARY" ? 2 : check.kind === "METHOD_CONFUSION" ? 1 + (Array.isArray(check.alternateMethods) ? check.alternateMethods.length : 0) : 1), 0));
 }
 
 function cleanupRequestCount(value: Record<string, unknown>): number {
@@ -223,3 +235,21 @@ function walk(value: unknown, visit: (item: Record<string, unknown>) => void): v
 function select(sourceValue: Record<string, unknown>, keys: string[], extras: Record<string, unknown>): Record<string, unknown> { return { ...Object.fromEntries(keys.filter((key) => sourceValue[key] !== undefined).map((key) => [key, clone(sourceValue[key])])), ...extras }; }
 function digest(value: unknown): string { return createHash("sha256").update(JSON.stringify(sort(value))).digest("hex"); }
 function sort(value: unknown): unknown { if (Array.isArray(value)) return value.map(sort); if (!isRecord(value)) return value; return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, sort(child)])); }
+
+function isReadOnlyApiReplay(configuration: Record<string, unknown>): boolean {
+  const routes = new Map(records(configuration.routes).map((route) => [route.id, route]));
+  return records(configuration.checks).every((check) => {
+    const ids = [check.routeId, check.baselineRouteId, check.candidateRouteId].filter((id) => typeof id === "string");
+    const request = isRecord(check.request) ? check.request : undefined;
+    return ids.length > 0 && ids.every((id) => { const route = routes.get(id); return Boolean(route && isReadOnlyAdaptiveApiOperation(check, route, request, String(request?.method ?? check.canonicalMethod ?? (route.protocol === "GRAPHQL" ? "POST" : "GET")))); });
+  });
+}
+
+function containsUnreplayableCredential(value: unknown): boolean {
+  let found = false;
+  walk(value, (item) => {
+    if (isRecord(item.headers)) for (const [name, content] of Object.entries(item.headers)) if (typeof content === "string" && /(?:authorization|cookie|api[-_]?key|auth[-_]?token|session)/i.test(name) && !/^\{\{(?:SECRET|CAPTURE):[A-Za-z0-9._-]+\}\}$/.test(content)) found = true;
+    for (const child of Object.values(item)) if (typeof child === "string" && /(?:\bBearer\s+(?!\{\{)|<redacted>|\[redacted\]|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*)/i.test(child)) found = true;
+  });
+  return found;
+}

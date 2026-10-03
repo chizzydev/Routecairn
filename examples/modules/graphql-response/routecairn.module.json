@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "entrypoint": "index.mjs",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false
+  },
+  "description": "Read-only GraphQL envelope adapter",
+  "permissions": {
+    "filesystem": "PACKAGE_READ_ONLY",
+    "maxMemoryMb": 32,
+    "childProcess": false,
+    "network": false,
+    "maxRuntimeMs": 10000
+  },
+  "schemaVersion": 1,
+  "moduleId": "reference-graphql-response",
+  "outputLimit": 10,
+  "capabilities": {
+    "requestBroker": {
+      "bodyPreviewBytes": 4096,
+      "maxRequestBytes": 0,
+      "concurrency": 1,
+      "maxResponseBytes": 16384,
+      "timeoutMs": 3000,
+      "methods": [
+        "GET"
+      ],
+      "allowNonMutatingPost": false,
+      "maxRequests": 1,
+      "pathPrefixes": [
+        "/graphql"
+      ],
+      "riskClass": "LOW"
+    }
+  }
+}

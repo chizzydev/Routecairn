@@ -405,7 +405,7 @@ async function waitForScan(baseUrl: string, cookie: string, scanId: string): Pro
   while (Date.now() < deadline) {
     const response = await apiGet<any>(baseUrl, `/api/scans/${scanId}`, cookie);
     if (["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"].includes(response.scan.status)) {
-      expect(response.scan.status).toBe("COMPLETED");
+      expect(response.scan.status, response.scan.errorSummary).toBe("COMPLETED");
       return;
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));

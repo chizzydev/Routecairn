@@ -6,11 +6,13 @@ import type { OastEvidenceSummary, OastLeaseIdentity, OastLeaseRequest } from ".
 export class OastClient {
   private readonly apiOrigin: string;
   private readonly apiToken: string;
+  private readonly tlsCa?: string;
   public constructor(private readonly plan: ActiveOastPlan, private readonly timeoutMs: number, private readonly abortSignal?: AbortSignal) {
     const api = new URL(plan.apiBaseUrl); this.apiOrigin = api.origin;
     const token = process.env[plan.apiTokenEnv];
-    if (!token || Buffer.byteLength(token) < 24) throw new Error("OAST_API_TOKEN_UNAVAILABLE");
+    if (!token || !/^[A-Za-z0-9._~-]{24,200}$/.test(token)) throw new Error("OAST_API_TOKEN_UNAVAILABLE");
     this.apiToken = token;
+    if (plan.tlsCaEnv) { const ca = process.env[plan.tlsCaEnv]; if (!ca || ca.length > 65536 || !ca.includes("-----BEGIN CERTIFICATE-----")) throw new Error("OAST_TLS_CA_UNAVAILABLE"); this.tlsCa = ca; }
   }
 
   public async lease(caseId: string, strategyId: string): Promise<OastLeaseIdentity> {
@@ -22,7 +24,9 @@ export class OastClient {
     const dnsLabels = dnsName.split(".");
     if (!/^[a-f0-9]{32}$/.test(leaseId) || !Number.isFinite(Date.parse(expiresAt)) || dnsLabels.length < 4 || dnsLabels[0] !== leaseId || !/^[a-f0-9]{32}$/.test(dnsLabels[1] ?? "") || !dnsLabels.slice(2).every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) throw new Error("OAST_LEASE_RESPONSE_INVALID");
     const httpUrl = optionalCallbackUrl(value.httpUrl, "http:", leaseId), httpsUrl = optionalCallbackUrl(value.httpsUrl, "https:", leaseId);
-    return { leaseId, expiresAt, dnsName, ...(httpUrl ? { httpUrl } : {}), ...(httpsUrl ? { httpsUrl } : {}), pollUrl: new URL(pollUrl, this.apiOrigin).toString(), pollToken, bindingFingerprint };
+    const poll = new URL(pollUrl, this.apiOrigin);
+    if (poll.origin !== this.apiOrigin || poll.username || poll.password || poll.pathname !== `/v1/leases/${leaseId}/events` || poll.search || poll.hash || !/^[A-Za-z0-9._~-]{24,200}$/.test(pollToken) || Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > Date.now() + this.plan.leaseSeconds * 1000 + 5000) throw new Error("OAST_LEASE_RESPONSE_INVALID");
+    return { leaseId, expiresAt, dnsName, ...(httpUrl ? { httpUrl } : {}), ...(httpsUrl ? { httpsUrl } : {}), pollUrl: poll.toString(), pollToken, bindingFingerprint };
   }
 
   public materialize(strategy: ActiveGeneratedStrategy, lease: OastLeaseIdentity, testCase: ActiveVulnerabilityCasePlan): ActiveGeneratedStrategy {
@@ -47,7 +51,9 @@ export class OastClient {
       if (result.statusCode !== 200) throw new Error(`OAST_POLL_HTTP_${result.statusCode}`);
       const value = parseObject(result.body);
       if (value.leaseId !== lease.leaseId || !["ACTIVE", "EXPIRED", "REVOKED"].includes(String(value.status)) || typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) || !Array.isArray(value.events)) throw new Error("OAST_POLL_RESPONSE_INVALID");
+      if (value.events.length > 100 || value.expiresAt !== lease.expiresAt) throw new Error("OAST_POLL_RESPONSE_INVALID");
       const events = value.events.map(validateEvent);
+      if (events.some((event) => Date.parse(event.observedAt) > Date.parse(lease.expiresAt) || Date.parse(event.observedAt) > Date.now() + 5000)) throw new Error("OAST_POLL_RESPONSE_INVALID");
       const event = events.find((item) => item.protocol === protocol && item.bindingFingerprint === lease.bindingFingerprint);
       if (event) return event;
       if (value.status !== "ACTIVE") return;
@@ -56,14 +62,15 @@ export class OastClient {
   }
 
   public async revoke(lease: OastLeaseIdentity): Promise<boolean> {
-    const result = await this.callAbsolute(lease.pollUrl, "DELETE", lease.pollToken);
+    // Scan cancellation must not cancel the bounded lease cleanup attempt.
+    const result = await this.callAbsolute(lease.pollUrl, "DELETE", lease.pollToken, undefined, Math.min(this.timeoutMs, 3000), true);
     return result.statusCode === 204;
   }
 
   private call(path: string, method: string, token: string, body?: Buffer) { return this.callAbsolute(new URL(path, this.apiOrigin).toString(), method, token, body); }
-  private callAbsolute(url: string, method: string, token: string, body?: Buffer, timeoutMs = this.timeoutMs) {
+  private callAbsolute(url: string, method: string, token: string, body?: Buffer, timeoutMs = this.timeoutMs, cleanup = false) {
     if (new URL(url).origin !== this.apiOrigin) throw new Error("OAST_API_ORIGIN_MISMATCH");
-    return runBoundedHttp(url, method, { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) }, body, { allowedPrivateOrigins: this.plan.mode === "SELF_HOSTED" ? [this.apiOrigin] : [], timeoutMs, maxBytes: 64 * 1024, ...(this.abortSignal ? { abortSignal: this.abortSignal } : {}) });
+    return runBoundedHttp(url, method, { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) }, body, { allowedPrivateOrigins: this.plan.mode === "SELF_HOSTED" ? [this.apiOrigin] : [], timeoutMs, maxBytes: 64 * 1024, ...(this.tlsCa ? { tlsCa: this.tlsCa } : {}), ...(!cleanup && this.abortSignal ? { abortSignal: this.abortSignal } : {}) });
   }
 }
 

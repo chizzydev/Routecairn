@@ -8,6 +8,7 @@ import { AppError } from "../../core/errors/AppError.js";
 import { securityContractFingerprint } from "../../core/comparisons/SecurityContractFingerprint.js";
 import { ScopeMatcher } from "../../core/scope/ScopeMatcher.js";
 import { parseSafeFieldPath } from "../fieldExposureTesting/SafeFieldPath.js";
+import { graphqlExecutableText, isReadOnlyGraphqlDocument } from "./GraphqlDocumentSafety.js";
 import type {
   ApiGraphqlActorPlan,
   ApiGraphqlCheckPlan,
@@ -361,8 +362,8 @@ function validatePostSafety(methodValue: string, request: { operatorConfirmedNon
 
 function validateGraphqlOperation(value: { document: string; variables: Record<string, unknown> }, maxBytes: number, label: string): void {
   if (Buffer.byteLength(value.document, "utf8") > maxBytes) throw new AppError(`GraphQL document ${label} exceeds maxGraphqlDocumentBytes.`, "API_GRAPHQL_DOCUMENT_TOO_LARGE");
-  const stripped = value.document.replace(/#[^\n\r]*/g, " ").replace(/"""[\s\S]*?"""/g, '""').trim();
-  if (/\b(?:mutation|subscription)\b/i.test(stripped) || !/^(?:query\b|\{)/i.test(stripped)) throw new AppError(`GraphQL document ${label} must be a query operation.`, "API_GRAPHQL_MUTATION_FORBIDDEN");
+  const stripped = graphqlExecutableText(value.document);
+  if (stripped === undefined || !isReadOnlyGraphqlDocument(value.document)) throw new AppError(`GraphQL document ${label} must be a query operation.`, "API_GRAPHQL_MUTATION_FORBIDDEN");
   if (graphQlDepth(stripped) > 16) throw new AppError(`GraphQL document ${label} exceeds the hard depth bound.`, "API_GRAPHQL_DEPTH_EXCEEDED");
   validateTemplateValue(value.variables, `${label}.variables`);
 }

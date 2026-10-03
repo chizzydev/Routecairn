@@ -26,6 +26,13 @@ afterEach(async () => {
 });
 
 describe("RequestSafetyBroker", () => {
+  it("exposes native protocol headers only transiently and retains redacted evidence", async () => {
+    const server = await testServer((_request, response) => { response.writeHead(302, { location: "/callback?code=private-authorization-code", "set-cookie": "session=private-cookie; HttpOnly; Path=/" }); response.end(); });
+    const origin = `http://127.0.0.1:${server.port}`; const context = contextFor(`${origin}/`); let rawLocation: string | undefined; let rawCookie: string | string[] | undefined;
+    const result = await context.httpClient.send({ url: `${origin}/start`, method: "GET", skipCache: true, disableRedirects: true, transientResponseConsumer: (value) => { rawLocation = value.redirectLocation; rawCookie = value.headers["set-cookie"]; } });
+    expect(rawLocation).toContain("private-authorization-code"); expect(String(rawCookie)).toContain("private-cookie"); const evidence = JSON.stringify({ result, audit: context.state.getRequestAudit() }); expect(evidence).not.toContain("private-authorization-code"); expect(evidence).not.toContain("private-cookie");
+    let called = false; await context.httpClient.send({ url: "http://example.net/outside", method: "GET", transientResponseConsumer: () => { called = true; } }); expect(called).toBe(false); await context.dispose();
+  });
   it("blocks out-of-scope redirects and records safe skipped redirect evidence", async () => {
     const server = await testServer((request, response) => {
       if (request.url === "/start") {

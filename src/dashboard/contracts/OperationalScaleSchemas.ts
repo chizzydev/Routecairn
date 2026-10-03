@@ -74,7 +74,12 @@ export const notificationEnqueueSchema = z.object({
   }).strict()
 }).strict();
 
-export const remoteEnrollmentSchema = z.object({ organizationId: z.string().uuid(), nameHint: safeName.optional(), expiresInMinutes: z.number().int().min(5).max(10080).default(60) }).strict();
+export const workerIdentityBindingSchema=z.discriminatedUnion("kind",[
+  z.object({kind:z.literal("oidc"),issuer:httpsUrl,subject:z.string().min(1).max(500)}).strict(),
+  z.object({kind:z.literal("mtls"),fingerprint:z.string().regex(/^[a-f0-9]{64}$/)}).strict()
+]);
+export type WorkerIdentityBinding=z.infer<typeof workerIdentityBindingSchema>;
+export const remoteEnrollmentSchema = z.object({ organizationId: z.string().uuid(), nameHint: safeName.optional(), expiresInMinutes: z.number().int().min(5).max(10080).default(60),workloadIdentity:workerIdentityBindingSchema.optional() }).strict();
 export const remoteWorkerEnrollSchema = z.object({ token: z.string().min(32).max(300), name: safeName, publicKeyPem: z.string().min(100).max(4000), capabilities: z.array(z.string().regex(/^[a-z0-9][a-z0-9:._-]{0,99}$/)).min(1).max(100), labels: z.record(z.string().max(100)).default({}) }).strict();
 export const remoteHeartbeatSchema = z.object({ status: z.enum(["ONLINE", "DRAINING"]), resources: z.object({ cpuPercent: z.number().min(0).max(100), memoryBytes: z.number().int().nonnegative(), activeJobs: z.number().int().min(0).max(100) }).strict() }).strict();
 export const remoteJobSchema = z.object({ organizationId: z.string().uuid(), kind: z.enum(["SCAN", "EXPORT", "MODULE", "PING"]), payload: z.record(z.unknown()), requiredCapabilities: z.array(z.string().regex(/^[a-z0-9][a-z0-9:._-]{0,99}$/)).max(100).default([]), networkZone: z.string().regex(/^[a-z0-9][a-z0-9._-]{0,63}$/).optional(), priority: z.number().int().min(-100).max(100).default(0), maxAttempts: z.number().int().min(1).max(10).default(3) }).strict();
@@ -120,7 +125,7 @@ export const thirdPartyModuleManifestSchema = z.object({
   inputSchema: z.record(z.unknown()).default({}),
   outputLimit: z.number().int().min(1).max(1000).default(100)
 }).strict();
-export const thirdPartyModuleRegisterSchema = z.object({ organizationId: z.string().uuid(), packageDirectory: z.string().min(1).max(2000) }).strict();
+export const thirdPartyModuleRegisterSchema = z.object({ organizationId: z.string().uuid(), packageDirectory: z.string().min(1).max(2000), bundlePath: z.string().min(1).max(2000).optional() }).strict();
 const brokerApprovalSchema = z.object({
   targetOrigin: httpOrigin,
   packageDigest: z.string().regex(/^[a-f0-9]{64}$/),

@@ -1,0 +1,35 @@
+services:
+  oast:
+    build:
+      context: ../..
+      dockerfile: deploy/oast/Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    env_file:
+      - path: ./secrets/service.env
+        required: true
+    ports:
+      - "80:8080/tcp"
+      - "443:8443/tcp"
+      - "53:5353/tcp"
+      - "53:5353/udp"
+    volumes:
+      - ./oast.json:/etc/routecairn/oast.json:ro
+      - ./tls:/run/secrets:ro
+      - oast-data:/var/lib/routecairn-oast
+    tmpfs:
+      - /tmp:size=16777216,noexec,nosuid,nodev
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 100
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  oast-data:

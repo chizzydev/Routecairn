@@ -16,8 +16,11 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          - path: {{ default "/" .path }}
+          - path: /api/remote-agents/
             pathType: Prefix
             backend: { service: { name: {{ include "routecairn.fullname" $ }}, port: { name: http } } }
+          - path: {{ default "/" .path }}
+            pathType: Prefix
+            backend: { service: { name: {{ include "routecairn.fullname" $ }}-dashboard, port: { name: http } } }
   {{- end }}
 {{- end }}

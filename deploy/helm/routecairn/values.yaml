@@ -37,6 +37,10 @@ objectStorage:
   pathStyle: false
   prefix: routecairn
   kmsKeyId: ""
+  encryption: AES256
+  credentialsSecretName: ""
+  accessKeyKey: access-key
+  secretKeyKey: secret-key
 
 keyManagement:
   masterKeyKmsKeyId: ""
@@ -48,6 +52,7 @@ secrets:
   sessionSecretKey: session-secret
   mutationCoordinatorSecretKey: mutation-coordinator-secret
   bootstrapOwnerPasswordKey: bootstrap-owner-password
+  masterKeyKey: master-key
 
 publicOrigin: "https://routecairn.example.com"
 bootstrapOwnerLogin: ""
@@ -82,16 +87,15 @@ networkPolicy:
   otlpCidrs: []
 
 workerPools: []
-# - name: private-us-east
-#   replicas: 2
-#   networkZone: private-us-east
-#   capabilities: [scan, export, module, ping]
-#   enrollmentSecretName: routecairn-worker-private-us-east
-#   stateKey: agent-state.json
-#   resources:
-#     requests: { cpu: "1", memory: 1Gi }
-#     limits: { cpu: "4", memory: 4Gi }
+# Production pool example: one independent signing identity per worker.
+# - name: private-zone
+#   networkZone: private-zone
+#   capabilities: [ping, scan]
+#   resources: { requests: { cpu: 250m, memory: 256Mi }, limits: { cpu: "1", memory: 1Gi } }
+#   workers:
+#     - { name: a, enrollmentSecretName: private-zone-a, stateKey: agent-state.json }
+#     - { name: b, enrollmentSecretName: private-zone-b, stateKey: agent-state.json }
 
-nodeSelector: {}
-tolerations: []
-affinity: {}
+dashboard:
+  storageSize: 10Gi
+  storageClassName: ""

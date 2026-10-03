@@ -5,7 +5,8 @@ const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const changelog = await readFile("CHANGELOG.md", "utf8");
 const compatibility = await readFile("docs/COMPATIBILITY.md", "utf8");
 const tagIndex = process.argv.indexOf("--tag");
-const requestedTag = (tagIndex >= 0 ? process.argv[tagIndex + 1] : undefined) || process.env.GITHUB_REF_NAME;
+if (tagIndex >= 0 && !process.argv[tagIndex + 1]) throw new Error("--tag requires a versioned tag.");
+const requestedTag = tagIndex >= 0 ? process.argv[tagIndex + 1] : process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined;
 const expectedTag = `v${packageJson.version}`;
 
 if (lock.version !== packageJson.version || lock.packages?.[""]?.version !== packageJson.version) throw new Error("package.json and package-lock.json versions differ.");

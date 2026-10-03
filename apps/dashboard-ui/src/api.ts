@@ -195,13 +195,13 @@ export async function bootstrap(): Promise<boolean> {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", headers: activeOrganizationId ? { "x-routecairn-organization-id": activeOrganizationId } : undefined });
+  const response = await fetch(path, { credentials: "same-origin", ...(activeOrganizationId ? { headers: { "x-routecairn-organization-id": activeOrganizationId } } : {}) });
   if (response.status === 401) window.dispatchEvent(new Event("routecairn:session-expired"));
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as T;
 }
 
-export async function apiMutation<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
+export async function apiMutation<T>(path: string, method: "POST" | "PATCH" | "PUT", body: unknown): Promise<T> {
   const effectiveCsrfToken = csrfToken || readStoredCsrfToken();
   const response = await fetch(path, {
     method,

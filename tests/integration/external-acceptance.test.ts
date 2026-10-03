@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -10,15 +11,46 @@ import { externalAcceptanceManifestSchema, externalAcceptanceLaneKinds, generate
 
 describe("external acceptance attestations", () => {
   const servers: Array<ReturnType<typeof createServer>> = [];
-  afterAll(async () => { for (const server of servers) await new Promise<void>((done) => server.close(() => done())); });
+  const upgradedSockets = new Set<Duplex>();
+  afterAll(async () => { for (const socket of upgradedSockets) socket.destroy(); for (const server of servers) { server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); } });
 
   it("executes all external lanes and verifies a release-bound DSSE attestation", async () => {
     const server = createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      if (request.url?.startsWith("/native/subscription")) {
+        const denied = request.url.includes("foreign"); response.statusCode = denied ? 403 : 200; response.setHeader("content-type", "text/event-stream");
+        response.end(`event: next\ndata: ${JSON.stringify(denied ? { errors: [{ message: "denied" }] } : { data: { viewer: { id: "fixture-user" } } })}\n\n`); return;
+      }
       request.on("end", () => { response.statusCode = /denied|unauthorized|invalid|replay|fixed[_-]rerun|foreign/i.test(request.url ?? "") ? 403 : 200; response.setHeader("content-type", "application/json"); response.end(JSON.stringify({ ok: true, path: request.url, bytes: Buffer.concat(chunks).byteLength })); });
     });
     servers.push(server);
+    server.on("upgrade", (request, socket) => {
+      upgradedSockets.add(socket); socket.once("close", () => upgradedSockets.delete(socket));
+      const key = String(request.headers["sec-websocket-key"] ?? ""); const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\nSec-WebSocket-Protocol: graphql-transport-ws\r\n\r\n`);
+      const frame = (value: unknown) => { const body = Buffer.from(JSON.stringify(value)); const head = Buffer.alloc(body.length < 126 ? 2 : 4); head[0] = 0x81; head[1] = body.length < 126 ? body.length : 126; if (body.length >= 126) head.writeUInt16BE(body.length, 2); return Buffer.concat([head, body]); };
+      let pending = Buffer.alloc(0);
+      socket.on("data", (chunk: Buffer) => {
+        pending = Buffer.concat([pending, chunk]);
+        while (pending.length >= 6) {
+          const marker = pending[1]! & 0x7f; if (marker === 127) { socket.destroy(); return; }
+          const offset = marker === 126 ? 4 : 2; if (pending.length < offset + 4) return;
+          const length = marker === 126 ? pending.readUInt16BE(2) : marker; if (pending.length < offset + 4 + length) return;
+          const opcode = pending[0]! & 0x0f; const mask = pending.subarray(offset, offset + 4); const payload = Buffer.from(pending.subarray(offset + 4, offset + 4 + length));
+          for (let index = 0; index < payload.length; index++) payload[index] = payload[index]! ^ mask[index % 4]!;
+          pending = pending.subarray(offset + 4 + length);
+          if (opcode === 8) { socket.end(); return; }
+          const message = JSON.parse(payload.toString("utf8")) as { type: string; id?: string };
+          if (message.type === "connection_init") socket.write(frame({ type: "connection_ack" }));
+          else if (message.type === "subscribe") {
+            const next = request.url?.includes("foreign") ? { id: message.id, type: "error", payload: [{ message: "denied" }] } : { id: message.id, type: "next", payload: { data: { viewer: { id: "fixture-user" } } } };
+            socket.write(Buffer.concat([frame(next), Buffer.from([0x88, 0])]));
+          }
+        }
+      });
+      socket.on("error", () => socket.destroy()); socket.on("end", () => socket.end());
+    });
     await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
     const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const directory = await mkdtemp(join(tmpdir(), "routecairn-external-acceptance-"));
@@ -69,8 +101,22 @@ describe("external acceptance attestations", () => {
     expect(bundle.summary).toMatchObject({ status: "PASSED", requestCount: 36 });
     expect(bundle.summary.lanes).toHaveLength(8);
     expect(bundle.summary.lanes.every((lane) => lane.status === "PASSED")).toBe(true);
+    expect(bundle.summary.provenance).toMatchObject({ mode: "FIXTURE", externalTargetsTested: false, independentlyTrustedOperator: false });
     const bundlePath = join(bundle.summary.outputDirectory, "external-acceptance-bundle.json");
-    await expect(verifyExternalAcceptanceBundle(bundlePath, releaseArtifact, publicKey, manifestPath)).resolves.toMatchObject({ verified: true, keyId: generated.keyId, status: "PASSED", laneCount: 8 });
+    await expect(verifyExternalAcceptanceBundle(bundlePath, releaseArtifact, publicKey, manifestPath)).resolves.toMatchObject({ verified: true, independentAcceptanceVerified: false, keyId: generated.keyId, status: "PASSED", laneCount: 8 });
+    const native = structuredClone(manifest);
+    for (const lane of native.lanes) for (const action of lane.actions) if (action.semantic.startsWith("GRAPHQL_SUBSCRIPTION")) {
+      const denied = action.semantic.endsWith("FOREIGN_DENIED"); action.request.path = `/native/subscription/${denied ? "foreign" : "owner"}`; action.request.method = "GET";
+      action.request.transport = { kind: "GRAPHQL_SSE", maxEvents: 1 }; action.assertions.jsonEquals = {}; action.assertions.jsonPresent = [denied ? "events.0.errors.0" : "events.0.data.viewer.id"];
+    }
+    const nativeSse = await runExternalAcceptance(native, { releaseArtifact, signingKey: privatePem, outputDirectory: join(directory, "native-sse") });
+    expect(nativeSse.summary.status).toBe("PASSED");
+    for (const lane of native.lanes) for (const action of lane.actions) if (action.request.transport) {
+      action.request.transport = { kind: "GRAPHQL_WS", protocol: "graphql-transport-ws", document: "subscription { viewer { id } }", variables: {}, maxMessages: 3 };
+      action.assertions.statuses = [101]; action.assertions.jsonPresent = action.semantic.endsWith("FOREIGN_DENIED") ? ["messages.1.payload.0.message"] : ["messages.1.payload.data.viewer.id"]; action.assertions.headerPresent = [];
+    }
+    const nativeWs = await runExternalAcceptance(native, { releaseArtifact, signingKey: privatePem, outputDirectory: join(directory, "native-ws") });
+    expect(nativeWs.summary.status).toBe("PASSED");
     const failing = structuredClone(manifest);
     const graphql = failing.lanes.find((lane) => lane.kind === "GRAPHQL_APPLICATION")!;
     graphql.actions[0]!.assertions.jsonEquals = { ok: false };

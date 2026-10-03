@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "standard": "OWNED_HOSTED_SUPABASE_EXERCISE_V1",
+  "runId": "cd05af99-e594-4c8f-a9bf-d0f6d2d80b7d",
+  "projectOrigin": "https://liacnbzkujrdfltedjhy.supabase.co",
+  "startedAt": "2026-09-30T21:16:09.337Z",
+  "completedAt": "2026-09-30T21:16:36.900Z",
+  "authorizationSha256": "5eb16c10557602de45dbafd1dd78a25551333379d1686d5804309629275cf9a3",
+  "status": "FAILED",
+  "requestCount": 25,
+  "disposableAccounts": 2,
+  "receipts": [
+    {
+      "case": "AUTH_ADMIN_CREATE",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "dc98e4bc72c18084b92f50d1210426ba0619ee0e39412dcb41d5e5fe378b9d66",
+      "responseBytes": 1081
+    },
+    {
+      "case": "AUTH_PASSWORD_LOGIN",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "1416395e8cc2720dba3d016d7de65e254d485fb9a7bb7cd31e4e68c5f2f2b3ed",
+      "responseBytes": 2252
+    },
+    {
+      "case": "AUTH_ADMIN_CREATE",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "43364f3a571a640b3b300e343be9fe41363c2b45422e287f46363fdcd2dc7252",
+      "responseBytes": 1081
+    },
+    {
+      "case": "AUTH_PASSWORD_LOGIN",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "fd312195a0956c29ef1234996aa50271e3703534c62a59a1ff76226edd9972f6",
+      "responseBytes": 2252
+    },
+    {
+      "case": "PRIVATE_BUCKET_CREATE",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "d72cea142dac38f62e8042ff1ef4149f5c31ee59d20dd0251f060ae53e2e5602",
+      "responseBytes": 51
+    },
+    {
+      "case": "SUPABASE_TABLE_OWNER_ALLOWED",
+      "status": "FAILED",
+      "statusCode": 404,
+      "bodySha256": "8c8af081b7c50fc8311d41caf1b097841ec521063c4dd5a69815e6f1ef86149b",
+      "responseBytes": 149
+    },
+    {
+      "case": "SUPABASE_TABLE_FOREIGN_DENIED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "responseBytes": 2
+    },
+    {
+      "case": "SUPABASE_TABLE_ANONYMOUS_DENIED",
+      "status": "PASSED",
+      "statusCode": 401,
+      "bodySha256": "93cfeea9809ef5e14bc4cf39fb4c992e5574fa60c83685b919f00cf81a14eaeb",
+      "responseBytes": 120
+    },
+    {
+      "case": "SUPABASE_TABLE_FOREIGN_UPDATE_DENIED",
+      "status": "PASSED",
+      "statusCode": 204,
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "responseBytes": 0
+    },
+    {
+      "case": "SUPABASE_TABLE_OWNER_UNCHANGED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "64af9de15519023d2776557eed1542d29cac812815af1ce667c48a7e4759ce3c",
+      "responseBytes": 152
+    },
+    {
+      "case": "SUPABASE_TABLE_OWNER_ALLOWED_B",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "d2b81b345885abeb69db4c8a68801419733cf1d4fe271a235dbc71ccea62cd21",
+      "responseBytes": 152
+    },
+    {
+      "case": "SUPABASE_RPC_OWNER_ALLOWED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "64af9de15519023d2776557eed1542d29cac812815af1ce667c48a7e4759ce3c",
+      "responseBytes": 152
+    },
+    {
+      "case": "SUPABASE_RPC_FOREIGN_DENIED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "responseBytes": 2
+    },
+    {
+      "case": "SUPABASE_RPC_ANONYMOUS_DENIED",
+      "status": "PASSED",
+      "statusCode": 401,
+      "bodySha256": "471943cc9d2580cd61400afff5b2f249c32d57812237749b9f2343765bbf8c66",
+      "responseBytes": 127
+    },
+    {
+      "case": "SUPABASE_STORAGE_OWNER_UPLOAD",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "4396cd5193fd9d91b1e56e06cd5aa9308f9e3d3c25c114d77e2219aecde2d287",
+      "responseBytes": 141
+    },
+    {
+      "case": "SUPABASE_STORAGE_OWNER_ALLOWED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "a5f23544ff01f90540d9675a72002ba75ccc6bd1f609c0964b8fc44c36cba611",
+      "responseBytes": 42
+    },
+    {
+      "case": "SUPABASE_STORAGE_FOREIGN_DENIED",
+      "status": "PASSED",
+      "statusCode": 400,
+      "bodySha256": "9d2505709301f205e4135106c7c92c66a58d85a1009b5b823475c6a047de1a9c",
+      "responseBytes": 88
+    },
+    {
+      "case": "SUPABASE_STORAGE_ANONYMOUS_DENIED",
+      "status": "PASSED",
+      "statusCode": 400,
+      "bodySha256": "9d2505709301f205e4135106c7c92c66a58d85a1009b5b823475c6a047de1a9c",
+      "responseBytes": 88
+    },
+    {
+      "case": "SUPABASE_STORAGE_PUBLIC_DENIED",
+      "status": "PASSED",
+      "statusCode": 400,
+      "bodySha256": "cdaff975adcfebff6d6ee1f4d0116d6e86ce03d9718d0d90a3c364f229316aca",
+      "responseBytes": 98
+    },
+    {
+      "case": "SUPABASE_STORAGE_FOREIGN_OVERWRITE_DENIED",
+      "status": "PASSED",
+      "statusCode": 400,
+      "bodySha256": "fb74b0bb1eb71ea8b17252e51a13d176ef924a7054e83813fc80c5b9ff132a23",
+      "responseBytes": 120
+    },
+    {
+      "case": "SUPABASE_STORAGE_OWNER_UNCHANGED",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "a5f23544ff01f90540d9675a72002ba75ccc6bd1f609c0964b8fc44c36cba611",
+      "responseBytes": 42
+    },
+    {
+      "case": "STORAGE_EMPTY",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "84788067f97d4ef6271e92a953a6a9900783821768a27c384cd0f68a7a12b7f6",
+      "responseBytes": 78
+    },
+    {
+      "case": "STORAGE_BUCKET_DELETE",
+      "status": "FAILED",
+      "statusCode": 400,
+      "bodySha256": "1f51d82726255cf6ba8e0799f6c27f8d55d6e3770eb0ea6fc1bb5f55b2c35875",
+      "responseBytes": 129
+    },
+    {
+      "case": "AUTH_ACCOUNT_DELETE",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "responseBytes": 2
+    },
+    {
+      "case": "AUTH_ACCOUNT_DELETE",
+      "status": "PASSED",
+      "statusCode": 200,
+      "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "responseBytes": 2
+    }
+  ],
+  "cleanup": {
+    "status": "REQUIRED",
+    "remaining": 1,
+    "failures": [
+      "STORAGE_BUCKET_DELETE"
+    ]
+  },
+  "externalTargetsTested": true,
+  "independentlyOperated": false,
+  "independentAcceptanceVerified": false,
+  "fullEightLaneAcceptance": false,
+  "limitations": [
+    "Owner-created isolated fixtures on the real hosted Supabase service; this does not establish existing Decide application RLS correctness.",
+    "Email is administratively confirmed. This does not establish independent operator, OIDC/MFA/passkey or payment acceptance."
+  ]
+}

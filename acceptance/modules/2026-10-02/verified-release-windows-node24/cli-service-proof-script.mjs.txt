@@ -1,0 +1,31 @@
+import { spawn } from 'node:child_process';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createServer } from 'node:net';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve, sep } from 'node:path';
+import { buildModulePayload, moduleKeyId, verifyModuleEnvelope } from '../dist/core/plugins/ModuleDistribution.js';
+import { moduleRegistryRequest } from '../dist/core/plugins/ModuleRegistry.js';
+const root=await mkdtemp(join(tmpdir(),'routecairn-registry-cli-proof-'));
+const keys=generateKeyPairSync('ed25519'), now=Date.now(), expiresAt=new Date(now+3600000).toISOString();
+const payload=buildModulePayload('examples/modules/security-headers','cli-proof-publisher',expiresAt);
+const trust={schemaVersion:1,publishers:[{publisher:'cli-proof-publisher',modulePrefixes:['reference'],publicKeyPem:keys.publicKey.export({type:'spki',format:'pem'}).toString(),keyId:moduleKeyId(keys.publicKey),notBefore:new Date(now-1000).toISOString(),expiresAt}],revokedKeyIds:[],revokedPackageDigests:[]};
+const publishCredential=randomBytes(32).toString('base64url'),signCredential=randomBytes(32).toString('base64url');
+const reserve=createServer();await new Promise(done=>reserve.listen(0,'127.0.0.1',done));const port=reserve.address().port;await new Promise(done=>reserve.close(done));
+await writeFile(join(root,'trust.json'),JSON.stringify(trust));await writeFile(join(root,'publisher.key'),keys.privateKey.export({type:'pkcs8',format:'pem'}),{mode:0o600});
+await writeFile(join(root,'registry.json'),JSON.stringify({directory:'store',trustPath:'trust.json',host:'127.0.0.1',port,publishTokenEnv:'REGISTRY_PUBLISH_PROOF',signing:{tokenEnv:'REGISTRY_SIGN_PROOF',privateKeyPath:'publisher.key',publisher:'cli-proof-publisher',approvedDigests:[payload.packageDigest]}}));
+let child,proof;
+try{
+child=spawn(process.execPath,['dist/cli/index.js','modules','serve','--config',join(root,'registry.json')],{windowsHide:true,env:{...process.env,REGISTRY_PUBLISH_PROOF:publishCredential,REGISTRY_SIGN_PROOF:signCredential},stdio:['ignore','pipe','pipe']});
+await new Promise((done,reject)=>{const timer=setTimeout(()=>reject(new Error('registry startup deadline')),20000);let output='';child.on('error',reject);child.stdout.on('data',chunk=>{output+=String(chunk);if(output.includes('"READY"')){clearTimeout(timer);done();}});child.once('exit',code=>{clearTimeout(timer);reject(new Error('registry stopped before ready: '+code));});});
+const origin='http://127.0.0.1:'+port;
+const envelope=await moduleRegistryRequest(origin,'/v1/sign',payload,signCredential);verifyModuleEnvelope(envelope,trust);
+await moduleRegistryRequest(origin,'/v1/publish',envelope,publishCredential);
+const index=await moduleRegistryRequest(origin,'/v1/index');if(index.packages.length!==1)throw new Error('index mismatch');
+const downloaded=await moduleRegistryRequest(origin,'/v1/packages/'+payload.moduleId+'/'+payload.version+'/'+payload.packageDigest);if(verifyModuleEnvelope(downloaded,trust).packageDigest!==payload.packageDigest)throw new Error('download mismatch');
+proof={schemaVersion:1,status:'VERIFIED',generatedAt:new Date().toISOString(),checks:['built-cli-service-start','relative-config-paths','environment-credentials','distinct-signing-role','reviewed-digest-signature','authenticated-publication','anonymous-discovery','exact-download','publisher-verification'],moduleId:payload.moduleId,packageDigest:payload.packageDigest,keyId:trust.publishers[0].keyId,publicDeployment:false,independentlyOperated:false};
+}finally{
+if(child&&child.exitCode===null){await new Promise(done=>{const timer=setTimeout(()=>{child.kill('SIGKILL');done();},5000);child.once('exit',()=>{clearTimeout(timer);done();});child.kill('SIGTERM');});}
+if(!resolve(root).startsWith(resolve(tmpdir())+sep)||!root.includes('routecairn-registry-cli-proof-'))throw new Error('invalid cleanup path');await rm(root,{recursive:true,force:true});
+}
+await writeFile('acceptance/modules/2026-10-02/verified-release-windows-node24/cli-service-proof.json',JSON.stringify({...proof,cleanup:'CONFIRMED'},null,2),{flag:'wx'});process.stdout.write('CLI registry signing, publishing and download verified; cleanup confirmed.\n');

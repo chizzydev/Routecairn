@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-02T19:52:20.282Z",
+  "classification": "SELF_MAINTAINED_LOOPBACK_DEPLOYMENT",
+  "postgres": "native PostgreSQL 17.11",
+  "objectStorage": "native MinIO source 07c3a429bfed; provider encryption policy",
+  "kms": "Moto 5.1.12 emulator; no AWS/HSM claim",
+  "telemetry": "OpenTelemetry Collector 0.135.0",
+  "replicas": 2,
+  "checks": [
+    "shared schema migration",
+    "two CLI replicas",
+    "24 concurrent claims across four workers without duplicate leasing",
+    "tenant capability zone isolation",
+    "transactional job outbox",
+    "lease recovery and stale completion rejection",
+    "bounded attempt exhaustion",
+    "cross-replica lease renewal",
+    "global nonce replay rejection",
+    "HTTP claim and completion across replicas",
+    "ingress process failover",
+    "event-driven bounded long polling",
+    "durable outbox recovery after LISTEN disconnect",
+    "ordered outbox commit cursors",
+    "leader failover and stale fencing rejection",
+    "dashboard singleton ownership and restart",
+    "cross-replica S3 evidence and tenant isolation",
+    "immutable artifact ownership and metadata",
+    "S3 tamper rejection",
+    "KMS emulator envelope context and tamper validation",
+    "OTLP traces and metrics collector receipt",
+    "PostgreSQL process restart and durable job recovery",
+    "HTTPS OIDC workload binding, missing identity, issuer, subject and expiration rejection",
+    "native mTLS handshake and certificate-to-worker binding",
+    "proxy mTLS proof and worker certificate binding",
+    "revocation fencing across stale authenticated requests"
+  ],
+  "cleanup": "CONFIRMED",
+  "telemetryReceived": {
+    "traces": true,
+    "metrics": true
+  },
+  "binaries": [
+    {
+      "name": "postgres.exe",
+      "sha256": "8ae8bb442e8a4c4fb2c8e9ad38c19aca610ee3cba33afd69249de769f905329b"
+    },
+    {
+      "name": "minio.exe",
+      "sha256": "385fae05a856894ed0049b259d0d1151123d10b3ec5ca0fed4432c7288e81dc9"
+    },
+    {
+      "name": "otelcol-contrib.exe",
+      "sha256": "1ee6f24d72e7304ee2b18c3ff2a4765171695aa1a8ff9ee95f3d4e5bcc791070"
+    }
+  ],
+  "kubernetesExecuted": false,
+  "publicDeployment": false
+}

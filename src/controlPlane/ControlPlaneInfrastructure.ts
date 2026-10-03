@@ -33,6 +33,7 @@ export class ControlPlaneInfrastructure {
   public static async start(database: DashboardDatabase, paths: DashboardPaths, environment: NodeJS.ProcessEnv = process.env): Promise<ControlPlaneInfrastructure> {
     const config=controlPlaneConfigFromEnv(environment);const telemetry=new ControlPlaneTelemetry(config.telemetry);await telemetry.start();
     let postgres:PostgresControlPlane|undefined,leader:PostgresLeaderElection|undefined;let remoteWorkers:RemoteWorkerOperations;
+    try {
     if(config.mode==="distributed"){
       postgres=new PostgresControlPlane(config.postgres!,telemetry);await postgres.start();
       remoteWorkers=new PostgresRemoteWorkerService(postgres,telemetry,config.queue.leaseMs,config.queue.claimWaitMs);
@@ -43,6 +44,7 @@ export class ControlPlaneInfrastructure {
     if(postgres)infrastructure.registerScheduledTask("control-plane-maintenance",60*60_000,async()=>postgres!.maintenance());
     if(leader)await leader.start("control-plane-scheduler",async(fencingToken)=>{await infrastructure.runScheduledTasks(fencingToken);await postgres!.publish("scheduler","global",{type:"tick",fencingToken,instanceId:config.instanceId});});
     telemetry.log(config.mode==="distributed"?"info":"debug","Control plane infrastructure started.",{mode:config.mode,objectStorage:objectStore.kind,instanceId:config.instanceId});return infrastructure;
+    } catch(error) {await leader?.shutdown().catch(()=>undefined);await postgres?.shutdown().catch(()=>undefined);await telemetry.shutdown().catch(()=>undefined);throw error;}
   }
   public async verifyWorkerIdentity(request:IncomingMessage,worker:WorkerRow):Promise<void>{const identity=await this.workloadIdentity.verify(request,worker);this.telemetry.log("debug","Worker identity accepted.",{workerId:worker.id,identityKind:identity.kind});}
   public async publish(topic:string,partitionKey:string,payload:Record<string,unknown>):Promise<void>{

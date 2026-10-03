@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "standard": "DECIDE_LOCAL_SOURCE_REAL_DATABASE_ROTATION_CHECK_V1",
+  "checkedAt": "2026-09-30T20:56:55.625Z",
+  "sourceQuerySha256": "df79a97a7d96f416dbf3fb704eb4f2d819a48a67f347e36ef67285e697b355e0",
+  "sourceServiceSha256": "9c889e8b3e183a08d0f922f8e4a0fdc92b90388de328f61ed29a053533a56418",
+  "status": "PASSED",
+  "cleanup": "VERIFIED",
+  "disposableAccounts": 2,
+  "cases": [
+    {
+      "case": "SOURCE_POOL_VERIFIED_TLS",
+      "passed": true
+    },
+    {
+      "case": "ONE_CONCURRENT_REFRESH_SUCCEEDS",
+      "passed": true
+    },
+    {
+      "case": "CONSUMED_REFRESH_HASH_DENIED",
+      "passed": true
+    },
+    {
+      "case": "REPLACEMENT_REFRESH_HASH_ACTIVE",
+      "passed": true
+    },
+    {
+      "case": "EXPIRED_SESSION_CANNOT_ROTATE",
+      "passed": true
+    },
+    {
+      "case": "REVOKED_SESSION_CANNOT_ROTATE",
+      "passed": true
+    }
+  ],
+  "deployedApiRemediationVerified": false,
+  "independentAcceptanceVerified": false,
+  "limitations": [
+    "Compiled local source was exercised against the real owner database. The deployed API was not changed by this check.",
+    "No provider management, independent operator or full eight-lane acceptance is established."
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "currentRun": "2026-10-02/verified-current-windows-node24",
+  "runs": [
+    {
+      "path": "2026-10-02/verified-windows-node24",
+      "status": "SUPERSEDED",
+      "reason": "Additional proprietary authentication-header checks were added."
+    },
+    {
+      "path": "2026-10-02/final-windows-node24",
+      "status": "SUPERSEDED",
+      "reason": "Response matching was indexed by request identity, status and ID, with duplicate rejection."
+    },
+    {
+      "path": "2026-10-02/current-windows-node24",
+      "status": "SUPERSEDED",
+      "reason": "GraphQL executable-token safety now masks quoted and block strings before removing comments; added planner rejection and lexer checks."
+    },
+    {
+      "path": "2026-10-02/verified-current-windows-node24",
+      "status": "CURRENT"
+    }
+  ]
+}

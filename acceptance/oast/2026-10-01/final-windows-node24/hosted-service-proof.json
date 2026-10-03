@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-01T08:17:57.740Z",
+  "provenance": "OWNER_OPERATED_HOSTED_MODE_LOOPBACK",
+  "publicDeploymentVerified": false,
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "cleanup": "CONFIRMED",
+  "checks": [
+    "https-only-management-tenant-isolation-and-certificate-verification",
+    "https-signatures-replay-persistence-revocation-and-redaction",
+    "authoritative-soa-ns-glue-nodata-nxdomain-and-no-recursion-udp-tcp",
+    "dns-udp-tcp-a-aaaa-correlation-replay-and-revocation",
+    "native-client-private-ca-https-polling-revocation-and-tls-reload",
+    "bounded-stalled-connection-shutdown-and-idempotence",
+    "lease-body-capacity-and-revocation-after-scan-cancellation"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "standard": "EXTERNAL_ACCEPTANCE_EVIDENCE_STATUS_V1",
+  "reviewedAt": "2026-09-30T21:26:55.428Z",
+  "status": "PARTIAL",
+  "independentAcceptanceVerified": false,
+  "fullEightLaneAcceptance": false,
+  "releaseBoundIndependentExecution": false,
+  "lanes": [
+    {
+      "kind": "MULTI_TENANT_SAAS",
+      "status": "PARTIAL",
+      "reason": "Actual Decide account and foreign-session authorization exercised; no proven two-tenant contract or complete tenant isolation exercise."
+    },
+    {
+      "kind": "SUPABASE_RLS_STORAGE_RPC",
+      "status": "OWNER_HOSTED_FIXTURE_PASSED",
+      "evidence": "../../supabase/2026-09-30/hosted-exercise.json",
+      "reason": "Real hosted provider execution and cleanup passed; fixtures and operation remain owner maintained."
+    },
+    {
+      "kind": "GRAPHQL_APPLICATION",
+      "status": "MISSING_EXTERNAL_ENVIRONMENT",
+      "reason": "Native transports are implemented and locally verified; no real query/mutation/subscription application receipt."
+    },
+    {
+      "kind": "AUTH_PROVIDER_MFA_PASSKEY",
+      "status": "MISSING_EXTERNAL_ENVIRONMENT",
+      "reason": "No authenticated Auth0/Cognito environment or executed OIDC/MFA/passkey lifecycle."
+    },
+    {
+      "kind": "SIGNED_PORTAL_EXPORT",
+      "status": "NOT_EXECUTED",
+      "reason": "No bound external signed portal/export capability contract supplied or exercised."
+    },
+    {
+      "kind": "SYNTHETIC_PAYMENT",
+      "status": "MISSING_APPROVED_TEST_CREDENTIALS",
+      "reason": "Available Kora credential could not be established as test-only and was not used for transactions."
+    },
+    {
+      "kind": "WEBHOOK_CRON",
+      "status": "NOT_EXECUTED",
+      "reason": "No bound external webhook replay/signature and cron authorization exercise."
+    },
+    {
+      "kind": "REMEDIATION_LIFECYCLE",
+      "status": "DEPLOYED_BASELINE_FAILED_LOCAL_FIX_VERIFIED",
+      "reason": "Production refresh rotation/replay failed; local source passed 12 tests and six real database checks. No deployed fixed rerun.",
+      "evidence": "../../decide/2026-09-30/fresh-owned-exercise.json"
+    }
+  ],
+  "independentOperator": {
+    "status": "MISSING",
+    "reason": "No independently operated execution and separately trusted signature supplied. Owner permission and an author-created key cannot establish independence."
+  },
+  "preparedRelease": {
+    "version": "0.1.0",
+    "file": "routecairn-0.1.0.tgz",
+    "sha256": "d8f454d0cb164d9b828eb63eb1e3033e7b182c5c9f9564e5d9a3d9089ca7501b",
+    "independentExecutionBound": false
+  }
+}

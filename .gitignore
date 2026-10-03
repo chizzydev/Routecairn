@@ -20,6 +20,9 @@ data/dashboard*/
 .routecairn-credibility-*.txt
 .routecairn-authentication-acceptance/
 .routecairn-external-acceptance/
+.routecairn-active-lab/
+.routecairn-oast-lab/
+.routecairn-attack-graph-lab/
 .routecairn-release/
 .acceptance-keys/
 .routecairn-auth-test/
@@ -28,3 +31,15 @@ data/dashboard*/
 .stryker-tmp/
 /reports/mutation/
 /deploy/control-plane/secrets/
+/deploy/oast/secrets/
+/deploy/oast/tls/
+/deploy/oast/oast.json
+
+.routecairn-protocol-lab/
+.routecairn-module-lab/
+.routecairn-scale-lab/
+/deploy/module-registry/configuration/
+/deploy/module-registry/packages/
+
+.routecairn-standards-lab/
+.routecairn-engineering-lab/

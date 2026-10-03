@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "runs": [
+    {
+      "path": "2026-10-01/verified-windows-node24",
+      "status": "SUPERSEDED",
+      "resultSha256": "a504bbc87579419becd01cb291cfa17966755a31ea76814ebbe4c4360af521ad",
+      "testCount": 52,
+      "reason": "Earlier bounded run retained for provenance; subsequent code and runtime verification supersede it."
+    },
+    {
+      "path": "2026-10-01/final-windows-node24",
+      "status": "SUPERSEDED",
+      "resultSha256": "02375b7610ea8faba4bbd3879f842ac375463465b74504916ef0b84e00e627b2",
+      "testCount": 53,
+      "reason": "Earlier bounded run retained for provenance; subsequent code and runtime verification supersede it."
+    },
+    {
+      "path": "2026-10-01/complete-windows-node24",
+      "status": "SUPERSEDED",
+      "resultSha256": "20d890b2b69655934f2ead8b10e712d2ba228130500d4f4a49cb9623713447b5",
+      "testCount": 53,
+      "reason": "Earlier bounded run retained for provenance; subsequent code and runtime verification supersede it."
+    },
+    {
+      "path": "2026-10-01/current-windows-node24",
+      "status": "CURRENT",
+      "resultSha256": "8959b98a1650f7d452270f7bdbb4b6fe723ceb952730404da4a37c506367304f",
+      "testCount": 53,
+      "reason": "Includes native production DNS transport, cancellation-independent revocation, corrected shared cleanup behavior and dependency source commitments."
+    }
+  ]
+}

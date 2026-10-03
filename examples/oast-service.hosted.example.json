@@ -7,6 +7,10 @@
   "dnsUdpPort": 5353,
   "dnsTcpPort": 5353,
   "baseDomain": "callbacks.security.example.com",
+  "dnsNameServers": ["ns1.callbacks.security.example.com"],
+  "dnsSoaSerial": 1,
+  "publishIpv6": false,
+  "publicHttpBaseUrl": "http://callbacks.security.example.com/",
   "publicHttpsBaseUrl": "https://callbacks.security.example.com/",
   "databasePath": "/var/lib/routecairn-oast/oast.sqlite",
   "signingKeyEnv": "ROUTECAIRN_OAST_SIGNING_KEY",
@@ -16,6 +20,10 @@
   "maxLeaseSeconds": 86400,
   "maxEventsPerLease": 20,
   "maxRequestBytes": 65536,
+  "maxConnections": 200,
+  "maxRequestsPerSecond": 500,
+  "maxLeases": 10000,
+  "evidenceRetentionSeconds": 604800,
   "dnsAnswerIpv4": "203.0.113.10",
   "dnsAnswerIpv6": "2001:db8::10"
 }

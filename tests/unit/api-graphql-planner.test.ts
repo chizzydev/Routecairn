@@ -8,6 +8,11 @@ const scope = { ...exampleScope, allowedDomains: ["api.example.test"], disallowe
 const context = { target: "https://api.example.test/", scope, authProfile };
 
 describe("API and GraphQL planner", () => {
+  it.each(["mutation Write { deleteAccount }", "subscription Watch { events }"])("rejects an executable %s after a hash-containing string", (operation) => {
+    const input: any = validInput();
+    input.checks[0].request.graphql.document = `query Viewer { lookup(value: "# literal") { id } } ${operation}`;
+    expect(() => planApiGraphqlReview(apiGraphqlInputSchema.parse(input), context)).toThrow(/must be a query operation/);
+  });
   it("changes comparison identity when a route, actor boundary, or expected value changes", () => {
     const input = apiGraphqlInputSchema.parse(validInput());
     const original = planApiGraphqlReview(input, context).checks[0]!.comparisonFingerprint;

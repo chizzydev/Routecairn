@@ -1,9 +1,11 @@
 import dns from "node:dns";
 import { isIP } from "node:net";
+import { connect as connectTls } from "node:tls";
+import { X509Certificate } from "node:crypto";
 import { stdin, stdout } from "node:process";
 import { parentPort, workerData } from "node:worker_threads";
 import quico from "quico";
-import { WebTransport } from "quico";
+import { createPinnedWebTransport, disposePinnedWebTransport } from "./NativeWebTransport.js";
 
 interface NativeHttp3WorkerRequest {
   method: string;
@@ -47,7 +49,6 @@ if (!isIP(input.hostname) && input.hostname !== "localhost") {
       return process.nextTick(() => (cb as (error: Error) => void)(error));
     }
     const all = typeof options === "object" && options !== null && "all" in options && Boolean((options as { all?: boolean }).all);
-    dns.lookup = lookup;
     return process.nextTick(() => all
       ? (cb as (error: null, addresses: Array<{ address: string; family: number }>) => void)(null, [{ address: input.pinnedAddress, family: input.family }])
       : (cb as (error: null, address: string, family: number) => void)(null, input.pinnedAddress, input.family));
@@ -58,6 +59,7 @@ void main();
 
 async function main(): Promise<void> {
   try {
+    if ((input.requests.length || input.webTransport) && !input.ca) input.ca = await verifiedIssuer();
     const responses: NativeHttp3WorkerResponse[] = [];
     let connection: unknown;
     let sameConnection = true;
@@ -76,13 +78,37 @@ async function main(): Promise<void> {
   }
 }
 
-async function executeWebTransport(value: { path: string; datagramsBase64: string[]; maxDatagrams: number }): Promise<{ datagramsBase64: string[] }> {
-  const session = new WebTransport(`https://${input.hostname}:${input.port}${value.path}`, { rejectUnauthorized: true }); const received: string[] = [];
+/** LemonTLS accepts any valid leaf when no CA is supplied and does not build
+ * public chains. Authenticate the same pinned origin with Node's PKI verifier
+ * before QUIC, then constrain QUIC to that verified issuing certificate.
+ * This sends no application request or credentials and never follows redirects. */
+function verifiedIssuer(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = connectTls({ host: input.pinnedAddress, port: input.port, servername: isIP(input.hostname) ? undefined : input.hostname, rejectUnauthorized: true });
+    const timer = setTimeout(() => socket.destroy(new Error("HTTP3_CERTIFICATE_PREFLIGHT_TIMEOUT")), input.timeoutMs);
+    const finish = (error?: Error) => { clearTimeout(timer); socket.destroy(); if (error) reject(new Error("HTTP3_CERTIFICATE_VERIFICATION_FAILED")); };
+    socket.once("error", finish);
+    socket.once("secureConnect", () => {
+      const peer = socket.getPeerCertificate(true); const issuer = peer.issuerCertificate?.raw;
+      if (!socket.authorized || !issuer) { finish(new Error("HTTP3_CERTIFICATE_CHAIN_UNAVAILABLE")); return; }
+      try { const pem = new X509Certificate(issuer).toString(); finish(); resolve(pem); } catch { finish(new Error("HTTP3_CERTIFICATE_CHAIN_INVALID")); }
+    });
+  });
+}
+
+async function executeWebTransport(value: { path: string; datagramsBase64: string[]; maxDatagrams: number }): Promise<{ statusCode: number; datagramsBase64: string[] }> {
+  const session = await createPinnedWebTransport(input, value.path); const received: string[] = []; let receivedBytes = 0;
   const errorPromise = new Promise<never>((_resolve, reject) => session.once("error", reject));
+  try {
   await Promise.race([session.ready, errorPromise, timeout("WEBTRANSPORT_READY_TIMEOUT")]);
-  const complete = new Promise<void>((resolve) => { session.on("datagram", (data) => { if (received.length >= value.maxDatagrams) return; const buffer = Buffer.from(data); if (buffer.length <= input.maxBytes) received.push(buffer.toString("base64")); if (received.length >= Math.min(value.maxDatagrams, value.datagramsBase64.length)) resolve(); }); });
+  const complete = new Promise<void>((resolve, reject) => { session.on("datagram", (data) => { if (received.length >= value.maxDatagrams) return; const buffer = Buffer.from(data); receivedBytes += buffer.length; if (receivedBytes > input.maxBytes) { reject(new Error("WEBTRANSPORT_RESPONSE_LIMIT_EXCEEDED")); return; } received.push(buffer.toString("base64")); if (received.length >= Math.min(value.maxDatagrams, value.datagramsBase64.length)) resolve(); }); });
   for (const encoded of value.datagramsBase64) session.sendDatagram(Buffer.from(encoded, "base64"));
-  await Promise.race([complete, timeout("WEBTRANSPORT_DATAGRAM_TIMEOUT")]).catch((error) => { if (!received.length) throw error; }); session.close({ closeCode: 0, reason: "bounded-contract-complete" }); return { datagramsBase64: received };
+  await Promise.race([complete, errorPromise, timeout("WEBTRANSPORT_DATAGRAM_TIMEOUT")]); return { statusCode: 200, datagramsBase64: received };
+  } catch (error) {
+    const denied = error instanceof Error ? /^WebTransport CONNECT failed: HTTP (401|403)$/.exec(error.message) : undefined;
+    if (denied) return { statusCode: Number(denied[1]), datagramsBase64: [] };
+    throw error;
+  } finally { disposePinnedWebTransport(session); }
 }
 
 function timeout(message: string): Promise<never> { return new Promise((_resolve, reject) => { const timer = setTimeout(() => reject(new Error(message)), input.timeoutMs); timer.unref(); }); }
@@ -169,6 +195,7 @@ function validateInput(value: NativeHttp3WorkerInput): void {
   if (!Number.isInteger(value.maxBytes) || value.maxBytes < 1 || value.maxBytes > 64 * 1024 * 1024) throw new Error("HTTP3_NATIVE_LIMIT_INVALID");
   if (!Array.isArray(value.requests) || value.requests.length > 4) throw new Error("HTTP3_NATIVE_REQUEST_COUNT_INVALID");
   if (value.webTransport && (!value.webTransport.path.startsWith("/") || value.webTransport.path.length > 16_384 || !Array.isArray(value.webTransport.datagramsBase64) || value.webTransport.datagramsBase64.length < 1 || value.webTransport.datagramsBase64.length > 16 || !Number.isInteger(value.webTransport.maxDatagrams) || value.webTransport.maxDatagrams < 1 || value.webTransport.maxDatagrams > 50)) throw new Error("WEBTRANSPORT_INPUT_INVALID");
+  if (value.webTransport && value.webTransport.datagramsBase64.some((encoded) => typeof encoded !== "string" || encoded.length > 1600 || Buffer.from(encoded, "base64").toString("base64") !== encoded)) throw new Error("WEBTRANSPORT_DATAGRAM_LIMIT_EXCEEDED");
   for (const request of value.requests) {
     if (!request || typeof request !== "object" || !/^[A-Z]+$/.test(request.method) || !request.path.startsWith("/") || request.path.length > 16_384) throw new Error("HTTP3_NATIVE_REQUEST_INVALID");
     if (!request.headers || typeof request.headers !== "object" || Object.keys(request.headers).length > 128) throw new Error("HTTP3_NATIVE_HEADERS_INVALID");

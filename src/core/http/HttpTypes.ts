@@ -53,6 +53,9 @@ export interface HttpRequest {
   /** Synchronous, in-memory access to the unsanitized bounded body before the
    * broker redacts evidence. It must not persist, log, or return the body. */
   transientBodyConsumer?: (body: string) => void;
+  /** Trusted native journeys may consume protocol headers synchronously before
+   * evidence redaction. Never persist or return cookies, codes or redirect URLs. */
+  transientResponseConsumer?: (response: Pick<HttpResponse, "statusCode" | "headers" | "redirectLocation">) => void;
   disableRetries?: boolean;
   disableRedirects?: boolean;
 }

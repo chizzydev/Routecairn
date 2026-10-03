@@ -6,10 +6,10 @@ import { createServer as createNetServer, type AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import quico, { type QuicoServer } from "quico";
 import selfsigned from "selfsigned";
-import { runBoundedHttp, runGrpcStream, runHttp2, runHttp3Authorization, runHttp3Desync, runWebSocket, type ProtocolTransportOptions } from "../modules/protocolSecurity/ProtocolTransports.js";
+import { runBoundedHttp, runGrpcStream, runHttp2, runHttp3Authorization, runHttp3Desync, runWebSocket, runWebTransportDatagrams, type ProtocolTransportOptions } from "../modules/protocolSecurity/ProtocolTransports.js";
 
 export interface ProtocolAcceptanceLane {
-  name: "websocket-authorization" | "graphql-websocket" | "multipart-cleanup" | "grpc-tls" | "http2-tls" | "http3-native";
+  name: "websocket-authorization" | "graphql-websocket" | "multipart-cleanup" | "grpc-tls" | "http2-tls" | "http3-native" | "webtransport-native";
   status: "PASSED" | "FAILED";
   checks: Readonly<Record<string, string | number | boolean>>;
   reason?: string;
@@ -101,6 +101,12 @@ export async function runProtocolAcceptance(parentDirectory = ".routecairn-proto
       return { protocol: allowed.protocol, deniedStatus: denied.statusCode ?? 0, allowedStatus: allowed.statusCode ?? 0, alpnRequired: true };
     }));
 
+    lanes.push(await lane("webtransport-native", async () => {
+      const allowed = await runWebTransportDatagrams(`${origins.http3Origin}/wt`, [Buffer.from("bounded-acceptance")], 1, h3Options);
+      const denied = await runWebTransportDatagrams(`${origins.http3Origin}/wt/denied`, [Buffer.from("bounded-acceptance")], 1, h3Options);
+      if (allowed.statusCode !== 200 || allowed.receivedDatagrams.length !== 1 || allowed.receivedDatagrams[0]?.toString() !== '{"ok":true}' || denied.statusCode !== 403 || denied.receivedDatagrams.length !== 0) throw new Error("WEBTRANSPORT_NATIVE_ACCEPTANCE_FAILED");
+      return { allowedStatus: allowed.statusCode, deniedStatus: denied.statusCode, receivedDatagrams: allowed.receivedDatagrams.length, protocol: allowed.protocol, certificateVerification: true };
+    }));
     lanes.push(await lane("http3-native", async () => {
       const denied = await runHttp3Authorization(`${origins.http3Origin}/h3/authorization`, "GET", {}, h3Options);
       const allowed = await runHttp3Authorization(`${origins.http3Origin}/h3/authorization`, "GET", { authorization: "Bearer h3-fixture-token" }, h3Options);
@@ -141,6 +147,10 @@ class ProtocolAcceptanceFixtures {
 
     const h3Port = await availablePort();
     this.h3Server = quico.createServer({ key: this.certificate.privateKey, cert: this.certificate.cert }, (request, response) => {
+      if (request.headers[":protocol"] === "webtransport") {
+        if (request.url !== "/wt") { response.writeHead(403); response.end(); return; }
+        response.writeHead(200); response.flushHeaders(); request.on("datagram", () => response.sendDatagram!(Buffer.from('{"ok":true}'))); return;
+      }
       if (request.url === "/h3/desync") {
         const chunks: Buffer[] = [];
         request.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));

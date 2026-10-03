@@ -1,0 +1,11 @@
+# Deterministic source formatting on every checkout platform.
+* text=auto eol=lf
+# Retained evidence is hash-bound to its original bytes.
+acceptance/** -text -diff
+benchmarks/scorecards/2.0.0/** -text -diff
+# Publisher source digests bind original bytes on every checkout platform.
+standards/sources/** -text
+standards/sources.lock.json text eol=lf
+src/standards/catalog/official-catalog.json text eol=lf
+src/standards/OfficialCatalogIdentity.ts text eol=lf
+src/standards/StandardsMappings.ts text eol=lf

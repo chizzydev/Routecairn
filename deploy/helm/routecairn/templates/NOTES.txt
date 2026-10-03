@@ -1,2 +1,3 @@
-RouteCairn control plane installed as {{ include "routecairn.fullname" . }} with {{ .Values.replicaCount }} replicas.
-PostgreSQL, object storage, workload identity, and OTLP endpoints must be reachable under the configured NetworkPolicy.
+One persistent RouteCairn dashboard and {{ .Values.replicaCount }} stateless fleet replicas installed.
+PostgreSQL, evidence storage, workload identity and OTLP endpoints must be reachable under the NetworkPolicy.
+Worker-pool members require distinct enrollment Secrets.

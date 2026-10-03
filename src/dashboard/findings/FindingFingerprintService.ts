@@ -1,6 +1,7 @@
-import { createHmac, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { loadOrCreateHexKey } from "../security/BoundedFile.js";
+import { createHmac } from "node:crypto";
+
+
 import type { Finding } from "../../core/findings/Finding.js";
 
 export class FindingFingerprintService {
@@ -29,13 +30,7 @@ export class FindingFingerprintService {
 }
 
 function loadOrCreateKey(keyPath: string): Buffer {
-  mkdirSync(dirname(keyPath), { recursive: true });
-  if (existsSync(keyPath)) {
-    return Buffer.from(readFileSync(keyPath, "utf8"), "hex");
-  }
-  const key = randomBytes(32);
-  writeFileSync(keyPath, key.toString("hex"), { mode: 0o600 });
-  return key;
+  return loadOrCreateHexKey(keyPath);
 }
 
 function normalizeOrigin(origin: string): string {

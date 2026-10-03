@@ -1,0 +1,7 @@
+{
+  "directory": "./packages",
+  "trustPath": "./module-trust.json",
+  "host": "127.0.0.1",
+  "port": 8788,
+  "publishTokenEnv": "ROUTECAIRN_MODULE_PUBLISH_TOKEN"
+}

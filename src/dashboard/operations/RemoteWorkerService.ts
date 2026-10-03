@@ -3,11 +3,13 @@ import type { IncomingHttpHeaders } from "node:http";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import type { RemoteWorkerOperations } from "./RemoteWorkerOperations.js";
+import type { WorkerIdentityBinding } from "../contracts/OperationalScaleSchemas.js";
 
 export class RemoteWorkerService implements RemoteWorkerOperations {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public createEnrollment(input: { organizationId: string; nameHint?: string; expiresInMinutes: number }, actor: string): { enrollmentId: string; token: string; expiresAt: string } {
+  public createEnrollment(input: { organizationId: string; nameHint?: string; expiresInMinutes: number;workloadIdentity?:WorkerIdentityBinding }, actor: string): { enrollmentId: string; token: string; expiresAt: string } {
+    if(input.workloadIdentity)throw new Error("WORKLOAD_BINDING_REQUIRES_DISTRIBUTED_MODE");
     const id = randomUUID(); const token = randomBytes(32).toString("base64url"); const expiresAt = new Date(Date.now() + input.expiresInMinutes * 60_000).toISOString();
     this.database.db.prepare("INSERT INTO remote_worker_enrollments (id,organization_id,token_hash,name_hint,expires_at,created_by,created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, input.organizationId, digest(token), input.nameHint ?? null, expiresAt, actor, nowIso());
     return { enrollmentId: id, token, expiresAt };
@@ -44,7 +46,8 @@ export class RemoteWorkerService implements RemoteWorkerOperations {
   }
 
   public heartbeat(worker: WorkerRow, input: { status: "ONLINE" | "DRAINING"; resources: unknown }): void {
-    this.database.db.prepare("UPDATE remote_workers SET status=?,resources_json=?,last_seen_at=?,updated_at=? WHERE id=?").run(input.status, canonical(input.resources), nowIso(), nowIso(), worker.id);
+    const current=this.activeWorker(worker,true);
+    this.database.db.prepare("UPDATE remote_workers SET status=?,resources_json=?,last_seen_at=?,updated_at=? WHERE id=?").run(current.status==="DRAINING"?"DRAINING":input.status, canonical(input.resources), nowIso(), nowIso(), worker.id);
   }
 
   public enqueue(input: { organizationId: string; kind: string; payload: Record<string, unknown>; requiredCapabilities: string[]; priority: number; maxAttempts: number; networkZone?: string }, actor: string): string {
@@ -56,7 +59,7 @@ export class RemoteWorkerService implements RemoteWorkerOperations {
 
   public claim(worker: WorkerRow, _waitMs = 0): unknown {
     this.requeueExpired();
-    if (worker.status !== "ONLINE") return { job: null };
+    try{worker=this.activeWorker(worker);}catch{return{job:null};}
     const capabilities = new Set(JSON.parse(worker.capabilities_json) as string[]);
     const labels = JSON.parse(worker.labels_json) as Record<string, string>;
     const candidates = this.database.db.prepare("SELECT * FROM remote_jobs WHERE organization_id=? AND status='QUEUED' AND attempt_count<max_attempts AND (network_zone IS NULL OR network_zone=?) ORDER BY priority DESC,created_at LIMIT 100").all(worker.organization_id, labels.networkZone ?? "default") as JobRow[];
@@ -69,6 +72,7 @@ export class RemoteWorkerService implements RemoteWorkerOperations {
   }
 
   public complete(worker: WorkerRow, jobId: string, input: { leaseToken: string; status: "COMPLETED" | "FAILED"; result?: Record<string, unknown>; error?: string }): void {
+    this.activeWorker(worker,true);
     if (input.result) ensureSafeObject(input.result);
     const job = this.database.db.prepare("SELECT * FROM remote_jobs WHERE id=?").get(jobId) as JobRow | undefined;
     if (!job || !["LEASED","RUNNING"].includes(job.status) || job.assigned_worker_id !== worker.id || job.lease_token_hash !== digest(input.leaseToken) || !job.lease_expires_at || Date.parse(job.lease_expires_at) <= Date.now()) throw new RemoteWorkerAuthError("REMOTE_JOB_LEASE_REJECTED");
@@ -76,6 +80,7 @@ export class RemoteWorkerService implements RemoteWorkerOperations {
   }
 
   public renew(worker: WorkerRow, jobId: string, leaseToken: string): { leaseExpiresAt: string } {
+    this.activeWorker(worker,true);
     const expiresAt=new Date(Date.now()+60_000).toISOString();
     const result=this.database.db.prepare("UPDATE remote_jobs SET status='RUNNING',lease_expires_at=? WHERE id=? AND assigned_worker_id=? AND lease_token_hash=? AND status IN ('LEASED','RUNNING') AND lease_expires_at>?").run(expiresAt,jobId,worker.id,digest(leaseToken),nowIso());
     if(result.changes!==1)throw new RemoteWorkerAuthError("REMOTE_JOB_LEASE_REJECTED");
@@ -91,9 +96,10 @@ export class RemoteWorkerService implements RemoteWorkerOperations {
     return { workers, jobs };
   }
 
-  public setStatus(workerId: string, status: "DRAINING" | "QUARANTINED" | "REVOKED" | "ONLINE"): void { const result=this.database.db.prepare("UPDATE remote_workers SET status=?,generation=generation+1,updated_at=? WHERE id=?").run(status, nowIso(), workerId);if(result.changes!==1)throw new Error("REMOTE_WORKER_NOT_FOUND"); }
+  public setStatus(workerId: string, status: "DRAINING" | "QUARANTINED" | "REVOKED" | "ONLINE"): void { this.database.db.transaction(()=>{const result=this.database.db.prepare("UPDATE remote_workers SET status=?,generation=generation+CASE WHEN ?='DRAINING' THEN 0 ELSE 1 END,updated_at=? WHERE id=?").run(status,status, nowIso(), workerId);if(result.changes!==1)throw new Error("REMOTE_WORKER_NOT_FOUND");if(["QUARANTINED","REVOKED"].includes(status))this.database.db.prepare("UPDATE remote_jobs SET lease_expires_at=? WHERE assigned_worker_id=? AND status IN ('LEASED','RUNNING')").run(nowIso(),workerId);})(); }
   public organizationForWorker(workerId: string): string { const row=this.database.db.prepare("SELECT organization_id FROM remote_workers WHERE id=?").get(workerId) as {organization_id:string}|undefined;if(!row)throw new Error("REMOTE_WORKER_NOT_FOUND");return row.organization_id; }
-  private requeueExpired(): void { this.database.db.prepare(`UPDATE remote_jobs SET status=CASE WHEN attempt_count>=max_attempts THEN 'FAILED' ELSE 'QUEUED' END,assigned_worker_id=NULL,lease_token_hash=NULL,lease_expires_at=NULL,safe_error=CASE WHEN attempt_count>=max_attempts THEN 'Lease expired after maximum attempts.' ELSE safe_error END WHERE status IN ('LEASED','RUNNING') AND lease_expires_at<=?`).run(nowIso()); }
+  private activeWorker(worker:WorkerRow,allowDraining=false):WorkerRow{const current=this.database.db.prepare("SELECT * FROM remote_workers WHERE id=? AND generation=?").get(worker.id,worker.generation) as WorkerRow|undefined;if(!current||!(allowDraining?["ONLINE","DRAINING"]:["ONLINE"]).includes(current.status))throw new RemoteWorkerAuthError("REMOTE_WORKER_REJECTED");return current;}
+  private requeueExpired(): void { this.database.db.prepare(`UPDATE remote_jobs SET status=CASE WHEN attempt_count>=max_attempts THEN 'FAILED' ELSE 'QUEUED' END,assigned_worker_id=NULL,lease_token_hash=NULL,lease_expires_at=NULL,completed_at=CASE WHEN attempt_count>=max_attempts THEN ? ELSE NULL END,safe_error=CASE WHEN attempt_count>=max_attempts THEN 'Lease expired after maximum attempts.' ELSE safe_error END WHERE status IN ('LEASED','RUNNING') AND lease_expires_at<=?`).run(nowIso(),nowIso()); }
 }
 
 export class RemoteWorkerAuthError extends Error { public constructor(message: string) { super(message); this.name = "RemoteWorkerAuthError"; } }
@@ -107,5 +113,5 @@ function effectiveStatus(row: WorkerRow): string { return row.status === "ONLINE
 function safeRemoteError(value: string): string { return value.replace(/https?:\/\/[^\s]+/gi, "<endpoint>").replace(/\b(password|secret|token|cookie|authorization|private[_-]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=<redacted>").replace(/[\r\n]+/g, " ").slice(0, 1000); }
 function normalizeZone(value:string|undefined):string{const zone=(value??"default").toLowerCase();if(!/^[a-z0-9][a-z0-9._-]{0,63}$/.test(zone))throw new Error("REMOTE_WORKER_NETWORK_ZONE_INVALID");return zone;}
 interface EnrollmentRow { id: string; organization_id: string; expires_at: string; consumed_at: string | null }
-export interface WorkerRow { id: string; organization_id: string; name: string; public_key_pem: string; public_key_fingerprint: string; capabilities_json: string; labels_json: string; resources_json: string | null; status: string; generation: number; last_seen_at: string | null; created_at: string }
+export interface WorkerRow { id: string; organization_id: string; name: string; public_key_pem: string; public_key_fingerprint: string; capabilities_json: string; labels_json: string; resources_json: string | null; status: string; generation: number; last_seen_at: string | null; created_at: string;workload_identity?:string|null }
 interface JobRow { id: string; kind: string; status: string; safe_payload_json: string; required_capabilities_json: string; network_zone: string | null; assigned_worker_id: string | null; lease_token_hash: string | null; lease_expires_at: string | null }

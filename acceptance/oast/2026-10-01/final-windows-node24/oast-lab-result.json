@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-01T08:18:00.859Z",
+  "status": "COMPLETED",
+  "testExitCode": 0,
+  "tests": {
+    "total": 53,
+    "passed": 53,
+    "failed": 0,
+    "skipped": 0
+  },
+  "sourcesUnchanged": true,
+  "nodeVersion": "v24.13.0",
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "publicDeploymentVerified": false,
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "artifacts": {
+    "runtime-proof.json": {
+      "sha256": "de681506fb96c684f3b7df65f4f66c2c8e379a724efe05a28d02ba392654404f",
+      "checks": 14
+    },
+    "hosted-service-proof.json": {
+      "sha256": "620ee5e09c832fd6ac965cabd2a5c50cf5feefb9500a2073c15c8586aef9b0b0",
+      "checks": 7
+    }
+  },
+  "sources": {
+    "src/oast/OastClient.ts": "e4d66118bd535c400f8049832a219abc6f2b27b40546d28b0ad21a886bcdf393",
+    "src/oast/OastConfig.ts": "40b841ae968da685fe035f018399c6f0a4199b85b744e27e6d5bfbf6af689dd7",
+    "src/oast/OastDeploymentVerification.ts": "a79e7e14f0c0d778b4727be275315c069c15840d380500f1cd33b8861069f92b",
+    "src/oast/OastDns.ts": "dcbf06ac50e6304b5576fd678db1e6c5694fb4068648a6239510817836a0840d",
+    "src/oast/OastDnsTransport.ts": "daa408912338fda269237f6779b01ec5ee9ce8581409802eb5daedb484a8aa56",
+    "src/oast/OastService.ts": "e7256f128c532a5abbae05ff1a73053fcd52d2a0672a3c01d6673ecba594ce7c",
+    "src/oast/OastStore.ts": "f073b2b4d4310acd5c4b8a450ea43290d23c35a962ed6b2dba80a1ac8a7dd374",
+    "src/oast/OastTypes.ts": "0a12b52f618a4935eb0f94cfd69dd67c7882ba99852cc444068fe1346027b0e9",
+    "tests/integration/oast-hosted.test.ts": "1751e08fe1dd09d665e8a3d8ac5822895b857b8c9644221662b03318e09bb820",
+    "tests/integration/oast-runtime-proof.test.ts": "11f317708531585327812de7745a05cbffed371cda9c82c12b79400a67e7d6d0",
+    "tests/integration/oast-service.test.ts": "93999644f990e77101f9f3965def864106f92b32338a9e0e273913f4b465c9cf",
+    "tests/integration/active-vulnerability-oast.test.ts": "0683cb0fad81a7784761c98f72190cfd48159f4ec67facec9e545da85ce0742b",
+    "tests/unit/oast-config.test.ts": "98747987495d3372c4968388303c92464d2d9aee85174f7f4c65b1ed05915fcf",
+    "tests/unit/oast-store.test.ts": "e4c3d2f768f1b27ef574dc24867a57d5aaeb5b63a25b05c5c721d4f600748b25",
+    "tests/unit/oast-client.test.ts": "40f51c108e16156d53b5c484affe082a246441ba4042c0c03efa3c423ee7f9a3",
+    "tests/unit/oast-dns.test.ts": "1c0402d906ee2d362573fbfdea2c1eb6abaee0cf19c6a959d6970a9d37e59e5f",
+    "tests/unit/oast-deployment-verification.test.ts": "0152ee8508a32ded0b3a040a620506a95718364adc2f569c8ad5947403f6e86b",
+    "tests/helpers/oast-runtime.py": "b4f19cdc99e63a31448c39abd2bd8db694182eeddc4fe95cd10e9d56f3513459",
+    "tests/helpers/oast-lab.ts": "30f805bd4462be8d055f7dc8c304824ccd0ef3b62db716db141e2072faff05ea",
+    "src/modules/activeVulnerability/ActiveVulnerabilityModule.ts": "7cbaf8c16c235ea34b82df594c29cb75515d71fa1ddba6348c4b3a802f0795ff",
+    "src/modules/activeVulnerability/ActiveVulnerabilityPlanner.ts": "82ac0df39b5adb4cd7b34070b6bf5d91c06131d38dc92a4713949d680723999c",
+    "src/modules/activeVulnerability/ActiveVulnerabilityTypes.ts": "ce6e7ee74f2dc91b87dcdf98f3b2c7b0124ac48434bca195dbe54355d3be260e",
+    "src/modules/protocolSecurity/ProtocolTransports.ts": "8fbbb7ceaa535547d072ca2f02e865fe9e8775eed576b085278cdd58de6259f4",
+    "src/core/http/PinnedHttpTransport.ts": "58db9a17c40d5b44795fa1caf9a8956bba9b3aed19f73e496970e6c93e934f40",
+    "src/cli/commands/oast.ts": "116f244589a810fbf73f9cd1667bdcf2c13f06ffb78a5cd46c8150ccc8339b16",
+    "scripts/oast-lab.mjs": "316a9ea27d214634a86f9a40dd7249b6a480137483eead587c1c7e07aad6dc52",
+    "package-lock.json": "74d1ee0cc05a41871fa06aaffd1e04115d977af120053c058de432a3a6d5b3fa",
+    "deploy/oast/Dockerfile": "1a365d90998b246406abed155e928a37b53639318766f6168ced35c874e9e4ec",
+    "deploy/oast/compose.yaml": "d8b243138bacc6851b123778e0edf7aab3c104ecda0c0a582cc26e0ad1fcbd41"
+  },
+  "limitations": [
+    "Hosted-mode service is exercised on loopback with a private fixture CA; no public authoritative deployment is implied.",
+    "Windows PowerShell injection uses HTTP; HTTPS is exercised by urllib, SAX and real Jinja-to-shell execution with an isolated curl CA adapter.",
+    "Missing callbacks are inconclusive, not proof of security.",
+    "A public domain delegation, reachable DNS host and owner-authorized public verifier run are required for retained public deployment evidence."
+  ]
+}

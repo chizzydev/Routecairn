@@ -4,7 +4,7 @@ import { z } from "zod";
 const originSchema = z.string().url().refine((value) => { const url = new URL(value); return ["http:", "https:"].includes(url.protocol) && url.origin === value; }, "An exact HTTP(S) origin is required.");
 const pathSchema = z.string().min(1).max(1000).refine((value) => value.startsWith("/") && !/[?#%\\]/.test(value) && !value.split("/").some((part) => part === "." || part === ".."), "Use a canonical path, without query, fragment or encoding.");
 const assetSchema = z.object({ origin: originSchema, pathPrefix: pathSchema }).strict();
-const ruleSchema = z.object({ origin: originSchema, path: pathSchema, method: z.enum(["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]), effect: z.enum(["READ", "AUTHENTICATION", "MUTATION", "DESTRUCTIVE"]), bodySha256: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+const ruleSchema = z.object({ origin: originSchema, path: pathSchema, method: z.enum(["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE", "CONNECT"]), effect: z.enum(["READ", "AUTHENTICATION", "MUTATION", "DESTRUCTIVE"]), bodySha256: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 
 export const targetAuthorizationSchema = z.object({
   schemaVersion: z.literal(1),

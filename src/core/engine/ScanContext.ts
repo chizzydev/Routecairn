@@ -266,6 +266,7 @@ export class ScanContext {
       maxRequests,
       connectionPool: this.connectionPool,
       controlledMutationEnabled,
+      allowedPrivateOrigins: this.options.plan.activeVulnerability?.cases.flatMap((item) => item.environment === "LOCAL_FIXTURE" && item.proof.oauthJourney ? [new URL(item.proof.oauthJourney.discoveryUrl).origin] : []) ?? [],
       ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
     }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
       ...entry,

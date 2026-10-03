@@ -1,4 +1,5 @@
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { readBoundedFile } from "../security/BoundedFile.js";
+import { lstat, realpath } from "node:fs/promises";
 import { join, relative, resolve, isAbsolute } from "node:path";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
 import type { RouteCairnReport } from "../../reports/ReportTypes.js";
@@ -31,9 +32,7 @@ export async function preservePartialScanReport(paths: DashboardPaths, scanId: s
   let report: RouteCairnReport | undefined;
   for (const path of [expected.reportPath, join(directory, "report.partial.json")]) {
     try {
-      const info = await lstat(path);
-      if (!info.isFile() || info.isSymbolicLink() || info.size > 64 * 1024 * 1024) throw new Error("Unsafe partial report.");
-      const value: unknown = JSON.parse(await readFile(path, "utf8"));
+      const value: unknown = JSON.parse((await readBoundedFile(path, 64 * 1024 * 1024)).toString("utf8"));
       if (!validCheckpoint(value, target)) throw new Error("Invalid or mismatched partial report.");
       report = value;
       break;

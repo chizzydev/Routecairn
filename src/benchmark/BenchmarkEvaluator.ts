@@ -15,8 +15,10 @@ export interface BenchmarkResult {
   schemaVersion: 1; kind: "ROUTECAIRN_BENCHMARK_RESULT"; benchmarkId: string; label: string; generatedAt: string; release: { label?: string; build?: string; routeCairnVersion: string };
   manifestDigest: string; reportDigests: string[]; repetitions: number;
   runTelemetry: BenchmarkTelemetry[];
+  provenance?: { corpusVersion?: string; publisher?: string; declaredIndependence?: string; blinded: boolean; fixtureOnly: boolean; declaredExternalTargetsTested: boolean; independentVerification: "SEPARATE_VERIFICATION_ARTIFACT_REQUIRED" };
   confusion: { truePositive: number; falseNegative: number; falsePositive: number; trueNegative: number; inconclusive: number; uncovered: number; unexpectedFindings: number };
   metrics: { recall: number; precision: number; falsePositiveRate: number; inconclusiveRate: number; coverageCompleteness: number; conclusiveCoverage: number; stabilityRate: number; youdenIndex: number };
+  statisticalEvidence: { method: "WILSON_95_UNIQUE_CASES"; recall: { lower: number; upper: number; sampleSize: number }; falsePositiveRate: { lower: number; upper: number; sampleSize: number }; caveat: string };
   cleanup: { observed: number; passed: number; failed: number; successRate: number };
   categories: BenchmarkCategoryResult[];
   slices: BenchmarkSliceResult[];
@@ -70,7 +72,8 @@ export function evaluateBenchmark(rawManifest: unknown, rawRuns: readonly Benchm
   const transmitted = runs.map((run) => run.telemetry.transmittedRequestCount ?? run.telemetry.requestCount);
   const efficiency = { runtimeMs: distribution(runtime), peakRssBytes: distribution(runs.map((run) => run.telemetry.peakRssBytes)), requestCount: distribution(requests), transmittedRequestCount: distribution(transmitted), requestsPerAssessedCase: distribution(requests.map((value, i) => ratio(value, assessedByRun[i]!))), runtimePerRequestMs: distribution(runtime.map((value, i) => ratio(value, transmitted[i]!))) };
   const gates = thresholdGates(manifest, metrics, cleanup, efficiency, cases, categories, corpus, runs.length);
-  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, cleanup, categories, slices, corpus, efficiency, cases, unexpectedFindings, gates };
+  const partial: Omit<BenchmarkResult, "regressions" | "status"> = { schemaVersion: 1, kind: "ROUTECAIRN_BENCHMARK_RESULT", benchmarkId: manifest.id, label: manifest.label, generatedAt: new Date().toISOString(), release: { ...(options.release ? { label: options.release } : {}), ...(options.build ? { build: options.build } : {}), routeCairnVersion: options.routeCairnVersion ?? runs[0]!.report.routeCairnVersion }, manifestDigest: digest(manifest), reportDigests: runs.map((run) => run.reportDigest ?? digest(run.report)), repetitions: runs.length, runTelemetry: runs.map((run) => run.telemetry), confusion, metrics, statisticalEvidence: benchmarkIntervals(cases), cleanup, categories, slices, corpus, efficiency, cases, unexpectedFindings, gates };
+  partial.provenance = { ...(manifest.corpus ? { corpusVersion: manifest.corpus.version, publisher: manifest.corpus.publisher, declaredIndependence: manifest.corpus.independence } : {}), blinded: manifest.corpus?.blinded ?? false, fixtureOnly: manifest.metadata.fixture === true, declaredExternalTargetsTested: manifest.metadata.externalTargetsTested === true, independentVerification: "SEPARATE_VERIFICATION_ARTIFACT_REQUIRED" };
   const regressions = options.baseline ? regressionGates(manifest, partial, options.baseline) : [];
   return { ...partial, regressions, status: [...gates, ...regressions].every((item) => item.passed) ? "PASSED" : "FAILED" };
 }
@@ -154,6 +157,8 @@ function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["m
     { id: "cleanup-observations", passed: cleanup.observed >= t.minCleanupObservationsPerRun * repetitions, actual: cleanup.observed, expected: `>= ${t.minCleanupObservationsPerRun * repetitions}` },
     { id: "cleanup-failures", passed: cleanup.failed <= t.maxCleanupFailures, actual: cleanup.failed, expected: `<= ${t.maxCleanupFailures}` }
   ];
+  if (t.minCategories !== undefined) gates.push({ id: "category-count", passed: categories.length >= t.minCategories, actual: categories.length, expected: `>= ${t.minCategories}` });
+  if (t.minStabilityRate !== undefined) gates.push({ id: "stability-rate", passed: metrics.stabilityRate >= t.minStabilityRate, actual: metrics.stabilityRate, expected: `>= ${t.minStabilityRate}` });
   const minimums: Array<[string, number | undefined, number]> = [
     ["corpus-cases", t.minCorpusCases, corpus.cases], ["positive-cases", t.minPositiveCases, corpus.positiveCases], ["negative-cases", t.minNegativeCases, corpus.negativeCases],
     ["languages", t.minLanguages, corpus.languages.length], ["frameworks", t.minFrameworks, corpus.frameworks.length], ["near-miss-controls", t.minNearMissControls, corpus.nearMissControls],
@@ -167,6 +172,9 @@ function thresholdGates(manifest: BenchmarkManifest, metrics: BenchmarkResult["m
   if (t.maxRequestsPerAssessedCase !== undefined) gates.push({ id: "request-efficiency", passed: efficiency.requestsPerAssessedCase.mean <= t.maxRequestsPerAssessedCase, actual: efficiency.requestsPerAssessedCase.mean, expected: `<= ${t.maxRequestsPerAssessedCase} requests/assessed case` });
   for (const category of categories) {
     gates.push({ id: `category-size/${category.category}`, passed: category.caseCount >= t.minCasesPerCategory, actual: category.caseCount, expected: `>= ${t.minCasesPerCategory}` });
+    if (t.minCategoryRecall !== undefined) gates.push({ id: `category-recall/${category.category}`, passed: category.metrics.recall >= t.minCategoryRecall, actual: category.metrics.recall, expected: `>= ${t.minCategoryRecall}` });
+    if (t.maxCategoryFalsePositiveRate !== undefined) gates.push({ id: `category-false-positive-rate/${category.category}`, passed: category.metrics.falsePositiveRate <= t.maxCategoryFalsePositiveRate, actual: category.metrics.falsePositiveRate, expected: `<= ${t.maxCategoryFalsePositiveRate}` });
+    if (t.maxCategoryInconclusiveRate !== undefined) gates.push({ id: `category-inconclusive-rate/${category.category}`, passed: category.metrics.inconclusiveRate <= t.maxCategoryInconclusiveRate, actual: category.metrics.inconclusiveRate, expected: `<= ${t.maxCategoryInconclusiveRate}` });
     if (t.requireBalancedCategories) gates.push({ id: `category-balance/${category.category}`, passed: category.positiveCases > 0 && category.negativeCases > 0, actual: category.positiveCases > 0 && category.negativeCases > 0, expected: "at least one FINDING and one NO_FINDING case" });
   }
   for (const item of cases.filter((value) => value.required)) { const expected = item.expected === "FINDING" ? "TRUE_POSITIVE" : "TRUE_NEGATIVE"; gates.push({ id: `required-case/${item.id}`, passed: item.aggregate === expected, actual: item.aggregate === expected, expected }); }
@@ -188,4 +196,18 @@ function regressionGates(manifest: BenchmarkManifest, current: Omit<BenchmarkRes
     { id: "request-increase", passed: ratioIncrease(current.efficiency.requestCount.mean, baseline.efficiency.requestCount.mean) <= p.maxRequestIncreaseRatio, actual: ratioIncrease(current.efficiency.requestCount.mean, baseline.efficiency.requestCount.mean), expected: `<= ${p.maxRequestIncreaseRatio}` },
     { id: "case-regressions", passed: !p.failOnCaseRegression || regressedCases === 0, actual: regressedCases, expected: p.failOnCaseRegression ? "0" : "not enforced" }
   ];
+}
+
+export function wilsonInterval(successes: number, sampleSize: number): { lower: number; upper: number; sampleSize: number } {
+  if (!Number.isInteger(successes) || !Number.isInteger(sampleSize) || successes < 0 || sampleSize < successes) throw new Error("BENCHMARK_INTERVAL_COUNTS_INVALID");
+  if (sampleSize === 0) return { lower: 0, upper: 1, sampleSize: 0 };
+  const z = 1.959963984540054; const p = successes / sampleSize; const denominator = 1 + z * z / sampleSize;
+  const center = (p + z * z / (2 * sampleSize)) / denominator;
+  const half = z * Math.sqrt((p * (1 - p) + z * z / (4 * sampleSize)) / sampleSize) / denominator;
+  return { lower: Math.max(0, center - half), upper: Math.min(1, center + half), sampleSize };
+}
+function benchmarkIntervals(cases: readonly BenchmarkCaseResult[]): BenchmarkResult["statisticalEvidence"] {
+  const positives = cases.filter((item) => item.expected === "FINDING");
+  const negatives = cases.filter((item) => item.expected === "NO_FINDING" && ["TRUE_NEGATIVE", "FALSE_POSITIVE"].includes(item.aggregate));
+  return { method: "WILSON_95_UNIQUE_CASES", recall: wilsonInterval(positives.filter((item) => item.aggregate === "TRUE_POSITIVE").length, positives.length), falsePositiveRate: wilsonInterval(negatives.filter((item) => item.aggregate === "FALSE_POSITIVE").length, negatives.length), caveat: "Intervals use unique cases, not repeated observations. Related mutants and self-maintained fixtures are not independent samples of real applications; intervals are descriptive, not population guarantees." };
 }

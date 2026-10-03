@@ -1,15 +1,37 @@
 import { createHash } from "node:crypto";
 import { createServer as createHttp2Server } from "node:http2";
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { decodeBoundedContent, runGrpcStream, runHttp2, runInterruptedUpload, runSse, runWebSocket } from "../../src/modules/protocolSecurity/ProtocolTransports.js";
+import { decodeBoundedContent, runBoundedHttp, runGrpcStream, runHttp2, runInterruptedUpload, runSse, runWebSocket } from "../../src/modules/protocolSecurity/ProtocolTransports.js";
 
 const closers: Array<() => Promise<void>> = [];
 afterEach(async () => { while (closers.length) await closers.pop()!(); });
 
 describe("protocol transports", () => {
+  it("sends no request when the shared deadline is already cancelled", async () => {
+    let connections = 0; const server = createServer(); server.on("connection", () => { connections += 1; });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve)); closers.push(() => new Promise((resolve) => server.close(() => resolve())));
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const controller = new AbortController(); controller.abort(new Error("TEST_DEADLINE_CANCELLED"));
+    const options = { allowedPrivateOrigins: [origin], timeoutMs: 2000, maxBytes: 4096, abortSignal: controller.signal };
+    await expect(runBoundedHttp(origin, "GET", {}, undefined, options)).rejects.toThrow("TEST_DEADLINE_CANCELLED");
+    await expect(runSse(origin, "GET", {}, undefined, 1, options)).rejects.toThrow("TEST_DEADLINE_CANCELLED");
+    await expect(runWebSocket(origin.replace("http", "ws"), {}, [], [], 1, options)).rejects.toThrow("TEST_DEADLINE_CANCELLED");
+    expect(connections).toBe(0);
+  });
+
+  it("closes a stalled WebSocket handshake when its shared deadline expires", async () => {
+    const server = createServer(); let stalled: Socket | undefined; let closed = false;
+    server.on("upgrade", (_request, socket) => { stalled = socket as Socket; socket.on("close", () => { closed = true; }); socket.on("end", () => socket.end()); socket.resume(); });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve)); closers.push(() => { stalled?.destroy(); return new Promise((resolve) => server.close(() => resolve())); });
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    await expect(runWebSocket(origin.replace("http", "ws"), {}, [], [], 1, { allowedPrivateOrigins: [origin], timeoutMs: 2000, maxBytes: 4096, abortSignal: AbortSignal.timeout(100) })).rejects.toThrow();
+    await new Promise<void>((resolve) => { if (closed) resolve(); else stalled?.once("close", () => resolve()); });
+    expect(closed).toBe(true);
+  });
+
   it("uses a pinned RFC6455 handshake and bounded message frames", async () => {
     const server = createServer();
     server.on("upgrade", (request, socket) => {

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-02T20:59:03.706Z",
+  "status": "VERIFIED",
+  "catalogSha256": "891e22e7757ece8d76f883e7960821f579b5c621e8bc01914f8a4a8fb717ec5c",
+  "mappingSha256": "6af2866307f7dc58a5742b5bec0fdc973c0d045974635b04d952928aeea25c3c",
+  "checks": {
+    "retainedTests": {
+      "total": 58,
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    "allWstgLinks": true,
+    "releaseBuild": "PASSED",
+    "lint": "PASSED",
+    "deterministicFormatting": "PASSED",
+    "architecture": "PASSED",
+    "releaseInputs": 93,
+    "dashboardAssets": 4,
+    "installedPackageSmoke": "PASSED",
+    "installedStandardsCli": "VERIFIED",
+    "dependencyAuditVulnerabilities": 0
+  },
+  "package": {
+    "path": ".routecairn-standards-lab/package-retained/routecairn-0.1.0.tgz",
+    "bytes": 1448151,
+    "sha256": "a188a3d4492b8e3fdf67e24acf488000f64eaab4cc75727abb3961a11bc4b822"
+  },
+  "sourcesUnchanged": true,
+  "independentAssessment": false,
+  "certificationClaimed": false
+}

@@ -1,6 +1,6 @@
 # RouteCairn Helm deployment
 
-The chart runs multiple stateless control-plane pods backed by PostgreSQL and S3-compatible evidence storage. PostgreSQL provides durable fleet jobs, `SKIP LOCKED` claims, replay state, the transactional event outbox, leader leases, and fencing tokens. PostgreSQL `LISTEN/NOTIFY` wakes long-polling workers and dashboard event streams while the outbox remains the durable event record.
+The chart runs multiple stateless **fleet ingress** pods backed by PostgreSQL and S3-compatible evidence storage, plus **one persistent dashboard**. Sessions, organizations, approvals, vault and scan state still use the dashboard's SQLite PVC. `Recreate` and a PostgreSQL session advisory lock prevent simultaneous dashboard owners; this is not an active-active administrative deployment. PostgreSQL provides durable fleet jobs, `SKIP LOCKED` claims, replay state, the transactional event outbox, leader leases, and fencing tokens. See [operating limits and acceptance](../../../docs/HORIZONTAL_SCALE_OPERATIONS.md).
 
 ## Required services
 
@@ -24,6 +24,8 @@ helm upgrade --install routecairn ./deploy/helm/routecairn \
   --set workloadIdentity.issuers=https://kubernetes.default.svc
 ```
 
-Each worker-pool entry binds jobs to a `networkZone` and a capability set. Enroll the pool once, store its `agent-state.json` in the named Kubernetes Secret, and set `transport.workloadIdentityTokenFile` in that state to `/var/run/secrets/routecairn/token`. RouteCairn still verifies the per-request Ed25519 signature; the projected identity is an additional proof.
+Each worker-pool entry binds jobs to a `networkZone` and a capability set. Enroll each member separately, store its `agent-state.json` in a distinct Secret, and configure `workerPools[].workers[]` with its name, enrollmentSecretName and stateKey. Never share one signing identity across replicas. Set `transport.workloadIdentityTokenFile` to `/var/run/secrets/routecairn/token` for projected OIDC identity; bind its issuer/subject at enrollment or supply the exact worker-id claim. RouteCairn also verifies each Ed25519 signature. An optional `tlsCaSecretName` mounts trusted `ca.pem` under `/var/run/secrets/routecairn-edge` for private HTTPS worker ingress.
+
+Provision the bucket first using `routecairn initialize-evidence-storage`. Set `objectStorage.encryption` explicitly (`AES256`, `aws:kms`, or `provider`). The `provider` option delegates encryption to storage and does not itself enable it. Supply `secrets.masterKeyKey` for the dashboard vault, or the KMS ciphertext settings below; all replicas must use the same PostgreSQL endpoint. `dashboard.storageClassName` and `dashboard.storageSize` control the administrative PVC. HPA scales fleet pods only.
 
 Use an ingress or service mesh that supports mTLS when certificate identity is required. Direct TLS client certificates are accepted when Node terminates TLS. A trusted proxy may pass a certificate fingerprint only when it also supplies the HMAC proof configured with `ROUTECAIRN_MTLS_PROXY_SECRET_FILE`.

@@ -1,20 +1,17 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { openBenchmarkPack, sealBenchmarkManifest, signBenchmarkManifest, verifyBenchmarkManifest } from "../../src/benchmark/BenchmarkCorpus.js";
-import { credibilityTruthManifest } from "../../src/benchmark/CredibilityBenchmarkLab.js";
+import { credibilityTargetMatrix, credibilityTruthManifest } from "../../src/benchmark/CredibilityBenchmarkLab.js";
 
 describe("benchmark corpus integrity", () => {
   it("builds a policy-gated corpus with hundreds of balanced executable cases", () => {
-    const manifest = credibilityTruthManifest([
-      { id: "node-http", language: "TypeScript", framework: "node:http" },
-      { id: "python-http", language: "Python", framework: "http.server" }
-    ]);
-    expect(manifest.cases).toHaveLength(240);
-    expect(manifest.cases.filter((item) => item.expected === "FINDING")).toHaveLength(120);
-    expect(manifest.cases.filter((item) => item.control === "NEAR_MISS")).toHaveLength(60);
-    expect(manifest.cases.filter((item) => item.complexity === "MULTI_STEP")).toHaveLength(40);
-    expect(manifest.cases.filter((item) => item.complexity === "SECOND_ORDER")).toHaveLength(40);
-    expect(new Set(manifest.cases.map((item) => item.framework))).toEqual(new Set(["node:http", "http.server"]));
+    const manifest = credibilityTruthManifest(credibilityTargetMatrix);
+    expect(manifest.cases).toHaveLength(576);
+    expect(manifest.cases.filter((item) => item.expected === "FINDING")).toHaveLength(288);
+    expect(manifest.cases.filter((item) => item.control === "NEAR_MISS")).toHaveLength(144);
+    expect(manifest.cases.filter((item) => item.complexity === "MULTI_STEP")).toHaveLength(48);
+    expect(manifest.cases.filter((item) => item.complexity === "SECOND_ORDER")).toHaveLength(48);
+    expect(new Set(manifest.cases.map((item) => item.framework))).toEqual(new Set(["node:http", "http.server", "wsgiref", "net/http"]));
   });
 
   it("seals ground truth without exposing expectations and detects wrong keys or tampering", () => {

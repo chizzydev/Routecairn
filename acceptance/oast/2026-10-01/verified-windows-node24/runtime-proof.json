@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-01T08:14:35.190Z",
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "externalTargetsTested": false,
+  "independentlyOperated": false,
+  "cleanup": "CONFIRMED",
+  "runtimeFailures": [],
+  "cases": [
+    {
+      "kind": "SSRF",
+      "protocol": "HTTP",
+      "fixture": "VULNERABLE",
+      "runtime": "python-urllib",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "1cbf38cd-7508-4339-925b-d8eaf1a6acaa",
+        "protocol": "HTTP",
+        "observedAt": "2026-10-01T08:14:06.348Z",
+        "delayMs": 2236,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "ed304686250ae507a2b50a8cb47102705b58e8b5722fbab0c200c08af26174d9",
+        "bindingFingerprint": "419dec4d066d162f0b130756ce3bf366ce3a90ab2013d2ed7204c8ba90a3813b",
+        "replayRejected": false
+      },
+      "reportSha256": "8d3af9fc50795cd86e617c4c5d219f836e7e6d1ff12a036324cf08010bf4a810"
+    },
+    {
+      "kind": "SSRF",
+      "protocol": "HTTP",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "python-urllib",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "48172dee3d9ee0ba8001ed2930efaa08311105c22bc540f8f71032691f4cace9"
+    },
+    {
+      "kind": "SSRF",
+      "protocol": "HTTPS",
+      "fixture": "VULNERABLE",
+      "runtime": "python-urllib",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "b9b18075-82d8-4396-ba64-c702a4d1bc9c",
+        "protocol": "HTTPS",
+        "observedAt": "2026-10-01T08:14:10.657Z",
+        "delayMs": 1993,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "2d9e7f6a270c58d12e0f9ef798a5ed5f395a4f9859c8b21ce36db8e244a80187",
+        "bindingFingerprint": "9a1ee3a1583fb8c61b0b03a11ae6e0bab3395698553c93f25e09bb8846ef1496",
+        "replayRejected": false
+      },
+      "reportSha256": "e8ead3457781025e15a33552e328c0b93cd1a13b8c6998721a1b2e024ea9db87"
+    },
+    {
+      "kind": "SSRF",
+      "protocol": "HTTPS",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "python-urllib",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "13b4163d5eabf77b8b099756d8b4612036c17531b3b95f84b22e3384f410debd"
+    },
+    {
+      "kind": "XXE",
+      "protocol": "HTTP",
+      "fixture": "VULNERABLE",
+      "runtime": "python-sax-expat",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "9b33cf14-f942-4928-9e78-7ad584467af3",
+        "protocol": "HTTP",
+        "observedAt": "2026-10-01T08:14:15.070Z",
+        "delayMs": 2014,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "b879703b8a363ec93febf46dfe6e5c4f35bc31d67aee016116cb46853014229e",
+        "bindingFingerprint": "ac60754c09fa31c7146ad7de3bb9871b69cc585413063644a0cfe1bb9b28ef36",
+        "replayRejected": false
+      },
+      "reportSha256": "2fc15b1b58fd3c0fed91a1a07ac02537502abb7f61523bdb648da5a421e98ac6"
+    },
+    {
+      "kind": "XXE",
+      "protocol": "HTTP",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "python-sax-expat",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "ab97bd29de8089be2620422dc7a1d31ae210e4cfc967af3d923e881b1da435b0"
+    },
+    {
+      "kind": "XXE",
+      "protocol": "HTTPS",
+      "fixture": "VULNERABLE",
+      "runtime": "python-sax-expat",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "c317b365-0f4d-4bf3-85fb-de0aa0e9057f",
+        "protocol": "HTTPS",
+        "observedAt": "2026-10-01T08:14:19.046Z",
+        "delayMs": 1725,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "5182410d882ba98b6586c91b71e8180a33afed30707e1e0abef04b89f8b80441",
+        "bindingFingerprint": "2516e474cd96fb6251514f32dd2c5cbed8d08a05cab9605e5a85ad5455d61e88",
+        "replayRejected": false
+      },
+      "reportSha256": "70445389f4f9062c6eeb486ee5f6589691d5ccb5b1aa8c0a62135a785e4a4f0e"
+    },
+    {
+      "kind": "XXE",
+      "protocol": "HTTPS",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "python-sax-expat",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "ca1bbc5c1e78fff72ce9959eb32ecb5ccfc6c163d70e655936566872b030e955"
+    },
+    {
+      "kind": "COMMAND_INJECTION",
+      "protocol": "HTTP",
+      "fixture": "VULNERABLE",
+      "runtime": "powershell",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "9aab5b09-5780-401d-9f10-28c75796e9dd",
+        "protocol": "HTTP",
+        "observedAt": "2026-10-01T08:14:23.944Z",
+        "delayMs": 2562,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "8f9a319f579cac62b7ec378b0740bcdcdf7f23f405c64ffe76cc986d5b8a4aee",
+        "bindingFingerprint": "0690696cdb9b2165d7691b05cae73c2c23c7bd0fa61b53e00573f6fc80362fb9",
+        "replayRejected": false
+      },
+      "reportSha256": "a8471135db5ac73927d6d6eabbddc091683f05972ee3a89f8219c0165e31b21d"
+    },
+    {
+      "kind": "COMMAND_INJECTION",
+      "protocol": "HTTP",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "powershell",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "b2a4de0f0cbac63c5057f27c0056355a22035ff0ae4e7bda486c2bf9b3c7b479"
+    },
+    {
+      "kind": "TEMPLATE_INJECTION",
+      "protocol": "HTTP",
+      "fixture": "VULNERABLE",
+      "runtime": "jinja2-3.1.6",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "58f23481-eb3c-4add-a789-e5a52be09fda",
+        "protocol": "HTTP",
+        "observedAt": "2026-10-01T08:14:28.306Z",
+        "delayMs": 2101,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "4cd27521782e927d073064c37d83b479cd56a52683fe5d7a4524eb564744f986",
+        "bindingFingerprint": "bd49a0445f4eaaf21ffa014950579571746ea4570d25ad36b3ece946a397dda4",
+        "replayRejected": false
+      },
+      "reportSha256": "d2c529a184a209976f8e252bf42ae0443dcacc6ef5db5dbe7df5720f8919f680"
+    },
+    {
+      "kind": "TEMPLATE_INJECTION",
+      "protocol": "HTTP",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "jinja2-3.1.6-sandbox",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "2a7feb475b44279032a0112917be9affc10e41e0da5653719136285dc428c7c9"
+    },
+    {
+      "kind": "TEMPLATE_INJECTION",
+      "protocol": "HTTPS",
+      "fixture": "VULNERABLE",
+      "runtime": "jinja2-3.1.6",
+      "outcome": "PROVEN",
+      "reasonCode": "SIGNED_OAST_CALLBACK_CONFIRMED",
+      "cleanup": "CONFIRMED",
+      "evidence": {
+        "eventId": "5cf42b4a-f651-43e2-9167-29dfdf872f47",
+        "protocol": "HTTPS",
+        "observedAt": "2026-10-01T08:14:32.764Z",
+        "delayMs": 2041,
+        "sourceFingerprint": "ce278362aa8ebe58da527752dcd17d6a8ffc3085b36efc8fd8dfa89deb30683e",
+        "requestFingerprint": "6f77fe62ce707163bef004efc41b5874ec4b2bbe7617b01980348e67ffbb74ac",
+        "bindingFingerprint": "07a18478904700ceb9fb42af9b6f44821df5682a3d7f71d2b69529028c900631",
+        "replayRejected": false
+      },
+      "reportSha256": "4902823c29a4e8c20771ad6adbd7b62fe25151eb27e7d3134145506ecc4d9cf4"
+    },
+    {
+      "kind": "TEMPLATE_INJECTION",
+      "protocol": "HTTPS",
+      "fixture": "SECURE_CONTROL",
+      "runtime": "jinja2-3.1.6-sandbox",
+      "outcome": "INCONCLUSIVE",
+      "reasonCode": "OAST_CALLBACK_NOT_OBSERVED_WITHIN_BOUND",
+      "cleanup": "CONFIRMED",
+      "reportSha256": "14376c9eec9ab28b047fee951b2609d47f6456fab2130333deeeac7979f87462"
+    }
+  ]
+}

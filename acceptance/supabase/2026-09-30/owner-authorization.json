@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "projectRef": "liacnbzkujrdfltedjhy",
+  "authorizedBy": "Decide project owner",
+  "authorizationReference": "User explicitly authorized creation and completion of acceptance environments and supplied the signed-in Supabase session in this chat on 2026-09-30.",
+  "startsAt": "2026-09-30T21:16:01.544Z",
+  "expiresAt": "2026-09-30T22:16:02.544Z",
+  "maxRequests": 40,
+  "rateLimitPerSecond": 1,
+  "disposableAccounts": 2,
+  "isolatedTableRpcAndStorage": true,
+  "deleteCreatedResources": true,
+  "cleanupGraceMs": 300000
+}

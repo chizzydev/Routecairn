@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "standard": "ROUTECAIRN_OWNED_DECIDE_EXERCISE_V1",
+  "runId": "5964a245-db6a-4ea1-b8b2-881ae600c243",
+  "status": "FAILED",
+  "startedAt": "2026-09-30T20:45:44.052Z",
+  "completedAt": "2026-09-30T20:46:17.270Z",
+  "apiOrigin": "https://decide-api-production-8aa7.up.railway.app",
+  "authorizationSha256": "d7e9bb89b8ab5ba51db4470ec78ed61b1b2c1d282772713d42ade38ca6808d95",
+  "authorization": {
+    "schemaVersion": 1,
+    "product": "Decide",
+    "apiOrigin": "https://decide-api-production-8aa7.up.railway.app",
+    "authorizedBy": "Decide project owner via this chat",
+    "authorizationReference": "2026-09-30 owner request: Access it directly and complete that. i am authorizing you as the owner",
+    "startsAt": "2026-09-30T20:44:19.167Z",
+    "expiresAt": "2026-09-30T22:45:19.167Z",
+    "maxRequests": 40,
+    "rateLimitPerSecond": 1,
+    "disposableAccounts": 2,
+    "administrativeProvisioning": true,
+    "sessionLifecycle": true,
+    "ownAccountProfileChanges": true,
+    "crossAccountSessionDenial": true,
+    "deleteCreatedAccounts": true,
+    "cleanupGraceMs": 300000
+  },
+  "provisionedAccountIdentitySha256": [
+    "7b43020eb54f603c416fc600f61b52fa43212f58d56e36d9e46f7805c35b0f3a",
+    "8eb44e9ebb731e3b5773acc93fac0bc5858a07d89c2e6b92565d6c773f747310"
+  ],
+  "provisioningMode": "ADMINISTRATIVELY_PROVISIONED_EMAIL_VERIFIED",
+  "requestCount": 20,
+  "cleanup": "VERIFIED",
+  "receipts": [
+    {
+      "case": "ACCOUNT_A_LOGIN",
+      "status": "PASSED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/login",
+      "statusCode": 200,
+      "bodySha256": "5971bf9d9120029c744a24cd2b2b8e31dc3581984720dc622de666b556b2f865",
+      "responseBytes": 963,
+      "proof": "New disposable account authenticates with its generated password and exact user identity"
+    },
+    {
+      "case": "ACCOUNT_B_LOGIN",
+      "status": "PASSED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/login",
+      "statusCode": 200,
+      "bodySha256": "719c79baa27bfc05f548badd3262e36c58d022702e30fd76333233637ab2f1e2",
+      "responseBytes": 963,
+      "proof": "New disposable account authenticates with its generated password and exact user identity"
+    },
+    {
+      "case": "UNAUTHENTICATED_ME_DENIED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 401,
+      "bodySha256": "fb62381098b2afc4da94cc254c0e5724a7c756b3d3d8ada408b565f0495dd372",
+      "responseBytes": 74,
+      "proof": "Missing bearer token is denied"
+    },
+    {
+      "case": "ACCOUNT_A_IDENTITY",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 200,
+      "bodySha256": "b8fe1206e47caddad8d531f43fb7bf616db28c8eef60f5b90a52fa7a96427ad4",
+      "responseBytes": 351,
+      "proof": "Bearer token returns only its own generated account identity"
+    },
+    {
+      "case": "ACCOUNT_B_IDENTITY",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 200,
+      "bodySha256": "7205d313f1e03227c2513ede6a439bb3844d9821a1e61e33d5367db7f2bc0eed",
+      "responseBytes": 351,
+      "proof": "Bearer token returns only its own generated account identity"
+    },
+    {
+      "case": "ACCOUNT_B_SESSION_LIST",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/sessions",
+      "statusCode": 200,
+      "bodySha256": "83e89c83de35b868610deabbe7c91600251243bc8350c5a04b8d0a594a78d86c",
+      "responseBytes": 291,
+      "proof": "Own session list supplies a disposable session to test"
+    },
+    {
+      "case": "FOREIGN_SESSION_REVOCATION_DENIED",
+      "status": "PASSED",
+      "method": "DELETE",
+      "pathTemplate": "/api/v1/mobile-auth/sessions/{disposable-id}",
+      "statusCode": 404,
+      "bodySha256": "4aaa80233a19ba3ad50810a0d664f2c871d9be4210e2a1bdf7b8f91a328c2890",
+      "responseBytes": 95,
+      "proof": "Account A cannot revoke account B's exact session"
+    },
+    {
+      "case": "FOREIGN_SESSION_UNCHANGED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 200,
+      "bodySha256": "7205d313f1e03227c2513ede6a439bb3844d9821a1e61e33d5367db7f2bc0eed",
+      "responseBytes": 351,
+      "proof": "Account B remains authenticated after the foreign revocation attempt"
+    },
+    {
+      "case": "PROFILE_IDENTITY_BOUND_TO_BEARER",
+      "status": "PASSED",
+      "method": "PATCH",
+      "pathTemplate": "/api/v1/auth/me/profile",
+      "statusCode": 200,
+      "bodySha256": "2cc851b6d107ad2b6d64c2214475a5fbf6aee565a7463f3d4949623a35b1c8f8",
+      "responseBytes": 353,
+      "proof": "Body-supplied account B ID cannot redirect account A's profile update"
+    },
+    {
+      "case": "FOREIGN_PROFILE_UNCHANGED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 200,
+      "bodySha256": "7205d313f1e03227c2513ede6a439bb3844d9821a1e61e33d5367db7f2bc0eed",
+      "responseBytes": 351,
+      "proof": "Account B's display name remains at the provisioned baseline"
+    },
+    {
+      "case": "PROFILE_RESTORE",
+      "status": "PASSED",
+      "method": "PATCH",
+      "pathTemplate": "/api/v1/auth/me/profile",
+      "statusCode": 200,
+      "bodySha256": "113117fef2b93bc4cc384a2cc05bf9ea6ca5e2f7de8c893b96febbd5a97b5465",
+      "responseBytes": 347,
+      "proof": "Own disposable profile returns to baseline"
+    },
+    {
+      "case": "REFRESH_TOKEN_ROTATES",
+      "status": "FAILED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/refresh",
+      "statusCode": 200,
+      "bodySha256": "537ee2b206e8b3a587cfade8abf82d5df6135bec0ca3068f947b9bc1c297525e",
+      "responseBytes": 964,
+      "proof": "Successful refresh replaces the old refresh credential"
+    },
+    {
+      "case": "OLD_REFRESH_REPLAY_DENIED",
+      "status": "FAILED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/refresh",
+      "statusCode": 200,
+      "bodySha256": "e65df8a6962578f7fafeb2872cebe541229f0746306423ae0cf7b8165182ad62",
+      "responseBytes": 964,
+      "proof": "The consumed refresh credential is denied on replay"
+    },
+    {
+      "case": "LOGOUT",
+      "status": "PASSED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/logout",
+      "statusCode": 200,
+      "bodySha256": "0820039fc780c00a31a1f4cc89f1795e67e9490163b2f13de89fe16be5055026",
+      "responseBytes": 67,
+      "proof": "Logout revokes the disposable session"
+    },
+    {
+      "case": "LOGGED_OUT_ACCESS_DENIED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 401,
+      "bodySha256": "5b046a7e72dd52559a63e3e3f876196e73eda79cd67abb1d3d8560dbb6b658de",
+      "responseBytes": 84,
+      "proof": "Access token from a logged-out session is denied"
+    },
+    {
+      "case": "ACCOUNT_A_CLEANUP_LOGIN",
+      "status": "PASSED",
+      "method": "POST",
+      "pathTemplate": "/api/v1/mobile-auth/login",
+      "statusCode": 200,
+      "bodySha256": "ad797f22bcfb2c64040f9ba91796371ac6ce83e215a0bf1cf4ffd903e0790814",
+      "responseBytes": 963,
+      "proof": "New disposable account authenticates with its generated password and exact user identity"
+    },
+    {
+      "case": "ACCOUNT_A_DELETE",
+      "status": "PASSED",
+      "method": "DELETE",
+      "pathTemplate": "/api/v1/auth/me/account",
+      "statusCode": 200,
+      "bodySha256": "d24ee6796c3c5096d66f1fbeab8b44dab8cfeb612458327e3db76bb9c42cf0cd",
+      "responseBytes": 70,
+      "proof": "Delete only this run's disposable account using its own bearer and password"
+    },
+    {
+      "case": "DELETED_ACCOUNT_A_ACCESS_DENIED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 401,
+      "bodySha256": "5b046a7e72dd52559a63e3e3f876196e73eda79cd67abb1d3d8560dbb6b658de",
+      "responseBytes": 84,
+      "proof": "Deleted account bearer no longer authenticates"
+    },
+    {
+      "case": "ACCOUNT_B_DELETE",
+      "status": "PASSED",
+      "method": "DELETE",
+      "pathTemplate": "/api/v1/auth/me/account",
+      "statusCode": 200,
+      "bodySha256": "d24ee6796c3c5096d66f1fbeab8b44dab8cfeb612458327e3db76bb9c42cf0cd",
+      "responseBytes": 70,
+      "proof": "Delete only this run's disposable account using its own bearer and password"
+    },
+    {
+      "case": "DELETED_ACCOUNT_B_ACCESS_DENIED",
+      "status": "PASSED",
+      "method": "GET",
+      "pathTemplate": "/api/v1/mobile-auth/me",
+      "statusCode": 401,
+      "bodySha256": "5b046a7e72dd52559a63e3e3f876196e73eda79cd67abb1d3d8560dbb6b658de",
+      "responseBytes": 84,
+      "proof": "Deleted account bearer no longer authenticates"
+    }
+  ],
+  "independentlyOperated": false,
+  "independentAcceptanceVerified": false,
+  "fullEightLaneAcceptance": false,
+  "limitations": [
+    "Owned accounts were provisioned administratively; email delivery and email ownership verification were not exercised.",
+    "These cases assess account ownership and the custom Decide session lifecycle; they do not establish a tenant model or Auth0/Cognito MFA/passkey acceptance.",
+    "Supabase database hosting does not by itself prove Data API RLS, storage or RPC behavior.",
+    "This owner-operated run cannot supply an independent operator's execution or signature."
+  ]
+}

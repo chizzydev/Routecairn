@@ -52,4 +52,40 @@ describe("adaptive exact executed-contract compiler", () => {
     const unsafe = { scanPlan: { businessInvariant: { cases: [{ id: "x", cleanupRequired: true, comparisonFingerprint: fingerprint }] } }, businessInvariant: { observations: [{ caseId: "x", outcome: "PASS", cleanupOutcome: "CLEANUP_FAILED", comparisonFingerprint: fingerprint }] } } as unknown as RouteCairnReport;
     expect(compileExecutedContracts(unsafe)).toEqual([]);
   });
+
+  it("replays a validated GraphQL query but rejects a mutation or subscription disguised as a completed check", () => {
+    expect(compileExecutedContracts(graphqlReport("query { viewer { id } }"))).toHaveLength(1);
+    expect(compileExecutedContracts(graphqlReport("mutation { deleteAccount }"))).toEqual([]);
+    expect(compileExecutedContracts(graphqlReport('query Read { lookup(value: "# string") { id } } mutation Write { deleteAccount }'))).toEqual([]);
+    expect(compileExecutedContracts(graphqlReport("subscription { accountUpdates }"))).toEqual([]);
+  });
+
+  it.each(["UNVERIFIED", "NOT_VERIFIED", "NOT_REQUIRED", "FAILED_VERIFIED"])("does not compile state-changing cleanup evidence %s", (cleanupOutcome) => {
+    const input = { scanPlan: { businessInvariant: { cases: [{ id: "unsafe", cleanupRequired: true, comparisonFingerprint: fingerprint }] } }, businessInvariant: { observations: [{ comparisonFingerprint: fingerprint, outcome: "PASS", cleanupOutcome }] } } as unknown as RouteCairnReport;
+    expect(compileExecutedContracts(input)).toEqual([]);
+  });
+
+  it("rejects unrecognized outcomes and credential literals in replay templates", () => {
+    const unknown = graphqlReport("query { viewer { id } }");
+    (unknown.apiGraphql!.checks[0] as any).outcome = "UNKNOWN";
+    expect(compileExecutedContracts(unknown)).toEqual([]);
+    const credential = graphqlReport("query { viewer { id } }");
+    (credential.scanPlan.apiGraphql!.checks[0] as any).request.headers = { Authorization: "Bearer literal-secret" };
+    expect(compileExecutedContracts(credential)).toEqual([]);
+  });
+
+  it("rehydrates an exact HTTP authentication lifecycle contract with fresh expiring approval", () => {
+    const step = (id: string, phase: string, method: string, status: number) => ({ id, phase, actorId: "fixture", waitBeforeMs: 0, fixtureActions: [], request: { method, url: `https://app.test/${id}`, stateChanging: method !== "GET", headers: {} }, captures: [], assertions: [{ kind: "STATUS_IN", values: [status] }] });
+    const input = { target: "https://app.test", scanPlan: { authenticationLifecycle: { schemaVersion: 1, maxCases: 1, maxStepsPerCase: 10, maxRequests: 10, maxResponseBytes: 8192, cases: [{ id: "logout", label: "Exact disposable logout", category: "LOGOUT_INVALIDATION", actors: [{ id: "fixture", safeAlias: "Fixture", authSlot: "anonymous", relationship: "SELF", declaredState: "FIXTURE" }], authorization: { mode: "CONTROLLED_LIFECYCLE", environment: "TEST", disposableAccounts: true }, cleanupRequired: true, steps: [step("before", "SETUP", "GET", 200), step("logout", "ACTION", "POST", 204), step("invalidated", "VERIFY", "GET", 401), step("restore", "CLEANUP", "POST", 204)], comparisonFingerprint: fingerprint }] } }, authenticationLifecycle: { observations: [{ comparisonFingerprint: fingerprint, outcome: "PASS", cleanupOutcome: "ROLLBACK_VERIFIED" }] } } as unknown as RouteCairnReport;
+    const [compiled] = compileExecutedContracts(input);
+    expect(compiled).toMatchObject({ engineId: "authentication-lifecycle", requestCount: 4, cleanupRequestCount: 1, mutationApprovalRequired: true });
+    const authorized = authorizeConfiguration(compiled!.engineConfiguration, { reviewedAt: "2026-10-02T00:00:00.000Z", reviewedBy: "fixture-owner", rationale: "Review disposable logout and restoration", expiresAt: "2026-10-02T04:00:00.000Z" });
+    expect((authorized.cases as any[])[0].authorization).toMatchObject({ confirmation: "I_AUTHORIZE_CONTROLLED_AUTH_LIFECYCLE_TESTING", authorizedBy: "fixture-owner", expiresAt: "2026-10-02T04:00:00.000Z" });
+    (input.scanPlan.authenticationLifecycle!.cases[0]!.steps[0] as any).fixtureActions = [{ kind: "OIDC_START", harnessId: "operator-bound", captureIssuer: "issuer" }];
+    expect(compileExecutedContracts(input)).toEqual([]);
+  });
 });
+
+function graphqlReport(document: string): RouteCairnReport {
+  return { target: "https://app.test", scanPlan: { apiGraphql: { schemaVersion: 1, maxRequests: 5, maxResponseBytes: 65536, maxJsonDepth: 12, maxGraphqlDocumentBytes: 16384, maxGraphqlAliases: 5, maxGraphqlBatchOperations: 3, actors: [{ id: "public", safeAlias: "Public", authSlot: "anonymous", relationship: "PUBLIC" }], routes: [{ id: "graphql", safeAlias: "GraphQL fixture", protocol: "GRAPHQL", kind: "FUNCTION", url: "https://app.test/graphql", path: "/graphql", documentedMethods: ["POST"] }], checks: [{ id: "viewer", matrixId: "viewer", label: "Exact viewer query", kind: "FUNCTION_AUTHORIZATION", routeId: "graphql", actorId: "public", requireVerifiedIdentity: false, request: { method: "POST", headers: {}, graphql: { document, variables: {} } }, response: { expectedDecision: "ALLOW", allowedStatuses: [200], deniedStatuses: [401, 403], fieldRules: [] }, comparisonFingerprint: fingerprint }] } }, apiGraphql: { checks: [{ comparisonFingerprint: fingerprint, outcome: "PASS" }] } } as unknown as RouteCairnReport;
+}

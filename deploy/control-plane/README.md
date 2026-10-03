@@ -26,4 +26,4 @@ Run the overlay with:
 docker compose -f compose.yaml -f compose.distributed.yaml up --build -d
 ```
 
-For multiple control-plane replicas, use the Helm chart in `deploy/helm/routecairn`. Compose remains a single-host deployment.
+The overlay adds two stateless `fleet` replicas and routes signed worker requests to them. One persistent dashboard retains SQLite administrative state and holds a PostgreSQL ownership lock. Compose remains a single-host deployment. Helm scales fleet and independently enrolled worker members, while retaining a singleton dashboard PVC. See [horizontal scale operations and verified limits](../../docs/HORIZONTAL_SCALE_OPERATIONS.md).

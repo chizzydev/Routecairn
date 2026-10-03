@@ -1,6 +1,7 @@
+import { loadOrCreateHexKey } from "../security/BoundedFile.js";
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+
+
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { nowIso } from "../db/DashboardDatabase.js";
 import { canonicalExecutablePlanJson, executablePlanContentDigest, parseExecutablePlanPayload, type BoundExecutablePlan, type ExecutablePlanPayload } from "./ExecutablePlanSnapshot.js";
@@ -72,15 +73,7 @@ function associatedData(scanId: string, targetOrigin: string, contentDigest: str
 }
 
 function loadOrCreateKey(keyPath: string): Buffer {
-  mkdirSync(dirname(keyPath), { recursive: true });
-  if (existsSync(keyPath)) {
-    const key = Buffer.from(readFileSync(keyPath, "utf8"), "hex");
-    if (key.length !== 32) throw new Error("Executable plan encryption key must be 32 bytes.");
-    return key;
-  }
-  const key = randomBytes(32);
-  writeFileSync(keyPath, key.toString("hex"), { mode: 0o600 });
-  return key;
+  return loadOrCreateHexKey(keyPath);
 }
 
 function constantEqual(left: string, right: string): boolean {

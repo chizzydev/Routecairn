@@ -7,6 +7,7 @@ import http from "node:http";
 import http2 from "node:http2";
 import https from "node:https";
 import net from "node:net";
+import inspector from "node:inspector";
 import tls from "node:tls";
 import { pathToFileURL } from "node:url";
 
@@ -66,6 +67,10 @@ function denyDirectCapabilities() {
   for (const name of ["exec", "execFile", "fork", "spawn"]) childProcess[name] = denied;
   for (const name of ["createConnection", "connect"]) net[name] = denied;
   net.Socket.prototype.connect = denied;
+  net.Server.prototype.listen = denied;
+  inspector.open = denied;
+  inspector.Session.prototype.connect = denied;
+  if (typeof inspector.Session.prototype.connectToMainThread === "function") inspector.Session.prototype.connectToMainThread = denied;
   tls.connect = denied;
   for (const transport of [http, https]) for (const name of ["request", "get"]) transport[name] = denied;
   http2.connect = denied;

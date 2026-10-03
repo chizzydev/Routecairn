@@ -20,6 +20,10 @@ RouteCairn uses Semantic Versioning for its public command line interface, confi
 - Plugins declare the host API range they support. RouteCairn rejects an incompatible range before module code is evaluated.
 - Database migrations are one way. Operators must back up the database and object store before upgrading. Downgrade requires restoring that backup.
 
+## Standards coverage version 2
+
+New standards coverage emits schema version 2 with published WSTG 4.2 IDs, exact source provenance, mapping hashes and strict complete-denominator accounting. JSON/Markdown/HTML/dashboard readers continue to display retained version-1 historical reports; the standards verification/export gate only accepts current version-2 evidence. Do not migrate legacy draft identifiers by string substitution: some IDs changed meaning. Generate new evidence through a fresh authorized scan.
+
 ## Release and support window
 
 Patch releases contain compatible fixes. Minor releases may add optional fields, capabilities, and migrations. Major releases may remove deprecated contracts. A deprecation remains documented for at least one minor release before removal. Security fixes are applied to the current minor release; critical fixes may also be backported to the previous minor release.

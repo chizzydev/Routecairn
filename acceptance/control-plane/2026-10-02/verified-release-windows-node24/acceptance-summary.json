@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED_LOCAL_DEPLOYMENT",
+  "nativeTests": {
+    "total": 54,
+    "passed": 54,
+    "failed": 0,
+    "skipped": 0
+  },
+  "nativeRuntimeChecks": 26,
+  "kubernetesGroups": 8,
+  "fleetReplicas": 3,
+  "scaleOutReplicas": 4,
+  "workerPods": 2,
+  "cleanup": "CONFIRMED",
+  "packageSha256": "501b54094ab3e2bb492d5c7379d2426a37de319c1b4edaf25b244a0ad6a7f916",
+  "packageFiles": 501,
+  "engineeringChecks": {
+    "releaseBuild": "PASSED",
+    "lint": "PASSED",
+    "deterministicFormatting": "PASSED",
+    "architecture": "PASSED",
+    "releasePolicy": "PASSED",
+    "releaseInputs": 86,
+    "dashboardFiles": 4,
+    "installedPackage": "PASSED",
+    "composeConfiguration": "PASSED",
+    "helmLint": "PASSED",
+    "workflowYaml": "PASSED"
+  },
+  "sourceSnapshotsVerifiedAgainstCurrentFiles": true,
+  "classification": "SELF_MAINTAINED_LOCAL_ACCEPTANCE",
+  "managedAwsKmsExecuted": false,
+  "kmsSdkEmulator": "Moto 5.1.12",
+  "hsmExecuted": false,
+  "multiNodeCluster": false,
+  "publicDeployment": false,
+  "independentlyOperated": false,
+  "dashboardTopology": "persistent singleton; SQLite administrative state; PostgreSQL advisory ownership lock",
+  "containerBuild": "final compiled runtime over a previously built Linux release image; installed runtime hashes checked in actual pods",
+  "minioBuild": "pinned community source 07c3a429bfed, cross-compiled with Go 1.25.1; source-based lab image",
+  "limitations": [
+    "Administrative state is not an active-active PostgreSQL dashboard migration.",
+    "Managed AWS KMS/HSM operation and multi-node or public deployment are unverified.",
+    "CI gates were added; their hosted execution is not claimed."
+  ],
+  "disposableClusterCleanup": "DEREGISTERED_AFTER_NAMESPACE_CLEANUP"
+}

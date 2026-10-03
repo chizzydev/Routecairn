@@ -605,6 +605,7 @@ function ScanDetail(props: { scanId: string; onReviewFindings: () => void; onRec
 
 function StandardsCoveragePanel({ value }: { value: any }) {
   const accounting = value.accounting ?? {};
+  const totals = Array.isArray(value.frameworkTotals) ? value.frameworkTotals : [];
   const areas = Array.isArray(value.wstgAreas) ? value.wstgAreas : [];
   const apiObjectives = Array.isArray(value.apiRiskObjectives) ? value.apiRiskObjectives : [];
   const gaps = Array.isArray(value.gaps) ? value.gaps : [];
@@ -619,6 +620,7 @@ function StandardsCoveragePanel({ value }: { value: any }) {
       <div className="metric"><strong>{accounting.blocked ?? 0}</strong><span>Blocked</span></div>
     </div>
     <div className="comparison-table-wrap"><table className="comparison-table"><thead><tr><th>WSTG area</th><th>Status</th><th>Executed</th><th>Conclusive</th></tr></thead><tbody>{areas.map((area: any) => <tr key={area.id}><td>{area.id} · {area.title}</td><td><Badge value={area.status} /></td><td>{area.executedCases}</td><td>{area.conclusiveCases}</td></tr>)}</tbody></table></div>
+    {totals.length > 0 && <><h4>Catalog denominators</h4><div className="comparison-table-wrap"><table className="comparison-table"><thead><tr><th>Framework</th><th>Active catalog</th><th>Mapped</th><th>Conclusive case evidence</th><th>Unassessed</th></tr></thead><tbody>{totals.map((item: any) => <tr key={item.framework}><td>{item.framework}</td><td>{item.activeEntries}</td><td>{item.mappedEntries}</td><td>{item.conclusiveEntries}</td><td>{item.unassessedEntries}</td></tr>)}</tbody></table></div><p className="muted">WSTG {value.catalog?.wstg}; ASVS {value.catalog?.asvs}; catalog SHA-256: {value.catalog?.sha256}. A bounded case association does not establish verification of every requirement clause or certification.</p></>}
     <h4>API Security objectives</h4><div className="comparison-table-wrap"><table className="comparison-table"><thead><tr><th>Objective</th><th>Status</th><th>Engines</th><th>Executed</th><th>Conclusive</th></tr></thead><tbody>{apiObjectives.map((objective: any) => <tr key={objective.id}><td>{objective.id} · {objective.title}</td><td><Badge value={objective.status} /></td><td>{objective.engineIds?.join(", ") || "none"}</td><td>{objective.executedCases}</td><td>{objective.conclusiveCases}</td></tr>)}</tbody></table></div>
     {gaps.length > 0 && <><h4>Priority gaps</h4><ul className="safe-object-list">{gaps.map((gap: any) => <li key={`${gap.framework}:${gap.id}`}><strong>{gap.priority} · {gap.id} · {gap.title}</strong><span>{gap.reason}</span></li>)}</ul></>}
     <p className="muted">Coverage reflects retained cases in this scan. Download the standards JSON or CSV artifact for the complete case-to-standard matrix.</p>

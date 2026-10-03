@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "standard": "OWNED_SUPABASE_RECOVERY_V1",
+  "runId": "cd05af99-e594-4c8f-a9bf-d0f6d2d80b7d",
+  "checkedAt": "2026-09-30T21:25:34.819Z",
+  "authorizationSha256": "5eb16c10557602de45dbafd1dd78a25551333379d1686d5804309629275cf9a3",
+  "status": "VERIFIED",
+  "remaining": 0,
+  "failures": [],
+  "requestCount": 1,
+  "receipts": [
+    {
+      "case": "STORAGE_BUCKET_DELETE",
+      "status": "PASSED",
+      "statusCode": 400,
+      "bodySha256": "cdaff975adcfebff6d6ee1f4d0116d6e86ce03d9718d0d90a3c364f229316aca",
+      "responseBytes": 98
+    }
+  ],
+  "independentAcceptanceVerified": false
+}

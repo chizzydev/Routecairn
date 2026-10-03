@@ -15,6 +15,8 @@ export interface RawHttp1Request {
   timeoutMs: number;
   maxResponseBytes: number;
   userAgent: string;
+  /** Explicit trust anchor for a disposable deployment; verification remains enabled. */
+  tlsCa?: string | Buffer;
   abortSignal?: AbortSignal;
   targetOrigin: string;
   dnsResolver?: (hostname: string) => Promise<readonly (string | { address: string; family: 4 | 6 })[]>;
@@ -117,7 +119,7 @@ function exchange(request: RawHttp1Request, address: { address: string; family: 
     };
     const abort = () => { socket?.destroy(); finish(new Error("RAW_HTTP1_ABORTED")); };
     const options = { host: address.address, port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)), family: address.family, timeout: request.timeoutMs };
-    socket = parsed.protocol === "https:" ? tlsConnect({ ...options, servername: parsed.hostname, rejectUnauthorized: true }) : tcpConnect(options);
+    socket = parsed.protocol === "https:" ? tlsConnect({ ...options, servername: parsed.hostname, rejectUnauthorized: true, ...(request.tlsCa ? { ca: request.tlsCa } : {}) }) : tcpConnect(options);
     socket.setTimeout(request.timeoutMs, () => { socket.destroy(); finish(new Error("RAW_HTTP1_TIMEOUT")); });
     if (parsed.protocol === "https:") socket.on("secureConnect", () => socket.write(wire));
     else socket.on("connect", () => socket.write(wire));

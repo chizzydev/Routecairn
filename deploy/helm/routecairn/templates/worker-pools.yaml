@@ -1,39 +1,51 @@
-{{- range .Values.workerPools }}
+{{- range $pool := .Values.workerPools }}
+{{- if and (not $pool.workers) (gt (int (default 1 $pool.replicas)) 1) }}
+{{- fail "A worker pool needs one distinct enrollment Secret per worker; set workerPools[].workers." }}
+{{- end }}
+{{- $workers := default (list (dict "name" "primary" "enrollmentSecretName" $pool.enrollmentSecretName "stateKey" $pool.stateKey)) $pool.workers }}
+{{- range $worker := $workers }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "routecairn.fullname" $ }}-worker-{{ .name }}
-  labels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/network-zone: {{ .networkZone | quote }} }
+  name: {{ include "routecairn.fullname" $ }}-worker-{{ $pool.name }}-{{ $worker.name }}
+  labels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/network-zone: {{ $pool.networkZone | quote }} }
 spec:
-  replicas: {{ .replicas }}
-  selector: { matchLabels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/pool: {{ .name | quote }} } }
+  replicas: 1
+  selector: { matchLabels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/pool: {{ $pool.name | quote }}, routecairn.io/worker: {{ $worker.name | quote }} } }
   template:
     metadata:
-      labels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/pool: {{ .name | quote }}, routecairn.io/network-zone: {{ .networkZone | quote }} }
+      labels: { app.kubernetes.io/name: routecairn-worker, app.kubernetes.io/instance: {{ $.Release.Name }}, routecairn.io/pool: {{ $pool.name | quote }}, routecairn.io/worker: {{ $worker.name | quote }}, routecairn.io/network-zone: {{ $pool.networkZone | quote }} }
       annotations:
-        routecairn.io/capabilities: {{ join "," .capabilities | quote }}
+        routecairn.io/capabilities: {{ join "," $pool.capabilities | quote }}
     spec:
       serviceAccountName: {{ include "routecairn.serviceAccountName" $ }}
-      securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: worker
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
-          args: ["agent","run","--state","/var/run/routecairn-agent/{{ .stateKey }}","--workspace","/var/lib/routecairn-worker"]
+          args: ["agent","run","--state","/var/run/routecairn-agent/{{ $worker.stateKey }}","--workspace","/var/lib/routecairn-worker"]
           securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
-          resources: {{- toYaml .resources | nindent 12 }}
+          resources: {{- toYaml $pool.resources | nindent 12 }}
           volumeMounts:
             - { name: state, mountPath: /var/run/routecairn-agent, readOnly: true }
             - { name: workload-identity, mountPath: /var/run/secrets/routecairn, readOnly: true }
             - { name: workspace, mountPath: /var/lib/routecairn-worker }
             - { name: tmp, mountPath: /tmp }
+          {{- if $pool.tlsCaSecretName }}
+            - { name: tls-ca, mountPath: /var/run/secrets/routecairn-edge, readOnly: true }
+          {{- end }}
       volumes:
-        - { name: state, secret: { secretName: {{ .enrollmentSecretName }}, defaultMode: 0400 } }
+        - { name: state, secret: { secretName: {{ $worker.enrollmentSecretName }}, defaultMode: 0440 } }
         - name: workload-identity
           projected:
-            defaultMode: 0400
+            defaultMode: 0440
             sources:
               - serviceAccountToken: { path: token, audience: {{ $.Values.workloadIdentity.audience | quote }}, expirationSeconds: 3600 }
         - { name: workspace, emptyDir: {} }
         - { name: tmp, emptyDir: {} }
+      {{- if $pool.tlsCaSecretName }}
+        - { name: tls-ca, secret: { secretName: {{ $pool.tlsCaSecretName }}, defaultMode: 0440 } }
+      {{- end }}
+{{- end }}
 {{- end }}

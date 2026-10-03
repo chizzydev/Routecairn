@@ -1,3 +1,4 @@
+import { runIndependentBenchmark, evaluateIndependentBenchmark } from "../../benchmark/IndependentBenchmark.js";
 import type { Command } from "commander";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -7,7 +8,7 @@ import { evaluateBenchmark, type BenchmarkResult, type BenchmarkRunInput } from 
 import { writeBenchmarkArtifacts } from "../../benchmark/BenchmarkArtifacts.js";
 import { runLocalBenchmark } from "../../benchmark/LocalBenchmarkLab.js";
 import { openBenchmarkPack, sealBenchmarkManifest, signBenchmarkManifest, verifyBenchmarkManifest } from "../../benchmark/BenchmarkCorpus.js";
-import { credibilityTruthManifest, runCredibilityBenchmark } from "../../benchmark/CredibilityBenchmarkLab.js";
+import { credibilityTargetMatrix, credibilityTruthManifest, runCredibilityBenchmark } from "../../benchmark/CredibilityBenchmarkLab.js";
 
 export function registerBenchmarkCommand(program: Command): void {
   const command = program.command("benchmark").description("Measure detection quality, coverage, efficiency, and release regressions.");
@@ -30,11 +31,12 @@ export function registerBenchmarkCommand(program: Command): void {
     });
   const corpus = command.command("corpus").description("Sign, verify, and blind independently maintained benchmark corpora.");
   corpus.command("generate-public").requiredOption("--output <file>").action(async (options: { output: string }) => {
-    const manifest = credibilityTruthManifest([{ id: "node-http", language: "TypeScript", framework: "node:http" }, { id: "python-http", language: "Python", framework: "http.server" }]); await writeJsonFile(options.output, manifest);
+    const manifest = credibilityTruthManifest(credibilityTargetMatrix); await writeJsonFile(options.output, manifest);
     process.stdout.write(`${JSON.stringify({ status: "GENERATED", output: resolve(options.output), corpusVersion: manifest.corpus?.version, caseCount: manifest.cases.length }, null, 2)}\n`);
   });
-  corpus.command("seal").requiredOption("--manifest <file>").requiredOption("--key-env <name>").requiredOption("--output <file>").action(async (options: { manifest: string; keyEnv: string; output: string }) => {
-    const secret = requiredEnvironment(options.keyEnv); const pack = sealBenchmarkManifest(await loadJson(options.manifest), secret); await writeJsonFile(options.output, pack);
+  corpus.command("seal").option("--private-key <file>", "Sign prepared blinded truth with the publisher key.").option("--key-id <id>", "Publisher signing key identity.").requiredOption("--manifest <file>").requiredOption("--key-env <name>").requiredOption("--output <file>").action(async (options: { manifest: string; keyEnv: string; output: string; privateKey?: string; keyId?: string }) => {
+    if (Boolean(options.privateKey) !== Boolean(options.keyId)) throw new Error("BENCHMARK_SEAL_SIGNER_REQUIRED");
+    const secret = requiredEnvironment(options.keyEnv); const pack = sealBenchmarkManifest(await loadJson(options.manifest), secret, options.privateKey ? { privateKeyPem: await readFile(resolve(options.privateKey), "utf8"), keyId: options.keyId! } : undefined); await writeJsonFile(options.output, pack);
     process.stdout.write(`${JSON.stringify({ status: "SEALED", output: resolve(options.output), caseCount: pack.public.caseCount, publicDigest: pack.sealedTruth.publicDigest }, null, 2)}\n`);
   });
   corpus.command("sign").requiredOption("--manifest <file>").requiredOption("--private-key <file>").requiredOption("--key-id <id>").requiredOption("--output <file>").action(async (options: { manifest: string; privateKey: string; keyId: string; output: string }) => {
@@ -58,18 +60,29 @@ export function registerBenchmarkCommand(program: Command): void {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`); if (summary.result.status === "FAILED") process.exitCode = 2;
     });
   command.command("credibility")
-    .description("Run the versioned 240-case multi-language public credibility corpus.")
+    .description("Run the versioned 576-case multi-language public credibility corpus.")
     .option("--output <directory>", "Parent directory for a fresh benchmark run.")
-    .option("--repetitions <number>", "Repetitions, from 1 to 10.", "1")
+    .option("--repetitions <number>", "Repetitions, from 1 to 10. Passing credibility requires at least 3.", "3")
     .option("--baseline <file>", "Prior benchmark-result.json for regression gating.")
     .option("--release <label>", "Release label recorded in artifacts.")
     .option("--build <id>", "Build or commit identifier recorded in artifacts.")
     .option("--python <command>", "Python 3 executable.")
-    .action(async (options: { output?: string; repetitions: string; baseline?: string; release?: string; build?: string; python?: string }) => {
+    .option("--go <command>", "Go executable used to build the loopback fixture.")
+    .action(async (options: { output?: string; repetitions: string; baseline?: string; release?: string; build?: string; python?: string; go?: string }) => {
       const baseline = options.baseline ? await loadJson<BenchmarkResult>(options.baseline) : undefined;
-      const summary = await runCredibilityBenchmark({ ...(options.output ? { output: options.output } : {}), repetitions: Number(options.repetitions), ...(baseline ? { baseline } : {}), ...(options.release ? { release: options.release } : {}), ...(options.build ? { build: options.build } : {}), ...(options.python ? { pythonCommand: options.python } : {}) });
+      const summary = await runCredibilityBenchmark({ ...(options.output ? { output: options.output } : {}), repetitions: Number(options.repetitions), ...(baseline ? { baseline } : {}), ...(options.release ? { release: options.release } : {}), ...(options.build ? { build: options.build } : {}), ...(options.python ? { pythonCommand: options.python } : {}), ...(options.go ? { goCommand: options.go } : {}) });
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`); if (summary.result.status === "FAILED") process.exitCode = 2;
     });
+  const independent = command.command("independent").description("Run approved external contracts and verify separately signed, blinded benchmark evidence.");
+  independent.command("run").requiredOption("--plan <file>").requiredOption("--pack <file>").requiredOption("--trust <file>").requiredOption("--release-artifact <file>").requiredOption("--signing-key <file>").requiredOption("--output <directory>").action(async (options: { plan: string; pack: string; trust: string; releaseArtifact: string; signingKey: string; output: string }) => {
+    process.stdout.write(`${JSON.stringify(await runIndependentBenchmark(options), null, 2)}\n`);
+  });
+  independent.command("evaluate").requiredOption("--submission <file>").requiredOption("--pack <file>").requiredOption("--key-env <name>").requiredOption("--trust <file>").requiredOption("--release-artifact <file>").requiredOption("--output <directory>").option("--baseline <file>").action(async (options: { submission: string; pack: string; keyEnv: string; trust: string; releaseArtifact: string; output: string; baseline?: string }) => {
+    const summary = await evaluateIndependentBenchmark({ ...options, secret: requiredEnvironment(options.keyEnv) });
+    process.stdout.write(`${JSON.stringify({ status: summary.result.status, metrics: summary.result.metrics, artifacts: summary.artifacts, verificationPath: summary.verificationPath }, null, 2)}\n`);
+    if (summary.result.status === "FAILED") process.exitCode = 2;
+  });
+
 }
 
 async function evaluateFiles(options: { manifest?: string; blindPack?: string; blindKeyEnv?: string; corpusPublicKey?: string; corpusKeyId?: string; reports: string[]; telemetry?: string[]; baseline?: string; release?: string; build?: string }): Promise<BenchmarkResult> {

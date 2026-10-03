@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "framework": "OWASP_WSTG",
+      "version": "4.2",
+      "file": "wstg-4.2.json",
+      "url": "https://raw.githubusercontent.com/OWASP/wstg/dd33419e10edb22b78d89325a6c2aad9f184e3a2/checklist/checklist.json",
+      "revision": "dd33419e10edb22b78d89325a6c2aad9f184e3a2",
+      "license": "CC-BY-SA-4.0",
+      "bytes": 56530,
+      "sha256": "12e11356b02fc9d6ea1b65554145e14dfdffceb9829ff9d93edf14d3654bdf3c"
+    },
+    {
+      "framework": "OWASP_ASVS",
+      "version": "5.0.0",
+      "file": "asvs-5.0.0.json",
+      "url": "https://raw.githubusercontent.com/OWASP/ASVS/60437a5ed660f757ab9a8d9e0b7181a06492446a/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.flat.json",
+      "revision": "60437a5ed660f757ab9a8d9e0b7181a06492446a",
+      "license": "CC-BY-SA-4.0",
+      "bytes": 162870,
+      "sha256": "8201b20eec2908c3380ac600c91c8ba746346fbb808859366abb232027532311"
+    },
+    {
+      "framework": "OWASP_API_TOP_10",
+      "version": "2023",
+      "file": "api-2023.md",
+      "url": "https://raw.githubusercontent.com/OWASP/API-Security/33cea37b2ffde3e2e62f6b5d79a029a22a846633/editions/2023/en/0x11-t10.md",
+      "revision": "33cea37b2ffde3e2e62f6b5d79a029a22a846633",
+      "license": "CC-BY-SA-4.0",
+      "bytes": 4331,
+      "sha256": "c396a9fc70a64ea6bccba608b482a99750f00f0ad6c283d6fbdd5c4d936040a3"
+    },
+    {
+      "framework": "CWE",
+      "version": "4.20",
+      "file": "cwe-4.20.xml.zip",
+      "url": "https://cwe.mitre.org/data/xml/cwec_v4.20.xml.zip",
+      "license": "MITRE Terms of Use",
+      "bytes": 2021351,
+      "sha256": "3976f599e5e5200219a3108bb896d06e2a88fbb293369e1883cb423a5e9d7d50"
+    },
+    {
+      "framework": "CAPEC",
+      "version": "3.9",
+      "file": "capec-3.9.xml",
+      "url": "https://capec.mitre.org/data/xml/capec_v3.9.xml",
+      "license": "MITRE Terms of Use",
+      "bytes": 3849998,
+      "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d"
+    }
+  ]
+}

@@ -46,6 +46,9 @@ export interface WstgAreaCoverage {
   executedCases: number;
   conclusiveCases: number;
   requirementIds: readonly string[];
+  catalogRequirements: number;
+  mappedRequirements: number;
+  conclusiveRequirements: number;
 }
 
 export interface StandardsCoverageGap {
@@ -58,16 +61,22 @@ export interface StandardsCoverageGap {
 }
 
 export interface StandardsCoverageReport {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
   catalog: {
-    wstg: "latest";
+    wstg: "4.2";
     wstgSnapshotDate: string;
     asvs: "5.0.0";
     apiSecurityTop10: "2023";
-    cwe: "current";
-    capec: "current";
+    cwe: "4.20";
+    capec: "3.9";
+    sha256: string;
+    sourceLockSha256: string;
+    sources: readonly import("./OfficialCatalogSchema.js").OfficialSource[];
+    counts: Readonly<Record<StandardsFramework, number>>;
   };
+  validation: { policy: "FAIL_ON_UNMAPPED"; mappingScope: "BOUNDED_CASE_ASSOCIATION"; mappingSha256: string };
+  frameworkTotals: readonly { framework: StandardsFramework; catalogEntries: number; activeEntries: number; mappedEntries: number; conclusiveEntries: number; unassessedEntries: number }[];
   accounting: {
     plannedModules: number;
     executedCases: number;

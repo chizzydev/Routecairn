@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "status": "VERIFIED",
+  "provenance": "SELF_MAINTAINED_LOOPBACK",
+  "publicDeployment": false,
+  "independentlyOperated": false,
+  "communityAdoption": false,
+  "isolation": "REVIEWED_PROCESS",
+  "runtime": [
+    {
+      "moduleId": "reference-security-headers",
+      "packageDigest": "bc27238eb232f9fd8ff038a33a5cfebab390348f3dab59690971aacf38e71c5d",
+      "transmittedRequests": 1,
+      "observations": 1,
+      "findings": 1,
+      "separatelyApproved": true
+    },
+    {
+      "moduleId": "reference-framework-fingerprint",
+      "packageDigest": "f9a742738e4bc8a685661daf10253c9acbe3b3b4b0c00ff2a19956c6fd10599d",
+      "transmittedRequests": 1,
+      "observations": 1,
+      "findings": 0,
+      "separatelyApproved": true
+    },
+    {
+      "moduleId": "reference-graphql-response",
+      "packageDigest": "20c0a4eb095d427c5981e485dd1d5baf88c111ad5d4e26de06161fd5832cdc98",
+      "transmittedRequests": 1,
+      "observations": 1,
+      "findings": 0,
+      "separatelyApproved": true
+    }
+  ],
+  "checks": [
+    "authenticated-signing",
+    "digest-review-policy",
+    "publisher-namespace",
+    "immutable-publication",
+    "anonymous-discovery",
+    "signed-download",
+    "safe-installation",
+    "separate-package-approval",
+    "target-digest-approval",
+    "bounded-broker",
+    "response-redaction",
+    "database-reopen",
+    "revocation-quarantine",
+    "revoked-registry-filter",
+    "secret-free-audit"
+  ],
+  "cleanup": "CONFIRMED"
+}

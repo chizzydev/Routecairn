@@ -27,6 +27,16 @@ afterEach(() => {
 });
 
 describe("operational scale services", () => {
+  it("invalidates authenticated snapshots and old leases when a local worker is revoked and reenabled", () => {
+    const {database}=fixture(),service=new RemoteWorkerService(database),organizationId=defaultOrganization(database),keys=generateKeyPairSync("ed25519");
+    const enrollment=service.createEnrollment({organizationId,expiresInMinutes:5},"operator"),enrolled=service.enroll({token:enrollment.token,name:"revocation-worker",publicKeyPem:keys.publicKey.export({format:"pem",type:"spki"}).toString(),capabilities:["ping"],labels:{}});
+    const path="/api/remote-agents/worker/claim",body={},worker=service.authenticate("POST",path,body,signedHeaders(enrolled.workerId,keys.privateKey.export({format:"pem",type:"pkcs8"}).toString(),path,body));
+    const id=service.enqueue({organizationId,kind:"PING",payload:{},requiredCapabilities:[],priority:0,maxAttempts:3},"operator"),claimed=service.claim(worker).job!;
+    service.setStatus(worker.id,"REVOKED");expect(()=>service.heartbeat(worker,{status:"ONLINE",resources:{}})).toThrow("REMOTE_WORKER_REJECTED");expect(service.claim(worker)).toEqual({job:null});expect(()=>service.renew(worker,id,claimed.leaseToken)).toThrow("REMOTE_WORKER_REJECTED");
+    service.setStatus(worker.id,"ONLINE");expect(()=>service.complete(worker,id,{leaseToken:claimed.leaseToken,status:"COMPLETED"})).toThrow("REMOTE_WORKER_REJECTED");
+    const current=service.authenticate("POST",path,body,signedHeaders(enrolled.workerId,keys.privateKey.export({format:"pem",type:"pkcs8"}).toString(),path,body));const next=service.claim(current).job!;expect(next.id).toBe(id);expect(next.leaseToken).not.toBe(claimed.leaseToken);
+    service.setStatus(worker.id,"DRAINING");service.heartbeat(current,{status:"ONLINE",resources:{}});expect(service.claim(current)).toEqual({job:null});service.complete(current,id,{leaseToken:next.leaseToken,status:"COMPLETED"});database.close();
+  });
   it("creates the default organization and enforces organization roles and final-owner safety", () => {
     const { database } = fixture();
     const organizations = new OrganizationService(database);

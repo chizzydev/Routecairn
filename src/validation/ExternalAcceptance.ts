@@ -3,7 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
-import { runBoundedHttp } from "../modules/protocolSecurity/ProtocolTransports.js";
+import { runBoundedHttp, runSse, runWebSocket } from "../modules/protocolSecurity/ProtocolTransports.js";
+import { externalAcceptanceBindingsSchema, externalAcceptanceTrustSchema, prepareExternalAcceptance, trustedAcceptanceOperator, acceptanceCanonical, acceptanceDigest, acceptanceReferenceIssues } from "./ExternalAcceptanceReadiness.js";
 
 export const externalAcceptanceLaneKinds = [
   "MULTI_TENANT_SAAS",
@@ -50,7 +51,11 @@ const requestSchema = z.object({
   path: z.string().min(1).max(2048).regex(/^\//),
   headers: z.record(headerName, safeText).default({}),
   body: z.unknown().optional(),
-  timeoutMs: z.number().int().min(250).max(120_000).default(20_000)
+  timeoutMs: z.number().int().min(250).max(120_000).default(20_000),
+  transport: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("GRAPHQL_WS"), protocol: z.enum(["graphql-transport-ws", "graphql-ws"]), document: z.string().min(1).max(65536), variables: z.record(z.unknown()).default({}), connectionPayload: z.unknown().optional(), maxMessages: z.number().int().min(1).max(30).default(10) }).strict(),
+    z.object({ kind: z.literal("GRAPHQL_SSE"), maxEvents: z.number().int().min(1).max(30).default(1) }).strict()
+  ]).optional()
 }).strict();
 const actionSchema = z.object({
   id: identifier,
@@ -107,7 +112,10 @@ export const externalAcceptanceManifestSchema = z.object({
     allowedOrigins: z.record(identifier, z.string().url().max(2048)),
     secretEnvironment: z.record(identifier, envName).default({}),
     maxRequests: z.number().int().min(8).max(1000).default(250),
-    rateLimitPerSecond: z.number().min(0.1).max(50).default(5)
+    rateLimitPerSecond: z.number().min(0.1).max(50).default(5),
+    maxRequestBytes: z.number().int().min(1024).max(1024 * 1024).default(65536),
+    maxDurationMs: z.number().int().min(1000).max(3600000).default(1800000),
+    cleanupGraceMs: z.number().int().min(0).max(3600000).default(300000)
   }).strict(),
   lanes: z.array(laneSchema).length(8)
 }).strict().superRefine((value, ctx) => {
@@ -128,6 +136,7 @@ export const externalAcceptanceManifestSchema = z.object({
     for (const [actionIndex, action] of lane.actions.entries()) {
       if (actionIds.has(action.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "id"], message: "Action IDs must be unique per lane." });
       actionIds.add(action.id);
+      if (action.request.transport && (!action.semantic.startsWith("GRAPHQL_SUBSCRIPTION") || action.request.transport.kind === "GRAPHQL_WS" && action.request.method !== "GET" || action.request.transport.kind === "GRAPHQL_SSE" && !["GET", "POST"].includes(action.request.method))) ctx.addIssue({ code: "custom", path: ["lanes", laneIndex, "actions", actionIndex], message: "Native subscription transport requires its matching GraphQL subscription semantic and method." });
       if (!requiredSemantics[lane.kind].includes(action.semantic)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "semantic"], message: `${action.semantic} does not belong to ${lane.kind}.` });
       const owner = caseOwners.get(action.caseIdentity);
       const remediationIdentity = lane.kind === "REMEDIATION_LIFECYCLE" && requiredSemantics.REMEDIATION_LIFECYCLE.includes(action.semantic);
@@ -135,9 +144,9 @@ export const externalAcceptanceManifestSchema = z.object({
       else caseOwners.set(action.caseIdentity, `${lane.id}/${action.id}`);
       if (!value.authorization.allowedOrigins[action.request.origin]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "request", "origin"], message: "Origin alias is not authorized." });
       if (lane.kind === "SYNTHETIC_PAYMENT" && !action.synthetic) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "synthetic"], message: "Every payment-lane action must be explicitly synthetic." });
-      if (positiveSemantics.has(action.semantic) && !action.assertions.statuses.some((status) => status >= 200 && status < 300)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "assertions", "statuses"], message: `${action.semantic} requires an explicit successful status assertion.` });
+      if (positiveSemantics.has(action.semantic) && !action.assertions.statuses.some((status) => status >= 200 && status < 300 || action.request.transport?.kind === "GRAPHQL_WS" && status === 101)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "assertions", "statuses"], message: `${action.semantic} requires an explicit successful status assertion.` });
       if (negativeSemantics.has(action.semantic) && action.assertions.statuses.some((status) => status >= 200 && status < 300)) {
-        const graphqlDenial = action.semantic.startsWith("GRAPHQL_") && action.assertions.statuses.includes(200) && action.assertions.jsonPresent.includes("errors.0");
+        const graphqlDenial = action.semantic.startsWith("GRAPHQL_") && action.assertions.statuses.includes(200) && (action.assertions.jsonPresent.includes("errors.0") || action.request.transport !== undefined);
         const emptyRls = action.semantic === "SUPABASE_TABLE_FOREIGN_DENIED" && action.assertions.statuses.includes(200) && action.assertions.jsonEquals.length === 0;
         if (!graphqlDenial && !emptyRls) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lanes", laneIndex, "actions", actionIndex, "assertions"], message: `${action.semantic} cannot treat a successful status as denial without a protocol-specific denial assertion.` });
       }
@@ -232,6 +241,7 @@ export interface ExternalAcceptanceSummary {
   lanes: LaneEvidence[];
   evidenceSha256: string;
   outputDirectory: string;
+  provenance?: { mode: "FIXTURE" | "INDEPENDENT_EXTERNAL"; externalTargetsTested: boolean; independentlyTrustedOperator: boolean; readinessSha256?: string; bindingsSha256?: string; trustSha256?: string };
 }
 
 export interface ExternalAcceptanceBundle {
@@ -269,10 +279,21 @@ export async function generateExternalAcceptanceKeyPair(privateKeyPath: string, 
   return { keyId: publicKeyId(keys.publicKey), privateKeyPath: resolve(privateKeyPath), publicKeyPath: resolve(publicKeyPath) };
 }
 
-export async function runExternalAcceptance(input: ExternalAcceptanceManifest, options: { releaseArtifact: string; outputDirectory?: string; signingKey: string; environment?: NodeJS.ProcessEnv; now?: Date }): Promise<ExternalAcceptanceBundle> {
+export async function runExternalAcceptance(input: ExternalAcceptanceManifest, options: { releaseArtifact: string; outputDirectory?: string; signingKey: string; environment?: NodeJS.ProcessEnv; now?: Date; mode?: "FIXTURE" | "INDEPENDENT_EXTERNAL"; bindingsPath?: string; trustPath?: string }): Promise<ExternalAcceptanceBundle> {
   const manifest = externalAcceptanceManifestSchema.parse(input);
   const now = options.now ?? new Date();
-  if (now.getTime() < Date.parse(manifest.authorization.startsAt) || now.getTime() > Date.parse(manifest.authorization.expiresAt)) throw new Error("EXTERNAL_ACCEPTANCE_AUTHORIZATION_WINDOW_INACTIVE");
+  if (now.getTime() < Date.parse(manifest.authorization.startsAt) || now.getTime() >= Date.parse(manifest.authorization.expiresAt)) throw new Error("EXTERNAL_ACCEPTANCE_AUTHORIZATION_WINDOW_INACTIVE");
+  assertCredentialReferences(manifest);
+  const mode = options.mode ?? "FIXTURE";
+  let provenance: NonNullable<ExternalAcceptanceSummary["provenance"]> = { mode, externalTargetsTested: false, independentlyTrustedOperator: false };
+  if (mode === "INDEPENDENT_EXTERNAL") {
+    if (!options.bindingsPath || !options.trustPath) throw new Error("EXTERNAL_ACCEPTANCE_INDEPENDENT_BINDINGS_AND_TRUST_REQUIRED");
+    const bindings = externalAcceptanceBindingsSchema.parse(JSON.parse(await readFile(options.bindingsPath, "utf8")));
+    const trust = externalAcceptanceTrustSchema.parse(JSON.parse(await readFile(options.trustPath, "utf8")));
+    const readiness = await prepareExternalAcceptance(manifest, { bindings, trust, ...(options.environment ? { environment: options.environment } : {}), now, resolveDns: true });
+    if (readiness.status !== "READY") throw new Error(`EXTERNAL_ACCEPTANCE_NOT_READY:${readiness.issues.map((issue) => issue.code).join(",")}`);
+    provenance = { mode, externalTargetsTested: true, independentlyTrustedOperator: true, readinessSha256: acceptanceDigest(acceptanceCanonical(readiness)), bindingsSha256: acceptanceDigest(acceptanceCanonical(bindings)), trustSha256: acceptanceDigest(acceptanceCanonical(trustedAcceptanceOperator(trust, manifest.operator.publicKeyId, manifest.operator.organization, now.toISOString()))) };
+  } else for (const origin of Object.values(manifest.authorization.allowedOrigins)) if (!["127.0.0.1", "localhost", "[::1]"].includes(new URL(origin).hostname)) throw new Error("EXTERNAL_ACCEPTANCE_FIXTURE_MUST_BE_LOOPBACK");
   const artifactPath = resolve(options.releaseArtifact);
   const artifactBytes = await readFile(artifactPath);
   const artifactDigest = digest(artifactBytes);
@@ -300,7 +321,7 @@ export async function runExternalAcceptance(input: ExternalAcceptanceManifest, o
     const ordered = [...lane.actions.filter((action) => action.phase !== "CLEANUP"), ...lane.actions.filter((action) => action.phase === "CLEANUP")];
     for (const action of ordered) {
       if (primaryFailure && action.phase !== "CLEANUP") continue;
-      if (action.phase !== "CLEANUP" && Date.now() > Date.parse(manifest.authorization.expiresAt)) {
+      if (Date.now() >= Date.parse(manifest.authorization.expiresAt) + (action.phase === "CLEANUP" ? manifest.authorization.cleanupGraceMs : 0) || action.phase !== "CLEANUP" && Date.now() - Date.parse(startedAt) >= manifest.authorization.maxDurationMs) {
         primaryFailure = true;
         actions.push({ id: action.id, phase: action.phase, semantic: action.semantic, caseIdentity: action.caseIdentity, status: "FAILED", request: { method: action.request.method, origin: action.request.origin, path: action.request.path }, durationMs: 0, reason: "EXTERNAL_ACCEPTANCE_AUTHORIZATION_EXPIRED" });
         continue;
@@ -316,16 +337,45 @@ export async function runExternalAcceptance(input: ExternalAcceptanceManifest, o
         request: { method: action.request.method, origin: action.request.origin, path: action.request.path }, durationMs: 0
       };
       try {
+        const expires = Date.parse(manifest.authorization.expiresAt) + (action.phase === "CLEANUP" ? manifest.authorization.cleanupGraceMs : 0);
+        const remaining = () => Math.min(expires - Date.now(), action.phase === "CLEANUP" ? Infinity : manifest.authorization.maxDurationMs - (Date.now() - Date.parse(startedAt)));
+        if (remaining() <= 0) throw new Error("EXTERNAL_ACCEPTANCE_AUTHORIZATION_OR_DURATION_EXPIRED");
         const requestBody = action.request.body === undefined ? undefined : JSON.stringify(expand(action.request.body, secrets, captures));
+        if (requestBody !== undefined && Buffer.byteLength(requestBody) > manifest.authorization.maxRequestBytes) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_BODY_LIMIT_EXCEEDED");
         if (requestBody !== undefined) evidence.request.bodySha256 = digest(requestBody);
         const origin = normalizedOrigins[action.request.origin]!;
-        const expandedPath = expandString(action.request.path, secrets, captures);
-        if (!expandedPath.startsWith("/")) throw new Error("EXTERNAL_ACCEPTANCE_PATH_INVALID");
+        const expandedPath = expandString(action.request.path, secrets, captures, true);
+        if (!expandedPath.startsWith("/") || expandedPath.length > 8192) throw new Error("EXTERNAL_ACCEPTANCE_PATH_INVALID");
         const target = new URL(expandedPath, `${origin}/`);
         if (target.origin !== origin) throw new Error("EXTERNAL_ACCEPTANCE_CROSS_ORIGIN_BLOCKED");
         const headers = Object.fromEntries(Object.entries(action.request.headers).map(([name, value]) => [name, expandString(value, secrets, captures)]));
+        if (Object.keys(headers).length > 50 || Buffer.byteLength(JSON.stringify(headers)) > 32768) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_HEADER_LIMIT_EXCEEDED");
+        for (const [name, value] of Object.entries(headers)) if (!safeText.safeParse(value).success || /^(?:host|:authority|content-length|transfer-encoding|connection|upgrade)$/i.test(name)) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_HEADER_INVALID");
         if (requestBody !== undefined && !findHeader(headers, "content-type")) headers["content-type"] = "application/json";
-        const response = await runBoundedHttp(target.toString(), action.request.method, headers, requestBody === undefined ? undefined : Buffer.from(requestBody), { allowedPrivateOrigins: Object.values(normalizedOrigins), timeoutMs: action.request.timeoutMs, maxBytes: 1024 * 1024 });
+        const deadlineRemaining = remaining();
+        if (deadlineRemaining <= 0) throw new Error("EXTERNAL_ACCEPTANCE_AUTHORIZATION_OR_DURATION_EXPIRED");
+        const timeoutMs = Math.max(1, Math.min(action.request.timeoutMs, deadlineRemaining));
+        const transportOptions = { allowedPrivateOrigins: Object.values(normalizedOrigins), timeoutMs, maxBytes: 1024 * 1024, abortSignal: AbortSignal.timeout(timeoutMs) };
+        let response;
+        if (action.request.transport?.kind === "GRAPHQL_WS") {
+          const transport = action.request.transport; const payload = expand({ query: transport.document, variables: transport.variables }, secrets, captures);
+          const outbound = [{ type: "connection_init", ...(transport.connectionPayload === undefined ? {} : { payload: expand(transport.connectionPayload, secrets, captures) }) }, { id: action.id, type: transport.protocol === "graphql-transport-ws" ? "subscribe" : "start", payload }];
+          if (Buffer.byteLength(JSON.stringify(outbound)) > manifest.authorization.maxRequestBytes) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_BODY_LIMIT_EXCEEDED");
+          const result = await runWebSocket(target.toString().replace(/^http/, "ws"), headers, [transport.protocol], outbound, transport.maxMessages, transportOptions, "connection_ack");
+          const ackIndex = result.messages.findIndex((message) => message.type === "connection_ack");
+          const containsData = (message: typeof result.messages[number]) => { const value = valueAt(message.value, "payload.data"); return ["next", "data"].includes(message.type ?? "") && value !== null && value !== undefined; };
+          const data = result.messages.some((message, index) => index > ackIndex && ackIndex >= 0 && valueAt(message.value, "id") === action.id && containsData(message));
+          const anyData = result.messages.some(containsData);
+          const denied = result.statusCode >= 400 || result.messages.some((message) => message.type === "connection_error" || valueAt(message.value, "id") === action.id && (message.type === "error" || valueAt(message.value, "payload.errors.0") !== undefined));
+          if (action.semantic.endsWith("OWNER_ALLOWED") ? result.protocol !== transport.protocol || !data || denied : anyData || !denied) throw new Error("EXTERNAL_ACCEPTANCE_SUBSCRIPTION_CONTRACT_FAILED");
+          response = { statusCode: result.statusCode, headers: result.protocol ? { "sec-websocket-protocol": result.protocol } : {}, body: Buffer.from(JSON.stringify({ protocol: result.protocol, messages: result.messages.map((message) => message.value) })) };
+        } else if (action.request.transport?.kind === "GRAPHQL_SSE") {
+          const result = await runSse(target.toString(), action.request.method as "GET" | "POST", headers, requestBody, action.request.transport.maxEvents, transportOptions);
+          const events = result.body.split(/\r?\n\r?\n/).flatMap((frame) => { const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n"); try { return data ? [JSON.parse(data) as unknown] : []; } catch { return []; } });
+          const hasData = events.some((event) => { const value = valueAt(event, "data"); return value !== undefined && value !== null; }); const denied = result.statusCode >= 400 || events.some((event) => valueAt(event, "errors.0") !== undefined);
+          if (action.semantic.endsWith("OWNER_ALLOWED") ? !result.contentType?.includes("text/event-stream") || !hasData || denied : hasData || !denied) throw new Error("EXTERNAL_ACCEPTANCE_SUBSCRIPTION_CONTRACT_FAILED");
+          response = { statusCode: result.statusCode, headers: result.contentType ? { "content-type": result.contentType } : {}, body: Buffer.from(JSON.stringify({ events })) };
+        } else response = await runBoundedHttp(target.toString(), action.request.method, headers, requestBody === undefined ? undefined : Buffer.from(requestBody), transportOptions);
         const body = response.body;
         let json: unknown;
         if (body.byteLength) try { json = JSON.parse(body.toString("utf8")); } catch { json = undefined; }
@@ -338,7 +388,7 @@ export async function runExternalAcceptance(input: ExternalAcceptanceManifest, o
         evidence.status = "PASSED";
         evidence.response = { status: response.statusCode, bodySha256: digest(body), bytes: body.byteLength, headersSha256: digest(canonical(response.headers)) };
       } catch (error) {
-        evidence.reason = redact(safeReason(error), Object.values(secrets));
+        evidence.reason = redact(safeReason(error), [...Object.values(secrets), ...captures.values()].flatMap((value) => [value, encodeURIComponent(value)]));
         if (action.phase !== "CLEANUP") primaryFailure = true;
       }
       evidence.durationMs = Date.now() - began;
@@ -360,7 +410,7 @@ export async function runExternalAcceptance(input: ExternalAcceptanceManifest, o
     startedAt, completedAt, release: manifest.release,
     operator: { organization: manifest.operator.organization, independentOfRouteCairnAuthors: manifest.operator.independentOfRouteCairnAuthors, publicKeyId: manifest.operator.publicKeyId, contactSha256: digest(manifest.operator.contact.trim().toLowerCase()) },
     authorization: { proofReference: manifest.authorization.proofReference, proofSha256: manifest.authorization.proofSha256, window: { startsAt: manifest.authorization.startsAt, expiresAt: manifest.authorization.expiresAt }, policy: { disposableAccountsOnly: true as const, syntheticPaymentsOnly: true as const, controlledStateChangesAllowed: true as const, destructiveAdministrationAllowed: false as const } },
-    manifestSha256, artifact: { name: basename(artifactPath), sha256: artifactDigest, bytes: artifactBytes.byteLength }, requestCount, lanes
+    manifestSha256, artifact: { name: basename(artifactPath), sha256: artifactDigest, bytes: artifactBytes.byteLength }, requestCount, lanes, provenance
   };
   const evidenceSha256 = digest(canonical(coreSummary));
   const summary: ExternalAcceptanceSummary = { ...coreSummary, evidenceSha256, outputDirectory };
@@ -378,16 +428,25 @@ export async function runExternalAcceptance(input: ExternalAcceptanceManifest, o
   return bundle;
 }
 
-export async function verifyExternalAcceptanceBundle(bundlePath: string, releaseArtifact: string, trustedPublicKeyPath: string, manifestPath: string): Promise<{ verified: true; keyId: string; releaseSha256: string; status: string; laneCount: number }> {
+export async function verifyExternalAcceptanceBundle(bundlePath: string, releaseArtifact: string, trustedPublicKeyPath: string, manifestPath: string, options: { trustPath?: string; bindingsPath?: string } = {}): Promise<{ verified: true; independentAcceptanceVerified: boolean; keyId: string; releaseSha256: string; status: string; laneCount: number }> {
   const raw = await readFile(bundlePath);
   if (raw.byteLength > 8 * 1024 * 1024) throw new Error("EXTERNAL_ACCEPTANCE_BUNDLE_TOO_LARGE");
   const bundle = JSON.parse(raw.toString("utf8")) as ExternalAcceptanceBundle;
   if (bundle?.schemaVersion !== 1 || bundle.statement?._type !== "https://in-toto.io/Statement/v1" || bundle.statement?.predicateType !== "https://routecairn.dev/attestations/external-acceptance/v1") throw new Error("EXTERNAL_ACCEPTANCE_BUNDLE_INVALID");
   const trusted = createPublicKey(await readFile(trustedPublicKeyPath, "utf8"));
+  if (trusted.asymmetricKeyType !== "ed25519" || bundle.envelope?.payloadType !== "application/vnd.in-toto+json") throw new Error("EXTERNAL_ACCEPTANCE_SIGNATURE_TYPE_INVALID");
   const keyId = publicKeyId(trusted);
   const manifest = await loadExternalAcceptanceManifest(manifestPath);
   if (manifest.operator.publicKeyId !== keyId) throw new Error("EXTERNAL_ACCEPTANCE_MANIFEST_OPERATOR_KEY_MISMATCH");
-  if (digest(canonical(manifest)) !== bundle.summary.manifestSha256) throw new Error("EXTERNAL_ACCEPTANCE_MANIFEST_DIGEST_MISMATCH");
+  let manifestDigest = digest(canonical(manifest));
+  if (manifestDigest !== bundle.summary.manifestSha256 && !bundle.summary.provenance) {
+    const rawManifest = JSON.parse((await readFile(manifestPath, "utf8")).replace(/^\uFEFF/, "")) as { authorization?: Record<string, unknown> };
+    if (rawManifest.authorization && ["maxRequestBytes", "maxDurationMs", "cleanupGraceMs"].every((name) => !Object.hasOwn(rawManifest.authorization!, name))) {
+      const { maxRequestBytes: _bytes, maxDurationMs: _duration, cleanupGraceMs: _grace, ...legacyAuthorization } = manifest.authorization;
+      manifestDigest = digest(canonical({ ...manifest, authorization: legacyAuthorization }));
+    }
+  }
+  if (manifestDigest !== bundle.summary.manifestSha256) throw new Error("EXTERNAL_ACCEPTANCE_MANIFEST_DIGEST_MISMATCH");
   if (publicKeyId(createPublicKey(bundle.publicKeyPem)) !== keyId) throw new Error("EXTERNAL_ACCEPTANCE_BUNDLED_KEY_MISMATCH");
   const signature = bundle.envelope?.signatures?.find((item) => item.keyid === keyId);
   if (!signature) throw new Error("EXTERNAL_ACCEPTANCE_TRUSTED_SIGNATURE_MISSING");
@@ -400,17 +459,35 @@ export async function verifyExternalAcceptanceBundle(bundlePath: string, release
   if (!bundle.statement.subject.some((subject) => subject.digest.sha256 === artifactSha256)) throw new Error("EXTERNAL_ACCEPTANCE_RELEASE_SUBJECT_MISMATCH");
   if (bundle.summary.artifact.sha256 !== artifactSha256) throw new Error("EXTERNAL_ACCEPTANCE_SUMMARY_ARTIFACT_MISMATCH");
   if (canonical(bundle.summary.release) !== canonical(manifest.release)) throw new Error("EXTERNAL_ACCEPTANCE_RELEASE_MANIFEST_MISMATCH");
+  if (manifest.release.artifactSha256 !== artifactSha256 || bundle.summary.artifact.bytes !== artifact.byteLength) throw new Error("EXTERNAL_ACCEPTANCE_RELEASE_MANIFEST_MISMATCH");
   const { evidenceSha256: ignored, outputDirectory: ignoredDirectory, ...summaryCore } = bundle.summary;
   if (digest(canonical(summaryCore)) !== bundle.summary.evidenceSha256) throw new Error("EXTERNAL_ACCEPTANCE_EVIDENCE_DIGEST_MISMATCH");
   const predicate = bundle.statement.predicate;
   if (predicate.evidenceSha256 !== bundle.summary.evidenceSha256 || predicate.manifestSha256 !== bundle.summary.manifestSha256 || predicate.status !== bundle.summary.status) throw new Error("EXTERNAL_ACCEPTANCE_PREDICATE_MISMATCH");
+  if (canonical(predicate.release) !== canonical(bundle.summary.release) || canonical(predicate.operator) !== canonical(bundle.summary.operator) || canonical(predicate.authorization) !== canonical(bundle.summary.authorization)) throw new Error("EXTERNAL_ACCEPTANCE_PREDICATE_MISMATCH");
   if (!Array.isArray(bundle.summary.lanes) || bundle.summary.lanes.length !== 8) throw new Error("EXTERNAL_ACCEPTANCE_LANES_INVALID");
   for (const lane of bundle.summary.lanes) {
     const { evidenceSha256, ...core } = lane;
     if (digest(canonical(core)) !== evidenceSha256) throw new Error(`EXTERNAL_ACCEPTANCE_LANE_DIGEST_MISMATCH:${lane.id}`);
   }
   verifyManifestEvidenceBinding(manifest, bundle.summary);
-  return { verified: true, keyId, releaseSha256: artifactSha256, status: bundle.summary.status, laneCount: bundle.summary.lanes.length };
+  const expectedLanes = bundle.summary.lanes.map((lane) => ({ id: lane.id, kind: lane.kind, status: lane.status, cleanup: lane.cleanup, evidenceSha256: lane.evidenceSha256, targetProduct: lane.targetProduct, targetVersion: lane.targetVersion, ...(lane.authProvider ? { authProvider: lane.authProvider } : {}), ...(lane.paymentProvider ? { paymentProvider: lane.paymentProvider } : {}), targetFingerprint: lane.targetFingerprint, reproductionReference: lane.reproductionReference, reproductionSha256: lane.reproductionSha256 }));
+  if (canonical(predicate.lanes) !== canonical(expectedLanes)) throw new Error("EXTERNAL_ACCEPTANCE_PREDICATE_LANES_MISMATCH");
+  let independentAcceptanceVerified = false;
+  if (bundle.summary.provenance?.mode === "INDEPENDENT_EXTERNAL") {
+    if (!options.trustPath || !options.bindingsPath) throw new Error("EXTERNAL_ACCEPTANCE_INDEPENDENT_BINDINGS_AND_TRUST_REQUIRED");
+    const trust = externalAcceptanceTrustSchema.parse(JSON.parse(await readFile(options.trustPath, "utf8")));
+    const bindings = externalAcceptanceBindingsSchema.parse(JSON.parse(await readFile(options.bindingsPath, "utf8")));
+    const operator = trustedAcceptanceOperator(trust, keyId, manifest.operator.organization, new Date().toISOString());
+    if (acceptanceDigest(acceptanceCanonical(operator)) !== bundle.summary.provenance.trustSha256 || acceptanceDigest(acceptanceCanonical(bindings)) !== bundle.summary.provenance.bindingsSha256) throw new Error("EXTERNAL_ACCEPTANCE_TRUST_OR_BINDINGS_MISMATCH");
+    trustedAcceptanceOperator(trust, keyId, manifest.operator.organization, bundle.summary.startedAt);
+    trustedAcceptanceOperator(trust, keyId, manifest.operator.organization, bundle.summary.completedAt);
+    trustedAcceptanceOperator(trust, keyId, manifest.operator.organization, new Date().toISOString());
+    const readiness = await prepareExternalAcceptance(manifest, { trust, bindings, now: new Date(bundle.summary.startedAt), environment: Object.fromEntries(Object.values(manifest.authorization.secretEnvironment).map((name) => [name, "VERIFICATION_DOES_NOT_REQUIRE_SECRETS"])) });
+    if (readiness.status !== "READY" || !bundle.summary.provenance.externalTargetsTested || !bundle.summary.provenance.independentlyTrustedOperator) throw new Error("EXTERNAL_ACCEPTANCE_INDEPENDENT_EVIDENCE_INVALID");
+    independentAcceptanceVerified = bundle.summary.status === "PASSED";
+  } else if (bundle.summary.provenance?.externalTargetsTested || bundle.summary.provenance?.independentlyTrustedOperator) throw new Error("EXTERNAL_ACCEPTANCE_PROVENANCE_INVALID");
+  return { verified: true, independentAcceptanceVerified, keyId, releaseSha256: artifactSha256, status: bundle.summary.status, laneCount: bundle.summary.lanes.length };
 }
 
 function assertResponse(action: ExternalAction, response: { statusCode: number; headers: Record<string, string | string[]> }, payload: unknown, secrets: Record<string, string>, captures: Map<string, string>): void {
@@ -440,7 +517,7 @@ async function persistBundle(directory: string, bundle: ExternalAcceptanceBundle
 
 function markdown(summary: ExternalAcceptanceSummary): string {
   const lanes = summary.lanes.map((lane) => `| ${lane.kind} | ${markdownCell(lane.targetProduct)} ${markdownCell(lane.targetVersion)} | ${lane.status} | ${lane.cleanup} | ${lane.actions.length} | \`${lane.targetFingerprint}\` | \`${lane.reproductionSha256}\` | \`${lane.evidenceSha256}\` |`).join("\n");
-  return `# RouteCairn external acceptance attestation\n\n- Status: **${summary.status}**\n- Release: \`${summary.release.version}\` / \`${summary.release.gitCommit}\`\n- Release artifact SHA-256: \`${summary.artifact.sha256}\`\n- Operator: ${markdownCell(summary.operator.organization)}\n- Independent operator declaration: ${summary.operator.independentOfRouteCairnAuthors ? "yes" : "no"}\n- Authorization reference: ${markdownCell(summary.authorization.proofReference)}\n- Authorization proof SHA-256: \`${summary.authorization.proofSha256}\`\n- Evidence SHA-256: \`${summary.evidenceSha256}\`\n- Requests: ${summary.requestCount}\n\n| Lane | Target | Status | Cleanup | Actions | Target fingerprint | Reproduction digest | Evidence digest |\n| --- | --- | --- | --- | ---: | --- | --- | --- |\n${lanes}\n\nThis report is a signed, release-bound record of the declared authorized run. Verify the DSSE bundle with the operator's independently distributed public key, the exact credential-free manifest, and the exact release artifact.\n`;
+  return `# RouteCairn external acceptance attestation\n\n- Status: **${summary.status}**\n- Release: \`${summary.release.version}\` / \`${summary.release.gitCommit}\`\n- Release artifact SHA-256: \`${summary.artifact.sha256}\`\n- Operator: ${markdownCell(summary.operator.organization)}\n- Evidence mode: ${summary.provenance?.mode ?? "LEGACY_UNVERIFIED"}\n- Independent operator trust verified: ${summary.provenance?.independentlyTrustedOperator ? "yes" : "no"}\n- Independent operator declaration: ${summary.operator.independentOfRouteCairnAuthors ? "yes" : "no"}\n- Authorization reference: ${markdownCell(summary.authorization.proofReference)}\n- Authorization proof SHA-256: \`${summary.authorization.proofSha256}\`\n- Evidence SHA-256: \`${summary.evidenceSha256}\`\n- Requests: ${summary.requestCount}\n\n| Lane | Target | Status | Cleanup | Actions | Target fingerprint | Reproduction digest | Evidence digest |\n| --- | --- | --- | --- | ---: | --- | --- | --- |\n${lanes}\n\nThis report is a signed, release-bound record of the declared authorized run. Verify the DSSE bundle with the operator's independently distributed public key, the exact credential-free manifest, and the exact release artifact.\n`;
 }
 
 function signStatement(statement: InTotoStatement, key: KeyObject, keyId: string): DsseEnvelope {
@@ -449,12 +526,12 @@ function signStatement(statement: InTotoStatement, key: KeyObject, keyId: string
   return { payloadType, payload: payload.toString("base64"), signatures: [{ keyid: keyId, sig: sign(null, pae(payloadType, payload), key).toString("base64") }] };
 }
 function pae(type: string, payload: Buffer): Buffer { return Buffer.from(`DSSEv1 ${Buffer.byteLength(type)} ${type} ${payload.byteLength} ${payload.toString("utf8")}`, "utf8"); }
-function loadPrivateKey(value: string): KeyObject { try { return createPrivateKey(value.includes("BEGIN") ? value : Buffer.from(value, "base64")); } catch { throw new Error("EXTERNAL_ACCEPTANCE_SIGNING_KEY_INVALID"); } }
+function loadPrivateKey(value: string): KeyObject { try { const key = createPrivateKey(value.includes("BEGIN") ? value : Buffer.from(value, "base64")); if (key.asymmetricKeyType !== "ed25519") throw new Error(); return key; } catch { throw new Error("EXTERNAL_ACCEPTANCE_SIGNING_KEY_INVALID"); } }
 function publicKeyId(key: KeyObject): string { return digest(key.export({ format: "der", type: "spki" })); }
-function resolveSecrets(mapping: Record<string, string>, environment: NodeJS.ProcessEnv): Record<string, string> { return Object.fromEntries(Object.entries(mapping).map(([alias, variable]) => { const value = environment[variable]; if (!value) throw new Error(`EXTERNAL_ACCEPTANCE_SECRET_MISSING:${variable}`); return [alias, value]; })); }
+function resolveSecrets(mapping: Record<string, string>, environment: NodeJS.ProcessEnv): Record<string, string> { return Object.fromEntries(Object.entries(mapping).map(([alias, variable]) => { const value = environment[variable]; if (typeof value !== "string" || !value || value.length > 65536) throw new Error(`EXTERNAL_ACCEPTANCE_SECRET_MISSING:${variable}`); return [alias, value]; })); }
 function expand(value: unknown, secrets: Record<string, string>, captures: Map<string, string>): unknown { if (typeof value === "string") return expandString(value, secrets, captures); if (Array.isArray(value)) return value.map((item) => expand(item, secrets, captures)); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, expand(item, secrets, captures)])); return value; }
-function expandString(value: string, secrets: Record<string, string>, captures: Map<string, string>): string { return value.replace(/\{\{(SECRET|CAPTURE):([A-Za-z0-9._-]+)\}\}/g, (_all, kind: string, name: string) => { const result = kind === "SECRET" ? secrets[name] : captures.get(name); if (result === undefined) throw new Error(`EXTERNAL_ACCEPTANCE_TEMPLATE_VALUE_MISSING:${kind}:${name}`); return result; }); }
-function valueAt(value: unknown, path: string): unknown { let current = value; for (const segment of path.split(".")) { if (current === null || current === undefined || typeof current !== "object") return undefined; current = (current as Record<string, unknown>)[segment]; } return current; }
+function expandString(value: string, secrets: Record<string, string>, captures: Map<string, string>, path = false): string { return value.replace(/\{\{(SECRET|CAPTURE):([A-Za-z0-9._-]+)\}\}/g, (_all, kind: string, name: string) => { const result = kind === "SECRET" ? secrets[name] : captures.get(name); if (result === undefined) throw new Error(`EXTERNAL_ACCEPTANCE_TEMPLATE_VALUE_MISSING:${kind}:${name}`); return path ? encodeURIComponent(result) : result; }); }
+function valueAt(value: unknown, path: string): unknown { let current = value; for (const segment of path.split(".")) { if (current === null || current === undefined || typeof current !== "object" || !Object.hasOwn(current, segment)) return undefined; current = (current as Record<string, unknown>)[segment]; } return current; }
 function deepEqual(left: unknown, right: unknown): boolean { return canonical(left) === canonical(right); }
 function canonical(value: unknown, omitUndefined = false): string { return JSON.stringify(sortValue(value, omitUndefined)); }
 function sortValue(value: unknown, omitUndefined: boolean): unknown { if (Array.isArray(value)) return value.map((item) => sortValue(item, omitUndefined)); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, item]) => !omitUndefined || item !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sortValue(item, omitUndefined)])); return value; }
@@ -467,7 +544,7 @@ function safeReason(error: unknown): string { if (error instanceof z.ZodError) r
 function delay(milliseconds: number): Promise<void> { return new Promise((done) => setTimeout(done, milliseconds)); }
 function markdownCell(value: string): string { return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("|", "\\|").replace(/[\r\n]+/g, " "); }
 
-function validateNpmReleaseArtifact(artifact: Buffer, expectedVersion: string): void {
+export function validateNpmReleaseArtifact(artifact: Buffer, expectedVersion: string): void {
   if (artifact.byteLength > 128 * 1024 * 1024) throw new Error("EXTERNAL_ACCEPTANCE_RELEASE_ARTIFACT_TOO_LARGE");
   let tar: Buffer;
   try { tar = gunzipSync(artifact, { maxOutputLength: 256 * 1024 * 1024 }); }
@@ -506,7 +583,10 @@ async function validateRunningReleaseVersion(expectedVersion: string): Promise<v
 }
 
 function verifyManifestEvidenceBinding(manifest: ExternalAcceptanceManifest, summary: ExternalAcceptanceSummary): void {
-  if (summary.operator.publicKeyId !== manifest.operator.publicKeyId || summary.operator.organization !== manifest.operator.organization || summary.operator.contactSha256 !== digest(manifest.operator.contact.trim().toLowerCase())) throw new Error("EXTERNAL_ACCEPTANCE_OPERATOR_MANIFEST_MISMATCH");
+  if (!Number.isSafeInteger(summary.requestCount) || summary.requestCount < 0 || summary.requestCount > manifest.authorization.maxRequests || new Set(summary.lanes.map((lane) => lane.id)).size !== 8) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_COUNT_OR_LANES_INVALID");
+  const started = Date.parse(summary.startedAt); const completed = Date.parse(summary.completedAt);
+  if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started || started < Date.parse(manifest.authorization.startsAt) || started >= Date.parse(manifest.authorization.expiresAt) || completed > Date.parse(manifest.authorization.expiresAt) + manifest.authorization.cleanupGraceMs) throw new Error("EXTERNAL_ACCEPTANCE_EXECUTION_WINDOW_INVALID");
+  if (summary.operator.publicKeyId !== manifest.operator.publicKeyId || summary.operator.organization !== manifest.operator.organization || summary.operator.independentOfRouteCairnAuthors !== manifest.operator.independentOfRouteCairnAuthors || summary.operator.contactSha256 !== digest(manifest.operator.contact.trim().toLowerCase())) throw new Error("EXTERNAL_ACCEPTANCE_OPERATOR_MANIFEST_MISMATCH");
   if (summary.authorization.proofSha256 !== manifest.authorization.proofSha256 || summary.authorization.proofReference !== manifest.authorization.proofReference || summary.authorization.window.startsAt !== manifest.authorization.startsAt || summary.authorization.window.expiresAt !== manifest.authorization.expiresAt) throw new Error("EXTERNAL_ACCEPTANCE_AUTHORIZATION_MANIFEST_MISMATCH");
   const retainedActions = summary.lanes.reduce((sum, lane) => sum + lane.actions.length, 0);
   if (summary.requestCount > retainedActions || (summary.status === "PASSED" && summary.requestCount !== retainedActions)) throw new Error("EXTERNAL_ACCEPTANCE_REQUEST_COUNT_MISMATCH");
@@ -514,17 +594,28 @@ function verifyManifestEvidenceBinding(manifest: ExternalAcceptanceManifest, sum
   for (const declared of manifest.lanes) {
     const actual = summary.lanes.find((lane) => lane.id === declared.id);
     if (!actual || actual.kind !== declared.kind) throw new Error(`EXTERNAL_ACCEPTANCE_LANE_MANIFEST_MISMATCH:${declared.id}`);
+    if (new Set(actual.actions.map((action) => action.id)).size !== actual.actions.length || actual.actions.length > declared.actions.length) throw new Error("EXTERNAL_ACCEPTANCE_ACTION_REPLAY");
     if (actual.targetProduct !== declared.targetProduct || actual.targetVersion !== declared.targetVersion || actual.authProvider !== declared.authProvider || actual.paymentProvider !== declared.paymentProvider || actual.environment !== declared.environment || actual.targetFingerprint !== declared.targetFingerprint || actual.reproductionReference !== declared.reproductionReference || actual.reproductionSha256 !== declared.reproductionSha256) throw new Error(`EXTERNAL_ACCEPTANCE_TARGET_MANIFEST_MISMATCH:${declared.id}`);
     for (const action of actual.actions) {
       const expected = declared.actions.find((item) => item.id === action.id);
       if (!expected || expected.phase !== action.phase || expected.semantic !== action.semantic || expected.caseIdentity !== action.caseIdentity || expected.request.method !== action.request.method || expected.request.origin !== action.request.origin || expected.request.path !== action.request.path) throw new Error(`EXTERNAL_ACCEPTANCE_ACTION_MANIFEST_MISMATCH:${declared.id}:${action.id}`);
+      if (!["PASSED", "FAILED"].includes(action.status) || !Number.isFinite(action.durationMs) || action.durationMs < 0 || action.status === "PASSED" && (!action.response || !expected.assertions.statuses.includes(action.response.status))) throw new Error("EXTERNAL_ACCEPTANCE_ACTION_RESPONSE_INVALID");
     }
+    const semantics = [...new Set(actual.actions.filter((action) => action.status === "PASSED").map((action) => action.semantic))].sort();
+    const cleanupActions = declared.actions.filter((action) => action.phase === "CLEANUP");
+    const cleanup = !cleanupActions.length ? "NOT_REQUIRED" : cleanupActions.every((action) => actual.actions.find((item) => item.id === action.id)?.status === "PASSED") ? "VERIFIED" : "FAILED";
+    if (canonical(semantics) !== canonical(actual.semantics) || cleanup !== actual.cleanup) throw new Error("EXTERNAL_ACCEPTANCE_SEMANTICS_OR_CLEANUP_INCONSISTENT");
     if (actual.status === "PASSED") {
       if (actual.actions.length !== declared.actions.length || actual.actions.some((action) => action.status !== "PASSED")) throw new Error(`EXTERNAL_ACCEPTANCE_PASSED_LANE_INCOMPLETE:${declared.id}`);
       for (const semantic of requiredSemantics[declared.kind]) if (!actual.semantics.includes(semantic)) throw new Error(`EXTERNAL_ACCEPTANCE_SEMANTIC_MISSING:${declared.id}:${semantic}`);
       if (declared.actions.some((action) => action.stateChange) && actual.cleanup !== "VERIFIED") throw new Error(`EXTERNAL_ACCEPTANCE_CLEANUP_UNVERIFIED:${declared.id}`);
     }
   }
+}
+
+export function assertCredentialReferences(manifest: ExternalAcceptanceManifest): void {
+  const issues = acceptanceReferenceIssues(manifest);
+  if (issues.length) throw new Error(`EXTERNAL_ACCEPTANCE_${issues[0]}`);
 }
 
 function tarText(value: Buffer): string { const end = value.indexOf(0); return value.subarray(0, end < 0 ? value.length : end).toString("utf8"); }

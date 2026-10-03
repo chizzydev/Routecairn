@@ -1,0 +1,64 @@
+{
+  "workers": [
+    {
+      "id": "19fc0f92-da46-494b-b3f0-d71b1f52e35d",
+      "name": "owned-public-pool",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "public-pool"
+      }
+    },
+    {
+      "id": "b6ff20f9-1645-4ce1-b7e1-2c2ae2245d54",
+      "name": "owned-private-pool",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "private-pool"
+      }
+    },
+    {
+      "id": "1dabfa00-1427-4970-9012-17d6c752d2d7",
+      "name": "kubernetes-owned-worker",
+      "status": "ONLINE",
+      "labels": {
+        "networkZone": "private"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": "70c4d632-49de-41ec-aca1-bcf24912b966",
+      "status": "COMPLETED",
+      "networkZone": "public-pool",
+      "assignedWorkerId": "19fc0f92-da46-494b-b3f0-d71b1f52e35d",
+      "attemptCount": 1,
+      "error": null
+    },
+    {
+      "id": "7d486943-4ae9-41cd-9e16-9b52ad3afd8f",
+      "status": "COMPLETED",
+      "networkZone": "private-pool",
+      "assignedWorkerId": "b6ff20f9-1645-4ce1-b7e1-2c2ae2245d54",
+      "attemptCount": 1,
+      "error": null
+    },
+    {
+      "id": "cffbe980-5133-46af-af05-a81c86d080ea",
+      "status": "COMPLETED",
+      "networkZone": "private",
+      "assignedWorkerId": "1dabfa00-1427-4970-9012-17d6c752d2d7",
+      "attemptCount": 1,
+      "error": null
+    }
+  ],
+  "expected": {
+    "jobs": [
+      "7d486943-4ae9-41cd-9e16-9b52ad3afd8f",
+      "70c4d632-49de-41ec-aca1-bcf24912b966"
+    ],
+    "workers": [
+      "b6ff20f9-1645-4ce1-b7e1-2c2ae2245d54",
+      "19fc0f92-da46-494b-b3f0-d71b1f52e35d"
+    ]
+  }
+}

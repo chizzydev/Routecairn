@@ -1,5 +1,6 @@
+import { readBoundedFileSync } from "../security/BoundedFile.js";
 import { randomUUID, createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import type { Finding } from "../../core/findings/Finding.js";
 import { hasOccurrenceReview } from "../reviews/AssistedOccurrenceReview.js";
 import { resolve } from "node:path";
@@ -8,10 +9,7 @@ import { nowIso } from "../db/DashboardDatabase.js";
 import { ArtifactRepository } from "../db/DashboardRepositories.js";
 import type { DashboardPaths } from "../services/DashboardPaths.js";
 import { escapeHtml } from "../security/Redaction.js";
-import {
-  extractSafeValuePresenceAttestations,
-  type SafeValuePresenceAttestation
-} from "../security/ValuePresenceAttestations.js";
+import { extractSafeValuePresenceAttestations, type SafeValuePresenceAttestation } from "../security/ValuePresenceAttestations.js";
 import { writePdfProofPack } from "./PdfProofPackWriter.js";
 
 export class ProofPackService {
@@ -120,8 +118,8 @@ export class ProofPackService {
   }
 
   private recordArtifact(proofPackId: string, path: string, type: string, contentType: string, organizationId:string): string {
-    const stat = statSync(path);
-    return this.artifacts.create({ organizationId,proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: stat.size, contentType, hash: createHash("sha256").update(readFileSync(path)).digest("hex") });
+    const bytes = readBoundedFileSync(path, 128 * 1024 * 1024);
+    return this.artifacts.create({ organizationId,proofPackId, type, name: path.split(/[\\/]/).pop() ?? type, path, size: bytes.length, contentType, hash: createHash("sha256").update(bytes).digest("hex") });
   }
   private defaultOrganizationId():string { return (this.database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as {value:string}).value; }
 }

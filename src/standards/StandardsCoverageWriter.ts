@@ -2,11 +2,13 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { durableAtomicWrite } from "../core/offensive/MutationJournal.js";
 import type { StandardsCoverageReport } from "./StandardsCoverageTypes.js";
+import { validateStandardsCoverage } from "./StandardsCoverageValidation.js";
 
 export interface StandardsCoveragePaths { jsonPath: string; csvPath: string }
 
 export class StandardsCoverageWriter {
   public async write(outputDir: string, report: StandardsCoverageReport): Promise<StandardsCoveragePaths> {
+    validateStandardsCoverage(report);
     await mkdir(outputDir, { recursive: true });
     const jsonPath = join(outputDir, "standards-coverage.json");
     const csvPath = join(outputDir, "standards-coverage.csv");
@@ -27,4 +29,9 @@ function renderCsv(report: StandardsCoverageReport): string {
   return `${rows.map((row) => row.map(csvCell).join(",")).join("\n")}\n`;
 }
 
-function csvCell(value: unknown): string { return `"${String(value ?? "").replaceAll('"', '""')}"`; }
+function csvCell(value: unknown): string {
+  const text = String(value ?? "");
+  // CSV quoting alone does not prevent formulas, including leading control whitespace.
+  const safe = /^[\s\u0000-\u001f]*[=+\-@]/u.test(text) || /^[\t\r\n]/u.test(text) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
+}
