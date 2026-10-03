@@ -18,7 +18,7 @@ describe("browser architecture invariants", () => {
     const offenders = files.flatMap((file) => {
       const content = readFileSync(join(repoRoot, file), "utf8");
       const importsPlaywright = /from\s+["']playwright["']/.test(content);
-      const createsRawBrowser = /chromium\.launch|firefox\.launch|webkit\.launch|launchPersistentContext|newContext\(|newPage\(|newCDPSession|setInputFiles|accept\(/.test(content);
+      const createsRawBrowser = /chromium\.launch|firefox\.launch|webkit\.launch|launchPersistentContext|newContext\(|newPage\(|newCDPSession|setInputFiles|\.accept\(/.test(content);
       const allowed = allowedPlaywrightFiles.has(file);
       return (importsPlaywright || createsRawBrowser) && !allowed ? [file] : [];
     });
