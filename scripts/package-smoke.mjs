@@ -190,6 +190,8 @@ function run(command, args, cwd, environment) {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
+    timeout: command === process.execPath && !args.some((value) => value === "install" || value === "pack") ? 120_000 : 600_000,
+    killSignal: "SIGKILL",
     maxBuffer: 64 * 1024 * 1024,
     env: { ...process.env, ...environment }
   });

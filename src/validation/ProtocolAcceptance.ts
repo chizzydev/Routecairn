@@ -162,7 +162,15 @@ class ProtocolAcceptanceFixtures {
       response.writeHead(allowed ? 200 : 403, { "content-type": "text/plain" });
       response.end(allowed ? "native-http3" : "denied");
     });
-    await new Promise<void>((resolveStart, reject) => { this.h3Server!.once("error", reject); this.h3Server!.listen(h3Port, "127.0.0.1", () => { this.h3Server!.off("error", reject); resolveStart(); }); });
+    await new Promise<void>((resolveStart, reject) => {
+      const server = this.h3Server!;
+      let settled = false;
+      const finish = (error?: Error) => { if (settled) return; settled = true; clearTimeout(timer); server.off("error", failed); error ? reject(error) : resolveStart(); };
+      const failed = (error: Error) => finish(error);
+      const timer = setTimeout(() => finish(new Error("HTTP3_FIXTURE_STARTUP_TIMEOUT")), 5000);
+      server.once("error", failed);
+      try { server.listen(h3Port, "127.0.0.1", () => finish()); } catch (error) { finish(error instanceof Error ? error : new Error("HTTP3_FIXTURE_STARTUP_FAILED")); }
+    });
 
     const httpPort = (this.httpServer.address() as AddressInfo).port;
     const h2Port = (this.h2Server.address() as AddressInfo).port;

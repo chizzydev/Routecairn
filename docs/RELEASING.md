@@ -19,3 +19,5 @@ The published CLI includes `npm-shrinkwrap.json`, matching `package-lock.json`, 
 Continuous assurance retains an installed, verified candidate archive as `candidate-package-<commit>`. It is a CI artifact, not a reviewed public release. The independent-review gate remains mandatory for publication.
 
 Release builds clear only the verified generated `dist` directory before compilation, preventing obsolete outputs from entering packages. TypeScript output and published text fixtures use LF line endings. Shard blob reports have their own directory; coverage folders never enter the blob merge.
+
+Installed-package commands have execution deadlines. The native HTTP/3 fixture rejects missing startup acknowledgement within five seconds and runs its existing cleanup path. A timeout is a failed acceptance check.
