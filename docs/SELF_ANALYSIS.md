@@ -36,3 +36,5 @@ Additional fixes remove a redundant potentially exponential backup filename rege
 Native intermediary fixtures resolve Windows short-path aliases before passing paths to nginx. OAST and protocol acceptance retain the full test result JSON on failure as well as success, including cleanup and source identity checks.
 
 The pinned QUIC dependency's default dual-stack fixture listener binds an additional wildcard IPv6 socket even when a loopback IPv4 host is supplied. Acceptance now provides an externally owned IPv4 socket bound only to `127.0.0.1`, waits for its actual close acknowledgement and verifies conflicting-port rejection and port reuse. This changes fixture hosting; scanner transmission continues through the existing scope and certificate policy.
+
+Native proxy readiness uses a 15-second elapsed deadline, capped probes and backoff, with the last readiness error retained on failure. Both TCP ports are reserved concurrently to prevent sequential allocation from selecting the same port. Caddy configuration persistence is disabled and its storage is inside the disposable fixture directory.
