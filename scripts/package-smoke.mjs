@@ -19,6 +19,7 @@ try {
   const names = new Set(packResult.files.map((entry) => String(entry.path).replace(/^package\//, "").replaceAll("\\", "/")));
 
   const required = [
+  "dist/validation/ProtocolFixtureSocket.js",
     "npm-shrinkwrap.json",
     "dist/standards/catalog/official-catalog.json", "dist/standards/StandardsCoverageValidation.js", "dist/cli/commands/standards.js", "standards/NOTICE.md", "standards/sources.lock.json", "docs/STANDARDS_ACCOUNTING.md",
     "dist/core/plugins/ModuleDistribution.js", "dist/core/plugins/ModuleRegistry.js", "dist/core/plugins/ModuleSdk.d.ts", "dist/cli/commands/modules.js", "docs/MODULE_ECOSYSTEM.md", "examples/modules/security-headers/index.mjs", "examples/modules/framework-fingerprint/index.mjs", "examples/modules/graphql-response/index.mjs", "examples/module-registry.example.json", "deploy/module-registry/compose.yaml",

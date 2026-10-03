@@ -6,6 +6,7 @@ import type { Duplex } from "node:stream";
 import { gzipSync, deflateSync, brotliCompressSync } from "node:zlib";
 import quico from "quico";
 import { generate } from "selfsigned";
+import { bindProtocolFixtureSocket, closeProtocolFixtureSocket } from "../../src/validation/ProtocolFixtureSocket.js";
 
 /** Disposable listeners on loopback only; real TLS, H2, QUIC and application
  * state. Counters prove that the engine exercised each actual runtime path. */
@@ -119,7 +120,8 @@ export async function createProtocolSemanticsLab() {
   };
   await new Promise<void>((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
   const port = (server.address() as AddressInfo).port;
-  const h3 = quico.createServer({ key: certificate.private, cert: certificate.cert, http1: false, http2: false }, (req, res) => {
+  const udp = await bindProtocolFixtureSocket(port).catch(async (error) => { for (const session of sessions) session.destroy(); for (const socket of sockets) socket.destroy(); await new Promise<void>((done) => server.close(() => done())); throw error; });
+  const h3 = quico.createServer({ key: certificate.private, cert: certificate.cert, socket: udp, http1: false, http2: false }, (req, res) => {
     increment(`HTTP3:${req.url}`);
     if (req.headers[":protocol"] === "webtransport") {
       if (req.url === "/datagrams/denied") { res.writeHead(403); res.end(); return; }
@@ -130,10 +132,10 @@ export async function createProtocolSemanticsLab() {
     res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(identity));
   });
   try { await new Promise<void>((done, reject) => { h3.once("error", reject); h3.listen(port, "127.0.0.1", done); }); }
-  catch (error) { server.close(); throw error; }
+  catch (error) { h3.close(); await closeProtocolFixtureSocket(udp); server.close(); throw error; }
   return { origin: `https://localhost:${port}`, ca: certificate.cert, document, persistedHash, counters,
     state: () => ({ dirty, partialBytes, aborted, cleanupCount }),
-    close: async () => { for (const session of sessions) session.destroy(); for (const socket of sockets) socket.destroy(); await Promise.all([new Promise<void>((done) => server.close(() => done())), new Promise<void>((done) => h3.close(() => done()))]); }
+    close: async () => { for (const session of sessions) session.destroy(); for (const socket of sockets) socket.destroy(); await Promise.all([new Promise<void>((done) => server.close(() => done())), new Promise<void>((done) => h3.close(() => done())), closeProtocolFixtureSocket(udp)]); }
   };
 }
 async function body(req: IncomingMessage) { const chunks: Buffer[] = []; let size = 0; for await (const chunk of req) { size += chunk.length; if (size > 65536) throw new Error("FIXTURE_LIMIT"); chunks.push(Buffer.from(chunk)); } return Buffer.concat(chunks); }

@@ -2,7 +2,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { createSecureServer, type Http2SecureServer, type ServerHttp2Stream } from "node:http2";
-import { createServer as createNetServer, type AddressInfo } from "node:net";
+import type { AddressInfo } from "node:net";
+import type { Socket } from "node:dgram";
+import { bindProtocolFixtureSocket, closeProtocolFixtureSocket } from "./ProtocolFixtureSocket.js";
 import { resolve } from "node:path";
 import quico, { type QuicoServer } from "quico";
 import selfsigned from "selfsigned";
@@ -132,6 +134,7 @@ class ProtocolAcceptanceFixtures {
   private httpServer: Server | undefined;
   private h2Server: Http2SecureServer | undefined;
   private h3Server: QuicoServer | undefined;
+  private h3Socket: Socket | undefined;
   public multipartCreated = false;
 
   public constructor(private readonly certificate: { cert: string; privateKey: string; ca: string }) {}
@@ -145,8 +148,10 @@ class ProtocolAcceptanceFixtures {
     this.h2Server.on("stream", (stream, headers) => this.handleHttp2(stream, headers));
     await listen(this.h2Server, 0, "127.0.0.1");
 
-    const h3Port = await availablePort();
-    this.h3Server = quico.createServer({ key: this.certificate.privateKey, cert: this.certificate.cert }, (request, response) => {
+    this.h3Socket = await bindProtocolFixtureSocket();
+    const h3Port = this.h3Socket.address().port;
+    const options = { key: this.certificate.privateKey, cert: this.certificate.cert, socket: this.h3Socket };
+    this.h3Server = quico.createServer(options, (request, response) => {
       if (request.headers[":protocol"] === "webtransport") {
         if (request.url !== "/wt") { response.writeHead(403); response.end(); return; }
         response.writeHead(200); response.flushHeaders(); request.on("datagram", () => response.sendDatagram!(Buffer.from('{"ok":true}'))); return;
@@ -178,12 +183,13 @@ class ProtocolAcceptanceFixtures {
   }
 
   public async close(): Promise<void> {
-    const http = this.httpServer; const h2 = this.h2Server; const h3 = this.h3Server;
-    this.httpServer = undefined; this.h2Server = undefined; this.h3Server = undefined;
+    const http = this.httpServer; const h2 = this.h2Server; const h3 = this.h3Server; const udp = this.h3Socket;
+    this.httpServer = undefined; this.h2Server = undefined; this.h3Server = undefined; this.h3Socket = undefined;
     await Promise.all([
       http ? boundedClose((done) => http.close(done)) : Promise.resolve(),
       h2 ? boundedClose((done) => h2.close(done)) : Promise.resolve(),
-      h3 ? boundedClose((done) => h3.close(done)) : Promise.resolve()
+      h3 ? boundedClose((done) => h3.close(done)) : Promise.resolve(),
+      udp ? closeProtocolFixtureSocket(udp) : Promise.resolve()
     ]);
   }
 
@@ -257,7 +263,6 @@ function grpcFrame(payload: Buffer): Buffer { const frame = Buffer.alloc(5 + pay
 function validGrpcFrames(value: Buffer, expected: number): boolean { let count = 0, offset = 0; while (offset + 5 <= value.length) { if (value[offset] !== 0) return false; const size = value.readUInt32BE(offset + 1); if (offset + 5 + size > value.length) return false; count += 1; offset += 5 + size; } return offset === value.length && count === expected; }
 async function requestBody(request: IncomingMessage): Promise<Buffer> { const chunks: Buffer[] = []; let size = 0; for await (const chunk of request) { const value = Buffer.from(chunk); size += value.length; if (size > 1024 * 1024) throw new Error("PROTOCOL_FIXTURE_REQUEST_LIMIT"); chunks.push(value); } return Buffer.concat(chunks); }
 function listen(server: Server | Http2SecureServer, port: number, host: string): Promise<void> { return new Promise((resolveListen, reject) => { server.once("error", reject); server.listen(port, host, () => { server.off("error", reject); resolveListen(); }); }); }
-async function availablePort(): Promise<number> { const server = createNetServer(); await new Promise<void>((resolveListen, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolveListen(); }); }); const port = (server.address() as AddressInfo).port; await new Promise<void>((resolveClose) => server.close(() => resolveClose())); return port; }
 async function createFixtureCertificate(): Promise<{ cert: string; privateKey: string; ca: string }> { const notBeforeDate = new Date(Date.now() - 60_000); const notAfterDate = new Date(Date.now() + 24 * 60 * 60 * 1000); const generated = await selfsigned.generate([{ name: "commonName", value: "localhost" }], { keyType: "ec", curve: "P-256", algorithm: "sha256", notBeforeDate, notAfterDate, extensions: [{ name: "basicConstraints", cA: true, pathLenConstraint: 0, critical: true }, { name: "keyUsage", digitalSignature: true, keyCertSign: true, cRLSign: true, critical: true }, { name: "extKeyUsage", serverAuth: true }, { name: "subjectAltName", altNames: [{ type: 2, value: "localhost" }, { type: 7, ip: "127.0.0.1" }] }] }); return { cert: generated.cert, privateKey: generated.private, ca: generated.cert }; }
 function respondGrpc(stream: ServerHttp2Stream, body: Buffer, grpcStatus: number, httpStatus: number): void { stream.respond({ ":status": httpStatus, "content-type": "application/grpc+proto", "grpc-encoding": "identity" }, { waitForTrailers: true }); stream.once("wantTrailers", () => stream.sendTrailers({ "grpc-status": String(grpcStatus) })); stream.end(body); }
 function boundedClose(close: (done: () => void) => void): Promise<void> { return new Promise((resolveClose) => { let settled = false; const done = () => { if (settled) return; settled = true; clearTimeout(timer); resolveClose(); }; const timer = setTimeout(done, 1_000); try { close(done); } catch { done(); } }); }
