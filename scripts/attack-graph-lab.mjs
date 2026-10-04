@@ -8,7 +8,7 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 if (process.argv.length !== 4 || process.argv[2] !== "--output") throw new Error("Use --output FRESH_DIRECTORY.");
 const output = resolve(process.argv[3]);
 await mkdir(dirname(output), { recursive: true }); await mkdir(output);
-const testFiles = ["tests/unit/graphql-document-safety.test.ts", "tests/dashboard/adaptive-attack-state-graph.test.ts", "tests/dashboard/adaptive-graph-safety.test.ts", "tests/dashboard/adaptive-executed-contract-compiler.test.ts", "tests/dashboard/adaptive-read-only-compiler.test.ts", "tests/dashboard/adaptive-security-service.test.ts", "tests/integration/adaptive-attack-graph-runtime.test.ts", "apps/dashboard-ui/src/AttackStateGraphPanel.test.tsx", "apps/dashboard-ui/src/AdaptiveSecurityWorkspace.test.tsx"];
+const testFiles = ["tests/unit/graphql-document-safety.test.ts", "tests/dashboard/adaptive-attack-state-graph.test.ts", "tests/dashboard/adaptive-graph-safety.test.ts", "tests/dashboard/adaptive-executed-contract-compiler.test.ts", "tests/dashboard/adaptive-read-only-compiler.test.ts", "tests/dashboard/adaptive-security-service.test.ts", "tests/dashboard/adaptive-ng0-characterization.test.ts", "tests/integration/adaptive-attack-graph-runtime.test.ts", "apps/dashboard-ui/src/AttackStateGraphPanel.test.tsx", "apps/dashboard-ui/src/AdaptiveSecurityWorkspace.test.tsx"];
 const snapshot = async () => {
   const sources = {};
   const walk = async (folder, prefix) => {
