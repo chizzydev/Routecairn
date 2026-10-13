@@ -3,6 +3,7 @@ import type { AuthProfile } from "../../core/auth/AuthProfile.js";
 import type { RequestSafetyBroker } from "../../core/http/RequestSafetyBroker.js";
 import type { ControlledMutationBrowserObserver, ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
 import type { BrowserPolicy } from "./BrowserPolicy.js";
+import { BrowserNetworkBoundary } from "./BrowserNetworkBoundary.js";
 import { BrowserPolicyEngine } from "./BrowserPolicy.js";
 import { applyBrowserCredentials, browserExtraHeaders, executeLogin, isExplicitLoginWriteAllowed, isWriteMethod, type BrowserLoginWriteGate } from "./BrowserLearning.js";
 
@@ -27,7 +28,9 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
     const requestBroker = phase === "rollback" ? this.options.cleanupRequestBroker ?? this.options.requestBroker : this.options.requestBroker;
     const signal = phase === "rollback" ? this.options.cleanupSignal?.() : this.options.abortSignal;
     if (signal?.aborted) return { configured: true, matched: false, notes: ["Browser proof deadline or cancellation reached."] };
-    const browser = await chromium.launch({ headless: true, timeout: this.options.timeoutMs });
+    const boundary = new BrowserNetworkBoundary({ targetUrl: this.options.targetUrl, policy: this.options.policy, timeoutMs: this.options.timeoutMs, requestBroker });
+    await boundary.start();
+    const browser = await chromium.launch({ headless: true, timeout: this.options.timeoutMs, proxy: boundary.playwrightProxy(), args: ["--proxy-bypass-list=<-loopback>", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", "--disable-quic", "--disable-background-networking"] }).catch(async (error: unknown) => { await boundary.close(); throw error; });
     const closeOnAbort = () => { void browser.close().catch(() => undefined); };
     signal?.addEventListener("abort", closeOnAbort, { once: true });
     if (signal?.aborted) closeOnAbort();
@@ -60,12 +63,15 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
           return;
         }
         const brokerInput = { url: policyDecision.normalizedUrl, method: request.method(), resourceType: request.resourceType(), pageUrl, isRedirect: request.redirectedFrom() !== null };
-        const decision = explicitLogin ? requestBroker.evaluateBrowserLoginRequest(brokerInput) : requestBroker.evaluateBrowserRequest(brokerInput);
+        const capturedHeaders = await request.allHeaders();
+        if (!capturedHeaders.cookie) { const cookies = await context.cookies(request.url()); if (cookies.length) capturedHeaders.cookie = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "); }
+        const headers = proofContinuationHeaders(capturedHeaders, request.url(), this.options.authProfile, contract.targetOrigin);
+        const source = { route, session: boundary, headers, onInitiated: () => { if (explicitLogin) gate.allowed += 1; } };
+        const decision = explicitLogin ? requestBroker.evaluateBrowserLoginRequest(brokerInput, source) : requestBroker.evaluateBrowserRequest(brokerInput, source);
         if (!decision.allowed) { await route.abort("blockedbyclient").catch(() => undefined); return; }
-        if (explicitLogin) gate.allowed += 1;
-        await requestBroker.dispatchApprovedBrowserRequest(
-          () => route.continue({ headers: proofContinuationHeaders(request.headers(), request.url(), this.options.authProfile, contract.targetOrigin) })
-        );
+        try { boundary.bindDecision(decision, route); }
+        catch { await route.abort("blockedbyclient").catch(() => undefined); return; }
+        await requestBroker.dispatchBrowserRoute(decision, route, boundary);
       });
       const page = await context.newPage();
       page.setDefaultTimeout(this.options.timeoutMs);
@@ -90,6 +96,7 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
     } catch (error) {
       if (restartAttempt === 0 && !signal?.aborted) {
         await browser.close().catch(() => undefined);
+        await boundary.close();
         const retried = await this.verify(contract, phase, 1);
         return { ...retried, notes: [`Browser ${phase} proof restarted one isolated Chromium session after an infrastructure failure.`, ...retried.notes] };
       }
@@ -97,6 +104,7 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
     } finally {
       signal?.removeEventListener("abort", closeOnAbort);
       await browser.close();
+      await boundary.close();
     }
   }
 }
@@ -143,9 +151,10 @@ export async function verifyOfflineDomXssExecution(html: string, nonce: string, 
 
 function assertOrigin(url: string, origin: string): void { if (new URL(url).origin !== origin) throw new Error("Browser proof bootstrap left the approved origin."); }
 function safePageUrl(request: import("playwright").Request, fallback: string): string { try { return request.frame().url() || fallback; } catch { return fallback; } }
-function safeError(error: unknown): string { return error instanceof Error ? error.message.replace(/([?&][^=]+=)[^&\s]+/g, "$1<redacted>").slice(0, 300) : "unknown browser error"; }
+function safeError(_error: unknown): string { return "BROWSER_PROOF_EXECUTION_FAILED"; }
 function proofContinuationHeaders(headers: Record<string, string>, url: string, profile: AuthProfile, targetOrigin: string): Record<string, string> {
   const copy = { ...headers };
+  for (const name of Object.keys(copy)) if (["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())) delete copy[name];
   if (new URL(url).origin === targetOrigin) return copy;
   const profileNames = new Set(Object.keys(profile.headers).map((name) => name.toLowerCase()));
   for (const name of Object.keys(copy)) if (profileNames.has(name.toLowerCase())) delete copy[name];

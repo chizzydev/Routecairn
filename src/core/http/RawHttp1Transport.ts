@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { connect as tcpConnect, type Socket } from "node:net";
 import { connect as tlsConnect, type TLSSocket } from "node:tls";
 import { isProhibitedAddress } from "../net/AddressClassifier.js";
+import { ScanCancelledError } from "../engine/ScanEvents.js";
 
 export interface RawHttp1Request {
   url: string;
@@ -36,14 +37,16 @@ export interface RawHttp1Response {
 
 const framingHeaders = new Set(["host", "content-length", "transfer-encoding", "connection", "proxy-connection", "expect", "upgrade", "trailer"]);
 
-export async function sendRawHttp1(request: RawHttp1Request): Promise<RawHttp1Response> {
+export async function sendRawHttp1(request: RawHttp1Request, begin?: () => void): Promise<RawHttp1Response> {
   const parsed = new URL(request.url);
   const sentinel = new URL(request.sentinelPath, parsed.origin);
   const startedAt = performance.now();
+  let initiated = false;
   try {
     const address = await selectAddress(request, parsed.hostname);
+    if (request.abortSignal?.aborted) throw new Error("RAW_HTTP1_ABORTED");
     const wire = buildWireRequest(request, parsed, sentinel);
-    const bytes = await exchange(request, address, parsed, wire);
+    const bytes = await exchange(request, address, parsed, wire, () => { begin?.(); }, () => { initiated = true; });
     const parsedResponse = parseResponses(bytes, request.maxResponseBytes);
     const bodyPreview = parsedResponse.body.subarray(0, request.maxResponseBytes).toString("utf8");
     return {
@@ -53,10 +56,11 @@ export async function sendRawHttp1(request: RawHttp1Request): Promise<RawHttp1Re
       bodyPreview,
       bodyHash: createHash("sha256").update(parsedResponse.body).digest("hex"),
       responseTimeMs: Math.round(performance.now() - startedAt),
-      transmittedRequests: 2,
+      transmittedRequests: initiated ? 2 : 0,
       markerObserved: Boolean(request.marker && parsedResponse.body.includes(request.marker))
     };
   } catch (error) {
+    if (request.abortSignal?.aborted || error instanceof ScanCancelledError) throw new ScanCancelledError();
     return {
       requestedUrl: request.url,
       statusCodes: [],
@@ -64,17 +68,19 @@ export async function sendRawHttp1(request: RawHttp1Request): Promise<RawHttp1Re
       bodyPreview: "",
       bodyHash: createHash("sha256").update("").digest("hex"),
       responseTimeMs: Math.round(performance.now() - startedAt),
-      transmittedRequests: 2,
+      transmittedRequests: initiated ? 2 : 0,
       markerObserved: false,
-      error: { name: error instanceof Error ? error.name : "RawHttp1TransportError", message: error instanceof Error ? error.message.slice(0, 240) : "Raw HTTP/1 transport failed." }
+      error: { name: error instanceof Error ? error.name : "RawHttp1TransportError", message: error instanceof Error && error.message === "authorization-budget-exhausted" ? error.message : error instanceof Error && /^RAW_HTTP1_[A-Z_]+$/.test(error.message) ? error.message : "RAW_HTTP1_OPERATION_DENIED" }
     };
   }
 }
 
 async function selectAddress(request: RawHttp1Request, hostname: string): Promise<{ address: string; family: 4 | 6 }> {
-  const answers = request.dnsResolver
-    ? await request.dnsResolver(hostname)
-    : (await lookup(hostname, { all: true, verbatim: true })).map((item) => ({ address: item.address, family: item.family as 4 | 6 }));
+  if (request.abortSignal?.aborted) throw new ScanCancelledError();
+  const resolution = request.dnsResolver
+    ? Promise.resolve().then(() => request.dnsResolver!(hostname))
+    : lookup(hostname, { all: true, verbatim: true }).then(answers => answers.map(item => ({ address: item.address, family: item.family as 4 | 6 })));
+  const answers = await boundedDnsWait(request, resolution);
   const normalized = answers.map((item) => typeof item === "string" ? { address: item, family: item.includes(":") ? 6 as const : 4 as const } : item).filter((item) => item.address);
   if (normalized.length === 0) throw new Error("RAW_HTTP1_DNS_EMPTY");
   const target = new URL(request.targetOrigin);
@@ -83,6 +89,24 @@ async function selectAddress(request: RawHttp1Request, hostname: string): Promis
   if (safe.length !== normalized.length) throw new Error("RAW_HTTP1_DNS_PROHIBITED_ADDRESS");
   if (safe.length === 0) throw new Error("RAW_HTTP1_DNS_PROHIBITED_ADDRESS");
   return safe[0]!;
+}
+
+function boundedDnsWait<T>(request: RawHttp1Request, resolution: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (error: unknown, value?: T) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      request.abortSignal?.removeEventListener("abort", abort);
+      if (error) reject(error); else resolve(value!);
+    };
+    const abort = () => finish(new ScanCancelledError());
+    const timer = setTimeout(() => finish(new Error("RAW_HTTP1_DNS_TIMEOUT")), request.timeoutMs);
+    request.abortSignal?.addEventListener("abort", abort, { once: true });
+    if (request.abortSignal?.aborted) abort();
+    // Both outcomes remain observed after a timeout/abort; a late answer cannot connect.
+    void resolution.then(value => finish(undefined, value), error => finish(error));
+  });
 }
 
 function buildWireRequest(request: RawHttp1Request, parsed: URL, sentinel: URL): Buffer {
@@ -105,7 +129,7 @@ function buildWireRequest(request: RawHttp1Request, parsed: URL, sentinel: URL):
   return Buffer.from(`${headers}\r\n\r\n${payload}`, "utf8");
 }
 
-function exchange(request: RawHttp1Request, address: { address: string; family: 4 | 6 }, parsed: URL, wire: Buffer): Promise<Buffer> {
+function exchange(request: RawHttp1Request, address: { address: string; family: 4 | 6 }, parsed: URL, wire: Buffer, begin: () => void, onInitiated: () => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     let socket: Socket | TLSSocket;
     const chunks: Buffer[] = [];
@@ -121,8 +145,15 @@ function exchange(request: RawHttp1Request, address: { address: string; family: 
     const options = { host: address.address, port: Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)), family: address.family, timeout: request.timeoutMs };
     socket = parsed.protocol === "https:" ? tlsConnect({ ...options, servername: parsed.hostname, rejectUnauthorized: true, ...(request.tlsCa ? { ca: request.tlsCa } : {}) }) : tcpConnect(options);
     socket.setTimeout(request.timeoutMs, () => { socket.destroy(); finish(new Error("RAW_HTTP1_TIMEOUT")); });
-    if (parsed.protocol === "https:") socket.on("secureConnect", () => socket.write(wire));
-    else socket.on("connect", () => socket.write(wire));
+    const write = () => {
+      try {
+        if (request.abortSignal?.aborted || socket.destroyed) throw new Error("RAW_HTTP1_ABORTED");
+        begin();
+        socket.write(wire); onInitiated();
+      } catch (error) { socket.destroy(); finish(error instanceof Error ? error : new Error("RAW_HTTP1_OPERATION_DENIED")); }
+    };
+    if (parsed.protocol === "https:") socket.once("secureConnect", write);
+    else socket.once("connect", write);
     socket.on("data", (chunk: Buffer) => { bytes += chunk.length; if (bytes > request.maxResponseBytes) { finish(new Error("RAW_HTTP1_RESPONSE_LIMIT")); socket.destroy(); return; } chunks.push(Buffer.from(chunk)); });
     socket.on("end", () => finish());
     socket.on("close", () => finish());

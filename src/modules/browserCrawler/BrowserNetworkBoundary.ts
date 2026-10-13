@@ -2,6 +2,8 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, request as createHttpRequest, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect, isIP, type Socket } from "node:net";
 import type { Duplex } from "node:stream";
+import type { RequestSafetyBroker, NativeBrowserRoute } from "../../core/http/RequestSafetyBroker.js";
+import type { BrowserBrokerDecision } from "../../core/http/HttpTypes.js";
 import type { DnsResolver } from "../../core/http/HttpTypes.js";
 import { PinnedConnectionError, resolvePinnedDestination } from "../../core/http/PinnedHttpTransport.js";
 import type { BrowserPolicy } from "./BrowserPolicy.js";
@@ -24,6 +26,8 @@ export interface BrowserNetworkBoundaryDiagnostics {
 
 export interface BrowserNetworkBoundaryOptions {
   targetUrl: string;
+  /** Trusted native caller only; proxy Basic authentication is not request authority. */
+  requestBroker?: RequestSafetyBroker;
   policy: BrowserPolicy;
   timeoutMs: number;
   dnsResolver?: DnsResolver;
@@ -44,6 +48,7 @@ interface PinnedSocket {
 export class BrowserNetworkBoundary {
   private readonly username = `routecairn-${randomBytes(9).toString("hex")}`;
   private readonly password = randomBytes(24).toString("base64url");
+  private readonly pending: BrowserBrokerDecision[] = [];
   private readonly sockets = new Set<Duplex>();
   private readonly pinnedDestinations = new Set<string>();
   private readonly server = createServer((request, response) => { void this.forwardHttp(request, response); });
@@ -85,6 +90,12 @@ export class BrowserNetworkBoundary {
     this.publish();
   }
 
+  public bindDecision(decision: BrowserBrokerDecision, route: NativeBrowserRoute): void {
+    for (let index = this.pending.length - 1; index >= 0; index--) if (!this.options.requestBroker?.hasPendingBrowserDecision(this.pending[index]!)) this.pending.splice(index, 1);
+    if (!this.options.requestBroker || this.pending.length >= 256) throw new PinnedConnectionError("Browser binding rejected.", "BROWSER_BINDING_DENIED");
+    this.options.requestBroker.registerBrowserDecision(decision, route, this); this.pending.push(decision);
+  }
+
   public playwrightProxy(): { server: string; username: string; password: string } {
     this.assertOperational();
     return { server: `http://127.0.0.1:${this.port}`, username: this.username, password: this.password };
@@ -116,6 +127,7 @@ export class BrowserNetworkBoundary {
   public async close(): Promise<void> {
     if (this.state === "STOPPED") return;
     this.state = "STOPPED";
+    for (const decision of this.pending.splice(0)) this.options.requestBroker?.cancelBrowserDecision(decision);
     this.stoppedAt = new Date().toISOString();
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
@@ -132,9 +144,17 @@ export class BrowserNetworkBoundary {
     catch { this.blockHttp(response, "PROXY_ABSOLUTE_URL_REQUIRED"); return; }
     if (url.protocol !== "http:" && url.protocol !== "ws:") { this.blockHttp(response, "PROXY_PROTOCOL_BLOCKED"); return; }
 
+    let decision: BrowserBrokerDecision | undefined;
     try {
+      const body = this.options.requestBroker ? await readProxyBody(request, this.options.timeoutMs) : undefined;
+      const actual = { url: url.toString(), method: request.method ?? "GET", headers: sanitizedProxyHeaders(request.headers, url.host), body: body ?? Buffer.alloc(0) };
+      const broker = this.options.requestBroker;
+      const index = broker ? this.pending.findIndex(decision => broker.matchesBrowserProxyRequest(decision, this, actual)) : -1;
+      if (broker && index < 0) { this.blockHttp(response, "BROWSER_BINDING_DENIED"); return; }
+      decision = broker ? this.pending.splice(index, 1)[0] : undefined;
       const pin = await this.openPinned(url.hostname, url.port || "80", "http:");
       const headers = sanitizedProxyHeaders(request.headers, url.host);
+      if (broker) { delete headers["transfer-encoding"]; delete headers["content-length"]; if (body?.length || !["GET", "HEAD", "OPTIONS"].includes(actual.method)) headers["content-length"] = String(body?.length ?? 0); }
       const upstream = createHttpRequest({ hostname: pin.socket.remoteAddress, family: pin.socket.remoteFamily === "IPv6" ? 6 : 4, port: Number(url.port || 80), method: request.method, path: `${url.pathname}${url.search}`, headers, agent: false, createConnection: () => pin.socket }, (upstreamResponse) => {
         response.writeHead(upstreamResponse.statusCode ?? 502, sanitizedResponseHeaders(upstreamResponse.headers));
         upstreamResponse.once("aborted", () => { pin.socket.destroy(); response.destroy(); });
@@ -143,17 +163,32 @@ export class BrowserNetworkBoundary {
         upstreamResponse.pipe(response);
       });
       upstream.on("error", (error) => {
+        if (decision) broker?.cancelBrowserDecision(decision);
         pin.socket.destroy();
         this.failHttp(response, error);
       });
-      request.pipe(upstream);
+      if (broker && decision) {
+        const operationDecision = decision;
+        // Node assigns its already connected pinned socket before this public event.
+        // Nothing has been buffered/flushed: end(buffer) is initiated only after the fresh check.
+        upstream.once("socket", () => {
+          try {
+            this.assertOperational();
+            if (request.destroyed && !request.complete) throw new PinnedConnectionError("Browser request cancelled.", "BROWSER_REQUEST_CANCELLED");
+            broker.beginBrowserProxyRequest(operationDecision, this, actual);
+            upstream.end(body); broker.observeBrowserInitiation(operationDecision);
+          } catch (error) { broker.cancelBrowserDecision(operationDecision); upstream.destroy(error instanceof Error ? error : new Error("BROWSER_INITIATION_DENIED")); pin.socket.destroy(); }
+        });
+      } else request.pipe(upstream);
     } catch (error) {
+      if (decision) this.options.requestBroker?.cancelBrowserDecision(decision);
       this.failHttp(response, error);
     }
   }
 
   private async forwardConnect(request: IncomingMessage, client: Duplex, head: Buffer): Promise<void> {
     if (!this.authorized(request)) { client.end("HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=RouteCairn\r\nConnection: close\r\n\r\n"); return; }
+    if (this.options.requestBroker?.hasExpiringAuthority()) { this.blockSocket(client, "EXPIRING_AUTHORITY_BROWSER_TUNNEL_UNSUPPORTED"); return; }
     const authority = parseAuthority(request.url ?? "", 443);
     if (!authority) { this.blockSocket(client, "PROXY_AUTHORITY_INVALID"); return; }
     try {
@@ -171,6 +206,7 @@ export class BrowserNetworkBoundary {
   }
 
   private async forwardWebSocket(request: IncomingMessage, client: Duplex, head: Buffer): Promise<void> {
+    if (this.options.requestBroker?.hasExpiringAuthority()) { this.blockSocket(client, "EXPIRING_AUTHORITY_BROWSER_STREAM_UNSUPPORTED"); return; }
     if (!this.authorized(request)) { client.destroy(); return; }
     let url: URL;
     try { url = new URL(request.url ?? ""); }
@@ -204,8 +240,9 @@ export class BrowserNetworkBoundary {
       maxDnsAnswers: 16,
       ...(this.options.dnsResolver ? { dnsResolver: this.options.dnsResolver } : {})
     });
+    this.assertOperational();
     const socket = await connectPinnedSocket(pin.address.address, Number(pin.port), pin.address.family, this.options.timeoutMs);
-    if (!sameIp(socket.remoteAddress, pin.address.address)) {
+    if (this.state === "STOPPED" || !sameIp(socket.remoteAddress, pin.address.address)) {
       socket.destroy();
       throw new PinnedConnectionError("Pinned socket destination mismatch.", "PINNED_REMOTE_ADDRESS_MISMATCH");
     }
@@ -369,4 +406,13 @@ function sameIp(left: string | undefined, right: string): boolean {
   if (left.toLowerCase() === right.toLowerCase()) return true;
   if (isIP(right) === 4 && left.toLowerCase() === `::ffff:${right.toLowerCase()}`) return true;
   return false;
+}
+
+async function readProxyBody(request: IncomingMessage, timeoutMs: number): Promise<Buffer> {
+  const maximum = 1024 * 1024;
+  if (Number(request.headers["content-length"] ?? 0) > maximum) throw new PinnedConnectionError("Browser body limit reached.", "BROWSER_BODY_LIMIT");
+  const chunks: Buffer[] = []; let size = 0;
+  request.setTimeout(timeoutMs, () => request.destroy());
+  for await (const data of request) { const chunk = Buffer.from(data); size += chunk.length; if (size > maximum) throw new PinnedConnectionError("Browser body limit reached.", "BROWSER_BODY_LIMIT"); chunks.push(chunk); }
+  return Buffer.concat(chunks, size);
 }

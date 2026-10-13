@@ -27,7 +27,7 @@ interface Waiter {
 }
 
 /**
- * Authoritative scan-wide accounting for physical network transmissions.
+ * Scan-wide request reservation accounting. A reservation is not proof of a wire write.
  * The ordinary lane can never consume cleanup capacity. Cleanup uses the same
  * rate and concurrency controls, but receives priority once restoration starts.
  */
@@ -74,13 +74,13 @@ export class ScanRequestLedger {
     return lane === "CLEANUP" ? snapshot.cleanupRemaining >= count : snapshot.scanRemaining >= count;
   }
 
-  public tryReserve(lane: RequestLedgerLane): boolean {
-    if (!this.hasCapacity(lane)) {
+  public tryReserve(lane: RequestLedgerLane, count = 1): boolean {
+    if (!this.hasCapacity(lane, count)) {
       this.publish(true);
       return false;
     }
-    if (lane === "CLEANUP") this.cleanupTransmitted += 1;
-    else this.scanTransmitted += 1;
+    if (lane === "CLEANUP") this.cleanupTransmitted += count;
+    else this.scanTransmitted += count;
     this.publish(true);
     return true;
   }
@@ -93,19 +93,33 @@ export class ScanRequestLedger {
     lane: RequestLedgerLane,
     signal: AbortSignal | undefined,
     operation: () => Promise<T>,
-    options: { rateAlreadyReserved?: boolean; onReserved?: () => void } = {}
-  ): Promise<{ accepted: true; value: T } | { accepted: false }> {
+    options: { rateAlreadyReserved?: boolean; onReserved?: () => void; beforeTransmit?: () => boolean; reserveAtInitiation?: boolean; reservationCount?: number } = {}
+  ): Promise<{ accepted: true; value: T } | { accepted: false; reason?: "POLICY_DENIED" }> {
+    const count = options.reservationCount ?? 1;
+    if (!Number.isInteger(count) || count < 1) throw new Error("SCAN_REQUEST_RESERVATION_COUNT_INVALID");
     const release = await this.acquire(lane, signal);
     try {
       this.throwIfAborted(signal);
-      if (!this.hasCapacity(lane)) {
+      if (!this.hasCapacity(lane, count)) {
         this.publish(true);
         return { accepted: false };
       }
-      if (!options.rateAlreadyReserved) await this.rateLimiter.wait(signal);
+      if (!options.rateAlreadyReserved) await this.rateLimiter.wait(signal, count);
       this.throwIfAborted(signal);
-      if (!this.tryReserve(lane)) return { accepted: false };
-      options.onReserved?.();
+      // Recheck capacity after waiting before a guard may reserve authorization.
+      if (!this.hasCapacity(lane, count)) return { accepted: false };
+      if (options.beforeTransmit) {
+        let permitted = false;
+        try { permitted = options.beforeTransmit() === true; }
+        catch (error) { if (error instanceof ScanCancelledError) throw error; }
+        this.throwIfAborted(signal);
+        if (!permitted) return { accepted: false, reason: "POLICY_DENIED" };
+      }
+      // Synchronous guard, reservation and operation invocation: no intervening await.
+      if (!options.reserveAtInitiation) {
+        if (!this.tryReserve(lane, count)) return { accepted: false };
+        options.onReserved?.();
+      }
       return { accepted: true, value: await operation() };
     } finally {
       release();

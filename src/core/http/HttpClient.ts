@@ -1,8 +1,12 @@
-import { request } from "undici";
+import { request, type Dispatcher } from "undici";
+import { ScanCancelledError } from "../engine/ScanEvents.js";
 import { createHash } from "node:crypto";
 import type { HttpClientOptions, HttpRequest, HttpResponse, RedirectHop } from "./HttpTypes.js";
 import { connectorOptionsForUrl, resolvePinnedDestination, type DestinationPolicyOptions, type PinnedDestination } from "./PinnedHttpTransport.js";
 import { PinnedOriginPool } from "./PinnedOriginPool.js";
+
+/** Created by the trusted broker, never taken from HttpRequest or serialized. */
+interface InitiationControl { begin(): void; expiringAuthority: boolean }
 
 const defaultHeaders = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -24,7 +28,7 @@ export class HttpClient {
     if (this.ownsPool) await this.pool.close();
   }
 
-  public async send(requestInput: HttpRequest, currentUrl = requestInput.url, redirectChain: RedirectHop[] = []): Promise<HttpResponse> {
+  public async send(requestInput: HttpRequest, currentUrl = requestInput.url, redirectChain: RedirectHop[] = [], control?: InitiationControl): Promise<HttpResponse> {
     const startedAt = performance.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
@@ -38,7 +42,28 @@ export class HttpClient {
 
     try {
       const pin = await this.resolveDestination(new URL(currentUrl));
+      if (control?.expiringAuthority && this.pool.settings.http2Enabled && pin.protocol === "https:") {
+        const error = new Error("EXPIRING_AUTHORITY_HTTP2_UNSUPPORTED"); error.name = "TargetAuthorizationDenied"; throw error;
+      }
       const lease = this.pool.acquire(pin); release = lease.release;
+      const thisControllerSignal = controller.signal;
+      let initiated = false;
+      const dispatcher = control ? lease.dispatcher.compose((dispatch) => (options, handler) => dispatch(options, {
+        onRequestStart: (controller, context) => {
+          if (initiated) { const error = new Error("REQUEST_INTERNAL_REPLAY_BLOCKED"); error.name = "TransportReplayBlocked"; controller.abort(error); return; }
+          try {
+            if (this.options.abortSignal?.aborted) throw new ScanCancelledError();
+            controllerSignalCheck(controller, thisControllerSignal);
+            control.begin(); initiated = true;
+            handler.onRequestStart?.(controller, context);
+          } catch (error) { controller.abort(error instanceof ScanCancelledError ? error : fixedInitiationError(error)); }
+        },
+        onRequestUpgrade: (...args) => handler.onRequestUpgrade?.(...args),
+        onResponseStart: (...args) => handler.onResponseStart?.(...args),
+        onResponseData: (...args) => handler.onResponseData?.(...args),
+        onResponseEnd: (...args) => handler.onResponseEnd?.(...args),
+        onResponseError: (...args) => handler.onResponseError?.(...args)
+      })) : lease.dispatcher;
       const response = await request(currentUrl, {
         method: requestInput.method,
         headers: {
@@ -47,7 +72,7 @@ export class HttpClient {
           ...requestInput.headers
         },
         ...(requestInput.body !== undefined ? { body: requestInput.body } : {}),
-        dispatcher: lease.dispatcher,
+        dispatcher,
         signal: controller.signal,
         bodyTimeout: this.options.timeoutMs,
         headersTimeout: this.options.timeoutMs
@@ -101,6 +126,7 @@ export class HttpClient {
         ...(redirectLocation ? { redirectLocation } : {})
       };
     } catch (error) {
+      if (this.options.abortSignal?.aborted || error instanceof ScanCancelledError) throw new ScanCancelledError();
       return {
         requestedUrl: requestInput.url,
         finalUrl: requestInput.url,
@@ -215,4 +241,12 @@ function safeError(error: unknown): { name: string; message: string; code?: stri
     name: "UnknownError",
     message: "Unknown HTTP error"
   };
+}
+
+function controllerSignalCheck(controller: Dispatcher.DispatchController, signal: AbortSignal): void {
+  if (controller.aborted || signal.aborted) throw signal.reason ?? new Error("REQUEST_ABORTED_BEFORE_INITIATION");
+}
+function fixedInitiationError(error: unknown): Error {
+  const reason = error instanceof Error && error.message === "authorization-budget-exhausted" ? error.message : "REQUEST_DISPATCH_POLICY_DENIED";
+  const result = new Error(reason); result.name = error instanceof Error && error.name === "RequestBudgetExceeded" ? "RequestBudgetExceeded" : "TargetAuthorizationDenied"; return result;
 }

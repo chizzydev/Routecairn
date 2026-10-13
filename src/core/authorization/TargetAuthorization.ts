@@ -45,6 +45,7 @@ export type TargetAuthorization = z.infer<typeof targetAuthorizationSchema>;
 export class TargetAuthorizationGuard {
   private transmitted = 0;
   private recent: number[] = [];
+  private readonly browserReservations = new WeakMap<object, { time: number; url: string; method: string; bodyHash: string }>();
   public readonly plan: TargetAuthorization;
   public constructor(input: TargetAuthorization, private readonly now: () => number = Date.now) {
     this.plan = targetAuthorizationSchema.parse(input);
@@ -82,6 +83,50 @@ export class TargetAuthorizationGuard {
     this.recent = this.recent.filter((time) => now - time < 1000);
     if (this.recent.length >= program.rateLimitPerSecond) return "authorization-rate-limit";
     this.recent.push(now); this.transmitted += 1;
+  }
+
+  /** Private native browser budget reservation; never placed in a public decision. */
+  public reserveBrowserAttempt(url: string, method: string, body?: Buffer): { denied?: string; permit?: object } {
+    const denied = this.reserve(url, method, body);
+    if (denied) return { denied };
+    if (!this.plan.bugBounty) return {};
+    const permit = Object.freeze({});
+    this.browserReservations.set(permit, { time: this.recent.at(-1)!, url, method: method.toUpperCase(), bodyHash: digest(body ?? "") });
+    return { permit };
+  }
+
+  /** Moves the existing attempted rate slot to final initiation, without a
+   * second request reservation. All paths still share the original rate pool. */
+  public beginReservedBrowserAttempt(permit: object | undefined, url: string, method: string, body: Buffer): string | undefined {
+    if (!this.plan.bugBounty) return;
+    const reservation = permit ? this.browserReservations.get(permit) : undefined;
+    if (permit) this.browserReservations.delete(permit);
+    if (!reservation || reservation.url !== url || reservation.method !== method.toUpperCase() || reservation.bodyHash !== digest(body)) return "authorization-request-not-approved";
+    const denied = this.check(url, method, body);
+    if (denied) return denied;
+    const program = this.plan.bugBounty;
+    if (this.transmitted > program.maxRequests) return "authorization-budget-exhausted";
+    const now = this.now();
+    const recent = this.recent.filter(time => now - time < 1000);
+    const ownSlot = recent.indexOf(reservation.time);
+    if (ownSlot >= 0) recent.splice(ownSlot, 1);
+    if (recent.length >= program.rateLimitPerSecond) return "authorization-rate-limit";
+    this.recent = [...recent, now];
+  }
+
+  /** Atomic semantic request group (raw POST plus sentinel), one commitment. */
+  public reserveBatch(requests: readonly { url: string; method: string; body?: string }[]): string | undefined {
+    if (!requests.length || requests.length > 5) return "authorization-invalid-group";
+    for (const request of requests) {
+      const denied = this.check(request.url, request.method, request.body); if (denied) return denied;
+      const url = new URL(request.url); const rule = this.plan.bugBounty?.requests.find(item => item.origin === url.origin && item.path === url.pathname && item.method === request.method.toUpperCase());
+      if (rule?.bodySha256 && digest(request.body ?? "") !== rule.bodySha256) return "authorization-body-mismatch";
+    }
+    const program = this.plan.bugBounty; if (!program) return;
+    if (this.transmitted + requests.length > program.maxRequests) return "authorization-budget-exhausted";
+    const now = this.now(); const recent = this.recent.filter(time => now - time < 1000);
+    if (recent.length + requests.length > program.rateLimitPerSecond) return "authorization-rate-limit";
+    this.recent = [...recent, ...requests.map(() => now)]; this.transmitted += requests.length;
   }
 
   public requireRemainingBudget(requests: number): void {

@@ -65,7 +65,7 @@ export class PlaywrightCrawler {
       blocked: 0
     };
     const learning = options.authProfile ? new BrowserLearningCollector(options.authProfile, targetOrigin) : undefined;
-    const boundary = new BrowserNetworkBoundary({ targetUrl: options.targetUrl, policy: options.policy, timeoutMs: options.timeoutMs, generation: options.browserRestartCount ?? 0, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}), ...(options.onNetworkBoundaryStatus ? { onStatus: options.onNetworkBoundaryStatus } : {}) });
+    const boundary = new BrowserNetworkBoundary({ targetUrl: options.targetUrl, requestBroker: options.requestBroker, policy: options.policy, timeoutMs: options.timeoutMs, generation: options.browserRestartCount ?? 0, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}), ...(options.onNetworkBoundaryStatus ? { onStatus: options.onNetworkBoundaryStatus } : {}) });
     await boundary.start();
     let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
     const openWebSockets: WebSocketRoute[] = [];
@@ -175,7 +175,7 @@ export class PlaywrightCrawler {
           await route.abort("blockedbyclient").catch(() => undefined);
           return;
         }
-        const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage, writeGate, learning);
+        const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage, writeGate, learning, boundary);
         attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
       });
       // Playwright's WebSocketRoute.connectToServer() opens a Playwright-side
@@ -303,7 +303,7 @@ export class PlaywrightCrawler {
           if (bootstrap?.login && !bootstrapSucceeded) throw error;
           consoleErrors.push({
             type: "navigation",
-            text: error instanceof Error ? error.message : "Unknown browser navigation error"
+            text: "Browser navigation failed or was blocked."
           });
         } finally {
           await page.close().catch(() => undefined);
@@ -374,7 +374,8 @@ export class PlaywrightCrawler {
     policyEvents: BrowserPolicyEvent[],
     requestsByPage: Map<string, number>,
     writeGate: BrowserLoginWriteGate,
-    learning?: BrowserLearningCollector
+    learning?: BrowserLearningCollector,
+    boundary?: BrowserNetworkBoundary
   ): Promise<string> {
     const request = route.request();
     const pageUrl = pageUrlForRequest(request, options.targetUrl);
@@ -419,7 +420,13 @@ export class PlaywrightCrawler {
       isRedirect: request.redirectedFrom() !== null
     };
     const explicitLoginWrite = isWriteMethod(request.method()) && isExplicitLoginWriteAllowed(request.url(), writeGate);
-    const brokerDecision = explicitLoginWrite ? options.requestBroker.evaluateBrowserLoginRequest(brokerInput) : options.requestBroker.evaluateBrowserRequest(brokerInput);
+    const entry = networkRequest(request, "allowed", "allowed", false);
+    const headers = await browserContinuationHeaders(request, options.authProfile, new URL(options.targetUrl).origin);
+    const source = { route, session: boundary!, headers,
+      onInitiated: () => { entry.transmitted = true; if (explicitLoginWrite) writeGate.allowed += 1; learning?.recordRequest(request, pageUrl, { transmitted: true, authorizationContext: explicitLoginWrite ? "EXPLICIT_LOGIN" : "READ_ONLY" }); },
+      onDenied: () => { entry.decision = "blocked"; entry.reason = "REQUEST_DISPATCH_POLICY_DENIED"; }
+    };
+    const brokerDecision = explicitLoginWrite ? options.requestBroker.evaluateBrowserLoginRequest(brokerInput, source) : options.requestBroker.evaluateBrowserRequest(brokerInput, source);
 
     if (!brokerDecision.allowed) {
       addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, brokerDecision.reason, false));
@@ -428,13 +435,12 @@ export class PlaywrightCrawler {
       return brokerDecision.reason;
     }
 
-    networkRequests.push(networkRequest(request, "allowed", "allowed", true));
-    if (explicitLoginWrite) writeGate.allowed += 1;
-    learning?.recordRequest(request, pageUrl, { transmitted: true, authorizationContext: explicitLoginWrite ? "EXPLICIT_LOGIN" : "READ_ONLY" });
-    await options.requestBroker.dispatchApprovedBrowserRequest(
-      () => route.continue({ headers: browserContinuationHeaders(request, options.authProfile, new URL(options.targetUrl).origin) }).catch(() => undefined)
-    );
-    return "allowed";
+    networkRequests.push(entry);
+    if (!boundary) { await route.abort("blockedbyclient"); return "REQUEST_DISPATCH_POLICY_DENIED"; }
+    try { boundary.bindDecision(brokerDecision, route); }
+    catch { await route.abort("blockedbyclient").catch(() => undefined); entry.decision = "blocked"; entry.reason = "REQUEST_DISPATCH_POLICY_DENIED"; return entry.reason; }
+    const continued = await options.requestBroker.dispatchBrowserRoute(brokerDecision, route, boundary);
+    return continued ? "allowed" : "REQUEST_DISPATCH_POLICY_DENIED";
   }
 
   private async handleWebSocket(
@@ -687,8 +693,12 @@ function assertSameOrigin(url: string, targetOrigin: string): void {
   if (parsed.origin !== targetOrigin) throw new Error(`Authenticated browser workflow URL is outside the target origin: ${parsed.origin}.`);
 }
 
-function browserContinuationHeaders(request: Request, profile: AuthProfile | undefined, targetOrigin: string): Record<string, string> {
-  const headers = { ...request.headers() };
+async function browserContinuationHeaders(request: Request, profile: AuthProfile | undefined, targetOrigin: string): Promise<Record<string, string>> {
+  const headers = { ...await request.allHeaders() };
+  if (!headers.cookie) {
+    try { const cookies = await request.frame().page().context().cookies(request.url()); if (cookies.length) headers.cookie = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "); } catch { /* Worker requests must supply their own captured headers. */ }
+  }
+  for (const name of Object.keys(headers)) if (["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())) delete headers[name];
   if (!profile || new URL(request.url()).origin === targetOrigin) return headers;
   const profileHeaderNames = new Set(Object.keys(profile.headers).map((name) => name.toLowerCase()));
   for (const name of Object.keys(headers)) if (profileHeaderNames.has(name.toLowerCase())) delete headers[name];
