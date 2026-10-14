@@ -1,3 +1,6 @@
+import { controlPlaneConfigFromEnv } from "../../controlPlane/ControlPlaneConfig.js";
+import { TrustedDiscoveryOperatorService } from "../execution/TrustedDiscoveryOperatorService.js";
+import { handleTrustedDiscoveryStageA } from "./TrustedDiscoveryStageAApi.js";
 import { readBoundedFileSync } from "../security/BoundedFile.js";
 import { mkdirSync, realpathSync } from "node:fs";
 import { createServer } from "node:http";
@@ -55,6 +58,8 @@ export interface DashboardServerOptions {
   masterKey?: string;
   masterKeyVersion?: string;
   mutationCoordinatorSecret?: string;
+  /** Server-owned opt-in: metadata preview only, never trusted transport. Defaults OFF. */
+  trustedDiscoveryPreviewOnly?: boolean;
 }
 
 export interface DashboardServerHandle {
@@ -68,12 +73,15 @@ export function packagedDashboardUiDirectory(): string {
 }
 
 export async function startDashboardServer(options: DashboardServerOptions = {}): Promise<DashboardServerHandle> {
+  if (options.trustedDiscoveryPreviewOnly !== undefined && typeof options.trustedDiscoveryPreviewOnly !== "boolean") throw new Error("TRUSTED_DISCOVERY_PREVIEW_OPTION_INVALID");
   const host = options.host ?? "127.0.0.1";
   const mode = options.mode ?? (process.env.ROUTECAIRN_DASHBOARD_MODE === "server" ? "server" : "local");
   const serverSecurity = validateDashboardStartup({ ...options, host, mode });
   if (mode === "local" && !isLoopbackHost(host)) {
     throw new Error("RouteCairn Dashboard refuses non-loopback binding in local mode.");
   }
+  if (options.trustedDiscoveryPreviewOnly === true && mode === "server" && !isLoopbackHost(host)) throw new Error("TRUSTED_DISCOVERY_REQUIRES_LOOPBACK_LISTENER");
+  if (options.trustedDiscoveryPreviewOnly === true && mode === "server" && controlPlaneConfigFromEnv().mode !== "local") throw new Error("TRUSTED_DISCOVERY_REQUIRES_LOCAL_CONTROL_PLANE");
   const paths = resolveDashboardPaths(options.dataDir);
   const vaultKey = parseVaultKey(await dashboardMasterKey(options), options.masterKeyVersion ?? process.env.ROUTECAIRN_MASTER_KEY_VERSION ?? "1");
   mkdirSync(paths.reportsDir, { recursive: true });
@@ -104,6 +112,10 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
     if (bootstrapOwner) await serverSessions.createFirstOwner(bootstrapOwner.login, bootstrapOwner.password);
     else throw new Error("RouteCairn Dashboard server mode requires a first owner. Run routecairn dashboard user create-owner or configure the one-time bootstrap owner environment variables.");
   }
+  const organizations = new OrganizationService(database);
+  if (options.trustedDiscoveryPreviewOnly === true && mode === "server" && infrastructure.config.mode !== "local") throw new Error("TRUSTED_DISCOVERY_REQUIRES_LOCAL_CONTROL_PLANE");
+  const trustedDiscovery = options.trustedDiscoveryPreviewOnly === true && serverSessions && isLoopbackHost(host) ? new TrustedDiscoveryOperatorService(database, paths, serverSessions) : undefined;
+  startupCleanup=async()=>{try{await trustedDiscovery?.shutdown();}finally{await infrastructure.shutdown();database.close();}};
   const scans = new ScanRepository(database);
   const projects = new ProjectRepository(database);
   const targets = new TargetRepository(database);
@@ -126,7 +138,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const evidenceGovernance = new EvidenceGovernanceService(database, paths, vaultKey);
   const continuousAssurance = new ContinuousAssuranceService(database, paths, execution, providerAdapters, new ScanComparisonService(database), evidenceGovernance, { startTimers: infrastructure.config.mode === "local" });
   const proofPacks = new ProofPackService(database, paths);
-  const organizations = new OrganizationService(database);
+
   const notifications = new NotificationService(database); if(infrastructure.config.mode==="local")notifications.start();
   const remoteWorkers = infrastructure.remoteWorkers;
   const cloudSync = new CloudSyncService(database, vault); if(infrastructure.config.mode==="local")cloudSync.start();
@@ -275,6 +287,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
           ,sso
           ,mutationCoordinator
           ,infrastructure
+          ,trustedDiscovery
         });
         return;
       }
@@ -292,6 +305,8 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   let closed=false;
   const close=async()=>{
       if(closed)return;closed=true;
+      let discoveryCloseFailed=false;
+      try{await trustedDiscovery?.shutdown();}catch{discoveryCloseFailed=true;}
       continuousAssurance.shutdown();
       await cloudSync.shutdown();
       await notifications.shutdown();
@@ -302,6 +317,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
       await infrastructure.shutdown();
       database.close();
       await dashboardOwner.release();
+      if(discoveryCloseFailed)throw new Error("TRUSTED_DISCOVERY_DISPOSAL_FAILED");
   };
   dashboardOwner.onLost(()=>{server.closeAllConnections();void close();});
   return {url,...(localSessions ? { bootstrapUrl: localSessions.bootstrapUrl(url) } : {}),close};
@@ -367,6 +383,9 @@ export function environmentSecret(name: string, maxBytes = 65_536): string | und
 
 export async function handleApi(context: ApiContext): Promise<void> {
   const { request } = context;
+  if (context.url.pathname === "/api/trusted-discovery" || context.url.pathname.startsWith("/api/trusted-discovery/")) {
+    await handleTrustedDiscoveryStageA(context); return;
+  }
   if (request.method === "POST" && context.url.pathname === "/api/auth/csrf") {
     const csrfToken = context.mode === "local"
       ? context.localSessions?.refreshCsrf(request)

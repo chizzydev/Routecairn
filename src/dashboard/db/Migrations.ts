@@ -1,9 +1,10 @@
 import { DashboardMigrationsInitial } from './DashboardMigrationsInitial.js';
 import { DashboardMigrationsWorkflows } from './DashboardMigrationsWorkflows.js';
 import { DashboardMigrationsOperations } from './DashboardMigrationsOperations.js';
-export const dashboardSchemaVersion = 44;
+import { DashboardMigrationsTrustedDiscovery } from './DashboardMigrationsTrustedDiscovery.js';
+export const dashboardSchemaVersion = 45;
 export const dashboardMigrations: readonly {
   version: number;
   sql: string;
   requiresForeignKeysDisabled?: boolean;
-}[] = [...DashboardMigrationsInitial, ...DashboardMigrationsWorkflows, ...DashboardMigrationsOperations];
+}[] = [...DashboardMigrationsInitial, ...DashboardMigrationsWorkflows, ...DashboardMigrationsOperations, ...DashboardMigrationsTrustedDiscovery];

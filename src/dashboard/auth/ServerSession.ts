@@ -33,6 +33,98 @@ const cooldownMs = 5 * 60 * 1000;
 const maxRetainedAttempts = 1000;
 
 export class ServerSessionManager {
+  private readonly discoverySessions = new WeakMap<
+    object,
+    {
+      sessionId: string;
+      userId: string;
+      passwordChangedAt: string;
+      sessionVersion: number;
+      createdAt: string;
+      deadline: number;
+    }
+  >();
+
+  /** Native, runtime-only authority. Never reconstructible from a copied principal or JSON. */
+  public captureTrustedDiscoverySession(request: IncomingMessage, csrfToken: string | undefined): object {
+    this.requireMutation(request, csrfToken);
+    const raw = parseCookies(request.headers.cookie ?? "").get("routecairn_session");
+    const row = raw
+      ? (this.database.db
+          .prepare(
+            `SELECT s.id AS sessionId,s.user_id AS userId,s.session_version AS sessionVersion,s.created_at AS createdAt,u.password_changed_at AS passwordChangedAt FROM dashboard_sessions s JOIN dashboard_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.revoked_at IS NULL`,
+          )
+          .get(tokenHash(raw, this.security.sessionSecret)) as
+          | { sessionId: string; userId: string; sessionVersion: number; createdAt: string; passwordChangedAt: string }
+          | undefined)
+      : undefined;
+    if (!row) throw new SessionError("Dashboard session required.");
+    const handle = Object.freeze(
+      Object.defineProperty(Object.create(null) as object, "toJSON", {
+        value: () => {
+          throw new Error("PRIVATE_SESSION_AUTHORITY");
+        },
+      }),
+    );
+    this.discoverySessions.set(handle, { ...row, deadline: Date.now() + 60_000 });
+    try {
+      this.revalidateTrustedDiscoverySession(handle);
+      return handle;
+    } catch (error) {
+      this.discoverySessions.delete(handle);
+      throw error;
+    }
+  }
+  public revalidateTrustedDiscoverySession(handle: unknown): { sessionId: string; userId: string } {
+    const bound = handle && typeof handle === "object" ? this.discoverySessions.get(handle) : undefined;
+    if (!bound || Date.now() >= bound.deadline) throw new SessionError("Dashboard session required.");
+    const row = this.database.db
+      .prepare(
+        `SELECT s.user_id,s.revoked_at,s.expires_at,s.last_seen_at,s.created_at,s.session_version,u.enabled,u.role,u.locked_until,u.password_changed_at FROM dashboard_sessions s JOIN dashboard_users u ON u.id=s.user_id WHERE s.id=?`,
+      )
+      .get(bound.sessionId) as
+      | {
+          user_id: string;
+          revoked_at: string | null;
+          expires_at: string;
+          last_seen_at: string;
+          created_at: string;
+          session_version: number;
+          enabled: number;
+          role: string;
+          locked_until: string | null;
+          password_changed_at: string;
+        }
+      | undefined;
+    const now = Date.now();
+    if (
+      !row ||
+      row.user_id !== bound.userId ||
+      row.revoked_at ||
+      row.enabled !== 1 ||
+      row.role !== "OWNER" ||
+      row.password_changed_at !== bound.passwordChangedAt ||
+      row.session_version !== bound.sessionVersion ||
+      row.created_at !== bound.createdAt ||
+      !Number.isSafeInteger(row.session_version) ||
+      row.session_version < 1 ||
+      Date.parse(row.created_at) > now ||
+      !Number.isFinite(Date.parse(row.expires_at)) ||
+      now >= Date.parse(row.expires_at) ||
+      !Number.isFinite(Date.parse(row.last_seen_at)) ||
+      now >= Date.parse(row.last_seen_at) + idleTtlMs ||
+      !Number.isFinite(Date.parse(row.password_changed_at)) ||
+      !Number.isFinite(Date.parse(row.created_at)) ||
+      Date.parse(row.password_changed_at) > Date.parse(row.created_at) ||
+      (row.locked_until !== null &&
+        (!Number.isFinite(Date.parse(row.locked_until)) || now < Date.parse(row.locked_until)))
+    )
+      throw new SessionError("Dashboard owner session required.");
+    return { sessionId: bound.sessionId, userId: bound.userId };
+  }
+  public releaseTrustedDiscoverySession(handle: object): void {
+    this.discoverySessions.delete(handle);
+  }
   public constructor(private readonly database: DashboardDatabase, private readonly security: ServerRuntimeSecurity) {}
 
   public hasEnabledOwner(): boolean {

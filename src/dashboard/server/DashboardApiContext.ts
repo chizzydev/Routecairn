@@ -1,3 +1,4 @@
+import type { TrustedDiscoveryOperatorService } from "../execution/TrustedDiscoveryOperatorService.js";
 import { type IncomingMessage,type ServerResponse } from "node:http";
 import { ZodError } from "zod";
 import { ControlPlaneInfrastructure } from "../../controlPlane/ControlPlaneInfrastructure.js";
@@ -84,6 +85,7 @@ export interface ApiContext {
   thirdPartyModules: ThirdPartyModuleService;
   sso: SsoService;
   mutationCoordinator?: DistributedMutationCoordinatorService | undefined;
+  trustedDiscovery?: TrustedDiscoveryOperatorService | undefined;
 }
 
 export function requireRuntimeSession(context: ApiContext): DashboardPrincipal {
@@ -233,6 +235,7 @@ export async function serveEventStream(context: ApiContext, scanId: string): Pro
 }
 
 export function routeTemplate(pathname: string): string {
+  if (pathname === "/api/trusted-discovery" || pathname.startsWith("/api/trusted-discovery/")) return ["/api/trusted-discovery/review", "/api/trusted-discovery/pre-consent"].includes(pathname) ? pathname : "/api/trusted-discovery/:operation";
   return pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ":id").replace(/\/[0-9]+(?=\/|$)/g, "/:number").slice(0, 200);
 }
 
