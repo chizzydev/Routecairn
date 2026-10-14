@@ -195,7 +195,9 @@ function protocolFor(value: string): "http:" | "https:" {
 }
 
 function canonicalHostname(value: string): string {
-  const hostname = value.replace(/\.$/, "").toLowerCase();
+  // URL.hostname retains IPv6 brackets, while Undici's connector removes
+  // them. Compare the same literal identity; origin construction re-brackets.
+  const hostname = (normalizeIp(value)?.address ?? value).replace(/\.$/, "").toLowerCase();
   if (!hostname || hostname.includes("%")) throw new PinnedConnectionError("Invalid hostname for pinned HTTP transport.", "DESTINATION_POLICY_BLOCKED");
   return hostname;
 }

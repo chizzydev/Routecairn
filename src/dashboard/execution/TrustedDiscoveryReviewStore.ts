@@ -1,7 +1,7 @@
 import { withTrustedDiscoveryDatabaseDeadline } from "./TrustedDiscoveryDatabaseDeadline.js";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
-import { loadOrCreateHexKey } from "../security/BoundedFile.js";
+import { loadOrCreateHexKey, readBoundedFileSync } from "../security/BoundedFile.js";
 import { DashboardDatabase } from "../db/DashboardDatabase.js";
 import type { TrustedDiscoverySnapshot, TrustedDiscoveryActor } from "./TrustedDiscoverySource.js";
 
@@ -15,7 +15,7 @@ export class TrustedDiscoveryStageAError extends Error {
       | "DENIED_DUPLICATE"
       | "DENIED_SCOPE"
       | "UNAVAILABLE",
-    public readonly status = 409,
+    public readonly status = 409
   ) {
     super(code);
   }
@@ -31,6 +31,17 @@ export interface DiscoveryReviewMetadata {
   expiresAt: number;
   reviewDigest: string;
 }
+/** Non-executable immutable identity for independent witness comparison. */
+export interface DiscoveryAttemptDescriptor {
+  organization_id: string;
+  target_id: string;
+  route_key: string;
+  review_id: string;
+  source_scan_id: string;
+  source_digest: string;
+  source_generation: string;
+  attempt_identity: string;
+}
 /** Durable metadata and future reservation foundation. No broker or operation issuance here.
  * This internal module is neither a public route nor a third-party module capability. */
 export class TrustedDiscoveryReviewStore {
@@ -38,7 +49,7 @@ export class TrustedDiscoveryReviewStore {
   private disposed = false;
   public constructor(
     private readonly database: DashboardDatabase,
-    keyPath: string,
+    private readonly keyPath: string
   ) {
     if (!(database instanceof DashboardDatabase)) throw new Error("TRUSTED_DISCOVERY_NATIVE_DATABASE_REQUIRED");
     const existing = database.db
@@ -47,7 +58,7 @@ export class TrustedDiscoveryReviewStore {
     const records = (
       database.db
         .prepare(
-          "SELECT (SELECT count(*) FROM trusted_discovery_reviews)+(SELECT count(*) FROM trusted_discovery_attempts) AS n",
+          "SELECT (SELECT count(*) FROM trusted_discovery_reviews)+(SELECT count(*) FROM trusted_discovery_attempts) AS n"
         )
         .get() as { n: number }
     ).n;
@@ -61,7 +72,7 @@ export class TrustedDiscoveryReviewStore {
           .transaction(() => {
             database.db
               .prepare(
-                "INSERT OR IGNORE INTO dashboard_meta(key,value,updated_at) VALUES('trusted_discovery_namespace_v1',?,?)",
+                "INSERT OR IGNORE INTO dashboard_meta(key,value,updated_at) VALUES('trusted_discovery_namespace_v1',?,?)"
               )
               .run(verifier, new Date().toISOString());
             const stored = database.db
@@ -72,7 +83,7 @@ export class TrustedDiscoveryReviewStore {
             if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
               throw new Error("TRUSTED_DISCOVERY_KEY_CHANGED");
           })
-          .immediate(),
+          .immediate()
       );
     } catch (error) {
       this.#key.fill(0);
@@ -84,6 +95,23 @@ export class TrustedDiscoveryReviewStore {
     return createHmac("sha256", this.#key)
       .update("routecairn-trusted-discovery-stage-a-v1\0" + purpose + "\0" + JSON.stringify(values))
       .digest("hex");
+  }
+  /** Execution peers recheck protected key custody after async waits as well
+   * as validating the already captured native in-memory key. */
+  public assertKeyCustody(): void {
+    const bytes = readBoundedFileSync(this.keyPath, 64).toString("utf8"),
+      actual = Buffer.from(bytes, "hex");
+    const row = this.database.db
+      .prepare("SELECT value FROM dashboard_meta WHERE key='trusted_discovery_namespace_v1'")
+      .get() as { value: string } | undefined;
+    if (
+      !/^[a-f0-9]{64}$/.test(bytes) ||
+      actual.length !== this.#key.length ||
+      !timingSafeEqual(actual, this.#key) ||
+      row?.value !== this.hash("namespace-v1", [])
+    )
+      throw new Error("TRUSTED_DISCOVERY_KEY_CUSTODY_LOST");
+    actual.fill(0);
   }
   public routeKey(actor: TrustedDiscoveryActor, targetId: string, route: string): string {
     return this.hash("route-tombstone", [actor.organizationId, targetId, "GET", route]);
@@ -98,7 +126,7 @@ export class TrustedDiscoveryReviewStore {
     // The enclosing immediate transaction binds fresh native checks to metadata commit.
     this.database.db
       .prepare(
-        "DELETE FROM trusted_discovery_reviews WHERE expires_at<? AND NOT EXISTS(SELECT 1 FROM trusted_discovery_attempts a WHERE a.review_id=trusted_discovery_reviews.id)",
+        "DELETE FROM trusted_discovery_reviews WHERE expires_at<? AND NOT EXISTS(SELECT 1 FROM trusted_discovery_attempts a WHERE a.review_id=trusted_discovery_reviews.id)"
       )
       .run(Date.now() - 30 * 24 * 60 * 60 * 1000);
     if (
@@ -108,7 +136,7 @@ export class TrustedDiscoveryReviewStore {
       throw new TrustedDiscoveryStageAError("DENIED_CAPACITY");
     this.database.db
       .prepare(
-        `INSERT INTO trusted_discovery_reviews(id,organization_id,user_id,session_binding,target_id,source_scan_id,candidate_id,source_digest,source_generation,target_generation,route_key,attempt_identity,review_digest,state,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'REVIEWED',?,?)`,
+        `INSERT INTO trusted_discovery_reviews(id,organization_id,user_id,session_binding,target_id,source_scan_id,candidate_id,source_digest,source_generation,target_generation,route_key,attempt_identity,review_digest,state,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'REVIEWED',?,?)`
       )
       .run(
         input.id,
@@ -129,18 +157,18 @@ export class TrustedDiscoveryReviewStore {
           input.route,
           snapshot.scanId,
           snapshot.digest,
-          snapshot.generation,
+          snapshot.generation
         ]),
         input.reviewDigest,
         input.createdAt,
-        input.expiresAt,
+        input.expiresAt
       );
     this.event(input.id, actor.organizationId, "REVIEWED");
   }
   public preconsent(id: string, actor: TrustedDiscoveryActor, sessionId: string): void {
     const changed = this.database.db
       .prepare(
-        "UPDATE trusted_discovery_reviews SET state='PRECONSENTED',preconsented_at=? WHERE id=? AND organization_id=? AND user_id=? AND session_binding=? AND state='REVIEWED' AND expires_at>?",
+        "UPDATE trusted_discovery_reviews SET state='PRECONSENTED',preconsented_at=? WHERE id=? AND organization_id=? AND user_id=? AND session_binding=? AND state='REVIEWED' AND expires_at>?"
       )
       .run(Date.now(), id, actor.organizationId, actor.userId, this.hash("session", [sessionId]), Date.now());
     if (changed.changes !== 1) throw new TrustedDiscoveryStageAError("DENIED_REVIEW");
@@ -152,12 +180,12 @@ export class TrustedDiscoveryReviewStore {
         .transaction(() => {
           const result = this.database.db
             .prepare(
-              "UPDATE trusted_discovery_reviews SET state='INVALIDATED' WHERE id=? AND organization_id=? AND state='REVIEWED'",
+              "UPDATE trusted_discovery_reviews SET state='INVALIDATED' WHERE id=? AND organization_id=? AND state='REVIEWED'"
             )
             .run(id, organizationId);
           if (result.changes) this.event(id, organizationId, "INVALIDATED");
         })
-        .immediate(),
+        .immediate()
     );
   }
   /** Future Stage B must additionally bind native final-transport authority and live source checks.
@@ -176,22 +204,32 @@ export class TrustedDiscoveryReviewStore {
             .prepare(
               `INSERT INTO trusted_discovery_attempts(organization_id,target_id,route_key,review_id,source_scan_id,source_digest,source_generation,attempt_identity,reserved_at)
 SELECT organization_id,target_id,route_key,id,source_scan_id,source_digest,source_generation,attempt_identity,? FROM trusted_discovery_reviews
-WHERE id=? AND state='PRECONSENTED' AND expires_at>? ON CONFLICT DO NOTHING`,
+WHERE id=? AND state='PRECONSENTED' AND expires_at>? ON CONFLICT DO NOTHING`
             )
             .run(Date.now(), id, Date.now());
           return result.changes === 1;
         })
-        .immediate(),
+        .immediate()
     );
   }
   public dispose(): void {
     this.disposed = true;
     this.#key.fill(0);
   }
+  public attemptDescriptor(id: string): DiscoveryAttemptDescriptor {
+    if (this.disposed) throw new Error("TRUSTED_DISCOVERY_STORE_CLOSED");
+    const row = this.database.db
+      .prepare(
+        "SELECT organization_id,target_id,route_key,id AS review_id,source_scan_id,source_digest,source_generation,attempt_identity FROM trusted_discovery_reviews WHERE id=? AND state='PRECONSENTED' AND expires_at>?"
+      )
+      .get(id, Date.now()) as DiscoveryAttemptDescriptor | undefined;
+    if (!row) throw new TrustedDiscoveryStageAError("DENIED_REVIEW");
+    return Object.freeze(row);
+  }
   private event(id: string, organizationId: string, code: string): void {
     this.database.db
       .prepare(
-        "INSERT INTO trusted_discovery_review_events(id,organization_id,review_id,code,created_at) VALUES(?,?,?,?,?)",
+        "INSERT INTO trusted_discovery_review_events(id,organization_id,review_id,code,created_at) VALUES(?,?,?,?,?)"
       )
       .run(randomUUID(), organizationId, id, code, Date.now());
   }

@@ -1,0 +1,102 @@
+RouteCairn NG5B2 Stage B outcome integrity repair v1.0
+Baseline: e1dbc7156342ea51491d826273088d2840f3b0cc plus retained Stage B changes.
+Disposition: HOLD pending independent source review and owner acceptance.
+
+Finding and repair
+The previous individually signed outcome rows authenticated only rows that were
+present. Removing a deletion trigger and deleting a recorded row could leave
+validation vacuously true. Attempt replay prevention was not shown broken.
+
+Outcomes now form a contiguous sequence with unique review identity, prior tip
+and HMAC seal. The seal binds a domain-separated v2 ledger, sequence, previous
+tip, authenticated original attempt seal and actual initiated/observed facts.
+A separate MAIN dashboard_meta record stores outcome binding/count/tip and its
+witness-key HMAC. The independent witness and main commitment must agree.
+Zero outcomes is valid only with the signed genesis checkpoint, not a missing
+checkpoint, reset namespace, old format or an unauthenticated empty table.
+
+Reconciliation validates the attempt chain, builds a Map by review identity,
+then validates each ordered outcome using constant-time indexed references.
+Repeated review identities, sequence gaps, reorder, altered facts, unkeyed
+replacement digests, missing committed rows, tip/count mismatch or checkpoint
+forgery fail closed. Required deletion/update guards must retain their expected
+schema; restored guards cannot hide deleted data because checkpoint checks
+are independent of the SQL constraints. Reads use one witness transaction
+snapshot. Each scan is bounded to4096 entries with4097 rejection sentinel;
+existing8MiB file, key/canonical identity and deadline checks remain unchanged.
+There is no per-outcome scan across every attempt and no relaxed deadline.
+
+Atomic boundaries
+The original attempt spend remains independent-witness commit FIRST, main
+immutable tombstone/checkpoint commit SECOND. No refund, retry, tombstone
+deletion or restartable native permission was added.
+
+After the native dispatcher returns real counters, recordOutcome owns a bounded
+main IMMEDIATE transaction. It verifies existing custody, commits the independent
+FULL-synchronous outcome row FIRST, updates the signed main outcome checkpoint
+SECOND, reconciles, then commits main. An existing caller transaction is refused
+so a return cannot imply an uncommitted enclosing outcome transaction succeeded.
+The main lock serializes outcome commits and attempted-route commitments across
+processes. Witness-only readers may conservatively refuse a transitional mismatch;
+such observation never grants additional authority or causes automatic replay.
+
+Crash matrix
+1. After attempt, before outcome write: outcome remains UNKNOWN. The signed zero
+   or prior prefix can remain consistent; the original attempt is permanently
+   spent and its route cannot execute again. No successful outcome is invented.
+2. During outcome insert, before witness commit: SQLite rolls back the insert;
+   prior signed prefix remains authoritative and attempt remains spent.
+3. After witness commit, before main update/commit: witness sequence advances
+   beyond the retained main checkpoint. Native transition/open refuses custody.
+   This includes actual process exit and native SQLite checkpoint failure. The
+   partial outcome is retained for separately reviewed recovery, never erased.
+4. After full outcome commit: restart authenticates the chain AND main high-water
+   commitment. Deletion, trigger removal, replacement, truncation or reorder
+   cannot be accepted as successful custody under the supported threat model.
+5. After native initiation/response, persistence failure: actual counters are
+   preserved with INCONCLUSIVE status; the service refuses fresh authority and
+   reports its failure on shutdown. A clean pre-write failure may reopen as
+   unknown, still refusing that spent route. Any divergent commitment refuses
+   startup; there is no silent reconciliation or positive evidence fabrication.
+6. Current main backup plus preserved independent witness: consistent reopen.
+   Old main backup or old signed outcome checkpoint: mismatch disables native
+   authority, including when main/witness attempted-route chains still match.
+
+Custody and format assumptions
+Witness/key remain outside ordinary dataDir/backups. The main outcome checkpoint
+is separately retained outside a witness-only schema/data writer's authority.
+Witness-only tamper is detected by the main high-water commitment; main-only or
+ordinary-dataDir rollback is detected by preserved independent witness history.
+Old uncommitted Stage B v1 custody lacks the required v2 outcome checkpoint or
+columns and is refused. Product code does not migrate, reprovision, reset or
+rotate it. Test bootstrap only creates NEW disposable fixtures; it is not a
+deployment or recovery API. Existing dashboard backups/schema45 remain usable
+for ordinary dashboard operations and are not changed by this repair.
+
+Coordinated rollback of BOTH authenticated outcome history and corresponding
+signed main checkpoint to the same earlier prefix is indistinguishable locally,
+even when stable keys remain unchanged. This is part of the retained unsupported
+ALL_DISKS_ROLLBACK profile and requires separately protected external monotonic
+custody before such deployment. No absolute rollback resistance is asserted.
+Windows ACL and independent custody protection are owner deployment boundaries;
+Linux and deployed cross-platform proof remain unverified future gates.
+
+Scope preserved
+Public trusted execute remains unregistered/404; preview defaults OFF. Original
+Stage A metadata routes,64-review capacity and30s tests are unchanged. Native
+owner/session/tenant/source, exact human confirmation, real loopback pin, private
+execution roots,4s timeout,4KiB stream cap, original SCAN ledger and cleanup
+reserve, no auth/browser/retries/redirects/cache/automatic replay remain binding.
+The unchanged Windows junction EPERM and original Stage A capacity timeout in
+Codex (also observed on untouched pin) remain owner gates, not certified passes.
+
+Stage C remains required: accessible owner review, exact deliberate confirmation
+and execution UI, keyboard/focus/screen-reader/responsive behavior and truthful
+unknown/inconclusive/storage/cleanup states. It is not authorized in this repair.
+Stage D remains required: Windows/Linux/browser, protected backup/restore/key
+custody and externally anchored recovery, full regression/resource/process
+failure evidence, package/release continuity, independent operator and owner
+signoff. Neither stage is silently reduced or advanced by this repair.
+No stage, commit, push, tag, release, dependencies, OS security change or external
+target/deployment activation is authorized. Independent source and verification
+script review precedes any owner full acceptance run.

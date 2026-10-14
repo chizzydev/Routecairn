@@ -6,7 +6,7 @@ import { connectorOptionsForUrl, resolvePinnedDestination, type DestinationPolic
 import { PinnedOriginPool } from "./PinnedOriginPool.js";
 
 /** Created by the trusted broker, never taken from HttpRequest or serialized. */
-interface InitiationControl { begin(): void; expiringAuthority: boolean }
+interface InitiationControl { begin(): void; expiringAuthority: boolean; loopbackOnly?: boolean }
 
 const defaultHeaders = {
   accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -42,6 +42,9 @@ export class HttpClient {
 
     try {
       const pin = await this.resolveDestination(new URL(currentUrl));
+      if (control?.loopbackOnly && !["127.0.0.1", "::1"].includes(pin.address.address)) {
+        const error = new Error("TRUSTED_DISCOVERY_LOOPBACK_PIN_REQUIRED"); error.name = "TargetAuthorizationDenied"; throw error;
+      }
       if (control?.expiringAuthority && this.pool.settings.http2Enabled && pin.protocol === "https:") {
         const error = new Error("EXPIRING_AUTHORITY_HTTP2_UNSUPPORTED"); error.name = "TargetAuthorizationDenied"; throw error;
       }

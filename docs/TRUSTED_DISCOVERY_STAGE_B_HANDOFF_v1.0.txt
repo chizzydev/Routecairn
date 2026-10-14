@@ -1,0 +1,135 @@
+RouteCairn NG5B2 Stage B handoff v1.0
+Baseline e1dbc7156342ea51491d826273088d2840f3b0cc
+Status: native owned-disposable-loopback engineering implementation; public execution UNREGISTERED.
+
+Activation boundary
+Ordinary dashboard startup still defaults OFF. The existing process-owned preview
+option exposes only Stage A review and historical pre-consent. There is no new
+HTTP, CLI, environment, UI or ordinary deployment execution switch. Authenticated
+execute requests retain404; unauthenticated requests retain normal session handling.
+
+The internal service's optional native witness is only for privileged in-process
+fixture hosts. A real pre-provisioned witness and original native OWNER session
+are mandatory; IDs, serialized principals, role flags, metadata or JSON objects
+cannot substitute. Fixture provisioning exists ONLY under tests, is not compiled
+or packaged, and is never imported by production source. Product code cannot
+initialize, reset, silently rotate or repair an empty witness after a restore.
+
+Private state machine
+NOT_REVIEWED -> REVIEWED -> HUMAN_CONFIRMED -> RESERVED/POSSIBLY_ATTEMPTED
+-> INITIATED -> RESPONSE_OBSERVED or INITIATED_INCONCLUSIVE.
+Early authority/source/input denial -> DENIED. Cancellation -> ABORTED or a fixed
+inconclusive attempted result depending on whether permanent debit occurred.
+The consent receipt and operation exist only in the original native workflow.
+Stage A PRECONSENTED rows are historical, never executable or restartable.
+Exact review selection plus I_CONFIRM_ONE_ANONYMOUS_NON_MUTATING_LOCAL_GET is
+required for a new Stage B native receipt. Reviews/session receipts expire<=60s.
+
+Durability and own-reservation ordering
+Fresh native dispatcher consent -> main SQLite IMMEDIATE transaction -> original
+source/session/worker/lease checks -> irreversible independent witness commit
+-> immutable main route tombstone and matching checkpoint -> commit -> fresh
+checks -> original dispatcher.execute -> original broker/SCAN ledger queue/rate
+-> pinned DNS -> synchronous onRequestStart original native authority/source and
+own reservation checks -> original broker initiation debit -> bounded response.
+
+An attempt is conservatively spent before asynchronous DNS/queue so failed or
+uncertain connections cannot authorize retry. SQLite own-row recognition is
+allowed only inside the original private PendingReview with its native consumed
+consent receipt, exact operation, and signed immutable descriptor. Another review,
+source scan, owner, process or restored database cannot waive the duplicate.
+No attempt is refunded and no tombstone is rewritten or erased.
+
+Witness guarantee and explicit limits
+Independent witness directory must be canonical and outside ordinary dataDir.
+It contains a protected stable key and FULL-synchronous signed contiguous append
+chain, immutable attempt/outcome rows, capacity4096, backing-file identity and
+bounded8MiB validation. Main DB checkpoint binds original main canonical path,
+installation, Stage A stable namespace, fixture origin and independent witness
+path. Key custody, exact rows and checkpoint are rechecked after asynchronous
+waits and at the actual synchronous initiation boundary, including Date.now
+after bounded synchronous IO.
+
+Witness commits first. Process death or main-transaction rollback can leave an
+unmatched witness record: every subsequent native open or transition refuses.
+Main ahead, key missing/rotated, namespace missing, file replacement/corruption,
+chain truncation, partial write, copied main path or SQLite/witness busy also
+refuse. No automatic reconciliation lowers history. Interrupted provisioning
+can only be investigated under a separately reviewed recovery procedure.
+
+Ordinary BackupRestoreService remains unchanged and usable. Restoring an older
+SQLite snapshot or rolling back ordinary dataDir does not roll back separate
+witness custody; an older checkpoint disables execution before a second wire
+GET. A current consistent backup can reopen. No live capability is restored.
+This guarantee assumes the independent witness/key remains preserved and that
+supported restore occurs with original services stopped. Windows directory ACLs
+remain an owner deployment boundary; POSIX private generated files use0700/0600.
+
+An adversary rolling back ALL disks, keys, main DB AND independent witness to the
+same earlier image cannot be detected locally. ALL_DISKS_ROLLBACK protection is
+explicitly refused and requires a separately protected external monotonic anchor.
+No deployed external anchor, independent operator, public or external target
+exercise is claimed. General deployment execution remains unavailable.
+
+Transport and resource boundaries
+Only completed retained native DASHBOARD JSON API_MAPPER candidate, exact primary
+target unobserved GET, anonymous LOCAL OWNED/CONTROLLED_LAB disposable loopback.
+No query/auth/signed links/mutation-ish routes/objectIDs/subdomains or HTTP2.
+Native trusted-discovery transport requires actual pinned127.0.0.1 or::1 BEFORE
+pool acquisition, even if a localhost DNS/hosts entry resolves elsewhere.
+Normal HTTP transport behavior is unchanged. IPv6 URL/connector identity uses
+canonical unbracketed literal comparison and re-brackets the origin.
+No redirects/cache/retries; maximum4096 streamed response bytes,4s timeout,
+rate<=1/s, concurrency1, original SCAN ledger and reserved cleanup capacity.
+At most64 pending native workflows; one discovery attempt per original context.
+
+Each Stage B review receives a generated private output/mutation-journal root. Existing
+owner mutation journals are never selected or deleted. Terminal, abort and
+shutdown remove only original generated identity after canonical child checks.
+Failed cleanup reportsFAILED, preserves real initiation/response facts, prevents
+fresh authority and makes shutdown fail. A killed process can leave a generated
+private root; it must be retained/investigated, never treated as executable
+permission or used to erase an independent possible-attempt record.
+
+Evidence meaning
+attempted indicates conservative permanent/possibly-spent commitment, not wire.
+initiated is the original broker's synchronous begin fact, not intent/reservation.
+responseObserved is native returned status evidence, not a safety assessment.
+The controlled HTTP fixture counter is a separate actual wire receipt witness.
+DENIED, ATTEMPTED_NO_WIRE, INITIATED_INCONCLUSIVE and RESPONSE_OBSERVED remain
+distinct, with assessment NOT_ASSESSED. Raw paths/URLs/reports/cookies/response
+bodies/native tokens/keys are absent from stored attempts/outcomes/public facts.
+
+Outcome integrity repair addendum v1.0
+Individually signed present rows were insufficient to detect deletion. Outcome
+custody now requires an ordered signed ledger AND separately authenticated main
+high-water binding/count/tip. Required guards and both commitments are checked;
+deleting data and restoring SQL guards does not conceal a missing committed row.
+Witness outcome commits before main checkpoint, and any mismatch refuses native
+authority. Attempts without an outcome are unknown, permanently spent, never
+successful proof. Actual post-response storage failure preserves native counters
+and reports inconclusive; partial commits are never healed or refunded.
+Reconciliation is bounded and uses indexed O(n) maps, not quadratic scans.
+Old custody without v2 outcome commitment is refused, never automatically reset.
+See TRUSTED_DISCOVERY_OUTCOME_INTEGRITY_v1.0.txt for the complete crash matrix,
+paired-history rollback limitation, retained Stage C/D and owner-review gates.
+
+Mandatory review and follow-on gates
+Stage B remains HOLD if any protected gate cannot be proven. The unchanged
+Windows junction test must run in the owner's ordinary permitted environment;
+never skip/weaken it or change global security settings to coerce success.
+Independent source and verification-script review is required before owner runs.
+Owner full dashboard baseline791, standalone runtime1, attack-graph536 with12
+runtime checks are historical baselines, not modified-tree proof; new totals grow.
+No staging, commit, push, tag, release, dependency installation or external target
+activation is authorized by this implementation.
+
+Stage C: accessible owner review, exact explicit execution confirmation UI,
+keyboard/focus/screen-reader/responsive behavior and clear inconclusive/cleanup
+states. This remains required and was not implemented here.
+Stage D: Windows/Linux, browser, backup/restore custody and externally anchored
+deployment recovery, resource/process-failure evidence, full regressions, package
+and release continuity, operator review and independently authorized signoff.
+Public/general/default-on/external execution must not be introduced before these
+gates. General production witness provisioning/reconciliation is a separate
+reviewed contract, not an implied permission to reset an existing namespace.

@@ -178,6 +178,7 @@ export class RequestSafetyBroker {
       verify();
       const dispatched = await this.queue.run(() => this.coordination!.ledger.transmit("SCAN", this.abortSignal, () => this.transport.send(request, operation.url, [], {
         expiringAuthority: false,
+        loopbackOnly: true,
         begin: () => { verify(); this.commitHttpInitiation(request, operation.url); operation.initiated = true; }
       }), { reserveAtInitiation: true }));
       if (!dispatched.accepted) code = "DENIED_CAPACITY";
