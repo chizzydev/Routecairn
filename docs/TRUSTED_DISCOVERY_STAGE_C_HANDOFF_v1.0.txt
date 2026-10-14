@@ -1,0 +1,133 @@
+RouteCairn NG5B2 Stage C operator dashboard handoff v1.0
+Frozen baseline: df5c953f530daa6b15b7f25e5934456eadd74f66
+Parent: e1dbc7156342ea51491d826273088d2840f3b0cc
+Disposition: NG5B2_STAGE_C=HOLD_FOR_INDEPENDENT_SOURCE_AND_OWNER_REVIEW
+
+Product boundary
+Trusted Discovery is a discoverable dashboard navigation view for retained local
+candidate review and historical pre-consent. The shipping Execute (unavailable)
+control is disabled and explained. No HTTP execute route, new enabling option,
+production witness bootstrap, reset, reconcile, CLI flag or external activation
+exists. Preview remains OFF by default, server-mode/local-control-plane only.
+An enabled preview is not native execution authority. Stage B remains unchanged.
+
+Routes and evidence flow
+Existing POST /api/trusted-discovery/review and POST /api/trusted-discovery/pre-consent
+are unchanged. Two new exact GET routes are intercepted before Stage A routing:
+GET /api/trusted-discovery/status
+GET /api/trusted-discovery/candidates/:scanId (exact UUID path; no query string)
+All other namespace paths and methods retain ordinary authentication and404.
+All privileged discovery JSON uses cache-control no-store. Unknown path labels
+retain the existing sanitized telemetry template. No review token is a URL.
+
+Status and candidates require the actual native cookie session, selected explicit
+organization header, current OWNER account, live session/version/timestamps,
+unlocked account, current password epoch, ACTIVE organization and OWNER membership.
+The existing native cookie lookup returns that session's current CSRF hash;
+read-only additional live checks use it privately, never a caller principal/role.
+GET does not require mutation consent/CSRF; both existing POSTs retain original
+CSRF/Origin/cookie/body and recaptured source/tenant authority enforcement.
+Cross-site fetch metadata is refused. Client role labels grant no privilege.
+
+Status projects up to64 authorized registered anonymous local target IDs and64
+completed DASHBOARD scan IDs, with conservative generated labels and truncation.
+Target URLs, owner-supplied display text, report paths, credentials, headers,
+private tokens, exceptions, witness identities and report bodies are not returned.
+Candidate projection uses the existing TrustedDiscoverySource canonical retained
+2MiB report capture and current row/file fingerprints, plus the real planner.
+Incomplete/invalid planner evidence refuses. Candidate IDs and ordinal labels
+are projected only for conservative anonymous unobserved primary-origin GET
+metadata. Unsafe query/fragment/object/auth/mutation-ish routes are omitted.
+Up to64 projected candidates and48KiB JSON; no context, dispatcher, witness,
+attempt, consent or transport is constructed by these read-only projections.
+The original review rederives all eligibility and authority at mutation time.
+An empty list is not an assertion that the target has no undiscovered routes.
+
+Human-visible states
+Preview is OFF or unavailable in this dashboard mode. Execution is unavailable.
+Owner-only preview available. Selection alone does not send a request.
+Review complete - awaiting deliberate historical pre-consent; no HTTP GET sent.
+Pre-consent recorded - NOT EXECUTED. No HTTP GET was sent.
+Review expired or invalidated; choose a fresh retained scan/review.
+Request interrupted - outcome UNKNOWN; review/pre-consent may have been recorded.
+Execution unavailable; deployment and independent witness custody require review.
+Attempted - zero wire initiation (irreversible possibly-spent; not wire proof).
+Native request initiated - inconclusive (native onRequestStart fact).
+Response observed (status fact only; no vulnerability assessment).
+Outcome persistence COMMITTED or UNKNOWN (signed evidence state, not a finding).
+Cleanup FAILED/UNKNOWN or custody UNKNOWN - unavailable; investigation required.
+Fixed allowlisted denial copy handles400/401/403/404/409/413/503 and unknown
+transport failures. Raw socket, SQLite, filesystem and server exception text
+is never rendered. There is no resend, retry-GET, cancel/refund or auto-confirm.
+The pure native-facts renderer has no shipping result adapter. Only test-owned
+typed adapters exercise native result presentation; no live execution is implied.
+
+Transient state and accessibility
+The exact safe returned review object, not a client URL, is used once with the
+exact deliberately typed phrase I_CONFIRM_ONE_ANONYMOUS_NON_MUTATING_LOCAL_GET.
+Review/confirmation/digest remain React memory only and are cleared after response,
+expiration, target/scan/candidate change, organization switch, logout/session loss,
+navigation/back-forward/hash, connection changes, hidden document, reload/unmount.
+Generation checks reject stale async responses. Single-flight refs prevent double
+POSTs; AbortController cancels local waiting, not a server-side operation. An
+interrupted POST is UNKNOWN and never automatically retried. Local discard does
+not revoke/refund server operations. Server session/source validation is final.
+Countdown is based on an absolute <=60s expiry; submission checks the deadline.
+Labels, headings, screen-reader live status/alerts, review/error/completion focus,
+keyboard deliberate confirmation, disabled explanation, narrow-layout wrapping,
+scoped visible focus and reduced-motion CSS preserve the existing dashboard.
+Native facts distinguish attempted, initiated, response observed and persistence;
+invalid/missing facts and missing cleanup cannot invent successful custody.
+
+Architecture and source scope
+New server files: TrustedDiscoveryProjection.ts and TrustedDiscoveryWorkspaceApi.ts.
+DashboardServer.ts adds only the exact read-route interception/import.
+New UI files: TrustedDiscoveryWorkspace.tsx and TrustedDiscoveryStatus.tsx.
+main.tsx adds navigation/conditional mounting; App stays in main.tsx.
+api.ts adds optional abort signals and numeric error status, preserving existing
+same-origin cookies, organization headers, CSRF and session-expired dispatch.
+styles.css adds only scoped workspace selectors/responsive/reduced-motion rules.
+New tests: trusted-discovery-stage-c.test.ts, TrustedDiscoveryWorkspace.test.tsx,
+and a test-only native child fixture trusted-discovery-stage-c.fixture.ts.
+The child uses private IPC for disposable auth and real loopback UI->API requests.
+It is never imported by shipping code/bundles. No new dependency or DB migration.
+Both Stage B documents, all original tests and Stage A/B execution files remain
+byte-preserved. Exact frozen/current hashes are in the preflight and delivery
+manifest; this document's own hash is supplied by that manifest to avoid recursion.
+
+Acceptance and evidence
+RED tests against clean pinned Stage B prove missing workspace navigation and
+missing authenticated owner metadata route. They are retained before production
+edits, with original test-source hashes. Subsequent failures and exact exits are
+retained, including UI rendering defects and an isolated native fixture teardown
+schema-query error which caused a30s new-test timeout. Original thresholds were
+not changed. Native fixture isolation resolves jsdom's native asset import EPERM
+without changing Windows permissions, original tests or shipping imports.
+Final source-matched targeted results, counts, logs, native one-shot receipts,
+zero-wire UI/server review receipts and engineering exits are reported separately
+in the delivery report and machine receipt. Mocked status-rendering tests are
+not live execution evidence. Current native Stage B/outcome tests remain real.
+Build, UI typecheck/build, lint, deterministic format and default1800-line
+architecture checks are required. Full owner tests must be independently run.
+
+Stage D and mandatory remaining gates
+Historical owner Stage B dashboard870/870, protected279/279, standalone1/1,
+graph536/536 and runtime12/12 are not changed-tree acceptance. Preserve the
+original junction EPERM and64-context30s capacity gate as owner obligations;
+never skip/weaken them, elevate, install dependencies or alter Windows controls.
+The owner verifier checks exact pin/index/path/hash scope, all new and original
+protected tests, full dashboard/UI, standalone runtime, graph and12 runtime checks,
+then rechecks source/manifest integrity with fresh evidence and permitted short
+user TEMP. Source/script review must precede its execution. Codex does not run
+that owner marathon or claim its results. Independent signoff remains pending.
+
+Stage D must separately review accessible browser/platform acceptance, Windows
+and Linux protected custody, backup/restore/key continuity, resource/process and
+cleanup failures, externally anchored monotonic recovery and production witness
+provisioning without historical reset, full regressions, package/release continuity,
+operator/owner authorization and independent signoff. Synchronized rollback of
+both authenticated histories/checkpoints remains locally undetectable; no absolute
+rollback or deployment guarantee is claimed. Any eventual operational execute
+activation, general/public/external target use and independently protected anchor
+require a separately reviewed Stage D contract. No stage/commit/push/tag/release
+or production activation is part of Stage C.

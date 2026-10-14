@@ -156,7 +156,8 @@ export class DashboardApiError extends Error {
     message: string,
     public readonly code: string,
     public readonly diagnostics: readonly ApiDiagnostic[] = [],
-    public readonly coreCode?: string
+    public readonly coreCode?: string,
+    public readonly statusCode?: number
   ) {
     super(message);
     this.name = "DashboardApiError";
@@ -194,16 +195,17 @@ export async function bootstrap(): Promise<boolean> {
   return true;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin", ...(activeOrganizationId ? { headers: { "x-routecairn-organization-id": activeOrganizationId } } : {}) });
+export async function apiGet<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<T> {
+  const response = await fetch(path, { ...options, credentials: "same-origin", ...(activeOrganizationId ? { headers: { "x-routecairn-organization-id": activeOrganizationId } } : {}) });
   if (response.status === 401) window.dispatchEvent(new Event("routecairn:session-expired"));
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as T;
 }
 
-export async function apiMutation<T>(path: string, method: "POST" | "PATCH" | "PUT", body: unknown): Promise<T> {
+export async function apiMutation<T>(path: string, method: "POST" | "PATCH" | "PUT", body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
   const effectiveCsrfToken = csrfToken || readStoredCsrfToken();
   const response = await fetch(path, {
+    ...options,
     method,
     headers: { "content-type": "application/json", "x-csrf-token": effectiveCsrfToken, ...(activeOrganizationId ? { "x-routecairn-organization-id": activeOrganizationId } : {}) },
     credentials: "same-origin",
@@ -226,5 +228,5 @@ function readStoredOrganizationId():string{try{return window.sessionStorage.getI
 
 async function responseError(response: Response): Promise<DashboardApiError> {
   const body = await response.json().catch(() => ({})) as { error?: string; code?: string; coreCode?: string; diagnostics?: ApiDiagnostic[] };
-  return new DashboardApiError(body.error ?? "API request failed.", body.code ?? "API_REQUEST_FAILED", body.diagnostics ?? [], body.coreCode);
+  return new DashboardApiError(body.error ?? "API request failed.", body.code ?? "API_REQUEST_FAILED", body.diagnostics ?? [], body.coreCode, response.status);
 }

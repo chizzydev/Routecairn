@@ -17,9 +17,10 @@ import type { AdvancedEngineId } from "./AdvancedEngineStudio";
 import { ProviderAdapterWorkspace } from "./ProviderAdapterWorkspace";
 import { ContinuousAssuranceWorkspace } from "./ContinuousAssuranceWorkspace";
 import { OperationsWorkspace } from "./OperationsWorkspace";
+import { TrustedDiscoveryWorkspace } from "./TrustedDiscoveryWorkspace";
 const ScanStudio = React.lazy(async () => ({ default: (await import("./ScanStudio")).ScanStudio }));
 
-type View = "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "operations" | "users" | "audit" | "settings";
+type View = "trusted-discovery" | "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "operations" | "users" | "audit" | "settings";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -87,6 +88,7 @@ export function App() {
         <button className={view === "mutation" ? "active" : ""} onClick={() => setView("mutation")}>Mutation Approval</button>
         <button className={view === "production-mutation" ? "active" : ""} onClick={() => setView("production-mutation")}>Production Mutation</button>
         <button className={view === "live-acceptance" ? "active" : ""} onClick={() => setView("live-acceptance")}>Live Acceptance</button>
+        <button className={view === "trusted-discovery" ? "active" : ""} onClick={() => setView("trusted-discovery")}>Trusted Discovery</button>
         <button className={view === "adaptive-security" ? "active" : ""} onClick={() => setView("adaptive-security")}>Adaptive Security</button>
         <button className={view === "provider-adapters" ? "active" : ""} onClick={() => setView("provider-adapters")}>Fixture Adapters</button>
         <button className={view === "continuous-assurance" ? "active" : ""} onClick={() => setView("continuous-assurance")}>Continuous Assurance</button>
@@ -116,6 +118,7 @@ export function App() {
         {view === "mutation" && <ControlledMutationWorkspace />}
         {view === "production-mutation" && <ProductionMutationWorkspace />}
         {view === "live-acceptance" && <LiveAcceptanceWorkspace />}
+        {view === "trusted-discovery" && <TrustedDiscoveryWorkspace organizationId={organizationId} />}
         {view === "adaptive-security" && <AdaptiveSecurityWorkspace canApprove={principal?.role === "OWNER"} onOpenBuilder={(draft) => { setRetestDraft(undefined); setAdaptiveDraft({ ...draft, engineId: draft.engineId as AdvancedEngineId }); setView("new-scan"); }} />}
         {view === "provider-adapters" && <ProviderAdapterWorkspace canManage={principal?.role === "OWNER"} onUse={({ target, input, binding }) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft({ target, engineId: input.engineId, engineConfiguration: input.engineConfiguration, authentication: input.authentication, binding, limits: input.limits }); setView("new-scan"); }} />}
         {view === "continuous-assurance" && <ContinuousAssuranceWorkspace canManage={principal?.role === "OWNER"} />}

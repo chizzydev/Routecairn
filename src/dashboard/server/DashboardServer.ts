@@ -1,6 +1,7 @@
 import { controlPlaneConfigFromEnv } from "../../controlPlane/ControlPlaneConfig.js";
 import { TrustedDiscoveryOperatorService } from "../execution/TrustedDiscoveryOperatorService.js";
 import { handleTrustedDiscoveryStageA } from "./TrustedDiscoveryStageAApi.js";
+import { handleDiscoveryWorkspaceRead, isDiscoveryWorkspaceRead } from "./TrustedDiscoveryWorkspaceApi.js";
 import { readBoundedFileSync } from "../security/BoundedFile.js";
 import { mkdirSync, realpathSync } from "node:fs";
 import { createServer } from "node:http";
@@ -384,6 +385,7 @@ export function environmentSecret(name: string, maxBytes = 65_536): string | und
 export async function handleApi(context: ApiContext): Promise<void> {
   const { request } = context;
   if (context.url.pathname === "/api/trusted-discovery" || context.url.pathname.startsWith("/api/trusted-discovery/")) {
+    if (isDiscoveryWorkspaceRead(context)) { handleDiscoveryWorkspaceRead(context); return; }
     await handleTrustedDiscoveryStageA(context); return;
   }
   if (request.method === "POST" && context.url.pathname === "/api/auth/csrf") {
