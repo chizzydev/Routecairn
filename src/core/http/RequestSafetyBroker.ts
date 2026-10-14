@@ -4,6 +4,9 @@ import { ValuePresenceAttestor, redactSensitiveUrl, scrubObservedValues, type Tr
 import { ScanCancelledError } from "../engine/ScanEvents.js";
 import type { ScopeMatcher } from "../scope/ScopeMatcher.js";
 import { HttpClient } from "./HttpClient.js";
+import { normalizeUrl } from "../urls/UrlNormalizer.js";
+import { claimTrustedDiscoveryOperation, discoveryFacts, type TrustedDiscoveryFacts } from "../../dashboard/execution/TrustedDiscoveryBinding.js";
+import { TrustedDiscoveryDenial } from "../../dashboard/execution/TrustedDiscoverySource.js";
 import { RateLimiter } from "./RateLimiter.js";
 import { RequestQueue } from "./RequestQueue.js";
 import { RetryPolicy } from "./RetryPolicy.js";
@@ -36,6 +39,16 @@ const maxRedirects = 5;
 class BrowserDispatchDenied extends Error { public constructor(public readonly stage: "BROWSER_BINDING_INVALID" | "BROWSER_FINAL_SCOPE_DENIED" | "BROWSER_NATIVE_IDENTITY_CHANGED" | "BROWSER_HEADER_PERMISSION_DENIED") { super(stage); } }
 class StopTransportRetry extends Error { public constructor(public readonly response: HttpResponse) { super("TERMINAL_TRANSPORT_RESULT"); } }
 class DispatchPolicyDenied extends Error { public constructor(reason?: string) { super(fixedDispatchDenial(reason)); this.name = "TargetAuthorizationDenied"; } }
+
+// Scan-local intent history includes pending/cache/error requests, not just
+// completion audit. Native peers share the original ledger object identity.
+// The register carries no raw routes and never changes ordinary GET permits.
+interface PrivateGetHistory { salt: Buffer; identities: Set<string>; saturated: boolean }
+const privateGetHistories = new WeakMap<object, PrivateGetHistory>();
+const maximumGetIdentities = 10_000;
+function privateGetIdentity(history: PrivateGetHistory, url: string): string {
+  return createHmac("sha256", history.salt).update("GET\n").update(normalizeUrl(url)).digest("hex");
+}
 
 export class RequestSafetyBroker {
   private readonly transport: HttpClient;
@@ -119,6 +132,67 @@ export class RequestSafetyBroker {
 
   public async send(requestInput: HttpRequest): Promise<HttpResponse> {
     return this.sendRequest(requestInput, false);
+  }
+
+  /** Internal read-only refusal signal; this never grants dispatch authority. */
+  public hasTrustedDiscoveryGetConflict(url: string): boolean {
+    const history = privateGetHistories.get(this.coordination?.ledger ?? this);
+    if (!history) return false;
+    if (history.saturated) return true;
+    try { return history.identities.has(privateGetIdentity(history, url)); }
+    catch { return true; }
+  }
+
+  private recordOrdinaryGetIntent(method: string, url: string): void {
+    if (method.toUpperCase() !== "GET") return;
+    const owner = this.coordination?.ledger ?? this;
+    let history = privateGetHistories.get(owner);
+    if (!history) { history = { salt: randomBytes(32), identities: new Set(), saturated: false }; privateGetHistories.set(owner, history); }
+    if (history.saturated) return;
+    if (url.length > 8192) { history.saturated = true; return; }
+    try {
+      const identity = privateGetIdentity(history, url);
+      if (history.identities.has(identity)) return;
+      if (history.identities.size >= maximumGetIdentities) { history.saturated = true; return; }
+      history.identities.add(identity);
+    } catch { history.saturated = true; }
+  }
+
+  /** Internal, unregistered owned-fixture seam. Public request fields cannot
+   * construct its private native binding. All ordinary P0C paths are unchanged. */
+  public async dispatchTrustedDiscoveryGet(token: unknown): Promise<TrustedDiscoveryFacts> {
+    if (this.coordination?.lane !== "SCAN") return discoveryFacts("DENIED_OPERATOR_BINDING");
+    let operation: ReturnType<typeof claimTrustedDiscoveryOperation>;
+    try { operation = claimTrustedDiscoveryOperation(token, this, this.scopeMatcher, this.coordination.ledger); }
+    catch (error) { return discoveryFacts(error instanceof TrustedDiscoveryDenial ? error.code : "DENIED_OPERATOR_BINDING"); }
+    let code: TrustedDiscoveryFacts["code"] = "ATTEMPTED", responseObserved = 0, auditEvents = 0;
+    const request: HttpRequest = { url: operation.url, method: "GET", skipCache: true, disableRedirects: true, disableRetries: true, retainBodyPreview: false, streamLimitBytes: 4096 };
+    const verify = () => {
+      this.throwIfAborted();
+      try { operation.verify(); }
+      catch (error) { operation.failure = error instanceof TrustedDiscoveryDenial ? error.code : "DENIED_SOURCE_STALE"; throw new DispatchPolicyDenied(); }
+    };
+    try {
+      const url = new URL(operation.url);
+      if (url.origin !== this.scopeMatcher.targetOrigin() || url.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || this.userAgent !== "RouteCairn/0.1" || this.hasExpiringAuthority()) throw new TrustedDiscoveryDenial("DENIED_SCOPE");
+      verify();
+      const dispatched = await this.queue.run(() => this.coordination!.ledger.transmit("SCAN", this.abortSignal, () => this.transport.send(request, operation.url, [], {
+        expiringAuthority: false,
+        begin: () => { verify(); this.commitHttpInitiation(request, operation.url); operation.initiated = true; }
+      }), { reserveAtInitiation: true }));
+      if (!dispatched.accepted) code = "DENIED_CAPACITY";
+      else {
+        responseObserved = typeof dispatched.value.statusCode === "number" ? 1 : 0;
+        code = operation.failure ?? (responseObserved ? "RESPONSE_OBSERVED" : operation.initiated ? "INCONCLUSIVE" : dispatched.value.error?.name === "RequestBudgetExceeded" ? "DENIED_CAPACITY" : "INCONCLUSIVE");
+      }
+    } catch (error) {
+      code = error instanceof ScanCancelledError || this.abortSignal?.aborted ? "DENIED_CANCELLED" : operation.failure ?? (error instanceof TrustedDiscoveryDenial ? error.code : "INCONCLUSIVE");
+    }
+    try {
+      this.recordAudit({ requestedUrl: "redacted://trusted-discovery", finalUrl: "redacted://trusted-discovery", method: "GET", outcome: operation.initiated ? "sent" : "scope-skipped", requestHeaders: {}, redirectChain: [], source: "http", transmittedRequests: this.sentRequestCount });
+      auditEvents = 1;
+    } catch { /* Observer errors never expose route material or change initiation facts. */ }
+    return discoveryFacts(code, 1, operation.initiated ? 1 : 0, responseObserved, auditEvents);
   }
 
   /** Dedicated raw HTTP/1 lane for proof-gated desynchronization cases. It
@@ -217,6 +291,7 @@ export class RequestSafetyBroker {
     }
 
     const scopedRequest = { ...requestInput, url: scopeDecision.normalizedUrl };
+    this.recordOrdinaryGetIntent(scopedRequest.method, scopedRequest.url);
     const key = requestKey(scopedRequest, this.auditFingerprintSalt);
 
     const cacheable = (scopedRequest.method === "GET" || scopedRequest.method === "HEAD" || scopedRequest.method === "OPTIONS") && !scopedRequest.skipCache;
@@ -604,6 +679,7 @@ export class RequestSafetyBroker {
 
   private async sendWithRedirects(requestInput: HttpRequest, currentUrl: string, redirectChain: RedirectHop[], synchronized = false, onDispatch?: (timeMs: number) => void): Promise<HttpResponse> {
     this.throwIfAborted();
+    this.recordOrdinaryGetIntent(requestInput.method, currentUrl);
     const authorization = this.scopeMatcher.authorization;
     if (!synchronized) await authorization?.waitForRate(this.abortSignal);
     if (this.sentRequestCount >= this.maxRequests) {
