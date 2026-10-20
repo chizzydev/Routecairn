@@ -1,3 +1,4 @@
+import { ApplicationOnboardingCompatibility } from "./ApplicationOnboardingCompatibility";
 import "./ApplicationOnboarding.css";
 import React, { useEffect, useRef, useState } from "react";
 import { apiMutation } from "./api";
@@ -73,6 +74,7 @@ export function ApplicationOnboarding({
       <summary>Set up an owned local application and actors</summary>
       <section aria-label="Application onboarding" aria-busy={busy}>
         <h3>Connect an owned application</h3>
+        <ApplicationOnboardingCompatibility />
         <p>1. Establish scope → 2. Declare actors → 3. Choose evidence fields → 4. Review and save.</p>
         <fieldset className="onboarding-steps">
           <legend>Setup step (arrow keys change selection)</legend>
