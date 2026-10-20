@@ -59,7 +59,8 @@ export class ApplicationEvidenceTriage {
               actorId: c.actorId,
               outcome: c.outcome,
               reason: c.reasonCode,
-              comparisonFingerprint: c.comparisonFingerprint
+              comparisonFingerprint: c.comparisonFingerprint,
+              ...(c.collection ? { collection: c.collection } : {})
             })) ?? [],
           findings: r.findings ?? [],
           missing:

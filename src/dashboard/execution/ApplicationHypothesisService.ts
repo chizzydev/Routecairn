@@ -290,14 +290,25 @@ export class ApplicationHypothesisService {
     }
     if (c.eligibility !== "EVIDENCE_READY_FOR_POLICY_REVIEW" || !p.source.scanId)
       throw Error("WORKBENCH_HYPOTHESIS_ABSTAIN_REQUIRES_NEW_EVIDENCE");
+    if (
+      c.collection &&
+      (input.identity !== undefined ||
+        input.tenant !== undefined ||
+        input.decisions.anonymous !== "DENY" ||
+        input.decisions["account-a"] !== "ALLOW" ||
+        input.decisions["account-b"] !== "ALLOW")
+    )
+      throw Error("WORKBENCH_COLLECTION_SELF_POLICY_ONLY");
     const primary = c.evidence[0]!,
       matches = (path: string, value: string | number) =>
         primary.markers.some(
           (m) => m.path === path && m.fingerprint === observedMarkerFingerprint(value) && m.scalarType === typeof value
         );
     if (
-      !matches(c.identityPath, input.identity) ||
-      (c.tenantPath && (input.tenant === undefined || !matches(c.tenantPath, input.tenant)))
+      !c.collection &&
+      (input.identity === undefined ||
+        !matches(c.identityPath, input.identity) ||
+        (c.tenantPath && (input.tenant === undefined || !matches(c.tenantPath, input.tenant))))
     )
       throw Error("WORKBENCH_HYPOTHESIS_TYPED_PRIMARY_MARKER_REQUIRED");
     const expectations = [
@@ -307,7 +318,9 @@ export class ApplicationHypothesisService {
         kind: c.kind === "FUNCTION" ? "FUNCTION_AUTHORIZATION" : "TENANT_ISOLATION",
         explanation: input.explanation,
         decisions: input.decisions,
-        identity: { path: c.identityPath, expectedValue: input.identity },
+        ...(c.collection
+          ? { collection: c.collection }
+          : { identity: { path: c.identityPath, expectedValue: input.identity! } }),
         ...(c.tenantPath ? { tenant: { path: c.tenantPath, expectedValue: input.tenant! } } : {})
       }
     ];
@@ -329,6 +342,9 @@ export class ApplicationHypothesisService {
       proposalDigest: p.row.digest,
       policyDigest: adaptiveDigest(preview.input.expectations),
       expectedMarkers: primary.markers,
+      ...(c.collection
+        ? { collectionContract: c.collection, ownershipRuleConfirmed: true, coverage: c.collection.coverage }
+        : {}),
       humanOwnershipConfirmed: true,
       humanPolicyConfirmed: true,
       executionAuthority: "NONE"

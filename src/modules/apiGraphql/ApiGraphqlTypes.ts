@@ -67,6 +67,7 @@ export interface ApiRequestPlan {
 }
 
 export interface ApiResponseContractPlan {
+  collection?: import("./CollectionOwnership.js").CollectionContract;
   expectedDecision: ApiGraphqlDecision;
   allowedStatuses: readonly number[];
   deniedStatuses: readonly number[];

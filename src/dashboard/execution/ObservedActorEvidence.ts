@@ -1,3 +1,4 @@
+import { readCollectionObservation } from "./CollectionMappingEvidence.js";
 import { nativeApplicationProofMatches } from "./ApplicationIdentity.js";
 import { createHash } from "node:crypto";
 import type { hypothesisSource } from "./ApplicationHypothesisBinding.js";
@@ -53,6 +54,32 @@ export function readActorObservation(source: Source, routeId: string, actorId: s
     routePlan.protocol !== "REST"
   )
     missing.push("EXACT_NATIVE_ROUTE_REQUIRED");
+  if (route?.observation?.kind === "COLLECTION") {
+    const collection = readCollectionObservation(source, routeId, actorId);
+    const actorBinding = {
+      actorId,
+      identityModel: actor?.identityModel ?? "TENANT_AWARE",
+      authSlot: slot,
+      credentialReference: slot === "anonymous" ? null : source.input.credentials[slot],
+      principalFingerprint: actor?.principalFingerprint ?? null,
+      tenantFingerprint: actor?.tenantFingerprint ?? null,
+      role: actor?.role ?? null
+    };
+    const controls = [...missing, ...collection.missingControls];
+    return {
+      algorithm: collection.evidence?.algorithm ?? "bounded-native-collection-v1",
+      route,
+      actor,
+      check,
+      request: check?.requests[0],
+      markers: [],
+      actorBinding,
+      bindingFingerprint: adaptiveDigest(actorBinding),
+      missingControls: controls,
+      bindingValid: controls.length === 0,
+      collection: collection.evidence
+    };
+  }
   const paths = route
     ? [route.identityPath, ...(route.tenantPath ? [route.tenantPath] : []), ...(route.statePaths ?? [])]
     : [];

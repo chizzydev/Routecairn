@@ -1,5 +1,6 @@
+import { collectionEvidenceMatches, collectionHash } from "../../modules/apiGraphql/CollectionOwnership.js";
 import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
-import { nativeApplicationActorMatches } from "./ApplicationIdentity.js";
+import { nativeApplicationActorMatches, nativeApplicationProofMatches } from "./ApplicationIdentity.js";
 import { transitionAssessmentContext } from "./ApplicationTransitionAssessment.js";
 import { assertHypothesisReviewBinding } from "./ApplicationHypothesisBinding.js";
 import { guidedMappingBlockers } from "./ApplicationMappingEvidence.js";
@@ -131,6 +132,18 @@ export class AuthorizationWorkbenchService {
         (e.kind === "TENANT_ISOLATION" || e.tenant)
       )
         throw Error("WORKBENCH_PRINCIPAL_ROLE_TENANT_PROOF_FORBIDDEN");
+      if (
+        e.collection &&
+        (!input.mappingAcquisitionId ||
+          e.identity ||
+          e.tenant ||
+          e.states ||
+          e.dependsOn ||
+          e.kind !== "OBJECT_AUTHORIZATION" ||
+          e.decisions.anonymous !== "DENY" ||
+          ["primary", "account-a", "account-b"].some((id) => e.decisions[id] !== "ALLOW"))
+      )
+        throw Error("WORKBENCH_COLLECTION_SELF_POLICY_ONLY");
       const priorIds = input.expectations.slice(0, expectationIndex).map((v) => v.routeId);
       if (
         new Set(e.dependsOn ?? []).size !== (e.dependsOn ?? []).length ||
@@ -205,7 +218,7 @@ export class AuthorizationWorkbenchService {
         )
         .map((c) => c.caseId);
       if (!caseIds.length) blockers.push("SECURITY_CASE_PROVENANCE_REQUIRED:" + e.routeId);
-      if (!e.identity) blockers.push("EXACT_OBJECT_OR_FUNCTION_MARKER_REQUIRED:" + e.routeId);
+      if (!e.identity && !e.collection) blockers.push("EXACT_OBJECT_OR_FUNCTION_MARKER_REQUIRED:" + e.routeId);
       if (e.kind === "TENANT_ISOLATION" && !e.tenant) blockers.push("EXACT_TENANT_REQUIRED:" + e.routeId);
       const decisions = Object.values(e.decisions);
       if (!decisions.includes("ALLOW") || !decisions.includes("DENY"))
@@ -214,7 +227,10 @@ export class AuthorizationWorkbenchService {
         if (!actors.some((a) => a.id === key)) throw Error("WORKBENCH_UNKNOWN_ACTOR");
       for (const actor of actors) {
         const decision = e.decisions[actor.id] ?? "UNKNOWN",
-          status = decision === "UNKNOWN" || !e.identity || !caseIds.length ? "REQUIRES_BINDINGS" : "READY_READ_ONLY";
+          status =
+            decision === "UNKNOWN" || (!e.identity && !e.collection) || !caseIds.length
+              ? "REQUIRES_BINDINGS"
+              : "READY_READ_ONLY";
         matrix.push({
           routeId: e.routeId,
           actorId: actor.id,
@@ -259,6 +275,7 @@ export class AuthorizationWorkbenchService {
               allowedStatuses: [200],
               deniedStatuses: [401, 403, 404],
               fieldRules: [],
+              ...(e.collection ? { collection: e.collection } : {}),
               ...(e.states ? { stateMarkers: e.states } : {}),
               ...(e.identity ? { identity: e.identity } : {}),
               ...(e.tenant ? { tenant: { ...e.tenant, forbiddenValues: [] } } : {})
@@ -271,7 +288,7 @@ export class AuthorizationWorkbenchService {
           ? apiGraphqlInputSchema.parse({
               schemaVersion: 1,
               maxRequests: 32,
-              maxResponseBytes: 8192,
+              maxResponseBytes: Math.max(8192, ...input.expectations.map((e) => e.collection?.maxResponseBytes ?? 0)),
               actors,
               routes,
               checks
@@ -535,6 +552,48 @@ export class AuthorizationWorkbenchService {
       report.execution.partial
     )
       throw Error("WORKBENCH_RESULT_INCOMPLETE");
+    for (const cp of report.scanPlan!.apiGraphql!.checks) {
+      if (!("response" in cp) || !cp.response.collection) continue;
+      const c = r.checks.find((c) => c.checkId === cp.id),
+        actor = report.scanPlan!.apiGraphql!.actors.find((a) => a.id === cp.actorId),
+        route = report.scanPlan!.apiGraphql!.routes.find((p) => "routeId" in cp && p.id === cp.routeId);
+      const saved = JSON.parse(row.request_json!).apiGraphql.checks.find((p: { id: string }) => p.id === cp.id);
+      if (
+        collectionHash(saved?.response.collection) !== collectionHash(cp.response.collection) ||
+        !c ||
+        c.comparisonFingerprint !== cp.comparisonFingerprint ||
+        c.actorId !== actor?.id ||
+        c.authSlot !== actor?.authSlot
+      )
+        throw Error("WORKBENCH_COLLECTION_PROOF_BINDING_INVALID");
+      if (c.requests[0]?.decision === "ALLOWED" && ["PASS", "FAIL"].includes(c.outcome)) {
+        const proof =
+          actor?.authSlot === "primary"
+            ? report.identityVerification?.primary
+            : actor?.authSlot === "account_a"
+              ? report.identityVerification?.accountA
+              : report.identityVerification?.accountB;
+        const audit = report.requestAudit.filter((a) => a.requestId === c.collection?.requestId);
+        if (
+          !actor ||
+          !nativeApplicationProofMatches(actor, proof) ||
+          !route?.urlFingerprint ||
+          !collectionEvidenceMatches(
+            c.collection,
+            cp.response.collection,
+            actor,
+            cp.comparisonFingerprint,
+            route.urlFingerprint
+          ) ||
+          audit.length !== 1 ||
+          audit[0]?.outcome !== "sent" ||
+          audit[0]?.requestedUrl !== route.url ||
+          audit[0]?.method !== "GET" ||
+          audit[0]?.statusCode !== c.requests[0]?.statusCode
+        )
+          throw Error("WORKBENCH_COLLECTION_NATIVE_PROOF_INVALID");
+      }
+    }
     return {
       revisionId: id,
       version: Number(row.version),

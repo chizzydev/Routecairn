@@ -1,3 +1,5 @@
+import { nativeApplicationProofMatches } from "../../core/auth/NativeIdentityAdmission.js";
+export { nativeApplicationProofMatches } from "../../core/auth/NativeIdentityAdmission.js";
 import { createHash } from "node:crypto";
 import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import type { IdentityVerificationResult } from "../../reports/ReportTypes.js";
@@ -35,35 +37,6 @@ export function assertApplicationIdentityContract(
   )
     throw Error("WORKBENCH_MAPPING_VERIFIED_IDENTITY_CONTRACT_REQUIRED");
   return a;
-}
-export function nativeApplicationProofMatches(
-  actor: ApiGraphqlActorPlan | undefined,
-  proof: IdentityVerificationResult | undefined
-): boolean {
-  try {
-    const model = applicationIdentityModel(actor?.identityModel);
-    if (
-      !actor?.principalFingerprint ||
-      !actor.role ||
-      !proof?.verified ||
-      proof.principalMatched !== true ||
-      proof.roleMatched !== true ||
-      proof.principalHash !== actor.principalFingerprint ||
-      proof.roleHash !== fp(actor.role) ||
-      applicationIdentityModel(proof.identityModel) !== model
-    )
-      return false;
-    return model === "TENANT_AWARE"
-      ? !!actor.tenantFingerprint && proof.tenantMatched === true && proof.tenantHash === actor.tenantFingerprint
-      : actor.identityModel === "PRINCIPAL_ROLE" &&
-          proof.identityModel === "PRINCIPAL_ROLE" &&
-          proof.tenantVerification === "NOT_APPLICABLE" &&
-          proof.tenantMatched === undefined &&
-          proof.tenantHash === undefined &&
-          actor.tenantFingerprint === undefined;
-  } catch {
-    return false;
-  }
 }
 export function nativeApplicationActorMatches(
   m: Record<string, unknown>,

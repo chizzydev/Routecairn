@@ -1,3 +1,4 @@
+import { collectionContractSchema } from "./CollectionOwnership.js";
 import { identityModelSchema, applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -83,6 +84,7 @@ const fieldRuleSchema = z
 
 const responseSchema = z
   .object({
+    collection: collectionContractSchema.optional(),
     expectedDecision: z.enum(["ALLOW", "DENY", "OBSERVE"]),
     allowedStatuses: statusList.default([...defaultAllowed]),
     deniedStatuses: statusList.default([...defaultDenied]),
@@ -285,6 +287,22 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
         "API_GRAPHQL_UNKNOWN_ACTOR"
       );
   const checks = parsed.checks.map((value) => planCheck(value, routeById, actorIds, parsed));
+  for (const c of checks)
+    if (
+      "response" in c &&
+      c.response.collection &&
+      (!c.requireVerifiedIdentity ||
+        c.request.method !== "GET" ||
+        c.response.collection.maxResponseBytes > parsed.maxResponseBytes ||
+        c.response.identity ||
+        c.response.tenant ||
+        c.response.observationPaths ||
+        c.response.stateMarkers)
+    )
+      throw new AppError(
+        "Collection requires exact verified GET and separate bounded evidence",
+        "API_COLLECTION_CONTRACT_INVALID"
+      );
   for (const c of checks)
     if (
       actors.some((a) => a.identityModel === "PRINCIPAL_ROLE") &&
@@ -567,7 +585,9 @@ function planCheck(
   }
   const authorizationValue = value as z.infer<typeof authorizationCheckSchema>;
   if (
-    (authorizationValue.kind === "OBJECT_AUTHORIZATION" && route.kind !== "OBJECT") ||
+    (authorizationValue.kind === "OBJECT_AUTHORIZATION" &&
+      route.kind !== "OBJECT" &&
+      !(route.kind === "COLLECTION" && authorizationValue.response.collection)) ||
     (authorizationValue.kind === "FUNCTION_AUTHORIZATION" && route.kind !== "FUNCTION")
   )
     throw new AppError(
@@ -689,6 +709,7 @@ function planResponse(value: z.infer<typeof responseSchema>): ApiResponseContrac
           }
         }
       : {}),
+    ...(value.collection ? { collection: value.collection } : {}),
     ...(value.maxItems ? { maxItems: value.maxItems } : {})
   };
 }

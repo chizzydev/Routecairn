@@ -1,3 +1,4 @@
+import { readCollectionObservation } from "./CollectionMappingEvidence.js";
 import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { assertApplicationIdentityContract } from "./ApplicationIdentity.js";
 import { assertOwnedApplicationIntakeBinding } from "./OwnedApplicationIntake.js";
@@ -121,7 +122,7 @@ export class ApplicationMappingService {
         id: r.id,
         safeAlias: r.id,
         protocol: "REST" as const,
-        kind: r.kind,
+        kind: r.observation?.kind === "COLLECTION" ? ("COLLECTION" as const) : r.kind,
         url: url.href,
         pathTemplate: r.pathTemplate,
         objectType: r.kind === "OBJECT" ? "operator-declared-object" : undefined,
@@ -133,7 +134,10 @@ export class ApplicationMappingService {
     const apiGraphql = apiGraphqlInputSchema.parse({
       schemaVersion: 1,
       maxRequests: discoveryBudget?.engineRequests ?? 32,
-      maxResponseBytes: 8192,
+      maxResponseBytes: Math.max(
+        8192,
+        ...input.routes.map((r) => (r.observation?.kind === "COLLECTION" ? r.observation.maxResponseBytes : 0))
+      ),
       actors: allActors,
       routes,
       checks: input.routes.flatMap((r) =>
@@ -148,9 +152,13 @@ export class ApplicationMappingService {
           request: { method: "GET" },
           response: {
             expectedDecision: "OBSERVE",
-            observationPaths: [
-              ...new Set([r.identityPath, ...(r.tenantPath ? [r.tenantPath] : []), ...(r.statePaths ?? [])])
-            ]
+            ...(r.observation?.kind === "COLLECTION"
+              ? { collection: r.observation }
+              : {
+                  observationPaths: [
+                    ...new Set([r.identityPath, ...(r.tenantPath ? [r.tenantPath] : []), ...(r.statePaths ?? [])])
+                  ]
+                })
           }
         }))
       )
@@ -208,7 +216,7 @@ export class ApplicationMappingService {
         perEngineCeiling: discoveryBudget?.engineRequests ?? 32,
         checks: apiGraphql.checks.length,
         identityRequests: 3,
-        maxResponseBytes: 8192
+        maxResponseBytes: apiGraphql.maxResponseBytes
       },
       classification: "EXPLICIT_OBSERVATION_APPROVAL_REQUIRED",
       trustedDiscoveryExecution: false
@@ -310,6 +318,11 @@ export class ApplicationMappingService {
                 nativeDecision: c?.requests[0]?.decision ?? "UNCLASSIFIED",
                 statusCode: c?.requests[0]?.statusCode,
                 observedMarkers: c?.observedMarkers ?? [],
+                collection: c?.collection,
+                collectionBindingValid:
+                  route.observation?.kind === "COLLECTION"
+                    ? readCollectionObservation(o, route.id, actor.id).valid
+                    : undefined,
                 identityVerified:
                   actor.authSlot === "anonymous"
                     ? false

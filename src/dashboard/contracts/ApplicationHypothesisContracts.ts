@@ -48,7 +48,7 @@ export const hypothesisDecisionSchema = z.discriminatedUnion("action", [
           anonymous: z.enum(["ALLOW", "DENY"])
         })
         .strict(),
-      identity: z.union([z.string().min(1).max(256), z.number().finite()]),
+      identity: z.union([z.string().min(1).max(256), z.number().finite()]).optional(),
       tenant: z.union([z.string().min(1).max(256), z.number().finite()]).optional()
     })
     .strict()

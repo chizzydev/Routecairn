@@ -1,4 +1,5 @@
-import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
+import { observeCollection } from "./CollectionOwnership.js";
+import { nativeApplicationProofMatches } from "../../core/auth/NativeIdentityAdmission.js";
 import { observeLinks, type ObservedLinks } from "./ObservedLinks.js";
 import { observedMarkerFingerprint } from "./ObservedMarker.js";
 import { createHash } from "node:crypto";
@@ -120,6 +121,54 @@ async function executeCheck(
       { kind: "OBJECT_AUTHORIZATION" | "FUNCTION_AUTHORIZATION" | "FIELD_AUTHORIZATION" | "TENANT_ISOLATION" }
     >;
     const snapshot = await send(context, transport, actor, routes[0]!, authorizationCheck.request);
+    if (authorizationCheck.response.collection) {
+      const route = routes[0]!,
+        contract = authorizationCheck.response.collection;
+      const observedDecision = decision(
+        snapshot,
+        authorizationCheck.response.allowedStatuses,
+        authorizationCheck.response.deniedStatuses
+      );
+      const collection = observeCollection(
+        contract,
+        snapshot.response,
+        actor,
+        check.comparisonFingerprint,
+        hash(route.url)
+      );
+      const valid = ["SELF_COLLECTION_OBSERVED", "FOREIGN_OWNER_OBSERVED"].includes(collection.status);
+      const expected = authorizationCheck.response.expectedDecision;
+      // Denials are real HTTP observations. Own /me success is never a denial of foreign access.
+      const denied = observedDecision === "DENIED";
+      const outcome: ApiGraphqlOutcome = denied
+        ? expected === "ALLOW"
+          ? "INCONCLUSIVE"
+          : "PASS"
+        : !valid || observedDecision !== "ALLOWED"
+          ? "INCONCLUSIVE"
+          : expected === "OBSERVE"
+            ? "PASS"
+            : collection.mismatchCount > 0 || expected === "DENY"
+              ? "FAIL"
+              : "PASS";
+      return {
+        ...baseObservation(
+          check,
+          actor,
+          [route],
+          outcome,
+          denied
+            ? "COLLECTION_HTTP_DENIAL"
+            : expected === "OBSERVE"
+              ? collection.status
+              : outcome === "FAIL"
+                ? "REVIEWED_COLLECTION_POLICY_VIOLATION"
+                : collection.status,
+          [requestObservation("authorization", snapshot, observedDecision, route)]
+        ),
+        collection
+      };
+    }
     return authorizationObservation(authorizationCheck, actor, routes[0]!, snapshot);
   } catch {
     return inconclusive(check, actor, routes, "TRANSPORT_OR_CAPTURE_FAILURE");
@@ -828,27 +877,7 @@ function identityBlocked(context: ScanContext, actor: ApiGraphqlActorPlan, requi
       : actor.authSlot === "account_a"
         ? report?.accountA
         : report?.accountB;
-  if (!result?.verified) return true;
-  if (applicationIdentityModel(actor.identityModel) !== applicationIdentityModel(result.identityModel)) return true;
-  if (
-    actor.identityModel === "PRINCIPAL_ROLE" &&
-    (result.identityModel !== "PRINCIPAL_ROLE" ||
-      result.tenantVerification !== "NOT_APPLICABLE" ||
-      result.tenantMatched !== undefined ||
-      result.tenantHash !== undefined ||
-      result.principalMatched !== true ||
-      result.roleMatched !== true ||
-      actor.principalFingerprint !== result.principalHash ||
-      !actor.role ||
-      createHash("sha256")
-        .update("routecairn-identity-v1\0" + actor.role)
-        .digest("hex")
-        .slice(0, 16) !== result.roleHash)
-  )
-    return true;
-  if (actor.principalFingerprint && result.principalHash && actor.principalFingerprint !== result.principalHash)
-    return true;
-  return Boolean(actor.tenantFingerprint && result.tenantHash && actor.tenantFingerprint !== result.tenantHash);
+  return !nativeApplicationProofMatches(actor, result);
 }
 
 function profileFor(context: ScanContext, actor: ApiGraphqlActorPlan): AuthProfile | undefined {

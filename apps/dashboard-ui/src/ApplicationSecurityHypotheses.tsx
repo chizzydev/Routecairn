@@ -1,3 +1,4 @@
+import { CollectionOwnershipSummary } from "./CollectionOwnership";
 import { reviewedScalar, assertReviewedScalar } from "./ReviewedPolicyInput";
 import { BusinessRelationshipPanel } from "./BusinessRelationshipPanel";
 import { ApplicationEvidenceTriage } from "./ApplicationEvidenceTriage";
@@ -300,6 +301,7 @@ export function ApplicationSecurityHypotheses({
                     Credential reference {c.credentialReference ?? "anonymous"}
                   </td>
                   <td>
+                    {c.collection && <CollectionOwnershipSummary evidence={c.collection} />}
                     {c.nativeOutcome} · {c.decision} · HTTP {c.statusCode ?? "UNKNOWN"} · identity{" "}
                     {c.identityVerified ? "verified" : "UNKNOWN"}
                   </td>
@@ -330,6 +332,7 @@ export function ApplicationSecurityHypotheses({
             <label>
               Expected hypothesis object marker
               <input
+                disabled={!!selected.collection}
                 aria-label="Expected hypothesis object marker"
                 value={identity}
                 onChange={(e) => {
@@ -394,7 +397,7 @@ export function ApplicationSecurityHypotheses({
                 selected.eligibility !== "EVIDENCE_READY_FOR_POLICY_REVIEW" ||
                 !confirmed ||
                 !ownership ||
-                !identity ||
+                (!selected.collection && !identity) ||
                 (!!selected.tenantPath && !tenant) ||
                 explanation.length < 10 ||
                 Object.values(decisions).includes("UNKNOWN")
@@ -410,7 +413,7 @@ export function ApplicationSecurityHypotheses({
                       action: "REVIEW",
                       policyConfirmed: true,
                       ownershipConfirmed: true,
-                      identity: scalar(selected.identityPath, identity),
+                      ...(!selected.collection ? { identity: scalar(selected.identityPath, identity) } : {}),
                       ...(selected.tenantPath ? { tenant: scalar(selected.tenantPath, tenant) } : {}),
                       decisions,
                       explanation

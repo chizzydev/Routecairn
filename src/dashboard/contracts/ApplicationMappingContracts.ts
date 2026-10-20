@@ -1,3 +1,4 @@
+import { routeObservationSchema } from "../../modules/apiGraphql/CollectionOwnership.js";
 import { identityModelSchema } from "../../core/auth/IdentityModel.js";
 import { discoveryBindingSchema } from "./ApplicationDiscoveryContracts.js";
 import { schemaSelectionSchema } from "./ApplicationSchemaContracts.js";
@@ -37,6 +38,7 @@ export const applicationMappingFieldsSchema = z
             pathTemplate: z.string().min(1).max(200),
             method: z.literal("GET"),
             identityPath: path,
+            observation: routeObservationSchema.optional(),
             tenantPath: path.optional(),
             statePaths: z
               .array(path)
@@ -47,7 +49,13 @@ export const applicationMappingFieldsSchema = z
           })
           .strict()
           .refine(
-            (r) => !(r.statePaths ?? []).some((p) => p === r.identityPath || p === r.tenantPath),
+            (r) =>
+              !(r.statePaths ?? []).some((p) => p === r.identityPath || p === r.tenantPath) &&
+              (r.observation?.kind !== "COLLECTION" ||
+                (r.kind === "OBJECT" &&
+                  r.identityPath === r.observation.itemIdentityPath &&
+                  !r.tenantPath &&
+                  !r.statePaths)),
             "State fields must be separate from object/tenant markers"
           )
       )

@@ -21,6 +21,7 @@ function snapshot(o: Observation) {
       template: r.pathTemplate,
       kind: r.kind,
       identityPath: r.identityPath,
+      ...(r.observation?.kind === "COLLECTION" ? { collectionContract: r.observation } : {}),
       tenantPath: r.tenantPath ?? null,
       cells: ["primary", "account-a", "account-b", "anonymous"].map((actorId) => {
         const actor = actors.find((a) => a.id === actorId),
@@ -43,6 +44,7 @@ function snapshot(o: Observation) {
           classification: known ? c!.requests[0]!.decision : "UNKNOWN",
           statusCode: known ? c!.requests[0]!.statusCode : null,
           nativeOutcome: c?.outcome ?? "UNOBSERVED",
+          ...(r.observation?.kind === "COLLECTION" ? { collection: c?.collection ?? null } : {}),
           markerTypes: [...new Set([r.identityPath, ...(r.tenantPath ? [r.tenantPath] : [])])].map((path) => ({
             path,
             type: known ? (c?.observedMarkers?.find((m) => m.path === path)?.scalarType ?? "UNOBSERVED") : "UNOBSERVED"
@@ -111,7 +113,35 @@ export function diffApplicationMaps(a: ReturnType<typeof snapshot>, b: ReturnTyp
                     ? "UNCHANGED"
                     : "CHANGED_HYPOTHESIS"
                   : "UNKNOWN",
-                markerTypes
+                markerTypes,
+                ...(old.collectionContract || now.collectionContract
+                  ? {
+                      collectionChange:
+                        adaptiveDigest(old.collectionContract ?? null) !==
+                          adaptiveDigest(now.collectionContract ?? null) || !known
+                          ? "UNKNOWN_CONTRACT_OR_EVIDENCE"
+                          : adaptiveDigest(
+                                x.collection
+                                  ? {
+                                      status: x.collection.status,
+                                      entries: x.collection.entries,
+                                      coverage: x.collection.coverage
+                                    }
+                                  : null
+                              ) ===
+                              adaptiveDigest(
+                                y.collection
+                                  ? {
+                                      status: y.collection.status,
+                                      entries: y.collection.entries,
+                                      coverage: y.collection.coverage
+                                    }
+                                  : null
+                              )
+                            ? "UNCHANGED"
+                            : "CHANGED_OBSERVATION_REQUIRES_REVIEW"
+                    }
+                  : {})
               };
             })
     };

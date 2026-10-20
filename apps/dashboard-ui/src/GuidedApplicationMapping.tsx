@@ -1,3 +1,4 @@
+import { CollectionOwnershipControls, CollectionOwnershipSummary } from "./CollectionOwnership";
 import type { IdentityModel } from "../../../src/core/auth/IdentityModel";
 import { AssessmentJourney } from "./AssessmentJourney";
 import { reviewedScalar, assertReviewedScalar } from "./ReviewedPolicyInput";
@@ -98,6 +99,7 @@ export function GuidedApplicationMapping({
                   : r.tenantPath
                     ? "TENANT_ISOLATION"
                     : "OBJECT_AUTHORIZATION",
+              ...(r.observation?.kind === "COLLECTION" ? { collection: r.observation } : {}),
               explanation: "Owner-declared access policy for this exact observed operation.",
               decisions: Object.fromEntries(v.actors.map((a) => [a.id, "UNKNOWN" as const]))
             }))
@@ -426,9 +428,51 @@ export function GuidedApplicationMapping({
                   />
                 </label>
                 <label>
+                  <input
+                    type="checkbox"
+                    aria-label={"Route " + (i + 1) + " bounded collection"}
+                    checked={r.observation?.kind === "COLLECTION"}
+                    onChange={(e) =>
+                      updateRoute(
+                        i,
+                        e.target.checked
+                          ? {
+                              kind: "OBJECT",
+                              identityPath: "id",
+                              tenantPath: undefined,
+                              statePaths: undefined,
+                              observation: {
+                                kind: "COLLECTION",
+                                algorithm: "bounded-native-collection-v1",
+                                collectionPath: "data",
+                                itemIdentityPath: "id",
+                                ownerPath: "owner",
+                                ownerRule: "EXACT_VERIFIED_ACTOR_PRINCIPAL_STRING",
+                                maxItems: 32,
+                                maxResponseBytes: 8192,
+                                coverage: "THIS_RESPONSE_ONLY",
+                                pagination: { kind: "HAS_MORE_BOOLEAN", path: "hasMore" }
+                              }
+                            }
+                          : { observation: undefined }
+                      )
+                    }
+                  />
+                  Observe bounded entry ownership
+                </label>
+                {r.observation?.kind === "COLLECTION" && (
+                  <CollectionOwnershipControls
+                    value={r.observation}
+                    onChange={(observation) =>
+                      updateRoute(i, { observation, identityPath: observation.itemIdentityPath })
+                    }
+                  />
+                )}
+                <label>
                   Object/function identity JSON field
                   <input
                     aria-label={"Route " + (i + 1) + " identity path"}
+                    disabled={r.observation?.kind === "COLLECTION"}
                     value={r.identityPath}
                     onChange={(e) => updateRoute(i, { identityPath: e.target.value })}
                   />
@@ -437,7 +481,7 @@ export function GuidedApplicationMapping({
                   Tenant JSON field
                   <input
                     aria-label={"Route " + (i + 1) + " tenant path"}
-                    disabled={identityModel === "PRINCIPAL_ROLE"}
+                    disabled={identityModel === "PRINCIPAL_ROLE" || r.observation?.kind === "COLLECTION"}
                     value={r.tenantPath ?? ""}
                     onChange={(e) => updateRoute(i, { tenantPath: e.target.value || undefined })}
                   />
@@ -446,6 +490,7 @@ export function GuidedApplicationMapping({
                   Optional non-secret business-state fields (at most two, comma-separated)
                   <input
                     aria-label={"Route " + (i + 1) + " state paths"}
+                    disabled={r.observation?.kind === "COLLECTION"}
                     value={(r.statePaths ?? []).join(",")}
                     onChange={(e) =>
                       updateRoute(i, {
@@ -680,6 +725,7 @@ export function GuidedApplicationMapping({
                           <small>{c.nativeOutcome} observation only</small>
                         </td>
                         <td>
+                          {c.collection && <CollectionOwnershipSummary evidence={c.collection} />}
                           {c.observedMarkers.length
                             ? c.observedMarkers.map((m) => (
                                 <small key={m.path}>
@@ -708,6 +754,7 @@ export function GuidedApplicationMapping({
                         Expected object/function marker
                         <input
                           aria-label={p.routeId + " expected identity"}
+                          disabled={!!p.collection}
                           value={String(p.identity?.expectedValue ?? "")}
                           onChange={(e) =>
                             updatePolicy(i, {

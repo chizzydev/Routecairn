@@ -228,6 +228,7 @@ export class ApplicationAnalystHandoff {
                 kind: e.kind,
                 decisions: e.decisions,
                 identity: marker(e.identity),
+                ...(e.collection ? { collection: e.collection } : {}),
                 tenant: marker(e.tenant),
                 states: e.states?.map(marker) ?? [],
                 dependsOn: e.dependsOn ?? []

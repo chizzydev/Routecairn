@@ -18,6 +18,7 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
         template: route.pathTemplate,
         kind: route.kind,
         identityPath: route.identityPath,
+        ...(route.observation?.kind === "COLLECTION" ? { collection: route.observation } : {}),
         tenantPath: route.tenantPath ?? null,
         ...(route.statePaths ? { statePaths: route.statePaths } : {})
       });
@@ -36,7 +37,11 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
             fingerprint: m && /^[a-f0-9]{64}$/.test(m.valueFingerprint) ? m.valueFingerprint : null
           };
         });
-        const markerReady = markers.every((m) => m.fingerprint && ["string", "number"].includes(m.scalarType));
+        const collection = c?.collection;
+        const markerReady =
+          route.observation?.kind === "COLLECTION"
+            ? c?.collectionBindingValid === true
+            : markers.every((m) => m.fingerprint && ["string", "number"].includes(m.scalarType));
         return {
           actorId,
           ...(c?.identityModel ? { identityModel: c.identityModel } : {}),
@@ -50,6 +55,9 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
           statusCode: c?.statusCode ?? null,
           identityVerified: actorId === "anonymous" ? true : c?.identityVerified === true,
           markers,
+          ...(route.observation?.kind === "COLLECTION"
+            ? { collection, collectionBindingValid: c?.collectionBindingValid === true }
+            : {}),
           markerReady
         };
       });
@@ -90,12 +98,16 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
       )
         reasons.push("SUCCESSFUL_TYPED_PRIMARY_CONTROL_REQUIRED");
       const matches = (c: typeof primary) =>
-        c.markerReady &&
-        c.markers.every((m) =>
-          primary.markers.some(
-            (p) => p.path === m.path && p.scalarType === m.scalarType && p.fingerprint === m.fingerprint
-          )
-        );
+        route.observation?.kind === "COLLECTION"
+          ? c.collectionBindingValid === true && c.collection?.status === "FOREIGN_OWNER_OBSERVED"
+          : c.markerReady &&
+            c.markers.every((m) =>
+              primary.markers.some(
+                (p) => p.path === m.path && p.scalarType === m.scalarType && p.fingerprint === m.fingerprint
+              )
+            );
+      if (route.observation?.kind === "COLLECTION" && primary.collection?.status !== "SELF_COLLECTION_OBSERVED")
+        reasons.push("NONEMPTY_SELF_COLLECTION_CONTROL_REQUIRED");
       const supporting = evidence
         .slice(1)
         .filter((c) => c.identityVerified && c.nativeOutcome === "PASS" && c.decision === "ALLOWED" && matches(c));
@@ -107,11 +119,13 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
             ? "REQUEST_UNCERTAIN"
             : c.decision === "DENIED"
               ? "NATIVE_DENIAL_OBSERVED"
-              : c.decision === "ALLOWED" && !matches(c)
-                ? "DIFFERENT_OBJECT_OR_TYPED_MARKER"
-                : c.decision === "ALLOWED"
-                  ? "SHARED_MARKER_ACCESS_OBSERVED"
-                  : "UNCLASSIFIED_RESPONSE"
+              : c.collection?.status === "SELF_COLLECTION_OBSERVED"
+                ? "SELF_COLLECTION_OBSERVED_NOT_FOREIGN_ACCESS"
+                : c.decision === "ALLOWED" && !matches(c)
+                  ? "DIFFERENT_OBJECT_OR_TYPED_MARKER"
+                  : c.decision === "ALLOWED"
+                    ? "SHARED_MARKER_ACCESS_OBSERVED"
+                    : "UNCLASSIFIED_RESPONSE"
       }));
       if (!supporting.length) reasons.push("NO_SHARED_TYPED_MARKER_ACCESS");
       const irCaseIds = [...new Set(caseIds(route.id))].sort(order);
@@ -135,6 +149,7 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
           url: route.url,
           template: route.pathTemplate,
           kind: route.kind,
+          ...(route.observation?.kind === "COLLECTION" ? { collection: route.observation } : {}),
           group: route.pathTemplate,
           identityPath: route.identityPath,
           tenantPath: route.tenantPath ?? null,

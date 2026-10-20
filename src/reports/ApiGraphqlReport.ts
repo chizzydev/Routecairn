@@ -36,6 +36,7 @@ export interface ApiRequestObservation {
 }
 
 export interface ApiGraphqlCheckObservation {
+  collection?: import("../modules/apiGraphql/CollectionOwnership.js").CollectionEvidence;
   /** Explicit native attribution; absent in historical reports. */
   actorId?: string;
   authSlot?: import("../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlActorSlot;

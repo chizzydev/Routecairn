@@ -1,3 +1,4 @@
+import { readCollectionObservation } from "./CollectionMappingEvidence.js";
 import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { readFileSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -94,6 +95,27 @@ export function guidedMappingBlockers(
     return ["MAPPING_BOUND_OBSERVATION_REQUIRED"];
   for (const e of input.expectations) {
     const route = o.input.routes.find((r) => r.id === e.routeId);
+    if (route?.observation?.kind === "COLLECTION") {
+      if (
+        e.url !== route.url ||
+        adaptiveDigest(e.collection) !== adaptiveDigest(route.observation) ||
+        e.kind !== "OBJECT_AUTHORIZATION" ||
+        e.identity ||
+        e.tenant
+      )
+        blocked.push("MAPPING_EXACT_COLLECTION_POLICY_REQUIRED:" + e.routeId);
+      const primary = readCollectionObservation(o, e.routeId, "primary");
+      if (!primary.valid || primary.evidence?.status !== "SELF_COLLECTION_OBSERVED")
+        blocked.push("MAPPING_NONEMPTY_COLLECTION_CONTROL_REQUIRED:" + e.routeId);
+      for (const actor of ["primary", "account-a", "account-b"])
+        if (!readCollectionObservation(o, e.routeId, actor).valid)
+          blocked.push("MAPPING_COLLECTION_ACTOR_EVIDENCE_REQUIRED:" + actor);
+      continue;
+    }
+    if (e.collection) {
+      blocked.push("MAPPING_UNEXPECTED_COLLECTION_POLICY:" + e.routeId);
+      continue;
+    }
     if (
       !route ||
       e.url !== route.url ||
