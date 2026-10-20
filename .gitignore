@@ -43,3 +43,9 @@ data/dashboard*/
 
 .routecairn-standards-lab/
 .routecairn-engineering-lab/
+
+# Local-only review and private development material; keep source/fixtures versioned.
+/.routecairn-review/
+/.routecairn-local-evidence/
+/.routecairn-private/
+/.routecairn-source-backup/

@@ -1,4 +1,4 @@
-import { assistedFinding } from "./assisted-review.js";
+import type { Finding } from "../../src/core/findings/Finding.js";
 import { acceptAssistedWorkflowFindings } from "../../src/core/findings/AssistedWorkflowFindingAcceptance.js";
 import { createHash, sign } from "node:crypto";
 import { evaluationEvidenceFixture } from "./evaluation-evidence-fixture.js";
@@ -7,7 +7,34 @@ import { commitPracticalRun } from "../../src/benchmark/PracticalAssessmentBench
 import { sealProspectivePredictions, oracleReleaseMessage } from "../../src/benchmark/ProspectiveAssessmentIntake.js";
 import { sealEvaluationEvidence, evaluationWitnessMessage } from "../../src/benchmark/IndependentEvaluationEvidence.js";
 function nativeFinding(caseId: string, comparisonFingerprint: string) {
-  const finding = assistedFinding("api-graphql-authorization", caseId);
+  // A typed local fixture input; the real production acceptance boundary creates workflow provenance.
+  // Avoid importing unrelated legacy report factories into the strict evaluator test type scope.
+  const module = "api-graphql-authorization";
+  const finding: Finding = {
+    id: module + "-" + caseId,
+    title: "Session remains valid",
+    type: "Authentication Lifecycle Issue",
+    severity: "High",
+    confidence: "High",
+    url: "https://app.test/session",
+    method: "POST",
+    sourceModule: module,
+    evidence: {
+      url: "https://app.test/session",
+      method: "POST",
+      statusCode: 200,
+      bodyHash: "a".repeat(64),
+      source: "fixture"
+    },
+    impact: "The old session retains access.",
+    recommendation: "Invalidate old sessions on logout.",
+    manualTestingSuggestions: [],
+    tags: [],
+    riskScore: 0,
+    falsePositiveStatus: "likely-valid",
+    timestamp: new Date(0).toISOString(),
+    workflowCase: { id: caseId, comparisonFingerprint: "a".repeat(64), cleanupOutcome: "ROLLBACK_VERIFIED" }
+  };
   finding.method = "GET";
   finding.evidence.method = "GET";
   finding.workflowCase!.comparisonFingerprint = comparisonFingerprint;
