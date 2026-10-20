@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { z } from "zod";
 import { ScanComparisonService } from "../comparisons/ScanComparisonService.js";
 import { assertAssuranceComparison } from "../comparisons/ComparisonIntegrity.js";
@@ -318,6 +319,11 @@ export class ApplicationAnalystHandoff {
           reviewedPolicies,
           reviewBindings,
           format: "ROUTECAIRN_REDACTED_ANALYST_CASE",
+          identityModel: applicationIdentityModel(JSON.parse(map.input_json).identityModel),
+          tenantEvidence:
+            applicationIdentityModel(JSON.parse(map.input_json).identityModel) === "PRINCIPAL_ROLE"
+              ? "NOT_APPLICABLE_NOT_VERIFIED"
+              : "TENANT_AWARE_REQUIREMENTS_PRESERVED",
           proposalId: id,
           proposalDigest: t.proposalDigest,
           evidenceDigest: t.digest,

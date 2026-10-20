@@ -1,8 +1,10 @@
+import { identityModelSchema } from "../../core/auth/IdentityModel.js";
 import { z } from "zod";
 
 /** Offline declarations only; deliberately accepts neither credentials nor target URLs. */
 export const applicationOnboardingCompatibilitySchema = z
   .object({
+    identityModel: identityModelSchema.optional(),
     tenantIdentity: z.enum(["PRESENT", "ABSENT", "UNKNOWN"]),
     actorProfiles: z.enum(["THREE_DISTINCT", "INSUFFICIENT", "UNKNOWN"]),
     getEffects: z.enum(["READ_ONLY", "WRITES", "UNKNOWN"]),
@@ -23,11 +25,11 @@ export const unknownOnboardingCompatibility: ApplicationOnboardingCompatibilityI
 export function assessApplicationOnboardingCompatibility(value: unknown) {
   const v = applicationOnboardingCompatibilitySchema.parse(value);
   const blockers: Array<{ code: string; message: string }> = [];
-  if (v.tenantIdentity === "ABSENT")
+  if (v.tenantIdentity === "ABSENT" && v.identityModel !== "PRINCIPAL_ROLE")
     blockers.push({
       code: "TENANTLESS_MAPPING_UNSUPPORTED",
       message:
-        "Current guided mapping requires a genuine verified tenant identity. Do not substitute user IDs, roles or invented tenants. Tenantless ownership needs a separately reviewed product increment."
+        "Current guided mapping requires a genuine verified tenant identity. Do not substitute user IDs, roles or invented tenants. Choose explicit PRINCIPAL_ROLE mode for tenantless verification; tenant-aware requirements otherwise remain in force."
     });
   if (v.actorProfiles === "INSUFFICIENT")
     blockers.push({

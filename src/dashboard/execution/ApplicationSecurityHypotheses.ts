@@ -12,6 +12,7 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
         purpose: HYPOTHESIS_ALGORITHM,
         org,
         target: map.input.targetId,
+        ...(map.input.identityModel ? { identityModel: map.input.identityModel } : {}),
         credentials: map.input.credentials,
         url: route.url,
         template: route.pathTemplate,
@@ -38,6 +39,7 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
         const markerReady = markers.every((m) => m.fingerprint && ["string", "number"].includes(m.scalarType));
         return {
           actorId,
+          ...(c?.identityModel ? { identityModel: c.identityModel } : {}),
           credentialReference: actorId === "anonymous" ? null : (map.input.credentials[slot] ?? null),
           tenantFingerprint: c?.tenantFingerprint ?? null,
           roleFingerprint: c?.role ? adaptiveDigest(c.role) : null,
@@ -124,6 +126,7 @@ export function buildApplicationHypotheses(map: Map, org: string, caseIds: (rout
       return [
         {
           candidateId: logicalId,
+          ...(map.input.identityModel ? { identityModel: map.input.identityModel } : {}),
           routeId: route.id,
           duplicateRouteIds: aliases,
           nativeCheckIds: aliases.flatMap((id) =>

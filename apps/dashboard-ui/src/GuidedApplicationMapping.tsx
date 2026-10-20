@@ -1,3 +1,4 @@
+import type { IdentityModel } from "../../../src/core/auth/IdentityModel";
 import { AssessmentJourney } from "./AssessmentJourney";
 import { reviewedScalar, assertReviewedScalar } from "./ReviewedPolicyInput";
 import { OwnedApplicationIntake } from "./OwnedApplicationIntake";
@@ -22,7 +23,7 @@ interface Options {
     id: string;
     targetId?: string;
     alias: string;
-    identity: { principalId?: string; tenantId?: string; role?: string };
+    identity: { identityModel?: IdentityModel; principalId?: string; tenantId?: string; role?: string };
   }[];
   acquisitions: { id: string; version: number }[];
   comparisons?: { id: string }[];
@@ -45,6 +46,7 @@ export function GuidedApplicationMapping({
   onMatrix: (matrix: Matrix) => void;
   onScan?: (id: string) => void;
 }) {
+  const [identityModel, setIdentityModel] = useState<IdentityModel>("TENANT_AWARE");
   const [options, setOptions] = useState<Options>(),
     [target, setTarget] = useState(""),
     [credentials, setCredentials] = useState({ primary: "", account_a: "", account_b: "" }),
@@ -158,6 +160,7 @@ export function GuidedApplicationMapping({
             void action(async () => {
               await load();
               setIntakeBinding(undefined);
+              setIdentityModel(v.input.identityModel ?? "TENANT_AWARE");
               setTarget(v.targetId);
               setCredentials(v.credentials);
               setRoutes(v.input.routes);
@@ -185,6 +188,7 @@ export function GuidedApplicationMapping({
             setApproval(false);
             void action(async () => {
               const v = await apiGet<Acquisition>("/api/authorization-workbench/mapping/" + id);
+              setIdentityModel(v.input.identityModel ?? "TENANT_AWARE");
               setTarget(v.input.targetId);
               setCredentials(v.input.credentials);
               setRoutes(v.input.routes);
@@ -224,6 +228,32 @@ export function GuidedApplicationMapping({
         <summary>A–B. Configure permitted routes and actor identities</summary>
         <fieldset disabled={busy || !canExecute}>
           <legend>A. Select an owned target and saved identities</legend>
+          <label>
+            Mapping identity model
+            <select
+              aria-label="Mapping identity model"
+              value={identityModel}
+              onChange={(e) => {
+                const next = e.target.value as IdentityModel;
+                setIdentityModel(next);
+                setIdentityConfirmed(false);
+                setRoutesConfirmed(false);
+                setIntakeBinding(undefined);
+                setSchemaBinding(undefined);
+                setDiscoveryBinding(undefined);
+                setRoutes((v) =>
+                  v.map((r) => {
+                    const { tenantPath, ...rest } = r;
+                    return next === "PRINCIPAL_ROLE" ? rest : { ...rest, tenantPath };
+                  })
+                );
+                invalidate();
+              }}
+            >
+              <option value="TENANT_AWARE">Tenant-aware</option>
+              <option value="PRINCIPAL_ROLE">Tenantless principal and role</option>
+            </select>
+          </label>
           <label>
             Owned loopback target
             <select
@@ -274,14 +304,20 @@ export function GuidedApplicationMapping({
                       ?.filter((c) => c.targetId === target)
                       .map((c) => (
                         <option value={c.id} key={c.id}>
-                          {c.alias} · {c.identity.role ?? "role missing"} · {c.identity.tenantId ?? "tenant missing"}
+                          {c.alias} · {c.identity.role ?? "role missing"} ·{" "}
+                          {c.identity.identityModel === "PRINCIPAL_ROLE"
+                            ? "tenant not applicable"
+                            : (c.identity.tenantId ?? "tenant missing")}
                         </option>
                       ))}
                   </select>
                   {c && (
                     <small>
-                      Saved identity: {c.identity.principalId} · role {c.identity.role} · tenant {c.identity.tenantId}.
-                      Native verification is still required.
+                      Saved identity: {c.identity.principalId} · role {c.identity.role} ·{" "}
+                      {c.identity.identityModel === "PRINCIPAL_ROLE"
+                        ? "tenant not applicable"
+                        : "tenant " + c.identity.tenantId}
+                      . Native verification is still required.
                     </small>
                   )}
                 </label>
@@ -297,7 +333,9 @@ export function GuidedApplicationMapping({
                 invalidate();
               }}
             />
-            I confirm these disposable actor, role and tenant bindings.
+            {identityModel === "PRINCIPAL_ROLE"
+              ? "I confirm these disposable principal and role bindings; tenant verification is not applicable."
+              : "I confirm these disposable actor, role and tenant bindings."}
           </label>
           <h4>B. Enter permitted observation routes</h4>
           <OwnedApplicationIntake
@@ -399,6 +437,7 @@ export function GuidedApplicationMapping({
                   Tenant JSON field
                   <input
                     aria-label={"Route " + (i + 1) + " tenant path"}
+                    disabled={identityModel === "PRINCIPAL_ROLE"}
                     value={r.tenantPath ?? ""}
                     onChange={(e) => updateRoute(i, { tenantPath: e.target.value || undefined })}
                   />
@@ -470,6 +509,7 @@ export function GuidedApplicationMapping({
               void action(async () => {
                 const r = await apiMutation<Acquisition>("/api/authorization-workbench/mapping/acquisitions", "POST", {
                   targetId: target,
+                  identityModel,
                   ...(intakeBinding ? { intakeBinding } : {}),
                   ...(schemaBinding ? { schemaBinding } : {}),
                   ...(discoveryBinding ? { discoveryBinding } : {}),
@@ -629,8 +669,10 @@ export function GuidedApplicationMapping({
                         <td>
                           {c.alias} · {c.role ?? "public"}
                           <small>
-                            {c.tenantFingerprint ?? "anonymous"} ·{" "}
-                            {c.identityVerified ? "identity verified" : "no authenticated identity"}
+                            {c.identityModel === "PRINCIPAL_ROLE"
+                              ? "tenant not applicable"
+                              : (c.tenantFingerprint ?? "anonymous")}{" "}
+                            · {c.identityVerified ? "identity verified" : "no authenticated identity"}
                           </small>
                         </td>
                         <td>

@@ -50,7 +50,8 @@ export interface PathCandidate {
   source: string;
 }
 
-export type TechnologyCategory = "framework" | "platform" | "server" | "cdn" | "cms" | "commerce" | "storage" | "database" | "unknown";
+export type TechnologyCategory =
+  "framework" | "platform" | "server" | "cdn" | "cms" | "commerce" | "storage" | "database" | "unknown";
 
 export interface DetectedTechnology {
   name: string;
@@ -145,7 +146,8 @@ export interface AuthSurfaceReport {
   notes: string[];
 }
 
-export type AuthComparisonClassification = "auth-only" | "same-access" | "changed-content" | "auth-error" | "inconclusive";
+export type AuthComparisonClassification =
+  "auth-only" | "same-access" | "changed-content" | "auth-error" | "inconclusive";
 
 export interface AuthResponseSummary {
   statusCode?: number;
@@ -295,6 +297,8 @@ export type IdentityVerificationCategory =
   | "EXECUTION_ERROR";
 
 export interface IdentityVerificationResult {
+  identityModel?: import("../core/auth/IdentityModel.js").IdentityModel;
+  tenantVerification?: "REQUIRED" | "NOT_APPLICABLE";
   profileLabel: string;
   mode: "disabled" | "optional" | "required";
   endpoint?: string;
@@ -354,10 +358,7 @@ export type ObjectPairTechnicalAccessResult =
   | "BLOCKED_BY_SAFETY_POLICY"
   | "EXECUTION_ERROR";
 export type ObjectPairBusinessPolicyReviewStatus =
-  | "DECLARED_PRIVATE_CONFIRMED"
-  | "POLICY_REVIEW_REQUIRED"
-  | "INTENDED_PUBLIC_OR_SHARED"
-  | "NOT_APPLICABLE";
+  "DECLARED_PRIVATE_CONFIRMED" | "POLICY_REVIEW_REQUIRED" | "INTENDED_PUBLIC_OR_SHARED" | "NOT_APPLICABLE";
 export type ObjectPairFinalClassification =
   | "CONFIRMED_VULNERABILITY"
   | "TECHNICAL_ACCESS_REQUIRES_POLICY_REVIEW"
@@ -683,7 +684,8 @@ export interface EquivalentRouteReport {
   notes: string[];
 }
 
-export type CollectionMembershipCategory = "FOUND_ONCE" | "FOUND_MULTIPLE_TIMES" | "NOT_FOUND" | "METADATA_MISMATCH" | "NOT_EVALUATED";
+export type CollectionMembershipCategory =
+  "FOUND_ONCE" | "FOUND_MULTIPLE_TIMES" | "NOT_FOUND" | "METADATA_MISMATCH" | "NOT_EVALUATED";
 export type CollectionAuthorizationDecisionCategory =
   | "MEMBERSHIP_EXPECTATION_SATISFIED"
   | "UNAUTHORIZED_OBJECT_LISTED"
@@ -755,7 +757,8 @@ export interface CollectionAuthorizationObservation {
   bodyHash?: string;
   matchedObjectPreview?: string;
   pagesFetched?: number;
-  paginationTermination?: "NOT_CONFIGURED" | "EXHAUSTED" | "MATCH_FOUND" | "MAX_PAGES" | "INVALID_NEXT" | "REQUEST_FAILED";
+  paginationTermination?:
+    "NOT_CONFIGURED" | "EXHAUSTED" | "MATCH_FOUND" | "MAX_PAGES" | "INVALID_NEXT" | "REQUEST_FAILED";
   confidence: CollectionAuthorizationConfidence;
   findingCategory?: CollectionAuthorizationFindingCategory;
   error?: string;
@@ -817,8 +820,25 @@ export type BulkAuthorizationFindingCategory =
   | "SINGLE_VS_BULK_AUTHORIZATION_INCONSISTENCY"
   | "SENSITIVE_BULK_SUMMARY_EXPOSURE";
 export type BulkAuthorizationConfidence = "CONFIRMED" | "HIGH" | "MEDIUM" | "LOW" | "INCONCLUSIVE";
-export type BulkBaselineDecision = "ALLOWED_CONFIRMED" | "DENIED_CONFIRMED" | "AUTHENTICATION_REQUIRED" | "OBJECT_NOT_FOUND" | "OBJECT_IDENTITY_MISMATCH" | "OBJECT_STATE_MISMATCH" | "UNAVAILABLE" | "INCONCLUSIVE";
-export type BulkPostconditionStatus = "NOT_APPLICABLE" | "OPERATOR_ATTESTED_NOT_INDEPENDENTLY_VERIFIED" | "VERIFIED_UNCHANGED" | "STATE_CHANGED" | "OBJECT_DISAPPEARED" | "OBJECT_IDENTITY_CHANGED" | "STATE_RESPONSE_UNAVAILABLE" | "STATE_RESPONSE_AMBIGUOUS" | "VERIFICATION_BLOCKED";
+export type BulkBaselineDecision =
+  | "ALLOWED_CONFIRMED"
+  | "DENIED_CONFIRMED"
+  | "AUTHENTICATION_REQUIRED"
+  | "OBJECT_NOT_FOUND"
+  | "OBJECT_IDENTITY_MISMATCH"
+  | "OBJECT_STATE_MISMATCH"
+  | "UNAVAILABLE"
+  | "INCONCLUSIVE";
+export type BulkPostconditionStatus =
+  | "NOT_APPLICABLE"
+  | "OPERATOR_ATTESTED_NOT_INDEPENDENTLY_VERIFIED"
+  | "VERIFIED_UNCHANGED"
+  | "STATE_CHANGED"
+  | "OBJECT_DISAPPEARED"
+  | "OBJECT_IDENTITY_CHANGED"
+  | "STATE_RESPONSE_UNAVAILABLE"
+  | "STATE_RESPONSE_AMBIGUOUS"
+  | "VERIFICATION_BLOCKED";
 
 export interface BulkObjectObservation {
   objectAlias: string;
@@ -1035,7 +1055,15 @@ export type NextJsSurfaceType =
   | "SOURCE_MAP"
   | "RUNTIME_CONFIG"
   | "OTHER_NEXT_METADATA";
-export type NextJsParseStatus = "PARSED" | "UNSUPPORTED_SHAPE" | "MALFORMED" | "TOO_LARGE" | "OUT_OF_SCOPE" | "BUDGET_EXHAUSTED" | "REQUEST_FAILED" | "CANCELLED";
+export type NextJsParseStatus =
+  | "PARSED"
+  | "UNSUPPORTED_SHAPE"
+  | "MALFORMED"
+  | "TOO_LARGE"
+  | "OUT_OF_SCOPE"
+  | "BUDGET_EXHAUSTED"
+  | "REQUEST_FAILED"
+  | "CANCELLED";
 export type NextJsObservationCategory =
   | "NEXTJS_DETECTED"
   | "NEXTJS_PAGES_ROUTER_OBSERVED"
@@ -1360,7 +1388,8 @@ export interface VulnerabilityWorkflowReport {
   notes: string[];
 }
 
-export type WorkflowEvidenceTemplateKind = "idor-bola" | "auth-bypass" | "rate-limit" | "graphql" | "export-download" | "price-filter";
+export type WorkflowEvidenceTemplateKind =
+  "idor-bola" | "auth-bypass" | "rate-limit" | "graphql" | "export-download" | "price-filter";
 
 export interface WorkflowEvidenceTemplate {
   kind: WorkflowEvidenceTemplateKind;

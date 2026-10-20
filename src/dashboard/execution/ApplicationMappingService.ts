@@ -1,3 +1,5 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
+import { assertApplicationIdentityContract } from "./ApplicationIdentity.js";
 import { assertOwnedApplicationIntakeBinding } from "./OwnedApplicationIntake.js";
 import { assertApplicationDiscoveryBinding } from "./ApplicationDiscoveryBinding.js";
 import { assertApplicationSchemaBinding } from "./ApplicationSchemaService.js";
@@ -46,14 +48,10 @@ export class ApplicationMappingService {
       const m = c.safeIdentitySummary,
         secret = this.vault.decryptForHealthCheck(id),
         identity = secret.identityVerification;
-      if (
-        typeof m.principalId !== "string" ||
-        typeof m.tenantId !== "string" ||
-        typeof m.role !== "string" ||
-        !identity?.tenantFieldPath ||
-        !identity.roleFieldPath
-      )
-        throw Error("WORKBENCH_MAPPING_VERIFIED_IDENTITY_CONTRACT_REQUIRED");
+      const declared = assertApplicationIdentityContract(m, identity);
+      if (!identity) throw Error("WORKBENCH_MAPPING_VERIFIED_IDENTITY_CONTRACT_REQUIRED");
+      if (declared.identityModel !== applicationIdentityModel(input.identityModel))
+        throw Error("WORKBENCH_MAPPING_IDENTITY_MODEL_MISMATCH");
       const url = new URL(identity.endpoint, target.baseOrigin);
       if (
         url.origin !== target.baseOrigin ||
@@ -78,12 +76,13 @@ export class ApplicationMappingService {
         authSlot: slot as "primary" | "account_a" | "account_b",
         relationship:
           slot === "primary" ? "DECLARED_PRIMARY" : slot === "account_a" ? "DECLARED_ACCOUNT_A" : "DECLARED_ACCOUNT_B",
-        principalId: m.principalId,
-        tenantId: m.tenantId,
-        role: m.role
+        ...(input.identityModel ? { identityModel: input.identityModel } : {}),
+        principalId: declared.principalId,
+        ...(declared.tenantId ? { tenantId: declared.tenantId } : {}),
+        role: declared.role
       };
     });
-    if (new Set(actors.map((a) => JSON.stringify([a.principalId, a.tenantId, a.role]))).size !== actors.length)
+    if (new Set(actors.map((a) => a.principalId)).size !== actors.length)
       throw Error("WORKBENCH_MAPPING_DISTINCT_ACTOR_CONTEXTS_REQUIRED");
     const anonymous = {
       id: "anonymous",
@@ -198,6 +197,7 @@ export class ApplicationMappingService {
         id: a.id,
         alias: a.safeAlias,
         slot: a.authSlot,
+        identityModel: "identityModel" in a ? a.identityModel : undefined,
         role: "role" in a ? a.role : undefined,
         tenantId: "tenantId" in a ? a.tenantId : undefined,
         principalId: "principalId" in a ? a.principalId : undefined,
@@ -303,6 +303,7 @@ export class ApplicationMappingService {
               return {
                 actorId: actor.id,
                 alias: actor.safeAlias,
+                identityModel: actor.identityModel,
                 role: actor.role,
                 tenantFingerprint: actor.tenantFingerprint,
                 nativeOutcome: c?.outcome ?? "BLOCKED",

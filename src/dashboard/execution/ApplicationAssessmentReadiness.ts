@@ -1,3 +1,4 @@
+import { applicationActorIdentity } from "./ApplicationIdentity.js";
 import { z } from "zod";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { applicationAuthorityContext } from "./ApplicationAuthorityBinding.js";
@@ -18,7 +19,7 @@ export const OWNER_ASSESSMENT_INPUT = {
   scope:
     "Explicit owner authorization, LOCAL OWNED registered 127.0.0.1 origin, approved GET routes including baseline and identity endpoints. No external host or write operation.",
   actors:
-    "Three distinct target-bound saved profiles with nonblank principal, tenant, role and exact identity-verification contracts. Enter secrets only in the credential vault; never upload sessions, HAR bodies or headers.",
+    "Three distinct target-bound saved profiles with principal and role verification; TENANT_AWARE also requires tenant verification, PRINCIPAL_ROLE explicitly forbids invented tenant metadata. Enter secrets only in the credential vault; never upload sessions, HAR bodies or headers.",
   operations:
     "Up to eight explicit GET seeds; typed identity, tenant and at most two non-secret state fields. Three/four-step reference, separate version and optional owner fields must already be observed.",
   policy:
@@ -50,16 +51,15 @@ export class ApplicationAssessmentReadiness {
           try {
             const c = applicationAuthorityContext(this.db, org, q.targetId, [q[slot]!]).credentials[0]!,
               m = JSON.parse(String(c.safe_identity_summary_json)) as Record<string, unknown>;
-            if (
-              !m ||
-              ["principalId", "tenantId", "role"].some((k) => typeof m[k] !== "string" || !(m[k] as string).trim())
-            )
-              throw Error("EXPLICIT_ACTOR_METADATA_REQUIRED");
+            const identity = applicationActorIdentity(m);
             return {
               slot,
               status: "DECLARED_NOT_NATIVE_VERIFIED",
+              identityModel: identity.identityModel,
+              tenantVerification:
+                identity.identityModel === "PRINCIPAL_ROLE" ? "NOT_APPLICABLE" : "NATIVE_VERIFICATION_REQUIRED",
               principalFingerprint: identityFingerprint(m.principalId as string),
-              tenantFingerprint: identityFingerprint(m.tenantId as string),
+              tenantFingerprint: identity.tenantId ? identityFingerprint(identity.tenantId) : null,
               roleFingerprint: identityFingerprint(m.role as string),
               missing: [] as string[]
             };
@@ -75,9 +75,11 @@ export class ApplicationAssessmentReadiness {
           }
         });
         const distinct =
-          new Set(actors.map((a) => JSON.stringify([a.principalFingerprint, a.tenantFingerprint, a.roleFingerprint])))
-            .size === 3 && new Set(slots.map((s) => q[s])).size === 3;
-        const actorsReady = actors.every((a) => !a.missing.length) && distinct;
+          new Set(actors.map((a) => a.principalFingerprint)).size === 3 && new Set(slots.map((s) => q[s])).size === 3;
+        const actorsReady =
+          actors.every((a) => !a.missing.length) &&
+          distinct &&
+          new Set(actors.map((a) => ("identityModel" in a ? a.identityModel : null))).size === 1;
         let observation: {
           status: string;
           scanId: string | null;

@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { randomUUID } from "node:crypto";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import { mappingObservation } from "./ApplicationMappingEvidence.js";
@@ -135,6 +136,7 @@ export class ApplicationMapComparisonService {
       b = mappingObservation(this.db, org, input.currentRevisionId);
     if (
       a.row.target_id !== b.row.target_id ||
+      applicationIdentityModel(a.input.identityModel) !== applicationIdentityModel(b.input.identityModel) ||
       a.row.context_digest !== b.row.context_digest ||
       adaptiveDigest(a.input.credentials) !== adaptiveDigest(b.input.credentials) ||
       mappingContext(this.db, org, a.input.targetId, Object.values(a.input.credentials)).digest !== a.row.context_digest

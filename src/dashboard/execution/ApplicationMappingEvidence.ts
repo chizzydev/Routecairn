@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { readFileSync, lstatSync } from "node:fs";
 import { createHash } from "node:crypto";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
@@ -46,6 +47,11 @@ export function mappingObservation(db: DashboardDatabase, org: string, id: strin
       JSON.stringify(expectedIds) === JSON.stringify(planIds);
     if (
       !exactIdentities ||
+      report.scanPlan?.apiGraphql?.actors.some(
+        (a) =>
+          a.authSlot !== "anonymous" &&
+          applicationIdentityModel(a.identityModel) !== applicationIdentityModel(input.identityModel)
+      ) ||
       ack.target_origin !== request.target ||
       new URL(report.target).origin !== request.target ||
       report.execution?.status !== "COMPLETED" ||

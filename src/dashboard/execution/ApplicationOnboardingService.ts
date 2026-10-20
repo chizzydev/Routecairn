@@ -51,7 +51,12 @@ export class ApplicationOnboardingService {
           name: a.principal,
           safeAlias: a.principal,
           expiresAt: a.expiresAt,
-          safeIdentitySummary: { principalId: a.principal, tenantId: a.tenant, role: a.role },
+          safeIdentitySummary: {
+            ...(v.identityModel ? { identityModel: v.identityModel } : {}),
+            principalId: a.principal,
+            ...(a.tenant ? { tenantId: a.tenant } : {}),
+            role: a.role
+          },
           secret: {
             authorizationHeader: a.authorizationHeader,
             identityVerification: {
@@ -70,6 +75,7 @@ export class ApplicationOnboardingService {
         identityStatus: "DECLARED_NOT_VERIFIED" as const,
         requestsSent: 0,
         input: {
+          ...(v.identityModel ? { identityModel: v.identityModel } : {}),
           targetId,
           credentials,
           identityContextConfirmed: true,

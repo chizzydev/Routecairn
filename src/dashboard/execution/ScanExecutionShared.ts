@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
@@ -13,7 +14,11 @@ import type { ModuleId } from "../../core/planning/ScanPlan.js";
 import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import { createDefaultPluginRegistry } from "../../core/engine/ScanOrchestrator.js";
 import { redactDashboardValue } from "../security/Redaction.js";
-import type { CredentialProfileSecret, CredentialProfileSummary, CredentialVault } from "../credentials/CredentialVault.js";
+import type {
+  CredentialProfileSecret,
+  CredentialProfileSummary,
+  CredentialVault
+} from "../credentials/CredentialVault.js";
 import type { ScanStudioAuthActor } from "../contracts/ScanStudioSchemas.js";
 import { planObjectPairTesting } from "../../modules/objectPairTesting/ObjectPairPlanner.js";
 import { planFieldExposureTesting } from "../../modules/fieldExposureTesting/FieldExposurePlanner.js";
@@ -22,16 +27,56 @@ import { planEquivalentRouteTesting } from "../../modules/equivalentRouteTesting
 import { planCollectionAuthorizationTesting } from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
 import { planBulkAuthorizationTesting } from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
 import { planFileAuthorizationTesting } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
-import { authenticationLifecycleInputSchema, loadAuthenticationLifecycleInput, planAuthenticationLifecycle } from "../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js";
-import { browserLearnedLifecycleAutomationInputSchema, loadBrowserLearnedLifecycleAutomationInput, planBrowserLearnedLifecycleAutomation } from "../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js";
-import { businessInvariantInputSchema, loadBusinessInvariantInput, planBusinessInvariant } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
-import { controlledRaceInputSchema, loadControlledRaceInput, planControlledRace } from "../../modules/controlledRace/ControlledRacePlanner.js";
-import { apiGraphqlInputSchema, loadApiGraphqlInput, planApiGraphqlReview } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
-import { protocolSecurityInputSchema, loadProtocolSecurityInput, planProtocolSecurity } from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
-import { linkPortalSecurityInputSchema, loadLinkPortalSecurityInput, planLinkPortalSecurity } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
-import { operationalEndpointSecurityInputSchema, loadOperationalEndpointSecurityInput, planOperationalEndpointSecurity } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
-import { billingEntitlementInputSchema, loadBillingEntitlementInput, planBillingEntitlement } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
-import { loadSupabaseAuthorizationInput, planSupabaseAuthorization, supabaseAuthorizationInputSchema } from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
+import {
+  authenticationLifecycleInputSchema,
+  loadAuthenticationLifecycleInput,
+  planAuthenticationLifecycle
+} from "../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js";
+import {
+  browserLearnedLifecycleAutomationInputSchema,
+  loadBrowserLearnedLifecycleAutomationInput,
+  planBrowserLearnedLifecycleAutomation
+} from "../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js";
+import {
+  businessInvariantInputSchema,
+  loadBusinessInvariantInput,
+  planBusinessInvariant
+} from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
+import {
+  controlledRaceInputSchema,
+  loadControlledRaceInput,
+  planControlledRace
+} from "../../modules/controlledRace/ControlledRacePlanner.js";
+import {
+  apiGraphqlInputSchema,
+  loadApiGraphqlInput,
+  planApiGraphqlReview
+} from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
+import {
+  protocolSecurityInputSchema,
+  loadProtocolSecurityInput,
+  planProtocolSecurity
+} from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
+import {
+  linkPortalSecurityInputSchema,
+  loadLinkPortalSecurityInput,
+  planLinkPortalSecurity
+} from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
+import {
+  operationalEndpointSecurityInputSchema,
+  loadOperationalEndpointSecurityInput,
+  planOperationalEndpointSecurity
+} from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
+import {
+  billingEntitlementInputSchema,
+  loadBillingEntitlementInput,
+  planBillingEntitlement
+} from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
+import {
+  loadSupabaseAuthorizationInput,
+  planSupabaseAuthorization,
+  supabaseAuthorizationInputSchema
+} from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
 import { loadAssistedReviewInput, planAssistedReview } from "../../modules/assistedReview/AssistedReviewPlanner.js";
 import { resolveScanProfile } from "../../config/ScanProfiles.js";
 import { readFile } from "node:fs/promises";
@@ -39,9 +84,19 @@ import { planPreHandover } from "../../modules/preHandover/PreHandoverPlanner.js
 import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
 import { approvedMutationPlan } from "./ApprovedMutationPlan.js";
 import type { ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
-import { activeVulnerabilityInputSchema, loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
-import { loadSafeInventoryImport, safeInventoryImportInputSchema } from "../../intelligence/inventory/SafeInventoryImporter.js";
-import { reserveInventoryAcquisitionBudget, resolveSafeInventoryImport } from "../../intelligence/inventory/LiveInventoryResolver.js";
+import {
+  activeVulnerabilityInputSchema,
+  loadActiveVulnerabilityInput,
+  planActiveVulnerabilityValidation
+} from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import {
+  loadSafeInventoryImport,
+  safeInventoryImportInputSchema
+} from "../../intelligence/inventory/SafeInventoryImporter.js";
+import {
+  reserveInventoryAcquisitionBudget,
+  resolveSafeInventoryImport
+} from "../../intelligence/inventory/LiveInventoryResolver.js";
 
 export interface DashboardResolvedAuth {
   authProfile?: AuthProfile | undefined;
@@ -49,75 +104,255 @@ export interface DashboardResolvedAuth {
   safeSummary: Record<string, unknown>;
 }
 
-export async function resolveDashboardScanPlan(request: DashboardScanCreateRequest, resolvedAuth?: DashboardResolvedAuth, mutationContracts: readonly ControlledMutationContract[] = []): Promise<ResolvedPlanInputs> {
+export async function resolveDashboardScanPlan(
+  request: DashboardScanCreateRequest,
+  resolvedAuth?: DashboardResolvedAuth,
+  mutationContracts: readonly ControlledMutationContract[] = []
+): Promise<ResolvedPlanInputs> {
   if ((request.authAFile && !request.authBFile) || (!request.authAFile && request.authBFile)) {
     throw new Error("Account-pair authentication requires both authAFile and authBFile.");
   }
-  if ((request.credentialProfileAId && !request.credentialProfileBId) || (!request.credentialProfileAId && request.credentialProfileBId)) {
+  if (
+    (request.credentialProfileAId && !request.credentialProfileBId) ||
+    (!request.credentialProfileAId && request.credentialProfileBId)
+  ) {
     throw new Error("Account-pair credential profiles require both Account A and Account B.");
   }
-  const baseConfig = request.configFile ? await loadRouteCairnConfig(resolve(request.configFile)) : routeCairnConfigSchema.parse(defaultConfig);
-  const config = request.transport ? routeCairnConfigSchema.parse({ ...baseConfig, transport: request.transport }) : baseConfig;
-  const scope = request.studio?.scope ? scopeSchema.parse(request.studio.scope) : await loadScope(resolve(requiredScopeFile(request)));
+  const baseConfig = request.configFile
+    ? await loadRouteCairnConfig(resolve(request.configFile))
+    : routeCairnConfigSchema.parse(defaultConfig);
+  const config = request.transport
+    ? routeCairnConfigSchema.parse({ ...baseConfig, transport: request.transport })
+    : baseConfig;
+  const scope = request.studio?.scope
+    ? scopeSchema.parse(request.studio.scope)
+    : await loadScope(resolve(requiredScopeFile(request)));
   const studioEphemeralAuth = authFromStudioEphemeral(request);
-  const authProfile = resolvedAuth?.authProfile ?? studioEphemeralAuth?.authProfile ?? (request.authFile ? await loadAuthProfile(resolve(request.authFile)) : undefined);
-  const authProfileSet = resolvedAuth?.authProfileSet ?? studioEphemeralAuth?.authProfileSet ?? (request.authAFile && request.authBFile ? await loadAuthProfileSet(resolve(request.authAFile), resolve(request.authBFile)) : undefined);
-  const targetAuthorization = request.targetAuthorization || request.targetAuthorizationFile ? targetAuthorizationSchema.parse(request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))) : undefined;
-  const importedInventoryInput = request.inventoryImport ? safeInventoryImportInputSchema.parse(request.inventoryImport) : (request.inventoryImportFile ? await loadSafeInventoryImport(resolve(request.inventoryImportFile)) : undefined);
-  const importedInventory = importedInventoryInput ? await resolveSafeInventoryImport(importedInventoryInput, request.target, {
+  const authProfile =
+    resolvedAuth?.authProfile ??
+    studioEphemeralAuth?.authProfile ??
+    (request.authFile ? await loadAuthProfile(resolve(request.authFile)) : undefined);
+  const authProfileSet =
+    resolvedAuth?.authProfileSet ??
+    studioEphemeralAuth?.authProfileSet ??
+    (request.authAFile && request.authBFile
+      ? await loadAuthProfileSet(resolve(request.authAFile), resolve(request.authBFile))
+      : undefined);
+  const targetAuthorization =
+    request.targetAuthorization || request.targetAuthorizationFile
+      ? targetAuthorizationSchema.parse(
+          request.targetAuthorization ?? JSON.parse(await readFile(resolve(request.targetAuthorizationFile!), "utf8"))
+        )
+      : undefined;
+  const importedInventoryInput = request.inventoryImport
+    ? safeInventoryImportInputSchema.parse(request.inventoryImport)
+    : request.inventoryImportFile
+      ? await loadSafeInventoryImport(resolve(request.inventoryImportFile))
+      : undefined;
+  const importedInventory = importedInventoryInput
+    ? await resolveSafeInventoryImport(importedInventoryInput, request.target, {
+        scope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(targetAuthorization ? { targetAuthorization } : {}),
+        userAgent: scope.userAgent
+      })
+    : undefined;
+  const executionTargetAuthorization = reserveInventoryAcquisitionBudget(targetAuthorization, importedInventory);
+  const workflowPlans = resolveStudioWorkflowPlans(request, {
+    target: request.target,
+    scope,
+    ...(authProfileSet ? { authProfileSet } : {})
+  });
+  if (importedInventory?.objectPairTesting && workflowPlans.objectPairTesting)
+    throw new Error("Inventory import conflicts with the configured object-pair workflow.");
+  if (importedInventory?.collectionAuthorization && workflowPlans.collectionAuthorizationTesting)
+    throw new Error("Inventory import conflicts with the configured collection workflow.");
+  if (importedInventory?.fileAuthorization && workflowPlans.fileAuthorizationTesting)
+    throw new Error("Inventory import conflicts with the configured file workflow.");
+  const importedWorkflowPlans = {
+    ...workflowPlans,
+    ...(importedInventory?.objectPairTesting
+      ? {
+          objectPairTesting: planObjectPairTesting(importedInventory.objectPairTesting, {
+            target: request.target,
+            scope,
+            ...(authProfileSet ? { authProfileSet } : {})
+          })
+        }
+      : {}),
+    ...(importedInventory?.collectionAuthorization
+      ? {
+          collectionAuthorizationTesting: planCollectionAuthorizationTesting(
+            importedInventory.collectionAuthorization,
+            { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }
+          )
+        }
+      : {}),
+    ...(importedInventory?.fileAuthorization
+      ? {
+          fileAuthorizationTesting: planFileAuthorizationTesting(importedInventory.fileAuthorization, {
+            target: request.target,
+            scope,
+            ...(authProfileSet ? { authProfileSet } : {})
+          })
+        }
+      : {})
+  };
+  const planningOptions = {
+    target: request.target,
     scope,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
-    ...(targetAuthorization ? { targetAuthorization } : {}),
-    userAgent: scope.userAgent
-  }) : undefined;
-  const executionTargetAuthorization = reserveInventoryAcquisitionBudget(targetAuthorization, importedInventory);
-  const workflowPlans = resolveStudioWorkflowPlans(request, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) });
-  if (importedInventory?.objectPairTesting && workflowPlans.objectPairTesting) throw new Error("Inventory import conflicts with the configured object-pair workflow.");
-  if (importedInventory?.collectionAuthorization && workflowPlans.collectionAuthorizationTesting) throw new Error("Inventory import conflicts with the configured collection workflow.");
-  if (importedInventory?.fileAuthorization && workflowPlans.fileAuthorizationTesting) throw new Error("Inventory import conflicts with the configured file workflow.");
-  const importedWorkflowPlans = {
-    ...workflowPlans,
-    ...(importedInventory?.objectPairTesting ? { objectPairTesting: planObjectPairTesting(importedInventory.objectPairTesting, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {}),
-    ...(importedInventory?.collectionAuthorization ? { collectionAuthorizationTesting: planCollectionAuthorizationTesting(importedInventory.collectionAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {}),
-    ...(importedInventory?.fileAuthorization ? { fileAuthorizationTesting: planFileAuthorizationTesting(importedInventory.fileAuthorization, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) } : {})
+    ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {})
   };
-  const planningOptions = { target: request.target, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}) };
-  if (importedInventory?.supabaseAuthorization && (request.supabaseAuthorization || request.supabaseAuthorizationFile)) throw new Error("Inventory import conflicts with explicit Supabase authorization input.");
-  const supabaseInput = request.supabaseAuthorization ? supabaseAuthorizationInputSchema.parse(request.supabaseAuthorization) : (request.supabaseAuthorizationFile ? await loadSupabaseAuthorizationInput(resolve(request.supabaseAuthorizationFile)) : importedInventory?.supabaseAuthorization);
-  const supabaseAuthorization = supabaseInput ? planSupabaseAuthorization(supabaseInput, { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }) : undefined;
-  const lifecycleInput = request.authenticationLifecycle ? authenticationLifecycleInputSchema.parse(request.authenticationLifecycle) : (request.authenticationLifecycleFile ? await loadAuthenticationLifecycleInput(resolve(request.authenticationLifecycleFile)) : undefined);
-  const lifecycleAutomationInput = request.authenticationLifecycleAutomation ? browserLearnedLifecycleAutomationInputSchema.parse(request.authenticationLifecycleAutomation) : (request.authenticationLifecycleAutoFile ? await loadBrowserLearnedLifecycleAutomationInput(resolve(request.authenticationLifecycleAutoFile)) : undefined);
+  if (importedInventory?.supabaseAuthorization && (request.supabaseAuthorization || request.supabaseAuthorizationFile))
+    throw new Error("Inventory import conflicts with explicit Supabase authorization input.");
+  const supabaseInput = request.supabaseAuthorization
+    ? supabaseAuthorizationInputSchema.parse(request.supabaseAuthorization)
+    : request.supabaseAuthorizationFile
+      ? await loadSupabaseAuthorizationInput(resolve(request.supabaseAuthorizationFile))
+      : importedInventory?.supabaseAuthorization;
+  const supabaseAuthorization = supabaseInput
+    ? planSupabaseAuthorization(supabaseInput, {
+        target: request.target,
+        scope,
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
+    : undefined;
+  const lifecycleInput = request.authenticationLifecycle
+    ? authenticationLifecycleInputSchema.parse(request.authenticationLifecycle)
+    : request.authenticationLifecycleFile
+      ? await loadAuthenticationLifecycleInput(resolve(request.authenticationLifecycleFile))
+      : undefined;
+  const lifecycleAutomationInput = request.authenticationLifecycleAutomation
+    ? browserLearnedLifecycleAutomationInputSchema.parse(request.authenticationLifecycleAutomation)
+    : request.authenticationLifecycleAutoFile
+      ? await loadBrowserLearnedLifecycleAutomationInput(resolve(request.authenticationLifecycleAutoFile))
+      : undefined;
   const authenticationLifecycle = lifecycleInput
     ? planAuthenticationLifecycle(lifecycleInput, planningOptions)
     : lifecycleAutomationInput
       ? planBrowserLearnedLifecycleAutomation(lifecycleAutomationInput, request.target)
       : undefined;
-  if (lifecycleAutomationInput && !authProfile) throw new Error("Browser-learned lifecycle automation requires a single authenticated browser profile.");
-  const businessInvariantInput = request.businessInvariant ? businessInvariantInputSchema.parse(request.businessInvariant) : (request.businessInvariantFile ? await loadBusinessInvariantInput(resolve(request.businessInvariantFile)) : undefined);
-  const businessInvariant = businessInvariantInput ? planBusinessInvariant(businessInvariantInput, planningOptions) : undefined;
-  const controlledRaceInput = request.controlledRace ? controlledRaceInputSchema.parse(request.controlledRace) : (request.controlledRaceFile ? await loadControlledRaceInput(resolve(request.controlledRaceFile)) : undefined);
+  if (lifecycleAutomationInput && !authProfile)
+    throw new Error("Browser-learned lifecycle automation requires a single authenticated browser profile.");
+  const businessInvariantInput = request.businessInvariant
+    ? businessInvariantInputSchema.parse(request.businessInvariant)
+    : request.businessInvariantFile
+      ? await loadBusinessInvariantInput(resolve(request.businessInvariantFile))
+      : undefined;
+  const businessInvariant = businessInvariantInput
+    ? planBusinessInvariant(businessInvariantInput, planningOptions)
+    : undefined;
+  const controlledRaceInput = request.controlledRace
+    ? controlledRaceInputSchema.parse(request.controlledRace)
+    : request.controlledRaceFile
+      ? await loadControlledRaceInput(resolve(request.controlledRaceFile))
+      : undefined;
   const controlledRace = controlledRaceInput ? planControlledRace(controlledRaceInput, planningOptions) : undefined;
-  if (importedInventory?.apiGraphql && (request.apiGraphql || request.apiGraphqlFile)) throw new Error("Inventory import conflicts with explicit API / GraphQL input.");
-  const apiGraphqlInput = request.apiGraphql ? apiGraphqlInputSchema.parse(request.apiGraphql) : (request.apiGraphqlFile ? await loadApiGraphqlInput(resolve(request.apiGraphqlFile)) : importedInventory?.apiGraphql);
+  if (importedInventory?.apiGraphql && (request.apiGraphql || request.apiGraphqlFile))
+    throw new Error("Inventory import conflicts with explicit API / GraphQL input.");
+  const apiGraphqlInput = request.apiGraphql
+    ? apiGraphqlInputSchema.parse(request.apiGraphql)
+    : request.apiGraphqlFile
+      ? await loadApiGraphqlInput(resolve(request.apiGraphqlFile))
+      : importedInventory?.apiGraphql;
   const apiGraphql = apiGraphqlInput ? planApiGraphqlReview(apiGraphqlInput, planningOptions) : undefined;
-  const protocolSecurityInput = request.protocolSecurity ? protocolSecurityInputSchema.parse(request.protocolSecurity) : (request.protocolSecurityFile ? await loadProtocolSecurityInput(resolve(request.protocolSecurityFile)) : undefined);
-  const protocolSecurity = protocolSecurityInput ? planProtocolSecurity(protocolSecurityInput, planningOptions) : undefined;
-  const linkPortalSecurityInput = request.linkPortalSecurity ? linkPortalSecurityInputSchema.parse(request.linkPortalSecurity) : (request.linkPortalSecurityFile ? await loadLinkPortalSecurityInput(resolve(request.linkPortalSecurityFile)) : undefined);
-  const linkPortalSecurity = linkPortalSecurityInput ? planLinkPortalSecurity(linkPortalSecurityInput, planningOptions) : undefined;
-  const operationalEndpointSecurityInput = request.operationalEndpointSecurity ? operationalEndpointSecurityInputSchema.parse(request.operationalEndpointSecurity) : (request.operationalEndpointSecurityFile ? await loadOperationalEndpointSecurityInput(resolve(request.operationalEndpointSecurityFile)) : undefined);
-  const operationalEndpointSecurity = operationalEndpointSecurityInput ? planOperationalEndpointSecurity(operationalEndpointSecurityInput, planningOptions) : undefined;
-  const billingEntitlementInput = request.billingEntitlement ? billingEntitlementInputSchema.parse(request.billingEntitlement) : (request.billingEntitlementFile ? await loadBillingEntitlementInput(resolve(request.billingEntitlementFile)) : undefined);
-  const billingEntitlement = billingEntitlementInput ? planBillingEntitlement(billingEntitlementInput, planningOptions) : undefined;
-  const activeVulnerabilityInput = request.activeVulnerability ? activeVulnerabilityInputSchema.parse(request.activeVulnerability) : (request.activeVulnerabilityFile ? await loadActiveVulnerabilityInput(resolve(request.activeVulnerabilityFile)) : undefined);
-  const activeVulnerability = activeVulnerabilityInput ? planActiveVulnerabilityValidation(activeVulnerabilityInput, planningOptions) : undefined;
-  const requestedModules = request.includeModules && request.includeModules.length > 0 ? request.includeModules as ModuleId[] : undefined;
-  const includeModules = supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || importedInventory ? [...new Set([...(requestedModules ?? []), ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []), ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []), ...(businessInvariant ? ["business-invariant" as ModuleId] : []), ...(controlledRace ? ["controlled-race" as ModuleId] : []), ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []), ...(protocolSecurity ? ["protocol-security" as ModuleId] : []), ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []), ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []), ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []), ...(activeVulnerability ? ["active-vulnerability-validation" as ModuleId] : []), ...(activeVulnerability ? ["api-mapper" as ModuleId, "parameter-analysis" as ModuleId] : []), ...(importedInventory?.objectPairTesting ? ["object-pair-testing" as ModuleId] : []), ...(importedInventory?.collectionAuthorization ? ["collection-authorization-testing" as ModuleId] : []), ...(importedInventory?.fileAuthorization ? ["file-authorization-testing" as ModuleId] : []), ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])])] : requestedModules;
+  const protocolSecurityInput = request.protocolSecurity
+    ? protocolSecurityInputSchema.parse(request.protocolSecurity)
+    : request.protocolSecurityFile
+      ? await loadProtocolSecurityInput(resolve(request.protocolSecurityFile))
+      : undefined;
+  const protocolSecurity = protocolSecurityInput
+    ? planProtocolSecurity(protocolSecurityInput, planningOptions)
+    : undefined;
+  const linkPortalSecurityInput = request.linkPortalSecurity
+    ? linkPortalSecurityInputSchema.parse(request.linkPortalSecurity)
+    : request.linkPortalSecurityFile
+      ? await loadLinkPortalSecurityInput(resolve(request.linkPortalSecurityFile))
+      : undefined;
+  const linkPortalSecurity = linkPortalSecurityInput
+    ? planLinkPortalSecurity(linkPortalSecurityInput, planningOptions)
+    : undefined;
+  const operationalEndpointSecurityInput = request.operationalEndpointSecurity
+    ? operationalEndpointSecurityInputSchema.parse(request.operationalEndpointSecurity)
+    : request.operationalEndpointSecurityFile
+      ? await loadOperationalEndpointSecurityInput(resolve(request.operationalEndpointSecurityFile))
+      : undefined;
+  const operationalEndpointSecurity = operationalEndpointSecurityInput
+    ? planOperationalEndpointSecurity(operationalEndpointSecurityInput, planningOptions)
+    : undefined;
+  const billingEntitlementInput = request.billingEntitlement
+    ? billingEntitlementInputSchema.parse(request.billingEntitlement)
+    : request.billingEntitlementFile
+      ? await loadBillingEntitlementInput(resolve(request.billingEntitlementFile))
+      : undefined;
+  const billingEntitlement = billingEntitlementInput
+    ? planBillingEntitlement(billingEntitlementInput, planningOptions)
+    : undefined;
+  const activeVulnerabilityInput = request.activeVulnerability
+    ? activeVulnerabilityInputSchema.parse(request.activeVulnerability)
+    : request.activeVulnerabilityFile
+      ? await loadActiveVulnerabilityInput(resolve(request.activeVulnerabilityFile))
+      : undefined;
+  const activeVulnerability = activeVulnerabilityInput
+    ? planActiveVulnerabilityValidation(activeVulnerabilityInput, planningOptions)
+    : undefined;
+  const requestedModules =
+    request.includeModules && request.includeModules.length > 0 ? (request.includeModules as ModuleId[]) : undefined;
+  const includeModules =
+    supabaseAuthorization ||
+    authenticationLifecycle ||
+    businessInvariant ||
+    controlledRace ||
+    apiGraphql ||
+    protocolSecurity ||
+    linkPortalSecurity ||
+    operationalEndpointSecurity ||
+    billingEntitlement ||
+    activeVulnerability ||
+    importedInventory
+      ? [
+          ...new Set([
+            ...(requestedModules ?? []),
+            ...(supabaseAuthorization ? ["supabase-authorization" as ModuleId] : []),
+            ...(authenticationLifecycle ? ["authentication-lifecycle" as ModuleId] : []),
+            ...(businessInvariant ? ["business-invariant" as ModuleId] : []),
+            ...(controlledRace ? ["controlled-race" as ModuleId] : []),
+            ...(apiGraphql ? ["api-graphql-authorization" as ModuleId] : []),
+            ...(protocolSecurity ? ["protocol-security" as ModuleId] : []),
+            ...(linkPortalSecurity ? ["link-portal-export-security" as ModuleId] : []),
+            ...(operationalEndpointSecurity ? ["operational-endpoint-security" as ModuleId] : []),
+            ...(billingEntitlement ? ["billing-entitlement-security" as ModuleId] : []),
+            ...(activeVulnerability ? ["active-vulnerability-validation" as ModuleId] : []),
+            ...(activeVulnerability ? ["api-mapper" as ModuleId, "parameter-analysis" as ModuleId] : []),
+            ...(importedInventory?.objectPairTesting ? ["object-pair-testing" as ModuleId] : []),
+            ...(importedInventory?.collectionAuthorization ? ["collection-authorization-testing" as ModuleId] : []),
+            ...(importedInventory?.fileAuthorization ? ["file-authorization-testing" as ModuleId] : []),
+            ...(lifecycleAutomationInput ? ["baseline" as ModuleId, "browser-crawler" as ModuleId] : [])
+          ])
+        ]
+      : requestedModules;
   const input: ScanPlannerInput = {
-    ...(request.includeModules?.includes("privilege-mutation-testing") && mutationContracts.length ? { privilegeMutationTesting: approvedMutationPlan(mutationContracts) } : {}),
-    ...(request.preHandover || request.preHandoverFile ? { preHandover: planPreHandover(request.preHandover ?? JSON.parse(await readFile(resolve(request.preHandoverFile!), "utf8"))) } : {}),
+    ...(request.includeModules?.includes("privilege-mutation-testing") && mutationContracts.length
+      ? { privilegeMutationTesting: approvedMutationPlan(mutationContracts) }
+      : {}),
+    ...(request.preHandover || request.preHandoverFile
+      ? {
+          preHandover: planPreHandover(
+            request.preHandover ?? JSON.parse(await readFile(resolve(request.preHandoverFile!), "utf8"))
+          )
+        }
+      : {}),
     ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
-    ...(request.assistedReview || request.assistedReviewFile ? { assistedReview: planAssistedReview(request.assistedReview ?? await loadAssistedReviewInput(resolve(request.assistedReviewFile!))) } : {}),
+    ...(request.assistedReview || request.assistedReviewFile
+      ? {
+          assistedReview: planAssistedReview(
+            request.assistedReview ?? (await loadAssistedReviewInput(resolve(request.assistedReviewFile!)))
+          )
+        }
+      : {}),
     requestedProfile: request.profile,
     scope,
     config,
@@ -138,18 +373,51 @@ export async function resolveDashboardScanPlan(request: DashboardScanCreateReque
       ...(request.rateLimitPerSecond ? { rateLimitPerSecond: request.rateLimitPerSecond } : {}),
       ...(request.concurrency ? { concurrency: request.concurrency } : {}),
       ...(request.maxRequests ? { maxRequests: request.maxRequests } : {}),
-      ...(request.cleanupReservedRequests !== undefined ? { cleanupReservedRequests: request.cleanupReservedRequests } : {}),
+      ...(request.cleanupReservedRequests !== undefined
+        ? { cleanupReservedRequests: request.cleanupReservedRequests }
+        : {}),
       ...(request.studio?.evidenceLevel ? { evidenceLevel: request.studio.evidenceLevel } : {}),
-      ...(request.assistedReview || request.assistedReviewFile ? { includeModules: [...new Set([...(includeModules ?? resolveScanProfile(request.profile).enabledModules), "assisted-review" as ModuleId])] } : includeModules && includeModules.length > 0 ? { includeModules } : {}),
-      moduleSettings: { ...(request.studio?.moduleSettings.nextJsReview ? { "nextjs-review": request.studio.moduleSettings.nextJsReview } : {}), ...(request.studio?.moduleSettings.browserCrawler ? { "browser-crawler": request.studio.moduleSettings.browserCrawler } : {}) }
+      ...(request.assistedReview || request.assistedReviewFile
+        ? {
+            includeModules: [
+              ...new Set([
+                ...(includeModules ?? resolveScanProfile(request.profile).enabledModules),
+                "assisted-review" as ModuleId
+              ])
+            ]
+          }
+        : includeModules && includeModules.length > 0
+          ? { includeModules }
+          : {}),
+      moduleSettings: {
+        ...(request.studio?.moduleSettings.nextJsReview
+          ? { "nextjs-review": request.studio.moduleSettings.nextJsReview }
+          : {}),
+        ...(request.studio?.moduleSettings.browserCrawler
+          ? { "browser-crawler": request.studio.moduleSettings.browserCrawler }
+          : {})
+      }
     }
   };
   const planner = new ScanPlanner(createDefaultPluginRegistry());
-  if (request.studio?.authorization.category === "BUG_BOUNTY" && input.targetAuthorization?.mode !== "BUG_BOUNTY_AUTHORIZED") throw new Error("BUG_BOUNTY_PROGRAM_AUTHORIZATION_REQUIRED");
-  return { plan: planner.resolve(input), config, scope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) };
+  if (
+    request.studio?.authorization.category === "BUG_BOUNTY" &&
+    input.targetAuthorization?.mode !== "BUG_BOUNTY_AUTHORIZED"
+  )
+    throw new Error("BUG_BOUNTY_PROGRAM_AUTHORIZATION_REQUIRED");
+  return {
+    plan: planner.resolve(input),
+    config,
+    scope,
+    ...(authProfile ? { authProfile } : {}),
+    ...(authProfileSet ? { authProfileSet } : {})
+  };
 }
 
-export function resolveCredentialAuthForDashboardScan(vault: CredentialVault, request: DashboardScanCreateRequest): DashboardResolvedAuth {
+export function resolveCredentialAuthForDashboardScan(
+  vault: CredentialVault,
+  request: DashboardScanCreateRequest
+): DashboardResolvedAuth {
   if (request.studio?.authentication.mode && request.studio.authentication.mode !== "public") {
     return resolveStudioAuth(vault, request);
   }
@@ -161,7 +429,13 @@ export function resolveCredentialAuthForDashboardScan(vault: CredentialVault, re
   }
   if (request.credentialProfileId && !request.credentialProfileAId && !request.credentialProfileBId) {
     const authProfile = profileFromVault(vault, request.credentialProfileId, request, "single");
-    return { authProfile, safeSummary: { savedCredentialAuth: true, single: safeCredentialReference(vault.getSummary(request.credentialProfileId), "single") } };
+    return {
+      authProfile,
+      safeSummary: {
+        savedCredentialAuth: true,
+        single: safeCredentialReference(vault.getSummary(request.credentialProfileId), "single")
+      }
+    };
   }
   if (!request.credentialProfileAId || !request.credentialProfileBId) {
     throw new Error("Account-pair credential profiles require both Account A and Account B.");
@@ -174,11 +448,15 @@ export function resolveCredentialAuthForDashboardScan(vault: CredentialVault, re
     accountB: profileFromVault(vault, request.credentialProfileBId, request, "accountB")
   };
   return {
-    authProfile: request.credentialProfileId ? profileFromVault(vault, request.credentialProfileId, request, "single") : authProfileSet.accountA,
+    authProfile: request.credentialProfileId
+      ? profileFromVault(vault, request.credentialProfileId, request, "single")
+      : authProfileSet.accountA,
     authProfileSet,
     safeSummary: {
       savedCredentialAuth: true,
-      ...(request.credentialProfileId ? {single:safeCredentialReference(vault.getSummary(request.credentialProfileId),"single")} : {}),
+      ...(request.credentialProfileId
+        ? { single: safeCredentialReference(vault.getSummary(request.credentialProfileId), "single") }
+        : {}),
       accountA: safeCredentialReference(vault.getSummary(request.credentialProfileAId), "accountA"),
       accountB: safeCredentialReference(vault.getSummary(request.credentialProfileBId), "accountB")
     }
@@ -201,10 +479,18 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     transport: request.transport,
     auth: Boolean(request.authFile),
     accountPair: Boolean(request.authAFile && request.authBFile),
-    savedCredentialAuth: Boolean(request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId),
-    credentialProfile: request.credentialProfileId ? safeCredentialReferenceForId(request.credentialProfileId, "single") : undefined,
-    credentialProfileA: request.credentialProfileAId ? safeCredentialReferenceForId(request.credentialProfileAId, "accountA") : undefined,
-    credentialProfileB: request.credentialProfileBId ? safeCredentialReferenceForId(request.credentialProfileBId, "accountB") : undefined,
+    savedCredentialAuth: Boolean(
+      request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId
+    ),
+    credentialProfile: request.credentialProfileId
+      ? safeCredentialReferenceForId(request.credentialProfileId, "single")
+      : undefined,
+    credentialProfileA: request.credentialProfileAId
+      ? safeCredentialReferenceForId(request.credentialProfileAId, "accountA")
+      : undefined,
+    credentialProfileB: request.credentialProfileBId
+      ? safeCredentialReferenceForId(request.credentialProfileBId, "accountB")
+      : undefined,
     rateLimitPerSecond: request.rateLimitPerSecond,
     concurrency: request.concurrency,
     maxRequests: request.maxRequests,
@@ -212,16 +498,29 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     includeModules: request.includeModules ?? [],
     providerAdapterBinding: request.providerAdapterBinding,
     adaptiveExecutionBinding: request.adaptiveExecutionBinding,
-    inventoryImport: request.inventoryImport ? { configured: true, sourceCount: request.inventoryImport.sources.length } : undefined,
+    inventoryImport: request.inventoryImport
+      ? { configured: true, sourceCount: request.inventoryImport.sources.length }
+      : undefined,
     inventoryImportFileLabel: request.inventoryImportFile ? safePathLabel(request.inventoryImportFile) : undefined,
     supabaseAuthorization: inlineWorkflowSummary("supabase-authorization", request.supabaseAuthorization),
-    supabaseAuthorizationFileLabel: request.supabaseAuthorizationFile ? safePathLabel(request.supabaseAuthorizationFile) : undefined,
+    supabaseAuthorizationFileLabel: request.supabaseAuthorizationFile
+      ? safePathLabel(request.supabaseAuthorizationFile)
+      : undefined,
     authenticationLifecycle: inlineWorkflowSummary("authentication-lifecycle", request.authenticationLifecycle),
-    authenticationLifecycleAutomation: inlineWorkflowSummary("authentication-lifecycle-automation", request.authenticationLifecycleAutomation),
-    authenticationLifecycleFileLabel: request.authenticationLifecycleFile ? safePathLabel(request.authenticationLifecycleFile) : undefined,
-    authenticationLifecycleAutoFileLabel: request.authenticationLifecycleAutoFile ? safePathLabel(request.authenticationLifecycleAutoFile) : undefined,
+    authenticationLifecycleAutomation: inlineWorkflowSummary(
+      "authentication-lifecycle-automation",
+      request.authenticationLifecycleAutomation
+    ),
+    authenticationLifecycleFileLabel: request.authenticationLifecycleFile
+      ? safePathLabel(request.authenticationLifecycleFile)
+      : undefined,
+    authenticationLifecycleAutoFileLabel: request.authenticationLifecycleAutoFile
+      ? safePathLabel(request.authenticationLifecycleAutoFile)
+      : undefined,
     businessInvariant: inlineWorkflowSummary("business-invariant", request.businessInvariant),
-    businessInvariantFileLabel: request.businessInvariantFile ? safePathLabel(request.businessInvariantFile) : undefined,
+    businessInvariantFileLabel: request.businessInvariantFile
+      ? safePathLabel(request.businessInvariantFile)
+      : undefined,
     controlledRace: inlineWorkflowSummary("controlled-race", request.controlledRace),
     controlledRaceFileLabel: request.controlledRaceFile ? safePathLabel(request.controlledRaceFile) : undefined,
     apiGraphql: inlineWorkflowSummary("api-graphql-authorization", request.apiGraphql),
@@ -229,27 +528,46 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     protocolSecurity: inlineWorkflowSummary("protocol-security", request.protocolSecurity),
     protocolSecurityFileLabel: request.protocolSecurityFile ? safePathLabel(request.protocolSecurityFile) : undefined,
     linkPortalSecurity: inlineWorkflowSummary("link-portal-export-security", request.linkPortalSecurity),
-    linkPortalSecurityFileLabel: request.linkPortalSecurityFile ? safePathLabel(request.linkPortalSecurityFile) : undefined,
-    operationalEndpointSecurity: inlineWorkflowSummary("operational-endpoint-security", request.operationalEndpointSecurity),
-    operationalEndpointSecurityFileLabel: request.operationalEndpointSecurityFile ? safePathLabel(request.operationalEndpointSecurityFile) : undefined,
+    linkPortalSecurityFileLabel: request.linkPortalSecurityFile
+      ? safePathLabel(request.linkPortalSecurityFile)
+      : undefined,
+    operationalEndpointSecurity: inlineWorkflowSummary(
+      "operational-endpoint-security",
+      request.operationalEndpointSecurity
+    ),
+    operationalEndpointSecurityFileLabel: request.operationalEndpointSecurityFile
+      ? safePathLabel(request.operationalEndpointSecurityFile)
+      : undefined,
     billingEntitlement: inlineWorkflowSummary("billing-entitlement-security", request.billingEntitlement),
-    billingEntitlementFileLabel: request.billingEntitlementFile ? safePathLabel(request.billingEntitlementFile) : undefined,
+    billingEntitlementFileLabel: request.billingEntitlementFile
+      ? safePathLabel(request.billingEntitlementFile)
+      : undefined,
     activeVulnerability: inlineWorkflowSummary("active-vulnerability-validation", request.activeVulnerability),
-    activeVulnerabilityFileLabel: request.activeVulnerabilityFile ? safePathLabel(request.activeVulnerabilityFile) : undefined,
+    activeVulnerabilityFileLabel: request.activeVulnerabilityFile
+      ? safePathLabel(request.activeVulnerabilityFile)
+      : undefined,
     assistedReviewFileLabel: request.assistedReviewFile ? safePathLabel(request.assistedReviewFile) : undefined,
     assistedReview: request.assistedReview,
     preHandoverFileLabel: request.preHandoverFile ? safePathLabel(request.preHandoverFile) : undefined,
-    targetAuthorizationFileLabel: request.targetAuthorizationFile ? safePathLabel(request.targetAuthorizationFile) : undefined,
+    targetAuthorizationFileLabel: request.targetAuthorizationFile
+      ? safePathLabel(request.targetAuthorizationFile)
+      : undefined,
     targetMode: request.targetAuthorization?.mode,
-    preHandover: request.preHandover ? { assaultId: request.preHandover.assaultId, revision: request.preHandover.revision } : undefined,
+    preHandover: request.preHandover
+      ? { assaultId: request.preHandover.assaultId, revision: request.preHandover.revision }
+      : undefined,
     studio: request.studio ? safeStudioSummary(request) : undefined
   };
 }
 
 export function safePlanIdentity(request: DashboardScanCreateRequest, plan: ResolvedScanPlan): string {
   const stablePlan = redactDashboardValue({ ...plan, metadata: { ...plan.metadata, createdAt: "<volatile>" } });
-  const targetPolicyBinding = createHash("sha256").update(JSON.stringify(plan.targetAuthorization ?? null)).digest("hex");
-  return createHash("sha256").update(JSON.stringify({ request: safeConfigurationSummary(request), plan: stablePlan, targetPolicyBinding })).digest("hex");
+  const targetPolicyBinding = createHash("sha256")
+    .update(JSON.stringify(plan.targetAuthorization ?? null))
+    .digest("hex");
+  return createHash("sha256")
+    .update(JSON.stringify({ request: safeConfigurationSummary(request), plan: stablePlan, targetPolicyBinding }))
+    .digest("hex");
 }
 
 export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<typeof loadScope>>) {
@@ -276,11 +594,22 @@ export function planSnapshot(plan: ResolvedScanPlan, scope: Awaited<ReturnType<t
   return {
     plannerVersion: String(plan.schemaVersion),
     profile: plan.profile,
-    modules: plan.modules.map((modulePlan) => ({ id: modulePlan.id, phase: modulePlan.phase, settings: modulePlan.settings })),
+    modules: plan.modules.map((modulePlan) => ({
+      id: modulePlan.id,
+      phase: modulePlan.phase,
+      settings: modulePlan.settings
+    })),
     limits: plan.limits,
     evidencePolicy: plan.evidence,
     browserPolicySummary: plan.modules.find((modulePlan) => modulePlan.id === "browser-crawler")?.settings ?? {},
-    scopeSummary: { allowedDomains: scope.allowedDomains, disallowedPaths: scope.disallowedPaths, allowedMethods: scope.allowedMethods, sameOriginOnly: scope.sameOriginOnly, includeSubdomains: scope.includeSubdomains, ...(plan.targetAuthorization ? { targetPolicyFingerprint: targetPolicyFingerprint(plan) } : {}) },
+    scopeSummary: {
+      allowedDomains: scope.allowedDomains,
+      disallowedPaths: scope.disallowedPaths,
+      allowedMethods: scope.allowedMethods,
+      sameOriginOnly: scope.sameOriginOnly,
+      includeSubdomains: scope.includeSubdomains,
+      ...(plan.targetAuthorization ? { targetPolicyFingerprint: targetPolicyFingerprint(plan) } : {})
+    },
     authenticationSummary: plan.authentication,
     controlledWorkflowSummary: {
       objectPairTesting: Boolean(plan.objectPairTesting),
@@ -332,7 +661,11 @@ function authFromStudioEphemeral(request: DashboardScanCreateRequest): Dashboard
   if (auth.mode === "account-pair" && auth.accountA.source === "ephemeral" && auth.accountB.source === "ephemeral") {
     validateStudioProfile(auth.accountA.profile);
     validateStudioProfile(auth.accountB.profile);
-    return { authProfile: auth.accountA.profile, authProfileSet: { accountA: auth.accountA.profile, accountB: auth.accountB.profile }, safeSummary: studioAuthSafeSummary(request) };
+    return {
+      authProfile: auth.accountA.profile,
+      authProfileSet: { accountA: auth.accountA.profile, accountB: auth.accountB.profile },
+      safeSummary: studioAuthSafeSummary(request)
+    };
   }
   return undefined;
 }
@@ -341,7 +674,9 @@ function resolveStudioAuth(vault: CredentialVault, request: DashboardScanCreateR
   const auth = request.studio?.authentication;
   if (!auth || auth.mode === "public") return { safeSummary: { mode: "public" } };
   const actor = (value: ScanStudioAuthActor, role: "single" | "accountA" | "accountB") =>
-    value.source === "saved" ? profileFromVault(vault, value.credentialProfileId, request, role) : validatedStudioProfile(value.profile);
+    value.source === "saved"
+      ? profileFromVault(vault, value.credentialProfileId, request, role)
+      : validatedStudioProfile(value.profile);
   if (auth.mode === "primary") {
     return { authProfile: actor(auth.primary, "single"), safeSummary: studioAuthSafeSummary(request) };
   }
@@ -356,12 +691,25 @@ function resolveStudioAuth(vault: CredentialVault, request: DashboardScanCreateR
 export function studioAuthSafeSummary(request: DashboardScanCreateRequest): Record<string, unknown> {
   const auth = request.studio?.authentication;
   if (!auth || auth.mode === "public") return { mode: "public", redactionApplied: true };
-  const summarize = (value: ScanStudioAuthActor) => value.source === "saved"
-    ? { source: "saved", credentialProfileId: value.credentialProfileId }
-    : { source: "ephemeral", safeAlias: value.profile.safeAlias ?? value.profile.label, identityVerification: value.profile.identityVerification.mode, headerNames: Object.keys(value.profile.headers), cookieNames: value.profile.cookies.map((cookie) => cookie.name), redactionApplied: true };
+  const summarize = (value: ScanStudioAuthActor) =>
+    value.source === "saved"
+      ? { source: "saved", credentialProfileId: value.credentialProfileId }
+      : {
+          source: "ephemeral",
+          safeAlias: value.profile.safeAlias ?? value.profile.label,
+          identityVerification: value.profile.identityVerification.mode,
+          headerNames: Object.keys(value.profile.headers),
+          cookieNames: value.profile.cookies.map((cookie) => cookie.name),
+          redactionApplied: true
+        };
   return auth.mode === "primary"
     ? { mode: auth.mode, primary: summarize(auth.primary), redactionApplied: true }
-    : { mode: auth.mode, accountA: summarize(auth.accountA), accountB: summarize(auth.accountB), redactionApplied: true };
+    : {
+        mode: auth.mode,
+        accountA: summarize(auth.accountA),
+        accountB: summarize(auth.accountB),
+        redactionApplied: true
+      };
 }
 
 function safeStudioSummary(request: DashboardScanCreateRequest): Record<string, unknown> {
@@ -384,24 +732,58 @@ function safeStudioSummary(request: DashboardScanCreateRequest): Record<string, 
 function resolveStudioWorkflowPlans(
   request: DashboardScanCreateRequest,
   options: { target: string; scope: Awaited<ReturnType<typeof loadScope>>; authProfileSet?: AuthProfileSet }
-): Pick<ScanPlannerInput, "objectPairTesting" | "fieldExposureTesting" | "authorizationMatrixTesting" | "equivalentRouteTesting" | "collectionAuthorizationTesting" | "bulkAuthorizationTesting" | "fileAuthorizationTesting"> {
-  const plans: Pick<ScanPlannerInput, "objectPairTesting" | "fieldExposureTesting" | "authorizationMatrixTesting" | "equivalentRouteTesting" | "collectionAuthorizationTesting" | "bulkAuthorizationTesting" | "fileAuthorizationTesting"> = {};
+): Pick<
+  ScanPlannerInput,
+  | "objectPairTesting"
+  | "fieldExposureTesting"
+  | "authorizationMatrixTesting"
+  | "equivalentRouteTesting"
+  | "collectionAuthorizationTesting"
+  | "bulkAuthorizationTesting"
+  | "fileAuthorizationTesting"
+> {
+  const plans: Pick<
+    ScanPlannerInput,
+    | "objectPairTesting"
+    | "fieldExposureTesting"
+    | "authorizationMatrixTesting"
+    | "equivalentRouteTesting"
+    | "collectionAuthorizationTesting"
+    | "bulkAuthorizationTesting"
+    | "fileAuthorizationTesting"
+  > = {};
   for (const workflow of request.studio?.workflows ?? []) {
     if (!workflow.enabled) continue;
     switch (workflow.workflowId) {
-      case "object-pair": plans.objectPairTesting = planObjectPairTesting(workflow.config, options); break;
-      case "field-exposure": plans.fieldExposureTesting = planFieldExposureTesting(workflow.config, options); break;
-      case "authorization-matrix": plans.authorizationMatrixTesting = planAuthorizationMatrixTesting(workflow.config, options); break;
-      case "equivalent-route": plans.equivalentRouteTesting = planEquivalentRouteTesting(workflow.config, options); break;
-      case "collection-authorization": plans.collectionAuthorizationTesting = planCollectionAuthorizationTesting(workflow.config, options); break;
-      case "bulk-authorization": plans.bulkAuthorizationTesting = planBulkAuthorizationTesting(workflow.config, options); break;
-      case "file-authorization": plans.fileAuthorizationTesting = planFileAuthorizationTesting(workflow.config, options); break;
+      case "object-pair":
+        plans.objectPairTesting = planObjectPairTesting(workflow.config, options);
+        break;
+      case "field-exposure":
+        plans.fieldExposureTesting = planFieldExposureTesting(workflow.config, options);
+        break;
+      case "authorization-matrix":
+        plans.authorizationMatrixTesting = planAuthorizationMatrixTesting(workflow.config, options);
+        break;
+      case "equivalent-route":
+        plans.equivalentRouteTesting = planEquivalentRouteTesting(workflow.config, options);
+        break;
+      case "collection-authorization":
+        plans.collectionAuthorizationTesting = planCollectionAuthorizationTesting(workflow.config, options);
+        break;
+      case "bulk-authorization":
+        plans.bulkAuthorizationTesting = planBulkAuthorizationTesting(workflow.config, options);
+        break;
+      case "file-authorization":
+        plans.fileAuthorizationTesting = planFileAuthorizationTesting(workflow.config, options);
+        break;
     }
   }
   return plans;
 }
 
-function safeWorkflowConfigurationSummary(workflows: NonNullable<DashboardScanCreateRequest["studio"]>["workflows"]): Array<Record<string, unknown>> {
+function safeWorkflowConfigurationSummary(
+  workflows: NonNullable<DashboardScanCreateRequest["studio"]>["workflows"]
+): Array<Record<string, unknown>> {
   return workflows.map((workflow) => ({
     workflowId: workflow.workflowId,
     enabled: workflow.enabled,
@@ -417,13 +799,35 @@ function workflowCaseCount(config: unknown): number {
   if (Array.isArray(value.cases)) return value.cases.length;
   for (const key of ["matrices", "routeSets", "collections", "definitions"]) {
     const containers = value[key];
-    if (Array.isArray(containers)) return containers.reduce((total, item) => total + (item && typeof item === "object" && Array.isArray((item as Record<string, unknown>).cases) ? ((item as Record<string, unknown>).cases as unknown[]).length : key === "routeSets" && item && typeof item === "object" && Array.isArray((item as Record<string, unknown>).routes) ? ((item as Record<string, unknown>).routes as unknown[]).length : 0), 0);
+    if (Array.isArray(containers))
+      return containers.reduce(
+        (total, item) =>
+          total +
+          (item && typeof item === "object" && Array.isArray((item as Record<string, unknown>).cases)
+            ? ((item as Record<string, unknown>).cases as unknown[]).length
+            : key === "routeSets" &&
+                item &&
+                typeof item === "object" &&
+                Array.isArray((item as Record<string, unknown>).routes)
+              ? ((item as Record<string, unknown>).routes as unknown[]).length
+              : 0),
+        0
+      );
   }
   return 0;
 }
 
-function workflowPlanSummary(plan: { maxRequests?: number; maxCases?: number; schemaVersion: number } | undefined): Record<string, unknown> | undefined {
-  return plan ? { schemaVersion: plan.schemaVersion, ...(plan.maxRequests !== undefined ? { maxRequests: plan.maxRequests } : {}), ...(plan.maxCases !== undefined ? { maxCases: plan.maxCases } : {}), configured: true } : undefined;
+function workflowPlanSummary(
+  plan: { maxRequests?: number; maxCases?: number; schemaVersion: number } | undefined
+): Record<string, unknown> | undefined {
+  return plan
+    ? {
+        schemaVersion: plan.schemaVersion,
+        ...(plan.maxRequests !== undefined ? { maxRequests: plan.maxRequests } : {}),
+        ...(plan.maxCases !== undefined ? { maxCases: plan.maxCases } : {}),
+        configured: true
+      }
+    : undefined;
 }
 
 function inlineWorkflowSummary(id: string, input: unknown): Record<string, unknown> | undefined {
@@ -433,7 +837,10 @@ function inlineWorkflowSummary(id: string, input: unknown): Record<string, unkno
     id,
     configured: true,
     caseCount: workflowCaseCount(input),
-    contractDigest: createHash("sha256").update(`routecairn-dashboard-inline-${id}-v1\n`).update(canonical).digest("hex")
+    contractDigest: createHash("sha256")
+      .update(`routecairn-dashboard-inline-${id}-v1\n`)
+      .update(canonical)
+      .digest("hex")
   };
 }
 
@@ -449,12 +856,18 @@ function validatedStudioProfile(profile: AuthProfile): AuthProfile {
 
 function validateStudioProfile(profile: AuthProfile): void {
   authHeadersForProfile(profile);
-  if (Object.keys(profile.headers).length > 24 || profile.cookies.length > 24) throw new Error("AUTH_CONFIGURATION_INVALID: Authentication row count exceeds 24.");
+  if (Object.keys(profile.headers).length > 24 || profile.cookies.length > 24)
+    throw new Error("AUTH_CONFIGURATION_INVALID: Authentication row count exceeds 24.");
   const bytes = Buffer.byteLength(JSON.stringify(profile), "utf8");
   if (bytes > 32 * 1024) throw new Error("AUTH_CONFIGURATION_INVALID: Authentication profile exceeds 32 KiB.");
 }
 
-function profileFromVault(vault: CredentialVault, id: string, request: DashboardScanCreateRequest, role: "single" | "accountA" | "accountB"): AuthProfile {
+function profileFromVault(
+  vault: CredentialVault,
+  id: string,
+  request: DashboardScanCreateRequest,
+  role: "single" | "accountA" | "accountB"
+): AuthProfile {
   const summary = vault.getSummary(id);
   if (!summary) throw new Error(`Credential profile for ${role} is unavailable.`);
   validateCredentialReference(summary, request, role);
@@ -462,14 +875,25 @@ function profileFromVault(vault: CredentialVault, id: string, request: Dashboard
   return authProfileFromCredential(summary, secret, role);
 }
 
-function validateCredentialReference(summary: CredentialProfileSummary, request: DashboardScanCreateRequest, role: string): void {
+function validateCredentialReference(
+  summary: CredentialProfileSummary,
+  request: DashboardScanCreateRequest,
+  role: string
+): void {
   if (!summary.enabled) throw new Error(`Credential profile for ${role} is disabled.`);
-  if (summary.projectId && request.projectId && summary.projectId !== request.projectId) throw new Error(`Credential profile for ${role} is not assigned to this project.`);
-  if (summary.targetId && request.targetId && summary.targetId !== request.targetId) throw new Error(`Credential profile for ${role} is not assigned to this target.`);
-  if (summary.expiresAt && Date.parse(summary.expiresAt) <= Date.now()) throw new Error(`Credential profile for ${role} is expired.`);
+  if (summary.projectId && request.projectId && summary.projectId !== request.projectId)
+    throw new Error(`Credential profile for ${role} is not assigned to this project.`);
+  if (summary.targetId && request.targetId && summary.targetId !== request.targetId)
+    throw new Error(`Credential profile for ${role} is not assigned to this target.`);
+  if (summary.expiresAt && Date.parse(summary.expiresAt) <= Date.now())
+    throw new Error(`Credential profile for ${role} is expired.`);
 }
 
-export function authProfileFromCredential(summary: CredentialProfileSummary, secret: CredentialProfileSecret, role: "single" | "accountA" | "accountB" = "single"): AuthProfile {
+export function authProfileFromCredential(
+  summary: CredentialProfileSummary,
+  secret: CredentialProfileSecret,
+  role: "single" | "accountA" | "accountB" = "single"
+): AuthProfile {
   const headers: Record<string, string> = { ...(secret.headers ?? {}) };
   if (secret.authorizationHeader) headers.Authorization = secret.authorizationHeader;
   if (secret.csrfToken) headers["X-CSRF-Token"] = secret.csrfToken;
@@ -477,11 +901,20 @@ export function authProfileFromCredential(summary: CredentialProfileSummary, sec
   if (secret.sessionHeader) headers["X-Session-ID"] = secret.sessionHeader;
   return {
     label: `${role}:${summary.safeAlias}`,
+    ...(summary.safeIdentitySummary.identityModel !== undefined
+      ? { identityModel: applicationIdentityModel(summary.safeIdentitySummary.identityModel) }
+      : {}),
     safeAlias: summary.safeAlias,
-    ...(typeof summary.safeIdentitySummary.principalId === "string" ? { principalId: summary.safeIdentitySummary.principalId } : {}),
-    ...(typeof summary.safeIdentitySummary.tenantId === "string" ? { tenantId: summary.safeIdentitySummary.tenantId } : {}),
+    ...(typeof summary.safeIdentitySummary.principalId === "string"
+      ? { principalId: summary.safeIdentitySummary.principalId }
+      : {}),
+    ...(typeof summary.safeIdentitySummary.tenantId === "string"
+      ? { tenantId: summary.safeIdentitySummary.tenantId }
+      : {}),
     ...(typeof summary.safeIdentitySummary.role === "string" ? { role: summary.safeIdentitySummary.role } : {}),
-    ...(typeof summary.safeIdentitySummary.accountState === "string" ? { accountState: summary.safeIdentitySummary.accountState } : {}),
+    ...(typeof summary.safeIdentitySummary.accountState === "string"
+      ? { accountState: summary.safeIdentitySummary.accountState }
+      : {}),
     headers,
     cookies: Object.entries(secret.cookies ?? {}).map(([name, value]) => ({ name, value })),
     ...(secret.browserBootstrap ? { browserBootstrap: secret.browserBootstrap } : {}),
@@ -492,15 +925,28 @@ export function authProfileFromCredential(summary: CredentialProfileSummary, sec
           endpoint: secret.identityVerification.endpoint,
           method: "GET",
           principalIdField: secret.identityVerification.principalFieldPath ?? "id",
-          ...(secret.identityVerification.tenantFieldPath ? { tenantIdField: secret.identityVerification.tenantFieldPath } : {}),
-          ...(secret.identityVerification.roleFieldPath ? { roleField: secret.identityVerification.roleFieldPath } : {}),
-          ...(secret.identityVerification.accountStateFieldPath ? { accountStateField: secret.identityVerification.accountStateFieldPath } : {}),
+          ...(secret.identityVerification.tenantFieldPath
+            ? { tenantIdField: secret.identityVerification.tenantFieldPath }
+            : {}),
+          ...(secret.identityVerification.roleFieldPath
+            ? { roleField: secret.identityVerification.roleFieldPath }
+            : {}),
+          ...(secret.identityVerification.accountStateFieldPath
+            ? { accountStateField: secret.identityVerification.accountStateFieldPath }
+            : {}),
           expectedContentType: "application/json",
           successStatusCodes: [200],
           maxResponseBytes: 8192,
           anonymousMarkers: []
         }
-      : { mode: "disabled", method: "GET", expectedContentType: "application/json", successStatusCodes: [200], maxResponseBytes: 8192, anonymousMarkers: [] },
+      : {
+          mode: "disabled",
+          method: "GET",
+          expectedContentType: "application/json",
+          successStatusCodes: [200],
+          maxResponseBytes: 8192,
+          anonymousMarkers: []
+        },
     notes: [`Loaded from encrypted dashboard credential profile ${summary.id}. Plaintext was not persisted.`]
   };
 }
@@ -533,6 +979,20 @@ function safePathLabel(path: string): string {
 function targetPolicyFingerprint(plan: ResolvedScanPlan): string {
   const authority = plan.targetAuthorization!;
   const program = authority.bugBounty;
-  const semanticPolicy = { mode: authority.mode, origin: authority.targetOrigin, ...(program ? { inScope: program.inScope, outOfScope: program.outOfScope, authenticationPermitted: program.authenticationPermitted, mutationPermitted: program.mutationPermitted, destructivePermitted: program.destructivePermitted, racePermitted: program.racePermitted, requests: program.requests } : {}) };
+  const semanticPolicy = {
+    mode: authority.mode,
+    origin: authority.targetOrigin,
+    ...(program
+      ? {
+          inScope: program.inScope,
+          outOfScope: program.outOfScope,
+          authenticationPermitted: program.authenticationPermitted,
+          mutationPermitted: program.mutationPermitted,
+          destructivePermitted: program.destructivePermitted,
+          racePermitted: program.racePermitted,
+          requests: program.requests
+        }
+      : {})
+  };
   return createHash("sha256").update(JSON.stringify(semanticPolicy)).digest("hex");
 }

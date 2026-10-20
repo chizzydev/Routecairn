@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { applicationMappingInputSchema } from "./ApplicationMappingContracts.js";
+import { applicationMappingFieldsSchema } from "./ApplicationMappingContracts.js";
 const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
 export const ownedApplicationIntakeSchema = z
   .object({
     targetId: z.string().uuid(),
-    credentials: applicationMappingInputSchema.shape.credentials,
+    credentials: applicationMappingFieldsSchema.shape.credentials,
     artifact: z
       .object({
         version: z.literal(1),
@@ -30,7 +30,7 @@ export const ownedApplicationIntakeSchema = z
               .strict()
           )
           .length(3),
-        routes: applicationMappingInputSchema.shape.routes
+        routes: applicationMappingFieldsSchema.shape.routes
       })
       .strict(),
     ownerScopeConfirmed: z.literal(true),

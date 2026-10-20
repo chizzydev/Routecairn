@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import type { IdentityVerificationReport, IdentityVerificationResult } from "../../reports/ReportTypes.js";
 import type { CredentialHealthClassification, CredentialProfileSummary } from "./CredentialVault.js";
 
@@ -8,8 +9,18 @@ export interface CredentialHealthAssessment {
   principalFingerprint?: string;
 }
 
-const mismatchCategories = new Set(["PRINCIPAL_MISMATCH", "TENANT_MISMATCH", "ROLE_MISMATCH", "ACCOUNT_STATE_MISMATCH"]);
-const invalidCategories = new Set(["AUTHENTICATION_FAILED", "ACCESS_DENIED", "LOGIN_PAGE_RESPONSE", "ANONYMOUS_RESPONSE"]);
+const mismatchCategories = new Set([
+  "PRINCIPAL_MISMATCH",
+  "TENANT_MISMATCH",
+  "ROLE_MISMATCH",
+  "ACCOUNT_STATE_MISMATCH"
+]);
+const invalidCategories = new Set([
+  "AUTHENTICATION_FAILED",
+  "ACCESS_DENIED",
+  "LOGIN_PAGE_RESPONSE",
+  "ANONYMOUS_RESPONSE"
+]);
 
 export function assessCredentialIdentity(
   profile: CredentialProfileSummary,
@@ -18,26 +29,84 @@ export function assessCredentialIdentity(
   nowMs = Date.now()
 ): CredentialHealthAssessment {
   const result = report[slot] as IdentityVerificationResult | undefined;
-  if (!result) return { classification: "UNVERIFIED", reasonCode: "IDENTITY_RESULT_MISSING", safeSummary: "The identity health check did not produce a result for the selected actor." };
+  if (!result)
+    return {
+      classification: "UNVERIFIED",
+      reasonCode: "IDENTITY_RESULT_MISSING",
+      safeSummary: "The identity health check did not produce a result for the selected actor."
+    };
   const principalFingerprint = result.principalHash;
+  if (profile.safeIdentitySummary.identityModel !== undefined) {
+    try {
+      const expected = applicationIdentityModel(profile.safeIdentitySummary.identityModel);
+      if (
+        expected !== applicationIdentityModel(result.identityModel) ||
+        result.principalMatched !== true ||
+        result.roleMatched !== true ||
+        (expected === "PRINCIPAL_ROLE" &&
+          (result.identityModel !== "PRINCIPAL_ROLE" ||
+            result.tenantVerification !== "NOT_APPLICABLE" ||
+            result.tenantMatched !== undefined ||
+            result.tenantHash !== undefined))
+      )
+        return {
+          classification: "UNVERIFIED",
+          reasonCode: "IDENTITY_MODEL_OR_METADATA_UNVERIFIED",
+          safeSummary:
+            "Explicit identity model and native metadata must match before credential health can be established."
+        };
+    } catch {
+      return {
+        classification: "UNVERIFIED",
+        reasonCode: "IDENTITY_MODEL_INVALID",
+        safeSummary: "Identity model declaration is invalid."
+      };
+    }
+  }
   if (mismatchCategories.has(result.category)) {
-    return { classification: "IDENTITY_MISMATCH", reasonCode: result.category, safeSummary: "Credential identity no longer matches the declared safe identity contract.", ...(principalFingerprint ? { principalFingerprint } : {}) };
+    return {
+      classification: "IDENTITY_MISMATCH",
+      reasonCode: result.category,
+      safeSummary: "Credential identity no longer matches the declared safe identity contract.",
+      ...(principalFingerprint ? { principalFingerprint } : {})
+    };
   }
   if (invalidCategories.has(result.category)) {
-    return { classification: "INVALID", reasonCode: result.category, safeSummary: "The target rejected the credential or resolved it as unauthenticated.", ...(principalFingerprint ? { principalFingerprint } : {}) };
+    return {
+      classification: "INVALID",
+      reasonCode: result.category,
+      safeSummary: "The target rejected the credential or resolved it as unauthenticated.",
+      ...(principalFingerprint ? { principalFingerprint } : {})
+    };
   }
   if (!result.verified) {
-    return { classification: "UNVERIFIED", reasonCode: result.category, safeSummary: "Credential validity remains unverified; the bounded identity check was inconclusive.", ...(principalFingerprint ? { principalFingerprint } : {}) };
+    return {
+      classification: "UNVERIFIED",
+      reasonCode: result.category,
+      safeSummary: "Credential validity remains unverified; the bounded identity check was inconclusive.",
+      ...(principalFingerprint ? { principalFingerprint } : {})
+    };
   }
-  if (profile.health.principalFingerprint && principalFingerprint && profile.health.principalFingerprint !== principalFingerprint) {
-    return { classification: "IDENTITY_MISMATCH", reasonCode: "OBSERVED_PRINCIPAL_CHANGED", safeSummary: "The verified principal fingerprint changed from the credential's previous healthy observation.", principalFingerprint };
+  if (
+    profile.health.principalFingerprint &&
+    principalFingerprint &&
+    profile.health.principalFingerprint !== principalFingerprint
+  ) {
+    return {
+      classification: "IDENTITY_MISMATCH",
+      reasonCode: "OBSERVED_PRINCIPAL_CHANGED",
+      safeSummary: "The verified principal fingerprint changed from the credential's previous healthy observation.",
+      principalFingerprint
+    };
   }
   const expiresInMs = profile.expiresAt ? Date.parse(profile.expiresAt) - nowMs : undefined;
   const nearExpiry = expiresInMs !== undefined && expiresInMs <= 7 * 24 * 60 * 60 * 1000;
   return {
     classification: nearExpiry ? "NEAR_EXPIRY" : "HEALTHY",
     reasonCode: nearExpiry ? "VERIFIED_NEAR_EXPIRY" : result.category,
-    safeSummary: nearExpiry ? "Identity verified, but the credential expires within seven days." : "Identity and declared safe metadata were verified by the configured endpoint.",
+    safeSummary: nearExpiry
+      ? "Identity verified, but the credential expires within seven days."
+      : "Identity and declared safe metadata were verified by the configured endpoint.",
     ...(principalFingerprint ? { principalFingerprint } : {})
   };
 }

@@ -1,3 +1,4 @@
+import { nativeApplicationProofMatches } from "./ApplicationIdentity.js";
 import { createHash } from "node:crypto";
 import type { hypothesisSource } from "./ApplicationHypothesisBinding.js";
 import { adaptiveDigest } from "./AdaptiveCanonical.js";
@@ -101,19 +102,7 @@ export function readActorObservation(source: Source, routeId: string, actorId: s
   )
     missing.push("CLASSIFIED_NATIVE_GET_REQUIRED");
   if (slot !== "anonymous") {
-    if (
-      !actor?.principalFingerprint ||
-      !actor.tenantFingerprint ||
-      !actor.role ||
-      !proof?.verified ||
-      proof.principalMatched !== true ||
-      proof.roleMatched !== true ||
-      proof.tenantMatched !== true ||
-      proof.principalHash !== actor.principalFingerprint ||
-      proof.tenantHash !== actor.tenantFingerprint ||
-      proof.roleHash !== identityFingerprint(actor.role)
-    )
-      missing.push("EXACT_VERIFIED_ACTOR_IDENTITY_REQUIRED");
+    if (!nativeApplicationProofMatches(actor, proof)) missing.push("EXACT_VERIFIED_ACTOR_IDENTITY_REQUIRED");
     let requestBinding = false;
     try {
       const saved = JSON.parse(source.row.request_json!);
@@ -142,6 +131,7 @@ export function readActorObservation(source: Source, routeId: string, actorId: s
     missing.push("UNIQUE_TYPED_MARKER_PROVENANCE_REQUIRED");
   const actorBinding = {
     actorId,
+    ...(actor?.identityModel ? { identityModel: actor.identityModel } : {}),
     authSlot: slot,
     credentialReference: slot === "anonymous" ? null : (source.input.credentials[slot] ?? null),
     principalFingerprint: actor?.principalFingerprint ?? null,

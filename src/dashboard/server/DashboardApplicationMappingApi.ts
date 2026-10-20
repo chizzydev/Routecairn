@@ -140,6 +140,7 @@ export async function handleApplicationMapping(context: ApiContext): Promise<boo
           targetId: c.targetId,
           alias: c.safeAlias,
           identity: {
+            identityModel: c.safeIdentitySummary.identityModel ?? "TENANT_AWARE",
             principalId: c.safeIdentitySummary.principalId,
             tenantId: c.safeIdentitySummary.tenantId,
             role: c.safeIdentitySummary.role

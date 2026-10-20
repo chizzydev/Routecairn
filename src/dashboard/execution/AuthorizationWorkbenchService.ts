@@ -1,3 +1,5 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
+import { nativeApplicationActorMatches } from "./ApplicationIdentity.js";
 import { transitionAssessmentContext } from "./ApplicationTransitionAssessment.js";
 import { assertHypothesisReviewBinding } from "./ApplicationHypothesisBinding.js";
 import { guidedMappingBlockers } from "./ApplicationMappingEvidence.js";
@@ -24,9 +26,8 @@ import { synthesizeAdaptiveAuthorizationReview } from "./AdaptiveAuthorizationSy
 import { projectAdaptiveObservedInputs } from "./AdaptiveObservedInputProjection.js";
 import { compileExecutedContracts } from "./AdaptiveContractCompiler.js";
 import { readFileSync } from "node:fs";
-const identityHash = (v: string) =>
-  createHash("sha256").update("routecairn-identity-v1").update("\0").update(v).digest("hex").slice(0, 16);
 export interface AuthorizationWorkbenchResult {
+  identityModels?: import("../../core/auth/IdentityModel.js").IdentityModel[];
   revisionId: string;
   version: number;
   scanId?: string | undefined;
@@ -107,24 +108,14 @@ export class AuthorizationWorkbenchService {
           : a.authSlot === "account_a"
             ? report.identityVerification?.accountA
             : report.identityVerification?.accountB;
-      if (
-        !c ||
-        !m ||
-        !verification?.verified ||
-        verification.tenantMatched !== true ||
-        verification.roleMatched !== true ||
-        typeof m.principalId !== "string" ||
-        identityHash(m.principalId) !== a.principalFingerprint ||
-        typeof m.tenantId !== "string" ||
-        identityHash(m.tenantId) !== a.tenantFingerprint ||
-        m.role !== a.role
-      )
+      if (!c || !m || !nativeApplicationActorMatches(m, a, verification))
         blockers.push("ACTOR_CONTEXT_UNVERIFIED:" + a.id);
       return {
         id: a.id,
         safeAlias: a.safeAlias,
         authSlot: a.authSlot,
         relationship: a.relationship,
+        ...(a.identityModel ? { identityModel: a.identityModel } : {}),
         ...(typeof m?.principalId === "string" ? { principalId: m.principalId } : {}),
         ...(typeof m?.tenantId === "string" ? { tenantId: m.tenantId } : {}),
         ...(a.role ? { role: a.role } : {})
@@ -135,6 +126,11 @@ export class AuthorizationWorkbenchService {
     const routes: ApiGraphqlInput["routes"] = [],
       checks: ApiGraphqlInput["checks"] = [];
     for (const [expectationIndex, e] of input.expectations.entries()) {
+      if (
+        actors.some((a) => "identityModel" in a && a.identityModel === "PRINCIPAL_ROLE") &&
+        (e.kind === "TENANT_ISOLATION" || e.tenant)
+      )
+        throw Error("WORKBENCH_PRINCIPAL_ROLE_TENANT_PROOF_FORBIDDEN");
       const priorIds = input.expectations.slice(0, expectationIndex).map((v) => v.routeId);
       if (
         new Set(e.dependsOn ?? []).size !== (e.dependsOn ?? []).length ||
@@ -331,8 +327,10 @@ export class AuthorizationWorkbenchService {
         endpoint.password ||
         endpoint.search ||
         endpoint.hash ||
-        !identity?.tenantFieldPath ||
-        !identity.roleFieldPath ||
+        !identity?.roleFieldPath ||
+        (actor.identityModel !== "PRINCIPAL_ROLE"
+          ? !identity.tenantFieldPath
+          : !!identity.tenantFieldPath || !identity.principalFieldPath) ||
         !matcher.decide(endpoint.href, "GET").allowed
       ) {
         blockers.push("EXACT_SCOPED_IDENTITY_CONTRACT_REQUIRED:" + actor.id);
@@ -498,6 +496,13 @@ export class AuthorizationWorkbenchService {
         ...(hypothesisProposalId ? { hypothesisProposalId } : {}),
         verifiedPass: false,
         verifiedReadOnlyChecksPass: false,
+        identityModels: [
+          ...new Set<ReturnType<typeof applicationIdentityModel>>(
+            (JSON.parse(row.request_json!).apiGraphql?.actors ?? [])
+              .filter((a: { authSlot: string }) => a.authSlot !== "anonymous")
+              .map((a: { identityModel?: unknown }) => applicationIdentityModel(a.identityModel))
+          )
+        ],
         transitionObservation
       };
     const artifact = this.db.db
@@ -543,6 +548,13 @@ export class AuthorizationWorkbenchService {
       verifiedPass: !transitionObservation && r.passedChecks === r.plannedChecks && r.plannedChecks > 0,
       verifiedReadOnlyChecksPass: r.passedChecks === r.plannedChecks && r.plannedChecks > 0,
       transitionObservation,
+      identityModels: [
+        ...new Set<ReturnType<typeof applicationIdentityModel>>(
+          report.scanPlan?.apiGraphql?.actors
+            .filter((a) => a.authSlot !== "anonymous")
+            .map((a) => applicationIdentityModel(a.identityModel))
+        )
+      ],
       checks: r.checks,
       requestsTransmitted: r.requestsTransmitted,
       requestAudit: report.requestAudit.map((a) => ({

@@ -1,3 +1,4 @@
+import type { IdentityModel } from "../../../src/core/auth/IdentityModel";
 import React, { useState } from "react";
 import {
   assessApplicationOnboardingCompatibility,
@@ -6,9 +7,9 @@ import {
 } from "../../../src/dashboard/contracts/ApplicationOnboardingCompatibility";
 
 /** Runs locally before credentials are entered. It sends and persists nothing. */
-export function ApplicationOnboardingCompatibility() {
+export function ApplicationOnboardingCompatibility({ identityModel }: { identityModel?: IdentityModel } = {}) {
   const [facts, setFacts] = useState<ApplicationOnboardingCompatibilityInput>({ ...unknownOnboardingCompatibility });
-  const result = assessApplicationOnboardingCompatibility(facts);
+  const result = assessApplicationOnboardingCompatibility({ ...facts, ...(identityModel ? { identityModel } : {}) });
   const questions = [
     [
       "tenantIdentity",

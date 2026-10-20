@@ -1,3 +1,4 @@
+import { identityModelSchema } from "../../core/auth/IdentityModel.js";
 import { discoveryBindingSchema } from "./ApplicationDiscoveryContracts.js";
 import { schemaSelectionSchema } from "./ApplicationSchemaContracts.js";
 import { z } from "zod";
@@ -13,7 +14,7 @@ export const applicationObservationFieldSchema = z
     "Only non-secret identity field paths are permitted"
   );
 const path = applicationObservationFieldSchema;
-export const applicationMappingInputSchema = z
+export const applicationMappingFieldsSchema = z
   .object({
     intakeBinding: z
       .object({ revisionId: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/) })
@@ -21,6 +22,7 @@ export const applicationMappingInputSchema = z
       .optional(),
     schemaBinding: schemaSelectionSchema.optional(),
     discoveryBinding: discoveryBindingSchema.optional(),
+    identityModel: identityModelSchema.optional(),
     targetId: z.string().uuid(),
     credentials: z
       .object({ primary: z.string().uuid(), account_a: z.string().uuid(), account_b: z.string().uuid() })
@@ -55,6 +57,10 @@ export const applicationMappingInputSchema = z
     readOnlyRoutesConfirmed: z.literal(true)
   })
   .strict();
+export const applicationMappingInputSchema = applicationMappingFieldsSchema.superRefine((v, ctx) => {
+  if (v.identityModel === "PRINCIPAL_ROLE" && v.routes.some((r) => r.tenantPath !== undefined))
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Principal-role observations cannot declare tenant fields." });
+});
 export type ApplicationMappingInput = z.infer<typeof applicationMappingInputSchema>;
 export const applicationMappingExecuteSchema = z
   .object({

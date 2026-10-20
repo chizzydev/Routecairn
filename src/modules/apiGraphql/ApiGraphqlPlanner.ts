@@ -1,3 +1,4 @@
+import { identityModelSchema, applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
@@ -36,6 +37,7 @@ const actorSchema = z
     safeAlias: z.string().min(1).max(80),
     authSlot: actorSlot,
     relationship: z.string().min(1).max(120),
+    identityModel: identityModelSchema.optional(),
     principalId: z.string().min(1).max(256).optional(),
     tenantId: z.string().min(1).max(256).optional(),
     role: z.string().min(1).max(120).optional()
@@ -283,6 +285,15 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
         "API_GRAPHQL_UNKNOWN_ACTOR"
       );
   const checks = parsed.checks.map((value) => planCheck(value, routeById, actorIds, parsed));
+  for (const c of checks)
+    if (
+      actors.some((a) => a.identityModel === "PRINCIPAL_ROLE") &&
+      (c.kind === "TENANT_ISOLATION" || ("response" in c && c.response.tenant))
+    )
+      throw new AppError(
+        "Tenantless identity cannot establish tenant isolation.",
+        "API_GRAPHQL_PRINCIPAL_ROLE_TENANT_PROOF_FORBIDDEN"
+      );
   for (const [index, c] of checks.entries()) {
     if (!("prerequisiteCheckIds" in c) || !c.prerequisiteCheckIds) continue;
     const prior = checks.slice(0, index);
@@ -336,7 +347,7 @@ function planActor(value: ApiGraphqlInput["actors"][number], context: PlannerCon
           ? context.authProfileSet?.accountB
           : undefined;
   if (value.authSlot === "anonymous") {
-    if (value.principalId || value.tenantId || value.role)
+    if (value.identityModel || value.principalId || value.tenantId || value.role)
       throw new AppError(
         `Anonymous actor ${value.id} must not declare authenticated identity metadata.`,
         "API_GRAPHQL_ANONYMOUS_METADATA_INVALID"
@@ -357,6 +368,19 @@ function planActor(value: ApiGraphqlInput["actors"][number], context: PlannerCon
     );
   if (value.role && profile?.role && value.role !== profile.role)
     throw new AppError(`Actor ${value.id} role metadata does not match its auth profile.`, "API_GRAPHQL_ROLE_MISMATCH");
+  if (
+    value.authSlot !== "anonymous" &&
+    applicationIdentityModel(value.identityModel) !== applicationIdentityModel(profile?.identityModel)
+  )
+    throw new AppError("Actor identity model does not match credential.", "API_GRAPHQL_IDENTITY_MODEL_MISMATCH");
+  if (
+    value.identityModel === "PRINCIPAL_ROLE" &&
+    (value.tenantId !== undefined || profile?.tenantId !== undefined || !value.principalId || !value.role)
+  )
+    throw new AppError(
+      "Principal-role actor requires principal/role and forbids tenant metadata.",
+      "API_GRAPHQL_IDENTITY_MODEL_CONFLICT"
+    );
   const principalId = value.principalId ?? profile?.principalId;
   const tenantId = value.tenantId ?? profile?.tenantId;
   const role = value.role ?? profile?.role;
@@ -365,6 +389,7 @@ function planActor(value: ApiGraphqlInput["actors"][number], context: PlannerCon
     safeAlias: value.safeAlias,
     authSlot: value.authSlot,
     relationship: value.relationship,
+    ...(value.identityModel ? { identityModel: value.identityModel } : {}),
     ...(principalId ? { principalFingerprint: identityFingerprint(principalId) } : {}),
     ...(tenantId ? { tenantFingerprint: identityFingerprint(tenantId) } : {}),
     ...(role ? { role } : {})

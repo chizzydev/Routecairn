@@ -1,7 +1,7 @@
+import { nativeApplicationActorMatches } from "./ApplicationIdentity.js";
 import { buildBusinessRelationships } from "./BusinessRelationshipEvidence.js";
 import { buildTransitionEvidence } from "./ApplicationTransitionEvidence.js";
 import { buildDifferentialEvidence, reviewedDifferentialExpectations } from "./ApplicationDifferentialEvidence.js";
-import { createHash } from "node:crypto";
 import { randomUUID } from "node:crypto";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import type { CredentialVault } from "../credentials/CredentialVault.js";
@@ -42,22 +42,12 @@ export class ApplicationHypothesisService {
                     : o.report?.identityVerification?.accountB;
               const slot = c.actorId.replaceAll("-", "_") as keyof typeof o.input.credentials,
                 summary = this.vault.getSummary(o.input.credentials[slot], org)?.safeIdentitySummary,
-                planActor = o.report?.scanPlan?.apiGraphql?.actors.find((a) => a.id === c.actorId),
-                fp = (value: unknown) =>
-                  typeof value === "string"
-                    ? createHash("sha256")
-                        .update("routecairn-identity-v1\0" + value)
-                        .digest("hex")
-                        .slice(0, 16)
-                    : null;
+                planActor = o.report?.scanPlan?.apiGraphql?.actors.find((a) => a.id === c.actorId);
               c.identityVerified =
                 c.identityVerified === true &&
-                v?.tenantMatched === true &&
-                v?.roleMatched === true &&
-                planActor?.authSlot === slot &&
-                planActor.principalFingerprint === fp(summary?.principalId) &&
-                planActor.tenantFingerprint === fp(summary?.tenantId) &&
-                planActor.role === summary?.role;
+                !!summary &&
+                nativeApplicationActorMatches(summary, planActor, v) &&
+                planActor?.authSlot === slot;
             }
         const candidates = buildApplicationHypotheses(map, org, (id) => {
           const route = o.input.routes.find((r) => r.id === id)!,

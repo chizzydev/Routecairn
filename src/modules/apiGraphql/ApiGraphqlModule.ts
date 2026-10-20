@@ -1,3 +1,4 @@
+import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { observeLinks, type ObservedLinks } from "./ObservedLinks.js";
 import { observedMarkerFingerprint } from "./ObservedMarker.js";
 import { createHash } from "node:crypto";
@@ -828,6 +829,23 @@ function identityBlocked(context: ScanContext, actor: ApiGraphqlActorPlan, requi
         ? report?.accountA
         : report?.accountB;
   if (!result?.verified) return true;
+  if (applicationIdentityModel(actor.identityModel) !== applicationIdentityModel(result.identityModel)) return true;
+  if (
+    actor.identityModel === "PRINCIPAL_ROLE" &&
+    (result.identityModel !== "PRINCIPAL_ROLE" ||
+      result.tenantVerification !== "NOT_APPLICABLE" ||
+      result.tenantMatched !== undefined ||
+      result.tenantHash !== undefined ||
+      result.principalMatched !== true ||
+      result.roleMatched !== true ||
+      actor.principalFingerprint !== result.principalHash ||
+      !actor.role ||
+      createHash("sha256")
+        .update("routecairn-identity-v1\0" + actor.role)
+        .digest("hex")
+        .slice(0, 16) !== result.roleHash)
+  )
+    return true;
   if (actor.principalFingerprint && result.principalHash && actor.principalFingerprint !== result.principalHash)
     return true;
   return Boolean(actor.tenantFingerprint && result.tenantHash && actor.tenantFingerprint !== result.tenantHash);

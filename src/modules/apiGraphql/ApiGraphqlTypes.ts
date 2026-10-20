@@ -18,6 +18,7 @@ export type ApiGraphqlDecision = "ALLOW" | "DENY" | "OBSERVE";
 export type ApiGraphqlOutcome = "PASS" | "FAIL" | "INCONCLUSIVE" | "BLOCKED";
 
 export interface ApiGraphqlActorPlan {
+  identityModel?: import("../../core/auth/IdentityModel.js").IdentityModel;
   id: string;
   safeAlias: string;
   authSlot: ApiGraphqlActorSlot;

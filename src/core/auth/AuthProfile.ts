@@ -1,3 +1,4 @@
+import { identityModelSchema } from "./IdentityModel.js";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { AppError } from "../errors/AppError.js";
@@ -20,11 +21,21 @@ const authCookieSchema = z.object({
   path: z.string().optional()
 });
 
-const browserSelectorSchema = z.string().min(1).max(500).refine((value) => !/[\r\n\0]/.test(value), "Browser selector contains invalid characters.");
+const browserSelectorSchema = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((value) => !/[\r\n\0]/.test(value), "Browser selector contains invalid characters.");
 const browserUrlSchema = z.string().url().max(2048);
 const browserLoginStepSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("navigate"), url: browserUrlSchema }).strict(),
-  z.object({ action: z.literal("fill"), selector: browserSelectorSchema, valueRef: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/) }).strict(),
+  z
+    .object({
+      action: z.literal("fill"),
+      selector: browserSelectorSchema,
+      valueRef: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/)
+    })
+    .strict(),
   z.object({ action: z.literal("click"), selector: browserSelectorSchema }).strict(),
   z.object({ action: z.literal("waitForUrl"), urlPrefix: browserUrlSchema }).strict(),
   z.object({ action: z.literal("assertVisible"), selector: browserSelectorSchema }).strict()
@@ -34,55 +45,111 @@ const browserJourneyStepSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("clickLink"), selector: browserSelectorSchema }).strict(),
   z.object({ action: z.literal("assertVisible"), selector: browserSelectorSchema }).strict()
 ]);
-const lifecycleSecretsSchema = z.record(z.string().regex(/^[A-Za-z0-9._-]{1,100}$/), z.string().min(1).max(8192)).superRefine((value, ctx) => {
-  if (Object.keys(value).length > 64) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets supports at most 64 named values." });
-  if (Buffer.byteLength(JSON.stringify(value), "utf8") > 32 * 1024) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets exceeds the 32 KiB secret budget." });
-});
+const lifecycleSecretsSchema = z
+  .record(z.string().regex(/^[A-Za-z0-9._-]{1,100}$/), z.string().min(1).max(8192))
+  .superRefine((value, ctx) => {
+    if (Object.keys(value).length > 64)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets supports at most 64 named values." });
+    if (Buffer.byteLength(JSON.stringify(value), "utf8") > 32 * 1024)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "lifecycleSecrets exceeds the 32 KiB secret budget." });
+  });
 
-export const browserBootstrapSchema = z.object({
-  schemaVersion: z.literal(1).default(1),
-  loginSecrets: z.record(z.string().min(1).max(8192)).default({}),
-  login: z.object({
-    startUrl: browserUrlSchema,
-    allowedWritePaths: z.array(z.string().startsWith("/").max(500)).min(1).max(12),
-    successUrlPrefix: browserUrlSchema,
-    steps: z.array(browserLoginStepSchema).min(1).max(24)
-  }).strict().optional(),
-  journeys: z.array(z.object({
-    id: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/),
-    label: z.string().min(1).max(160),
-    steps: z.array(browserJourneyStepSchema).min(1).max(30)
-  }).strict()).max(12).default([]),
-  identitySelectors: z.object({
-    principal: browserSelectorSchema.optional(),
-    tenant: browserSelectorSchema.optional(),
-    role: browserSelectorSchema.optional()
-  }).strict().optional(),
-  proofCases: z.array(z.object({
-    caseId: z.string().regex(/^[A-Za-z0-9._-]{1,120}$/),
-    protectedAction: z.object({ url: browserUrlSchema, selector: browserSelectorSchema, readySelector: browserSelectorSchema.optional(), expected: z.enum(["visible", "hidden"]) }).strict(),
-    rollback: z.object({ url: browserUrlSchema, selector: browserSelectorSchema, readySelector: browserSelectorSchema.optional(), expected: z.enum(["visible", "hidden"]) }).strict()
-  }).strict()).max(10).default([])
-}).strict().superRefine((value, ctx) => {
-  if (!value.login && Object.keys(value.loginSecrets).length > 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets"], message: "Browser login secrets require a login workflow." });
-  }
-  const referenced = new Set(value.login?.steps.filter((step) => step.action === "fill").map((step) => step.valueRef) ?? []);
-  for (const name of referenced) {
-    if (!Object.prototype.hasOwnProperty.call(value.loginSecrets, name)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets", name], message: `Missing browser login secret reference ${name}.` });
+export const browserBootstrapSchema = z
+  .object({
+    schemaVersion: z.literal(1).default(1),
+    loginSecrets: z.record(z.string().min(1).max(8192)).default({}),
+    login: z
+      .object({
+        startUrl: browserUrlSchema,
+        allowedWritePaths: z.array(z.string().startsWith("/").max(500)).min(1).max(12),
+        successUrlPrefix: browserUrlSchema,
+        steps: z.array(browserLoginStepSchema).min(1).max(24)
+      })
+      .strict()
+      .optional(),
+    journeys: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(/^[A-Za-z0-9._-]{1,80}$/),
+            label: z.string().min(1).max(160),
+            steps: z.array(browserJourneyStepSchema).min(1).max(30)
+          })
+          .strict()
+      )
+      .max(12)
+      .default([]),
+    identitySelectors: z
+      .object({
+        principal: browserSelectorSchema.optional(),
+        tenant: browserSelectorSchema.optional(),
+        role: browserSelectorSchema.optional()
+      })
+      .strict()
+      .optional(),
+    proofCases: z
+      .array(
+        z
+          .object({
+            caseId: z.string().regex(/^[A-Za-z0-9._-]{1,120}$/),
+            protectedAction: z
+              .object({
+                url: browserUrlSchema,
+                selector: browserSelectorSchema,
+                readySelector: browserSelectorSchema.optional(),
+                expected: z.enum(["visible", "hidden"])
+              })
+              .strict(),
+            rollback: z
+              .object({
+                url: browserUrlSchema,
+                selector: browserSelectorSchema,
+                readySelector: browserSelectorSchema.optional(),
+                expected: z.enum(["visible", "hidden"])
+              })
+              .strict()
+          })
+          .strict()
+      )
+      .max(10)
+      .default([])
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.login && Object.keys(value.loginSecrets).length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["loginSecrets"],
+        message: "Browser login secrets require a login workflow."
+      });
     }
-  }
-  for (const name of Object.keys(value.loginSecrets)) {
-    if (!referenced.has(name)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["loginSecrets", name], message: `Unused browser login secret ${name} was rejected.` });
+    const referenced = new Set(
+      value.login?.steps.filter((step) => step.action === "fill").map((step) => step.valueRef) ?? []
+    );
+    for (const name of referenced) {
+      if (!Object.prototype.hasOwnProperty.call(value.loginSecrets, name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["loginSecrets", name],
+          message: `Missing browser login secret reference ${name}.`
+        });
+      }
     }
-  }
-});
+    for (const name of Object.keys(value.loginSecrets)) {
+      if (!referenced.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["loginSecrets", name],
+          message: `Unused browser login secret ${name} was rejected.`
+        });
+      }
+    }
+  });
 
 export const identityVerificationModeSchema = z.enum(["disabled", "optional", "required"]);
 export const identityVerificationMethodSchema = z.enum(["GET", "HEAD"]);
-const identityFieldPathPattern = /^[A-Za-z_$][A-Za-z0-9_$]*(?:\[(?:0|[1-9][0-9]{0,2})\]|\.[A-Za-z_$][A-Za-z0-9_$]*){0,8}$/;
+const identityFieldPathPattern =
+  /^[A-Za-z_$][A-Za-z0-9_$]*(?:\[(?:0|[1-9][0-9]{0,2})\]|\.[A-Za-z_$][A-Za-z0-9_$]*){0,8}$/;
 const forbiddenIdentityPathSegments = new Set(["__proto__", "prototype", "constructor"]);
 
 const identityVerificationSchema = z
@@ -98,16 +165,34 @@ const identityVerificationSchema = z
     expectedContentType: z.string().min(1).max(120).default("application/json"),
     successStatusCodes: z.array(z.number().int().min(100).max(599)).max(10).default([200]),
     maxResponseBytes: z.number().int().positive().max(65536).default(8192),
-    anonymousMarkers: z.array(z.object({ field: z.string().min(1).max(160), value: z.union([z.string(), z.number(), z.boolean(), z.null()]) }).strict()).max(10).default([])
+    anonymousMarkers: z
+      .array(
+        z
+          .object({
+            field: z.string().min(1).max(160),
+            value: z.union([z.string(), z.number(), z.boolean(), z.null()])
+          })
+          .strict()
+      )
+      .max(10)
+      .default([])
   })
   .strict()
   .superRefine((value, ctx) => {
     if (value.mode !== "disabled") {
       if (!value.endpoint) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endpoint"], message: "identityVerification.endpoint is required when verification is enabled." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endpoint"],
+          message: "identityVerification.endpoint is required when verification is enabled."
+        });
       }
       if (!value.principalIdField) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["principalIdField"], message: "identityVerification.principalIdField is required when verification is enabled." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["principalIdField"],
+          message: "identityVerification.principalIdField is required when verification is enabled."
+        });
       }
     }
     for (const [fieldName, path] of Object.entries({
@@ -118,40 +203,83 @@ const identityVerificationSchema = z
       safeAliasField: value.safeAliasField
     })) {
       if (path && !identityFieldPathPattern.test(path)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [fieldName], message: "identityVerification field mapping uses an unsupported path." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: "identityVerification field mapping uses an unsupported path."
+        });
       }
       if (path && hasForbiddenIdentityPathSegment(path)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [fieldName], message: "identityVerification field mapping uses a forbidden path segment." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [fieldName],
+          message: "identityVerification field mapping uses a forbidden path segment."
+        });
       }
     }
     for (const [index, marker] of value.anonymousMarkers.entries()) {
       if (!identityFieldPathPattern.test(marker.field)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["anonymousMarkers", index, "field"], message: "anonymous marker field uses an unsupported path." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["anonymousMarkers", index, "field"],
+          message: "anonymous marker field uses an unsupported path."
+        });
       }
       if (hasForbiddenIdentityPathSegment(marker.field)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["anonymousMarkers", index, "field"], message: "anonymous marker field uses a forbidden path segment." });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["anonymousMarkers", index, "field"],
+          message: "anonymous marker field uses a forbidden path segment."
+        });
       }
     }
   });
 
-export const authProfileSchema = z.object({
-  label: z.string().min(1).default("authenticated"),
-  principalId: z.string().min(1).optional(),
-  tenantId: z.string().min(1).optional(),
-  role: z.string().min(1).optional(),
-  accountState: z.string().min(1).optional(),
-  safeAlias: z.string().min(1).optional(),
-  headers: z.record(z.string()).default({}),
-  cookies: z.array(authCookieSchema).default([]),
-  identityVerification: identityVerificationSchema.default({ mode: "disabled" }),
-  browserBootstrap: browserBootstrapSchema.optional(),
-  lifecycleSecrets: lifecycleSecretsSchema.default({}),
-  notes: z.array(z.string()).default([])
-});
+export const authProfileSchema = z
+  .object({
+    identityModel: identityModelSchema.optional(),
+    label: z.string().min(1).default("authenticated"),
+    principalId: z.string().min(1).optional(),
+    tenantId: z.string().min(1).optional(),
+    role: z.string().min(1).optional(),
+    accountState: z.string().min(1).optional(),
+    safeAlias: z.string().min(1).optional(),
+    headers: z.record(z.string()).default({}),
+    cookies: z.array(authCookieSchema).default([]),
+    identityVerification: identityVerificationSchema.default({ mode: "disabled" }),
+    browserBootstrap: browserBootstrapSchema.optional(),
+    lifecycleSecrets: lifecycleSecretsSchema.default({}),
+    notes: z.array(z.string()).default([])
+  })
+  .superRefine((v, ctx) => {
+    if (!v.identityModel) return;
+    const c = v.identityVerification;
+    if (c.roleField && c.roleField === c.principalIdField)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Principal and role require distinct native evidence fields."
+      });
+    if (!v.principalId?.trim() || !v.role?.trim() || c.mode !== "required" || !c.principalIdField || !c.roleField)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Explicit identity model requires principal, role and required native field contracts."
+      });
+    if (v.identityModel === "TENANT_AWARE" && (!v.tenantId?.trim() || !c.tenantIdField))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Tenant-aware identity requires tenant metadata and verification."
+      });
+    if (v.identityModel === "PRINCIPAL_ROLE" && (v.tenantId !== undefined || c.tenantIdField !== undefined))
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Principal-role identity forbids tenant declarations and mappings."
+      });
+  });
 
 export type AuthProfile = z.infer<typeof authProfileSchema>;
 
 export interface AuthProfileSummary {
+  identityModel?: import("./IdentityModel.js").IdentityModel;
   enabled: boolean;
   label?: string;
   principalIdDeclared?: boolean;
@@ -188,7 +316,9 @@ export function authHeadersForProfile(profile: AuthProfile): Record<string, stri
   const profileCookieHeader = profile.cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 
   if (profileCookieHeader) {
-    headers[cookieHeaderName] = headers[cookieHeaderName] ? `${headers[cookieHeaderName]}; ${profileCookieHeader}` : profileCookieHeader;
+    headers[cookieHeaderName] = headers[cookieHeaderName]
+      ? `${headers[cookieHeaderName]}; ${profileCookieHeader}`
+      : profileCookieHeader;
   }
 
   return headers;
@@ -198,8 +328,14 @@ export function authHeadersForProfile(profile: AuthProfile): Record<string, stri
 export function authenticationLifecycleSecrets(profile: AuthProfile): Record<string, string> {
   const loginSecrets = profile.browserBootstrap?.loginSecrets ?? {};
   for (const name of Object.keys(loginSecrets)) {
-    if (Object.prototype.hasOwnProperty.call(profile.lifecycleSecrets, name) && profile.lifecycleSecrets[name] !== loginSecrets[name]) {
-      throw new AppError(`Authentication secret reference ${name} is ambiguous across browserBootstrap.loginSecrets and lifecycleSecrets.`, "AUTH_LIFECYCLE_SECRET_AMBIGUOUS");
+    if (
+      Object.prototype.hasOwnProperty.call(profile.lifecycleSecrets, name) &&
+      profile.lifecycleSecrets[name] !== loginSecrets[name]
+    ) {
+      throw new AppError(
+        `Authentication secret reference ${name} is ambiguous across browserBootstrap.loginSecrets and lifecycleSecrets.`,
+        "AUTH_LIFECYCLE_SECRET_AMBIGUOUS"
+      );
     }
   }
   return { ...loginSecrets, ...profile.lifecycleSecrets };
@@ -218,6 +354,7 @@ export function summarizeAuthProfile(profile: AuthProfile | undefined): AuthProf
 
   return {
     enabled: true,
+    ...(profile.identityModel ? { identityModel: profile.identityModel } : {}),
     label: profile.safeAlias ?? profile.label,
     ...(profile.principalId ? { principalIdDeclared: true } : {}),
     ...(profile.tenantId ? { tenantIdDeclared: true } : {}),

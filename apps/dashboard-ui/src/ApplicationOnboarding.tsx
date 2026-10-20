@@ -1,3 +1,4 @@
+import type { IdentityModel } from "../../../src/core/auth/IdentityModel";
 import { ApplicationOnboardingCompatibility } from "./ApplicationOnboardingCompatibility";
 import "./ApplicationOnboarding.css";
 import React, { useEffect, useRef, useState } from "react";
@@ -12,6 +13,7 @@ export function ApplicationOnboarding({
 }: {
   onSaved: (v: ReturnType<ApplicationOnboardingService["create"]>) => void;
 }) {
+  const [identityModel, setIdentityModel] = useState<IdentityModel>("TENANT_AWARE");
   const [origin, setOrigin] = useState(""),
     [name, setName] = useState(""),
     [summary, setSummary] = useState(""),
@@ -52,14 +54,25 @@ export function ApplicationOnboarding({
     setConfirmed(false);
     setSaved(false);
   };
+  const identityDeclaration = () => ({
+    identityModel,
+    ...(identityModel === "TENANT_AWARE"
+      ? fields
+      : { principalField: fields.principalField, roleField: fields.roleField, objectField: fields.objectField }),
+    actors: Object.fromEntries(
+      Object.entries(actors).map(([slot, a]) => {
+        const { tenant, ...rest } = a;
+        return [slot, identityModel === "TENANT_AWARE" ? { ...rest, tenant } : rest];
+      })
+    )
+  });
   const validation = applicationOnboardingSchema.safeParse({
     displayName: name,
     origin,
     authorizationSummary: summary,
     identityPath: identity,
     seedPath: seed,
-    ...fields,
-    actors,
+    ...identityDeclaration(),
     ownedReadOnlyConfirmed: true
   });
   const fieldLabels: Record<string, string> = {
@@ -74,7 +87,25 @@ export function ApplicationOnboarding({
       <summary>Set up an owned local application and actors</summary>
       <section aria-label="Application onboarding" aria-busy={busy}>
         <h3>Connect an owned application</h3>
-        <ApplicationOnboardingCompatibility />
+        <ApplicationOnboardingCompatibility identityModel={identityModel} />
+        <label>
+          Application identity model
+          <select
+            aria-label="Application identity model"
+            value={identityModel}
+            onChange={(e) => {
+              setIdentityModel(e.target.value as IdentityModel);
+              dirty();
+            }}
+          >
+            <option value="TENANT_AWARE">Tenant-aware: principal, tenant and role</option>
+            <option value="PRINCIPAL_ROLE">Tenantless: principal and role</option>
+          </select>
+        </label>
+        <p>
+          Selected model: {identityModel}. Tenantless identity never verifies tenant isolation. Changing the model
+          requires a new review.
+        </p>
         <p>1. Establish scope → 2. Declare actors → 3. Choose evidence fields → 4. Review and save.</p>
         <fieldset className="onboarding-steps">
           <legend>Setup step (arrow keys change selection)</legend>
@@ -150,28 +181,31 @@ export function ApplicationOnboarding({
         <details open={step === 1}>
           <summary onClick={() => setStep(1)}>2. Test actors</summary>
           <p>
-            Declare three distinct disposable principals, their actual roles and tenants, and future credential expiry.
-            Use the primary owner, a same-tenant peer and a different-tenant peer when the application supports them.
+            {identityModel === "TENANT_AWARE"
+              ? "Declare three distinct disposable principals, their actual roles and tenants, and future credential expiry. Use the primary owner, a same-tenant peer and a different-tenant peer when the application supports them."
+              : "Declare three distinct legitimate principals, their actual roles and future credential expiry. This application has no tenant identity; no tenant value will be supplied or verified."}{" "}
             These are declarations until separately verified.
           </p>
           {(["primary", "account_a", "account_b"] as const).map((slot) => (
             <fieldset key={slot}>
               <legend>{slot} actor declaration</legend>
-              {(["principal", "tenant", "role", "expiresAt", "authorizationHeader"] as const).map((k) => (
-                <label key={k}>
-                  {fieldLabels[k] ?? k}
-                  <input
-                    aria-label={slot + " " + k}
-                    type={k === "authorizationHeader" ? "password" : "text"}
-                    autoComplete="off"
-                    value={actors[slot][k]}
-                    onChange={(e) => {
-                      setActors((p) => ({ ...p, [slot]: { ...p[slot], [k]: e.target.value } }));
-                      dirty();
-                    }}
-                  />
-                </label>
-              ))}
+              {(["principal", "tenant", "role", "expiresAt", "authorizationHeader"] as const)
+                .filter((k) => identityModel === "TENANT_AWARE" || k !== "tenant")
+                .map((k) => (
+                  <label key={k}>
+                    {fieldLabels[k] ?? k}
+                    <input
+                      aria-label={slot + " " + k}
+                      type={k === "authorizationHeader" ? "password" : "text"}
+                      autoComplete="off"
+                      value={actors[slot][k] ?? ""}
+                      onChange={(e) => {
+                        setActors((p) => ({ ...p, [slot]: { ...p[slot], [k]: e.target.value } }));
+                        dirty();
+                      }}
+                    />
+                  </label>
+                ))}
             </fieldset>
           ))}
         </details>
@@ -181,19 +215,21 @@ export function ApplicationOnboarding({
             Use explicit non-secret scalar JSON paths such as record.id and record.tenant. Values are fingerprinted
             during later native observations. HTML navigation alone cannot prove object ownership.
           </p>
-          {Object.entries(fields).map(([k, v]) => (
-            <label key={k}>
-              {fieldLabels[k] ?? k}
-              <input
-                aria-label={"Onboarding " + k}
-                value={v}
-                onChange={(e) => {
-                  setFields((p) => ({ ...p, [k]: e.target.value }));
-                  dirty();
-                }}
-              />
-            </label>
-          ))}
+          {Object.entries(fields)
+            .filter(([k]) => identityModel === "TENANT_AWARE" || !["tenantField", "objectTenantField"].includes(k))
+            .map(([k, v]) => (
+              <label key={k}>
+                {fieldLabels[k] ?? k}
+                <input
+                  aria-label={"Onboarding " + k}
+                  value={v}
+                  onChange={(e) => {
+                    setFields((p) => ({ ...p, [k]: e.target.value }));
+                    dirty();
+                  }}
+                />
+              </label>
+            ))}
         </details>
         <details open={step === 3}>
           <summary onClick={() => setStep(3)}>4. Review declarations and next action</summary>
@@ -256,8 +292,7 @@ export function ApplicationOnboarding({
                 authorizationSummary: summary,
                 identityPath: identity,
                 seedPath: seed,
-                ...fields,
-                actors,
+                ...identityDeclaration(),
                 ownedReadOnlyConfirmed: true
               }
             )
