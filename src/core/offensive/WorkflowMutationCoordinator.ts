@@ -40,7 +40,7 @@ export class WorkflowMutationCoordinator {
 
   public constructor(private readonly options: ScanContextOptions) {
     this.directory = resolve(options.mutationJournalDir ?? defaultMutationDirectory());
-    this.vault = new MutationRecoveryVault(this.directory);
+    this.vault = new MutationRecoveryVault(this.directory, Boolean(options.workflowRecovery));
     this.journal = new MutationJournal(join(this.directory, "mutation-journal.json"), async (entry) => {
       // Expanded paths can contain captured session, reset, or signed-link
       // values. Keep exact URLs only inside the encrypted checkpoint; the

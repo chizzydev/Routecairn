@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "frozenParent": "8192cda2b8475306ecbec215f7c3623d74af25ee",
+  "protectedTests": {
+    "tests/dashboard/trusted-discovery-stage-b.test.ts": 62,
+    "tests/dashboard/trusted-discovery-dispatch.test.ts": 89,
+    "tests/dashboard/trusted-discovery-stage-a.test.ts": 64,
+    "tests/dashboard/trusted-discovery-outcome-integrity.test.ts": 17,
+    "apps/dashboard-ui/src/TrustedDiscoveryWorkspace.test.tsx": 30,
+    "tests/dashboard/trusted-discovery-stage-c.test.ts": 32,
+    "tests/dashboard/organization-tenancy-sync.test.ts": 7,
+    "tests/dashboard/operational-scale.test.ts": 12,
+    "tests/dashboard/trusted-discovery-stage-a-lifetime.test.ts": 7,
+    "tests/dashboard/trusted-discovery-stage-a-store.test.ts": 4,
+    "tests/dashboard/dashboard-security.test.ts": 4,
+    "tests/dashboard/dashboard-database.test.ts": 3,
+    "tests/unit/pinned-origin-pool.test.ts": 10
+  },
+  "newTests": {
+    "tests/unit/trusted-discovery-d0-policy.test.ts": 12,
+    "tests/dashboard/trusted-discovery-d0-platform.test.ts": 4,
+    "apps/dashboard-ui/src/TrustedDiscoveryD0.test.tsx": 2
+  },
+  "historicalMinimums": {
+    "dashboardTests": 949,
+    "dashboardFiles": 82,
+    "standalone": 1,
+    "graph": 536,
+    "runtimeChecks": 12
+  },
+  "browserCases": [
+    "B01",
+    "B02",
+    "B03",
+    "B04",
+    "B05",
+    "B06",
+    "B07",
+    "B08",
+    "B09",
+    "B10",
+    "B11",
+    "B12",
+    "B13",
+    "B14",
+    "B15",
+    "B16"
+  ],
+  "gates": [
+    "D0-01",
+    "D0-02",
+    "D0-03",
+    "D0-04",
+    "D0-05",
+    "D0-06",
+    "D0-07",
+    "D0-08",
+    "D0-09",
+    "D0-10",
+    "D0-11",
+    "D0-12",
+    "D0-13",
+    "D0-14",
+    "D0-15",
+    "D0-16"
+  ],
+  "remainingStages": [
+    "D1",
+    "D2",
+    "D3",
+    "D4"
+  ],
+  "skipAllowance": 0
+}

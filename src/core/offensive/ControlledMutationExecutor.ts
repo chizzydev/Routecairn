@@ -9,7 +9,7 @@ import { GlobalMutationLock, MutationJournal, safeRequestUrl } from "./MutationJ
 import { MutationRecoveryVault } from "./MutationRecoveryVault.js";
 import type { ControlledMutationBrowserObserver, ControlledMutationContract, ControlledMutationResult, MutationAssertion, MutationJournalStage, MutationRecoveryBundle, MutationTransport, MutationVerification, OffensiveExecutionMode } from "./ControlledMutationTypes.js";
 
-export interface ControlledMutationExecutorOptions { journalDirectory: string; checkpointReport?: () => Promise<void>; globalLockPath?: string; sleep?: (milliseconds: number) => Promise<void>; cleanupSleep?: (milliseconds: number) => Promise<void>; cleanupTransport?: MutationTransport; browserObserver?: ControlledMutationBrowserObserver; targetAuthorization?: TargetAuthorization }
+export interface ControlledMutationExecutorOptions { journalDirectory: string; retainRecoveryEvidence?: boolean; checkpointReport?: () => Promise<void>; globalLockPath?: string; sleep?: (milliseconds: number) => Promise<void>; cleanupSleep?: (milliseconds: number) => Promise<void>; cleanupTransport?: MutationTransport; browserObserver?: ControlledMutationBrowserObserver; targetAuthorization?: TargetAuthorization }
 type CleanupOutcome = "ROLLBACK_VERIFIED" | "CLEANUP_FAILED";
 
 export class ControlledMutationExecutor {
@@ -24,7 +24,7 @@ export class ControlledMutationExecutor {
 
   public constructor(private readonly transport: MutationTransport, options: ControlledMutationExecutorOptions) {
     this.journal = new MutationJournal(join(options.journalDirectory, "mutation-journal.json"), undefined, async () => { await options.checkpointReport?.(); });
-    this.vault = new MutationRecoveryVault(options.journalDirectory);
+    this.vault = new MutationRecoveryVault(options.journalDirectory, options.retainRecoveryEvidence === true);
     this.lock = new GlobalMutationLock(options.globalLockPath ?? join(options.journalDirectory, "global-mutation.lock"));
     this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.cleanupTransport = options.cleanupTransport ?? transport;
@@ -172,8 +172,8 @@ export class ControlledMutationExecutor {
     } finally { await this.lock.release(); }
   }
 
-  public async recover(bundlePath: string, caseId: string): Promise<ControlledMutationResult> {
-    const bundle = await this.vault.open(bundlePath, caseId);
+  public async recover(bundlePath: string, caseId: string, expectedDigest?: string): Promise<ControlledMutationResult> {
+    const bundle = await this.vault.open(bundlePath, caseId, expectedDigest);
     if (bundle.caseId !== caseId) throw new MutationSafetyError("Recovery case binding mismatch.", "RECOVERY_CASE_MISMATCH");
     if (bundle.authorizationExpiresAt && Date.parse(bundle.authorizationExpiresAt) <= Date.now()) throw new MutationSafetyError("Recovery authorization has expired.", "RECOVERY_AUTHORIZATION_EXPIRED");
     if (bundle.targetOrigin !== new URL(bundle.rollbackRequest.url).origin) throw new MutationSafetyError("Recovery rollback endpoint does not match the bound target origin.", "RECOVERY_ORIGIN_MISMATCH");

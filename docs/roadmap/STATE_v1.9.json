@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "roadmapVersion": "1.9",
+  "frozenDate": "2026-10-19",
+  "timezone": "Africa/Lagos",
+  "project": "RouteCairn",
+  "northStar": "Evidence-driven, application-aware authorized security assessment: application model -> grounded hypotheses -> bounded approved proof -> retained evidence -> safe recovery -> regression verification",
+  "worktree": {
+    "repositoryWindows": "C:\\Users\\HP\\RouteCairn",
+    "sourceState": "OWNER_VERIFIED_DISCOVERY_320_THEN_HELDOUT_ONBOARDING_V01_REVIEW_REQUIRED",
+    "frozenParentLocalRef": "8192cda2b8475306ecbec215f7c3623d74af25ee",
+    "lastOwnerVerifiedPacket": "ROUTECAIRN_BOUNDED_APPLICATION_DISCOVERY_v0.1_20261019_cd3f16b2.zip",
+    "lastOwnerVerifiedPacketSha256": "545d8e99f0293cb4709edff5a678ff05ae5f53aecd492404a9abbbc6fdfab367",
+    "pendingPaths": 320,
+    "nonignoredWorkingFiles": 1319,
+    "verifiedPacketChecksumMembers": 9683,
+    "generatedFiles": 1277,
+    "ownerReadOnlyVerifier": "PASS_OWNER_REPORTED_320_1319_9683_1277_EXACT_MEMBERSHIP",
+    "freshPreEditOwnerVerifier": "CODING_AGENT_READONLY_PASS_NOT_A_NEW_OWNER_RUN",
+    "latestCodexWorkingTreeAfterCurrentTask": {
+      "sourceAndNativeCounts": "Exact current packet WORKTREE/SOURCE_HASHES/PRESERVATION",
+      "newOwnerVerification": "PENDING_INDEPENDENT_OWNER_RUN",
+      "generatedFilesPreserved": 1277
+    },
+    "gitMutationReported": false
+  },
+  "reportedTests": {
+    "priorCombined": {
+      "passed": 679,
+      "failed": 8,
+      "total": 687,
+      "notRewritten": true
+    },
+    "currentEvidence": "See source-pinned TEST_MATRIX and raw results in current one-ZIP; no inferred pass from previous version",
+    "originalThirtySecondLimitsPreserved": true,
+    "historicalTimingCauseUnproven": true,
+    "fullApplicationAcceptance": false
+  },
+  "currentIncrement": {
+    "id": "RC-005/RC-006/RC-007/RC-008/RC-009",
+    "name": "Held-out Discovery Quality & Practical Onboarding v0.1",
+    "continuityVersion": "0.14",
+    "status": "IMPLEMENTED_CURRENT_PACKET_TARGETED_EVIDENCE_INDEPENDENT_REVIEW_REQUIRED",
+    "deliverable": "ONE COMPLETE VERIFIED ZIP"
+  },
+  "roadmapPhases": [
+    "M0 durability",
+    "M1 full local assessment vertical slice and UX",
+    "M2 authenticated app graph",
+    "M3 grounded hypothesis engine",
+    "M4 role and business logic differential proof",
+    "M5 continuous regression/team product",
+    "M6 platform/release/Stage D gates"
+  ],
+  "holds": {
+    "ubuntu": "DEFERRED_OWNER_DO_NOT_TOUCH",
+    "stageD": [
+      "D1 independent witness custody",
+      "D2 external anchor",
+      "D3 separately authorized execution bridge",
+      "D4 cross-platform/release"
+    ],
+    "trustedDiscoveryExecution": "OFF_NOT_AUTHORIZED",
+    "A1BNested750": "HOLD",
+    "A1C": "ZERO_COMMIT",
+    "real609FileMaterialization": "HOLD",
+    "releasePackaging": "HOLD",
+    "fullApplicationAcceptance": "HOLD"
+  },
+  "nonNegotiables": [
+    "explicit prior authorization",
+    "immutable target/plan/credentials/scope bindings",
+    "unknown!=success",
+    "no automatic replay of ambiguous mutations",
+    "evidence retention",
+    "server side roles+tenant checks",
+    "no external scanning without owner consent",
+    "no destructive original workspace operations"
+  ],
+  "nextAfterCurrent": "M2/M3 independently authored sealed oracle intake and prospective app diversity; M4 practical reviewed business-flow coverage with real app-owner policies and measurable uncertainty. No inference of independent acceptance from self-maintained models. Advance cohesive user workflows and detection quality; do not reopen proven worker internals without new evidence. Preserve all20 RC000–019 and M0–M6.",
+  "codexDelivery": "one verified comprehensive ZIP only; complete sources, increment+cumulative patches, RED/GREEN receipts, hash/owner verifier, decision and continuity",
+  "externalEvidenceNotBundled": [
+    "Live owner working tree and installed dependencies are not a portable release; all current changed source and transitive inspection context are in the packet",
+    "Prior archives are referenced by authenticated hashes; current increment raw evidence and prior source/preservation bindings are bundled"
+  ],
+  "sourceArchives": [
+    {
+      "name": "ROUTECAIRN_RECOVERY_OPERATIONS_v0.3_20261016_27e785e9.zip",
+      "sha256": "ebfd616bf22b8a8bcbf2772dead6c720a7e3f14fb8150ae9163836ab86a03b54"
+    },
+    {
+      "name": "ROUTECAIRN_WINDOWS_WORKER_CUSTODY_v0.2_20261015_4763f706.zip",
+      "sha256": "db75a9b133e4a8d32b9ac28eb7db4d5ccd7ec735cae2dd82b2915d6db4bdcee5"
+    }
+  ],
+  "newCapabilities": {
+    "actorEvidence": "Exact actor/credential slot, independently verified role/tenant/principal, route/URL fingerprint, native check tuple and typed markers; v1 transition approvals cannot grant v2 admission",
+    "observedState": "Immutable reviewed matrix-backed policy versions, authority receipts, exact typed state/revision fingerprints; no automatic policy oracle",
+    "assurance": "Existing durable CA runs/notifications/comparison integrity; manual, scheduled and deployment observation analysis sends zero target requests; stale/missing/revoked/incompatible evidence is nonquiet",
+    "scope": "Policy MATCHED is only observed-state/access-policy conformity, never transition authorization or full application security. State-changing authorization NOT_TESTED; causalProof=false",
+    "limits": [
+      "Two owned synthetic node:http application families, not independent external evidence",
+      "Numeric revision fingerprints prove equality only, not monotonicity",
+      "No observed policy execution/mutation authority, replay, purge or quarantine clearance",
+      "Historical 679/8 cause unresolved; full release/application acceptance HOLD"
+    ]
+  },
+  "nextPriority": "Broaden source-grounded discovery and independently supplied policy corpus; finish complete guided target/credential onboarding and triage experience, then held M4/M6 gates only when authorized."
+}

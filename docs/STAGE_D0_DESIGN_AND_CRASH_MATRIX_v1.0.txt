@@ -1,0 +1,108 @@
+RouteCairn Stage D0 design, custody and crash matrix v1.0
+Frozen parent8192cda2b8475306ecbec215f7c3623d74af25ee
+D0 only. Product execution UNREGISTERED; discovery defaults OFF.
+
+Actual trust diagram
+Real Chromium -> disposable loopback TLS gateway -> original built dashboard
+-> genuine native session cookie + Origin + CSRF + selected org
+-> real retained canonical source/planner -> review -> deliberately typed
+historical pre-consent -> NOT_EXECUTED, ZERO target GET.
+Shipping startup -> original OperatorService WITHOUT witness -> execute404.
+Test-only native process -> original pre-provisioned separate witness/key
+-> native exact opaque consent -> witness FIRST/main attempt SECOND
+-> original queue/DNS -> original broker synchronous onRequestStart revalidation
+-> pinned127.0.0.1/::1 single GET -> bounded4s/4KiB/rate1/concurrency1
+-> outcome FIRST/main signed checkpoint SECOND -> own private root disposal.
+
+D0 fixed matrix (global gates, plus exact16 real-browser cases B01-B16)
+D0-01 host/head/dependencies/disk/source identity and frozen per-file lower bounds.
+D0-02 actual installed Chromium/built UI/genuine TLS owner cookie/selected org.
+D0-03 explicit exact native reviewed identity and typed historical pre-consent.
+D0-04 locked Execute plus exact method/path/query authenticated404 controls.
+D0-05 current native role/membership/tenant/revocation/lock/session-expiry denial.
+D0-06 correct CSRF/Origin required; copied client role/IDs never authority.
+D0-07 stale/poisoned/unreadable canonical retained source fails closed.
+D0-08 target/candidate/org/history/reload/logout/expiry discards transient state.
+D0-09 keyboard/focus/live/320-768-1280 layout/zoom/reduced-motion assertions.
+D0-10 loopback-only browser egress proxy plus pre-DNS external request denial.
+D0-11 terminal-only DOM/screenshot/asset/console privacy checks, no auth trace.
+D0-12 actual native canonical/dev-inode/SQLite/POSIX/link/network-path probes.
+D0-13 actual process restart/current-old backup restore; original crashes/race.
+D0-14 build/package/release-policy/runtime-lock probes without installs/publish.
+D0-15 exact no-hidden-skip accounting/source recheck and preserved nonactivation.
+D0-16 reviewed Windows/Ubuntu owner runners; no Linux claim from Windows.
+
+Source-backed narrow repairs
+Real Chromium reproduced native session/status200 but no organization selector
+after fresh GUI login. New two-case UI regression failed before main.tsx fix.
+Login payload is now ignored as authority: existing cookie/CSRF/session/org
+initialization reruns, completes before authenticated shell and guards unmount.
+Real320px browser layout measured scroll366 from the native organization SELECT.
+Only additive min/max width rules constrain that chooser. No server, broker,
+consensus, namespace, approval, default or original test/time threshold changed.
+Exact source allowlist/amendments, pre/post hashes and failed evidence retained.
+
+Crash/recovery matrix (original consensus preserved)
+Before spend: no native transmission authority, no wire claim.
+Witness attempt committed/main attempt not committed: permanent mismatch DENY.
+Attempt committed/before outcome: UNKNOWN, spent forever; never success or retry.
+Outcome insert before independent commit: original signed prefix; UNKNOWN/spent.
+Outcome committed/main checkpoint not committed: mismatch DENY; retain partial.
+Both committed: signed ordered/count/tip/facts must authenticate after restart.
+Witness-only deletion/reorder/truncation/forgery: separate main checkpoint DENY.
+Main-only old backup/dataDir rollback: preserved witness history DENY.
+Current coherent original backup restore at SAME canonical path: consistent;
+spent route still denied in a NEW actual OS process, no second GET.
+Key loss/rotation/copied DB/hostile root/replacement/lease/source/owner change:
+DENY at original boundaries; no reprovision/reset/refund/automatic healing.
+Post-response storage failure: keep actual counters, INCONCLUSIVE and UNKNOWN;
+partial signed commitment refuses next native open. Disposal failure is FAILED,
+retains own root and blocks authority, never erases possibly-spent tombstones.
+Coherent rollback of BOTH authenticated histories and checkpoints cannot be
+locally distinguished even with unchanged stable keys. External anchor HOLD.
+Same-disk manifests, registry entries or timestamps are NOT external anchors.
+
+Platform and evidence boundaries
+All fixtures are new private user-temp directories, loopback listeners and
+self-maintained retained reports/accounts. Test-only IPC acknowledges metadata;
+raw passwords/cookies/keys/receipts are not delivered. TLS keys stay memory-only.
+Browser uses real installed headless Chromium and scoped self-signed fixture TLS
+without OS trust-store edits. Proxy permits only active loopback UI origins,
+checks actual connected peers and denies other destinations before DNS/upstream.
+Traces are disabled because auth traces include credentials. Only terminal,
+review-cleared screenshots/DOM summaries are exported; private markers checked.
+Screen-reader/OS accessibility behavior is NOT VERIFIED by DOM aria assertions.
+Windows ACL/mount policy and real Ubuntu native acceptance remain owner gates.
+POSIX permission assertions only run on actual Linux; no platform mock/shim.
+Unsupported symbolic link creation is BLOCKED, not a skipped or passed capability.
+The original junction and64-context30s tests remain mandatory, unchanged.
+
+Build/release inspection and source conflict
+Normal build/typecheck/UI-build/lint/format/1800-line architecture, lock and
+version/package-input checks are scoped; preserve captured stdout/stderr/exits.
+Dry-run npm packing uses --ignore-scripts: no lifecycle, install or publishing.
+package:smoke invokes npm install, therefore BLOCKED under this contract.
+build:release clears verified generated dist; BLOCKED here pending reviewed
+preservation/isolation of existing generated outputs. No old evidence deletion.
+React bundles must exclude fixture bootstraps/key material/execute adapters.
+The frozen NODE package contains the internal OperatorService.executeFresh
+implementation, as required by existing shipping server imports. No witness
+bootstrap/bridge/HTTP route is shipped. A literal requirement to remove that
+internal implementation conflicts with preserving frozen consensus; retain and
+flag this distinction for independent review, never delete it to force a pass.
+Policy/version readiness is not independent release/security signoff.
+
+Owner commands and continuity
+Review source/patch/manifest/scripts independently before owner full runs.
+Windows wrapper and portable Node owner runner verify actual live GitHub pin,
+index/path/hash scope, disk and installed prerequisites, fixed per-file counts,
+all protected original/new tests, full dashboard/UI>=historical949/82, standalone1,
+graph>=536 plus exactly12 runtime checks, real browser and final source integrity.
+Failures/blocked gates stay explicit. No install/elevation/global OS change,
+Git mutation, old evidence cleanup, production provisioning or activation.
+Ubuntu requires actual Ubuntu Linux runtime, installed compatible Node/native
+modules/Playwright and reviewed source+packet. Windows/WSL path strings cannot
+supply proof. Missing installs/rebuilds/browser require separate owner consent.
+D1-D4 complete scope remains in STAGE_D_MASTER_GATE_REGISTRY_v1.0.txt; D0
+completion never implies execution deployment, ALL_DISKS_ROLLBACK protection,
+package publication or independent signoff. No auto progression to D1-D4.

@@ -1098,3 +1098,21 @@ kbd { display: inline-block; min-width: 24px; padding: 2px 5px; border: 1px soli
 @media (prefers-reduced-motion: reduce) {
   .trusted-discovery-workspace *, .trusted-discovery-workspace *::before, .trusted-discovery-workspace *::after { animation: none !important; transition: none !important; }
 }
+
+/* Keep the native organization chooser inside narrow sidebar grid cells. */
+.organization-switcher { min-width: 0; max-width: 100%; display: grid; }
+.organization-switcher select { min-width: 0; width: 100%; max-width: 100%; }
+.recovery-issues { display: grid; gap: 1rem; }
+.recovery-issue { overflow-wrap: anywhere; border-left: 4px solid #d39a38; }
+.recovery-issue fieldset { margin: 1rem 0; padding: 1rem; }
+.recovery-issue label { display: flex; gap: .6rem; align-items: flex-start; }
+.recovery-issue .dense-dl > div { margin-bottom: .5rem; }
+
+.recovery-issues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; align-items: start; }
+.recovery-issue .dense-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.recovery-issue .dense-dl > div { display: block; min-width: 0; }
+.recovery-issue .dense-dl dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+.recovery-issue { padding: 16px; background: white; border: 1px solid #dbe3ee; border-left: 4px solid #d89a27; border-radius: 8px; min-width: 0; }
+.recovery-issue label, [aria-label="Bound controlled cleanup"] label { display: flex; align-items: flex-start; gap: 8px; }
+.recovery-issue input[type="checkbox"], [aria-label="Bound controlled cleanup"] input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 4px; }

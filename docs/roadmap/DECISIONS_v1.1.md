@@ -1,0 +1,10 @@
+# Roadmap decisions v1.1 — 2026-10-16
+
+The complete original master roadmap remains authoritative. All RC-000–RC-019 items and Stage D/platform/release obligations remain in BACKLOG_v1.1.csv; targeted slice labels do not certify whole milestones.
+
+- Advance the owner-verified source checkpoint to Recovery Consistency v0.5: 126 pending, 1139 nonignored, 4474 checksummed packet members and 1277 protected generated files. The authenticated review package and fresh mandatory read-only verification confirm the starting source. Earlier owner-PENDING language is superseded by the owner's actual PASS.
+- Reuse the current observed-input/SecurityCase/authorization synthesis/graph/contract and real scan runtime for one application-aware authorization slice. Do not create a competing planner or activate Trusted Discovery. Exact redacted URLs require explicit operator bindings against observed templates.
+- Genuine new evidence justifies two detection corrections: a different returned object is not requested-object bypass proof, and a failed allowed control cannot substantiate a denied-actor bypass. Keep actual RED and original assertion evidence.
+- Preserve separate primary and account-pair saved identities; explicitly referenced three-actor assessment must not silently drop actors. Retain unchanged native process custody architecture except a necessary application-binding recheck before secret delivery.
+- Prefer user-visible matrix/proof/findings/remediation flow over speculative recovery work. Current native/Edge fixtures are scoped proof, not release/production/independent benchmarking acceptance.
+- Next: acquire permitted authenticated application evidence and guide bindings in the UI with less hand-authored JSON, retaining source provenance, abstention, request budgets and the current proof/regression journey. Broaden hypothesis coverage only with frozen vulnerable/secure/near-miss controls. Business logic mutations, team/provider/Ubuntu and release gates retain their original dependencies.

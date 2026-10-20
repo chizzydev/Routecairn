@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "html:restricted",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "html:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "html:personal",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "html:missing",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "html:sealed",
+      "truth": "SECURE"
+    },
+    {
+      "id": "html:untyped",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "jsonapi:restricted",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "jsonapi:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "jsonapi:personal",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "jsonapi:missing",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "jsonapi:sealed",
+      "truth": "SECURE"
+    },
+    {
+      "id": "jsonapi:untyped",
+      "truth": "UNCERTAIN"
+    }
+  ]
+}

@@ -159,7 +159,7 @@ export function resolveCredentialAuthForDashboardScan(vault: CredentialVault, re
   if (request.authFile || request.authAFile || request.authBFile) {
     throw new Error("Use either auth files or saved credential profiles for a dashboard scan, not both.");
   }
-  if (request.credentialProfileId) {
+  if (request.credentialProfileId && !request.credentialProfileAId && !request.credentialProfileBId) {
     const authProfile = profileFromVault(vault, request.credentialProfileId, request, "single");
     return { authProfile, safeSummary: { savedCredentialAuth: true, single: safeCredentialReference(vault.getSummary(request.credentialProfileId), "single") } };
   }
@@ -174,10 +174,11 @@ export function resolveCredentialAuthForDashboardScan(vault: CredentialVault, re
     accountB: profileFromVault(vault, request.credentialProfileBId, request, "accountB")
   };
   return {
-    authProfile: authProfileSet.accountA,
+    authProfile: request.credentialProfileId ? profileFromVault(vault, request.credentialProfileId, request, "single") : authProfileSet.accountA,
     authProfileSet,
     safeSummary: {
       savedCredentialAuth: true,
+      ...(request.credentialProfileId ? {single:safeCredentialReference(vault.getSummary(request.credentialProfileId),"single")} : {}),
       accountA: safeCredentialReference(vault.getSummary(request.credentialProfileAId), "accountA"),
       accountB: safeCredentialReference(vault.getSummary(request.credentialProfileBId), "accountB")
     }

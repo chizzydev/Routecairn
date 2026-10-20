@@ -13,13 +13,13 @@ interface Worker {
   resources: { rssBytes: number; heapUsedBytes: number; cpuTimeMs: number; outputBytes: number; tempBytes: number };
 }
 
-interface Fleet { dispatchState: "NORMAL" | "QUARANTINED"; quarantineReason?: string; crashCount: number; crashWindowStartedAt?: string; workers: Worker[]; policy: Policy; }
+interface Fleet { cleanupAttemptQuarantine?: boolean; custodyQuarantine?: boolean; retentionFailures?: string[]; dispatchState: "NORMAL" | "QUARANTINED"; quarantineReason?: string; crashCount: number; crashWindowStartedAt?: string; workers: Worker[]; policy: Policy; }
 
 export function WorkerDiagnostics(props: { canManage: boolean }) {
   const [fleet, setFleet] = useState<Fleet>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const load = () => void apiGet<Fleet>("/api/workers/diagnostics").then((value) => { setFleet(value); setError(""); }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Worker diagnostics failed."));
+  const load = () => void apiGet<Fleet>("/api/workers/diagnostics").then((value) => { setFleet(value); setError(""); }).catch((cause: unknown) => { setFleet(undefined); setError(cause instanceof Error ? cause.message : "Worker diagnostics failed."); });
   useEffect(() => { load(); const timer = window.setInterval(load, 2_000); return () => window.clearInterval(timer); }, []);
   const active = useMemo(() => fleet?.workers.filter((worker) => ["STARTING", "RUNNING", "STOPPING", "UNHEALTHY"].includes(worker.state)) ?? [], [fleet]);
   const act = async (path: string, body: unknown, message: string) => { await apiMutation(path, "POST", body); setNotice(message); load(); };
@@ -27,7 +27,7 @@ export function WorkerDiagnostics(props: { canManage: boolean }) {
     <header className="page-header"><h2>Worker Operations</h2><p>Live job isolation, resource ceilings, cleanup grace, process-tree containment, and crash-loop controls.</p></header>
     {error && <p className="error" role="alert">{error}</p>}
     {notice && <p className="notice" aria-live="polite">{notice}</p>}
-    {fleet?.dispatchState === "QUARANTINED" && <div className="cleanup-emergency" role="alert"><div><strong>WORKER DISPATCH QUARANTINED</strong><p>{fleet.quarantineReason}</p></div><span>OPERATOR RELEASE REQUIRED</span></div>}
+    {fleet?.dispatchState === "QUARANTINED" && <div className="cleanup-emergency" role="alert"><div><strong>WORKER DISPATCH QUARANTINED</strong><p>{fleet.quarantineReason}</p></div><span>{fleet.custodyQuarantine ? "CUSTODY REVIEW REQUIRED; RELEASE BLOCKED" : fleet.cleanupAttemptQuarantine ? "CLEANUP OUTCOME REVIEW REQUIRED; RELEASE BLOCKED" : "OPERATOR RELEASE REQUIRED"}</span></div>}
     <div className="cards">
       <div className={`metric ${fleet?.dispatchState === "QUARANTINED" ? "danger-metric" : ""}`}><strong>{fleet?.dispatchState ?? "Loading"}</strong><span>Dispatch state</span></div>
       <div className="metric"><strong>{active.length}</strong><span>Active workers</span></div>
@@ -37,8 +37,8 @@ export function WorkerDiagnostics(props: { canManage: boolean }) {
       <div className="metric"><strong>{formatDuration(fleet?.policy.cleanupGraceMs ?? 0)}</strong><span>Cleanup grace</span></div>
     </div>
     <div className="actions">
-      <button disabled={!props.canManage || fleet?.dispatchState === "QUARANTINED"} onClick={() => { const reason = window.prompt("Why should all new worker dispatch be quarantined?"); if (reason) void act("/api/workers/fleet/quarantine", { reason }, "New worker dispatch is quarantined.").catch(show(setError)); }}>Quarantine dispatch</button>
-      <button disabled={!props.canManage || fleet?.dispatchState !== "QUARANTINED"} onClick={() => window.confirm("Release worker dispatch and reset the crash-loop counter?") && void act("/api/workers/fleet/release", {}, "Worker dispatch released.").catch(show(setError))}>Release dispatch</button>
+      <button disabled={!props.canManage || !fleet || fleet.dispatchState === "QUARANTINED"} onClick={() => { const reason = window.prompt("Why should all new worker dispatch be quarantined?"); if (reason) void act("/api/workers/fleet/quarantine", { reason }, "New worker dispatch is quarantined.").catch(show(setError)); }}>Quarantine dispatch</button>
+      <button disabled={!props.canManage || fleet?.dispatchState !== "QUARANTINED" || fleet?.cleanupAttemptQuarantine || fleet?.custodyQuarantine || Boolean(fleet?.retentionFailures?.length)} onClick={() => window.confirm("Release worker dispatch and reset the crash-loop counter?") && void act("/api/workers/fleet/release", {}, "Worker dispatch released.").catch(show(setError))}>Release dispatch</button>
     </div>
     <h3>Configured hard limits</h3>
     {fleet && <div className="table compact-table">
@@ -61,7 +61,7 @@ export function WorkerDiagnostics(props: { canManage: boolean }) {
         <Resource label="Temp" value={worker.resources.tempBytes} limit={worker.policy.tempBytes} format={formatBytes} />
         {worker.failureCategory && <p className="error"><strong>{worker.failureCategory}</strong><br />{worker.terminationReason}</p>}
         {worker.quarantineReason && <p className="notice"><strong>Quarantined:</strong> {worker.quarantineReason}</p>}
-        <div className="actions compact"><button disabled={!props.canManage || !["STARTING", "RUNNING", "UNHEALTHY"].includes(worker.state)} onClick={() => window.confirm("Gracefully stop this job-scoped worker, retain partial evidence, and launch a fresh worker for the next job?") && void act(`/api/workers/${worker.id}/restart`, {}, "Worker restart requested.").catch(show(setError))}>Restart worker</button>{worker.quarantinedAt ? <button disabled={!props.canManage} onClick={() => void act(`/api/workers/${worker.id}/release`, {}, "Worker quarantine record released.").catch(show(setError))}>Release quarantine</button> : <button disabled={!props.canManage} onClick={() => { const reason = window.prompt("Quarantine reason"); if (reason) void act(`/api/workers/${worker.id}/quarantine`, { reason }, "Worker quarantined.").catch(show(setError)); }}>Quarantine</button>}</div>
+        <div className="actions compact"><button disabled={!props.canManage || !["STARTING", "RUNNING", "UNHEALTHY"].includes(worker.state)} onClick={() => window.confirm("Gracefully stop this job-scoped worker, retain partial evidence, and launch a fresh worker for the next job?") && void act(`/api/workers/${worker.id}/restart`, {}, "Worker restart requested.").catch(show(setError))}>Restart worker</button>{worker.quarantinedAt ? <button disabled={!props.canManage || fleet?.custodyQuarantine || Boolean(fleet?.retentionFailures?.length)} onClick={() => void act(`/api/workers/${worker.id}/release`, {}, "Worker quarantine record released.").catch(show(setError))}>Release quarantine</button> : <button disabled={!props.canManage} onClick={() => { const reason = window.prompt("Quarantine reason"); if (reason) void act(`/api/workers/${worker.id}/quarantine`, { reason }, "Worker quarantined.").catch(show(setError)); }}>Quarantine</button>}</div>
       </article>)}
     </div>
     {fleet && fleet.workers.length === 0 && <div className="empty">No workers have run yet. Diagnostics will populate with the next dashboard scan or recovery job.</div>}

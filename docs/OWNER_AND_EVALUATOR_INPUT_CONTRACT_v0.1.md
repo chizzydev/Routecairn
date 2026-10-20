@@ -1,0 +1,26 @@
+# First owner assessment and separately controlled evaluation inputs
+
+## Owner supplies, through existing local UI
+
+1. An actually owned application running at a registered 127.0.0.1 origin; explicit owner authorization and exact non-mutating GET scope including baseline and identity endpoints. No external host, mutation, unrestricted crawl or production data.
+2. Three target-bound saved actor profiles. Each needs a distinct principal/tenant/role tuple, expiration and exact identity-verification endpoint/field contract. Select same-tenant and cross-tenant roles deliberately. Enter credentials in the vault only; do not paste them into this document or evaluation data.
+3. Up to eight explicit GET seeds and literal approved paths or reviewed schema suggestions; identity/tenant and at most two non-secret state fields per route. Three/four-step reference and entity-version fields, and an optional observed owner field, must fit those existing observation limits. Omit unsupported assertions and accept abstention.
+4. Optional minimized owner-export metadata via existing offline intake, with recent capture time and hashes; never raw HAR headers, bodies, cookies or sessions. Receipt recovery uses read-only GET after lost acknowledgement; no replay.
+5. Exact resource ownership and actor access policy. Review the map first. Preview/observe, review policy and approve native proof are separate actions. Apply remediation yourself, then separately authorize a bounded GET retest and compare exact check coverage.
+
+## Separate evaluator controls privately
+
+Freeze an existing prospectiveStudySchema manifest with fixed applications/cases, budgets, repetitions, source hashes, oracle SHA256 and the independently obtained public Ed25519 key hash. Enroll every public case/check binding and application family using evaluationEnrollmentSchema BEFORE predictions are sealed. Keep the oracle, signing key, hidden tests and label semantics outside RouteCairn's assessment inputs. A family name or signature alone does not establish separate ownership or blinding.
+
+Run the existing prospective-assessment-intake.ts seal command with every application/case/run, including explicit UNTESTED. Then run the new independent-evaluation-intake.ts seal-evidence command against exact reports whose bytes match each prediction source hash. Every non-UNTESTED case/run needs a catalog row. A decisive prediction requires complete native execution and exact non-OBSERVE policy checks. FINDING needs a linked FAIL finding through the final native sourceModule/workflow caseId/comparisonFingerprint, PROVEN status and nonfailed cleanup; human review stays REQUIRED. Intermediate module workflowCase objects are not accepted as final native finding evidence; NO_FINDING needs all selected checks PASS. ABSTAIN can retain incomplete/observation evidence. Receipt hashes do not authenticate the truth or prove new execution.
+
+PowerShell from C:\Users\HP\RouteCairn (installed development dependencies already present):
+
+    node --import tsx scripts/independent-evaluation-intake.ts seal-evidence <public-manifest.json> <manifest-sha256> <enrollment.json> <global-seal.json> <catalog.json> <evidence-root> <new-witness.json>
+    node --import tsx scripts/independent-evaluation-intake.ts score-evidence <public-manifest.json> <manifest-sha256> <global-seal.json> <oracle-release.json> <pinned-public.pem> <witness.json> <witness-signature.txt> <private-oracle.json> <new-score.json>
+
+The evaluator signs both existing oracleReleaseMessage and evaluationWitnessMessage using Ed25519 over ASCII heldOutHash(message), encoded standard base64. Public key must match the pre-enrolled hash. Both signatures and the global seal are checked before opening labels. Output files are CreateNew; no overwrite, target request or file deletion. Inputs must be bounded ordinary single-link files with no symbolic-link/reparse ancestors. The seal mode has no oracle argument and strict schemas reject label fields.
+
+Score retains the existing confusion matrix, all denominators/budgets, abstentions and untested cases; adds known-vulnerability missed totals, decision coverage and per-family counts/repeatability. Family independence, label accuracy, trusted time and real separation of custody require external review. Current demonstrations are same-author known-label development tests, not independent, blinded or non-fixture acceptance. The designated oracle hash is refused across the complete evidence catalog before any loader runs. This does not prove that other public files contain no labels: a lying path/hash is detected after file reading, and arbitrary embedded answers cannot be ruled out by byte hashes. Keep private labels physically outside the assessment/evidence host under a separate evaluator. Use opaque case IDs; public owner policy contracts may state intended access but must not disclose vulnerability labels. Witnesses explicitly report no oracle argument, no established label secrecy, and declared-hash exclusion; they never assert that no private data could have been read.
+
+Status: real owner application and separately controlled private oracle NOT SUPPLIED. Independent accuracy, full application acceptance and historical combined reliability remain HOLD. Do not enable Trusted Discovery, Stage D, mutations, release or Ubuntu work.

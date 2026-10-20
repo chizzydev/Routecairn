@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "roadmapVersion": "1.3",
+  "frozenDate": "2026-10-17",
+  "timezone": "Africa/Lagos",
+  "project": "RouteCairn",
+  "northStar": "Evidence-driven, application-aware authorized security assessment: application model -> grounded hypotheses -> bounded approved proof -> retained evidence -> safe recovery -> regression verification",
+  "worktree": {
+    "repositoryWindows": "C:\\Users\\HP\\RouteCairn",
+    "sourceState": "OWNER_VERIFIED_GUIDED_MAPPING_THEN_REVIEWED_SCHEMA_INCREMENT",
+    "frozenParentLocalRef": "8192cda2b8475306ecbec215f7c3623d74af25ee",
+    "lastOwnerVerifiedPacket": "ROUTECAIRN_GUIDED_AUTHENTICATED_MAPPING_v0.1_20261016_8b5e36a6.zip",
+    "lastOwnerVerifiedPacketSha256": "46d1f0e465834187b0025e3f732d04f8a4bd0f062d6544c75b18af6c02ca29f2",
+    "pendingPaths": 174,
+    "nonignoredWorkingFiles": 1180,
+    "verifiedPacketChecksumMembers": 4937,
+    "generatedFiles": 1277,
+    "ownerReadOnlyVerifier": "PASS_OWNER_REPORTED",
+    "freshPreEditOwnerVerifier": "PASS",
+    "latestCodexWorkingTreeAfterCurrentTask": {
+      "pendingPaths": 197,
+      "nonignoredWorkingFiles": 1203,
+      "incrementFiles": 30,
+      "generatedFilesPreserved": 1277,
+      "newOwnerVerification": "PENDING_INDEPENDENT_OWNER_RUN",
+      "codexReadOnlyVerifier": "SEE_CURRENT_PACKET_RECEIPT"
+    },
+    "gitMutationReported": false
+  },
+  "reportedTests": {
+    "priorOwnerSourceVerified": true,
+    "priorTargetedUniqueAutomatedPassed": 597,
+    "currentFreshDistinctAutomatedPassed": 638,
+    "currentFreshFiles": 77,
+    "currentFreshEdgeScenarioExecutions": 15,
+    "currentFreshNumericSchemaEdgeScenarios": 6,
+    "fullApplicationAcceptance": false
+  },
+  "currentIncrement": {
+    "id": "RC-001/RC-002/RC-006/RC-007/RC-010/RC-013",
+    "name": "Reviewed OpenAPI/schema-assisted mapping and immutable map comparison v0.1",
+    "continuityVersion": "0.8",
+    "status": "TARGETED_GREEN_INDEPENDENT_REVIEW_PENDING",
+    "deliverable": "ONE COMPLETE VERIFIED ZIP"
+  },
+  "roadmapPhases": [
+    "M0 durability",
+    "M1 full local assessment vertical slice and UX",
+    "M2 authenticated app graph",
+    "M3 grounded hypothesis engine",
+    "M4 role and business logic differential proof",
+    "M5 continuous regression/team product",
+    "M6 platform/release/Stage D gates"
+  ],
+  "holds": {
+    "ubuntu": "DEFERRED_OWNER_DO_NOT_TOUCH",
+    "stageD": [
+      "D1 independent witness custody",
+      "D2 external anchor",
+      "D3 separately authorized execution bridge",
+      "D4 cross-platform/release"
+    ],
+    "trustedDiscoveryExecution": "OFF_NOT_AUTHORIZED",
+    "A1BNested750": "HOLD",
+    "A1C": "ZERO_COMMIT",
+    "real609FileMaterialization": "HOLD",
+    "releasePackaging": "HOLD",
+    "fullApplicationAcceptance": "HOLD"
+  },
+  "nonNegotiables": [
+    "explicit prior authorization",
+    "immutable target/plan/credentials/scope bindings",
+    "unknown!=success",
+    "no automatic replay of ambiguous mutations",
+    "evidence retention",
+    "server side roles+tenant checks",
+    "no external scanning without owner consent",
+    "no destructive original workspace operations"
+  ],
+  "nextAfterCurrent": "Grounded, deterministic security hypotheses over observed application maps, with exact evidence references, UNKNOWN/abstention and explicit reviewed matrix proof; extend role and business-flow coverage on sealed owned fixtures. Preserve roadmap RC-000..019; do not reopen proven worker/recovery internals without a new defect.",
+  "codexDelivery": "one verified comprehensive ZIP only; complete sources, increment+cumulative patches, RED/GREEN receipts, hash/owner verifier, decision and continuity",
+  "externalEvidenceNotBundled": [
+    "Live owner working tree and installed dependencies are not a portable release; all current changed source and transitive inspection context are in the packet",
+    "Prior archives are referenced by authenticated hashes; current increment raw evidence and prior source/preservation bindings are bundled"
+  ],
+  "sourceArchives": [
+    {
+      "name": "ROUTECAIRN_RECOVERY_OPERATIONS_v0.3_20261016_27e785e9.zip",
+      "sha256": "ebfd616bf22b8a8bcbf2772dead6c720a7e3f14fb8150ae9163836ab86a03b54"
+    },
+    {
+      "name": "ROUTECAIRN_WINDOWS_WORKER_CUSTODY_v0.2_20261015_4763f706.zip",
+      "sha256": "db75a9b133e4a8d32b9ac28eb7db4d5ccd7ec735cae2dd82b2915d6db4bdcee5"
+    }
+  ],
+  "newCapabilities": {
+    "schema": "Bounded local OpenAPI JSON REST subset, sanitized immutable suggestions, concrete reviewed bindings; schemas never grant execution authority",
+    "comparison": "Immutable same-authority map snapshots with declared membership and native access/response/marker-type differences; missing data UNKNOWN, differences are hypotheses",
+    "permission": "Authenticated HTTP RED/FIX/GREEN for mapping and advanced detail parity; ordinary scan VIEWER access preserved",
+    "applications": "Original document fixture and independent numeric-record application using existing native Windows runtime",
+    "limitations": [
+      "Source-mode targeted Windows acceptance, not full app/release/field acceptance",
+      "Both generated apps use node:http; no additional framework/operator independence claim",
+      "JSON GET subset only; no automatic crawler, YAML, external refs, mutation/query argument expansion or automatic policy inference",
+      "Schema differences and historical immutable comparisons never authorize dispatch or imply vulnerabilities"
+    ]
+  }
+}

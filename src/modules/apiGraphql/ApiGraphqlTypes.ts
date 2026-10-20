@@ -28,6 +28,8 @@ export interface ApiGraphqlActorPlan {
 }
 
 export interface ApiRouteSecurityPlan {
+  /** Present in redacted native reports; binds the exact URL without exposing it. */
+  urlFingerprint?: string;
   id: string;
   safeAlias: string;
   protocol: "REST" | "GRAPHQL";
@@ -68,12 +70,21 @@ export interface ApiResponseContractPlan {
   allowedStatuses: readonly number[];
   deniedStatuses: readonly number[];
   fieldRules: readonly ApiResponseFieldRulePlan[];
+  observationPaths?: readonly string[];
+  stateMarkers?: readonly { path: string; expectedValue: unknown }[];
   identity?: { path: string; expectedValue: unknown; expectedFingerprint: string };
-  tenant?: { path: string; expectedValue?: unknown; expectedFingerprint?: string; forbiddenValueFingerprints: readonly string[]; forbiddenValues: readonly unknown[] };
+  tenant?: {
+    path: string;
+    expectedValue?: unknown;
+    expectedFingerprint?: string;
+    forbiddenValueFingerprints: readonly string[];
+    forbiddenValues: readonly unknown[];
+  };
   maxItems?: number;
 }
 
 export interface ApiAuthorizationCheckPlan {
+  prerequisiteCheckIds?: readonly string[];
   id: string;
   matrixId: string;
   label: string;
@@ -143,7 +154,12 @@ export interface VersionBoundaryCheckPlan {
   comparisonFingerprint: string;
 }
 
-export type ApiGraphqlCheckPlan = ApiAuthorizationCheckPlan | MethodConfusionCheckPlan | GraphqlIntrospectionCheckPlan | GraphqlLimitCheckPlan | VersionBoundaryCheckPlan;
+export type ApiGraphqlCheckPlan =
+  | ApiAuthorizationCheckPlan
+  | MethodConfusionCheckPlan
+  | GraphqlIntrospectionCheckPlan
+  | GraphqlLimitCheckPlan
+  | VersionBoundaryCheckPlan;
 
 export interface ApiGraphqlReviewPlan {
   schemaVersion: 1;

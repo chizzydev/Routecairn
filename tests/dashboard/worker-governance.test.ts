@@ -1,5 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createOwnedTestDirectory, retainOwnedTestDirectory } from "../helpers/owned-test-directory.js";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { DashboardDatabase } from "../../src/dashboard/db/DashboardDatabase.js";
@@ -8,7 +7,7 @@ import { descendantProcessIds, parsePosixProcessList, parseWindowsProcessCsv, wo
 import { dashboardSettingsUpdateSchema } from "../../src/dashboard/contracts/DashboardSchemas.js";
 
 const directories: string[] = [];
-afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
+afterEach(() => { for (const path of directories.splice(0)) retainOwnedTestDirectory(path); });
 
 describe("worker resource governance", () => {
   it("validates dashboard-editable governance ceilings and preserves the cleanup minimum", () => {
@@ -33,7 +32,7 @@ describe("worker resource governance", () => {
     try {
       const governance = new WorkerGovernanceRepository(database);
       const workerId = "00000000-0000-4000-8000-000000000001";
-      database.db.prepare("INSERT INTO scans (id, source, status, target_origin, safe_target_label, profile, evidence_level, created_at, queued_at, safe_configuration_summary, output_directory) VALUES (?, 'DASHBOARD', 'RUNNING', 'https://example.test', 'example', 'quick', 'normal', ?, ?, '{}', ?)").run("00000000-0000-4000-8000-000000000002", new Date().toISOString(), new Date().toISOString(), resolve(tmpdir(), "report"));
+      database.db.prepare("INSERT INTO scans (id, source, status, target_origin, safe_target_label, profile, evidence_level, created_at, queued_at, safe_configuration_summary, output_directory) VALUES (?, 'DASHBOARD', 'RUNNING', 'https://example.test', 'example', 'quick', 'normal', ?, ?, '{}', ?)").run("00000000-0000-4000-8000-000000000002", new Date().toISOString(), new Date().toISOString(), resolve(directoryForReport(), "report"));
       database.db.prepare("INSERT INTO scan_workers (id, process_id, state, started_at, last_heartbeat_at, current_job_id, version, governance_policy_json, cleanup_state, updated_at) VALUES (?, 4242, 'RUNNING', ?, ?, ?, '2', ?, 'UNKNOWN', ?)").run(workerId, new Date().toISOString(), new Date().toISOString(), "00000000-0000-4000-8000-000000000002", JSON.stringify(defaultWorkerGovernancePolicy), new Date().toISOString());
       governance.heartbeat(workerId, snapshot({ currentModule: "authentication-lifecycle", cleanupState: "RUNNING", rssBytes: 1234, outputBytes: 456 }), [4242, 4243]);
       expect(governance.fleet().workers[0]).toMatchObject({ currentModule: "authentication-lifecycle", cleanupState: "RUNNING", resources: { rssBytes: 1234, outputBytes: 456 }, processTreePids: [4242, 4243] });
@@ -69,6 +68,8 @@ function snapshot(changed: Partial<WorkerResourceSnapshot> = {}): WorkerResource
 }
 
 function createDatabase(): DashboardDatabase {
-  const directory = mkdtempSync(resolve(tmpdir(), "routecairn-worker-governance-")); directories.push(directory);
+  const directory = createOwnedTestDirectory("routecairn-worker-governance-"); directories.push(directory);
   const database = new DashboardDatabase(resolve(directory, "dashboard.sqlite")); database.migrate(); return database;
 }
+
+function directoryForReport(): string { const root = createOwnedTestDirectory("worker-governance-report"); directories.push(root); return root; }

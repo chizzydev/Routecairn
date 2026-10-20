@@ -1,3 +1,4 @@
+import {CleanupAttemptLedger} from "../recovery/CleanupAttemptLedger.js";
 import { controlPlaneConfigFromEnv } from "../../controlPlane/ControlPlaneConfig.js";
 import { TrustedDiscoveryOperatorService } from "../execution/TrustedDiscoveryOperatorService.js";
 import { handleTrustedDiscoveryStageA } from "./TrustedDiscoveryStageAApi.js";
@@ -101,6 +102,7 @@ export async function startDashboardServer(options: DashboardServerOptions = {})
   const database = new DashboardDatabase(paths.databasePath);
   database.migrate();
   database.recoverInterruptedScans();
+  CleanupAttemptLedger.for(database).reconcileStartup();
   const infrastructure = await ControlPlaneInfrastructure.start(database, paths);
   startupCleanup=async()=>{await infrastructure.shutdown();database.close();};
   database.observeEvents((event) => { void infrastructure.publish("scan-events", event.scanId, { eventType: event.eventType, seq: event.seq, ...(event.moduleId ? { moduleId: event.moduleId } : {}), message: event.message, metadata: event.metadata, createdAt: event.createdAt }).catch(()=>infrastructure.telemetry.log("warn","Scan notification deferred; persisted events remain available.")); });

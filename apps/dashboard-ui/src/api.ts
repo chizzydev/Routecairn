@@ -204,6 +204,10 @@ export async function apiGet<T>(path: string, options: { signal?: AbortSignal } 
 
 export async function apiMutation<T>(path: string, method: "POST" | "PATCH" | "PUT", body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
   const effectiveCsrfToken = csrfToken || readStoredCsrfToken();
+  if(method === "POST" && ["/api/recovery-center/controlled-cleanup","/api/workflow-mutations/recovery","/api/controlled-mutations/recover"].includes(path) && body && typeof body === "object" && !("requestId" in body)){
+    const digest=crypto.subtle?Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify([activeOrganizationId,effectiveCsrfToken,path,body]))))).map(n=>n.toString(16).padStart(2,"0")).join(""):"";
+    let requestId:string=crypto.randomUUID();if(digest){try{const key="routecairn.cleanup.request:"+digest;requestId=sessionStorage.getItem(key)??requestId;sessionStorage.setItem(key,requestId);}catch{/* Authority remains one-use if browser storage is unavailable. */}}body={...body,requestId};
+  }
   const response = await fetch(path, {
     ...options,
     method,

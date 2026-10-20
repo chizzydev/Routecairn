@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "app": "ArchiveHub independent nested resource router",
+  "independence": "SELF_MAINTAINED_SEPARATE_POLICY_ORACLE_NOT_EXTERNAL_BLIND_CORPUS",
+  "seeds": [
+    "cedar",
+    "quartz"
+  ],
+  "actors": {
+    "primary": {
+      "principal": "curator-17",
+      "tenant": "north",
+      "role": "curator"
+    },
+    "account_a": {
+      "principal": "contributor-23",
+      "tenant": "north",
+      "role": "contributor"
+    },
+    "account_b": {
+      "principal": "reader-31",
+      "tenant": "south",
+      "role": "reader"
+    }
+  },
+  "cases": [
+    {
+      "id": "restricted",
+      "suffix": "collections/17/assets/91",
+      "policy": [
+        "primary"
+      ],
+      "bug": [
+        "account_a",
+        "account_b"
+      ],
+      "expected": "POSITIVE"
+    },
+    {
+      "id": "shared",
+      "suffix": "published/announcements/51",
+      "policy": [
+        "primary",
+        "account_a",
+        "account_b"
+      ],
+      "bug": [],
+      "expected": "NEGATIVE"
+    },
+    {
+      "id": "sealed",
+      "suffix": "collections/17/sealed/92",
+      "policy": [
+        "primary"
+      ],
+      "bug": [],
+      "expected": "NEGATIVE"
+    },
+    {
+      "id": "personal",
+      "suffix": "profiles/current/export",
+      "policy": [
+        "primary"
+      ],
+      "bug": [],
+      "expected": "ABSTAIN",
+      "counterexample": "DIFFERENT_OBJECT"
+    },
+    {
+      "id": "missing",
+      "suffix": "collections/17/assets/93",
+      "policy": [
+        "primary"
+      ],
+      "bug": [],
+      "expected": "ABSTAIN",
+      "counterexample": "PRIMARY_UNAVAILABLE"
+    },
+    {
+      "id": "privileged",
+      "suffix": "operations/curation/summary",
+      "policy": [
+        "primary"
+      ],
+      "bug": [
+        "account_a"
+      ],
+      "expected": "POSITIVE",
+      "kind": "FUNCTION"
+    },
+    {
+      "id": "untyped",
+      "suffix": "collections/17/assets/94",
+      "policy": [
+        "primary"
+      ],
+      "bug": [],
+      "expected": "ABSTAIN",
+      "counterexample": "MISSING_TYPED_MARKER"
+    }
+  ],
+  "discovery": {
+    "directory": "catalog/start",
+    "page": "catalog/pages/2",
+    "later": "collections/17/retention/95",
+    "adversaries": [
+      "https://outside.invalid/",
+      "//127.0.0.1/escape",
+      "../escape",
+      "/not-reviewed/protected",
+      "/catalog/remove",
+      "/catalog/x?session=secret",
+      "POST link",
+      "duplicate"
+    ]
+  },
+  "criteria": {
+    "nativePositiveRouteCount": 2,
+    "nativeNegativeRouteCount": 2,
+    "abstentionRouteCount": 3,
+    "expectedFalsePositiveRoutes": 0,
+    "maximumDiscoveryWire": 52
+  },
+  "frozenAt": "2026-10-19T00:20:05.891Z"
+}

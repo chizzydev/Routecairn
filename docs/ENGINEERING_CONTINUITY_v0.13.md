@@ -1,0 +1,7 @@
+# Engineering continuity v0.13
+
+Continue from owner-verified Observed-State v0.1 (291/1290/15145/1277). Bounded discovery now feeds the existing mapping and security-proof vertical slice. Current exact paths, raw RED/GREEN, original assertion preservation and counts are in the single review packet; never infer a test pass from this document.
+
+Important repairs: authenticated source control cannot be replaced with anonymous links after expired identity; HTML base handling cannot invent local provenance; retained discovery lineage and proof artifacts are protected by retention preview. No destructive purge executed. Initial implementation failures, new adversarial REDs, all prior 679/8 and 677/10 failures are retained with source pins. Historical common root cause remains unproven.
+
+Next major priority: independently supplied policy/ground-truth breadth and a cohesive target/credential onboarding → discovery → review → findings/triage/regression experience across additional application structures. Current ArchiveHub family is owned synthetic unblinded evidence only. Avoid another worker-internals cycle absent source-backed failure or concrete workflow need. Preserve master roadmap RC000–019/M0–M6 and all state/recovery/authorization safeguards. Ubuntu PAUSED; held Trusted Discovery bridge OFF; StageD1–D4, nested750/real609 materialization, A1C ZERO-COMMIT, state-changing execution and release HOLD. No Git/history mutation.

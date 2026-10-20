@@ -17,7 +17,8 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
       proofPacksDir: z.string(),
       fingerprintKeyPath: z.string(),
       mutationJournalDir: z.string(),
-      tempDir: z.string()
+      tempDir: z.string(),
+      resourceProof: z.object({ resourceId: z.string().uuid(), markerSha256: z.string().regex(/^[a-f0-9]{64}$/), rootDev: z.string().regex(/^\d+$/), rootIno: z.string().regex(/^\d+$/), tempDev: z.string().regex(/^\d+$/), tempIno: z.string().regex(/^\d+$/) }).optional()
     })
   }),
   z.object({
@@ -67,16 +68,22 @@ export const apiToWorkerMessageSchema = z.discriminatedUnion("type", [
     expiresAt: z.string().datetime(),
     nonce: z.string().min(16).max(120),
     caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(200),
+    cleanupAttemptId: z.string().uuid().optional(),
+    bundleDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     bundlePath: z.string().min(1).max(1000).regex(/\.recovery\.enc$/).refine((value) => !value.split(/[\\/]/).includes(".."), "Recovery bundle path traversal is not allowed"),
     hmac: z.string().regex(/^[a-f0-9]{64}$/)
   }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("RECOVERY_REQUEST_ACK"), workerId: z.string().uuid(), jobId: z.string().uuid(), attemptId: z.string().uuid(), workerGeneration: z.string().uuid(), ordinal: z.number().int().min(1).max(10000), hmac: z.string().regex(/^[a-f0-9]{64}$/) }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("START_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("CANCEL_JOB"), workerId: z.string().uuid(), jobId: z.string().uuid(), reason: z.string().max(800).optional() }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("SHUTDOWN"), workerId: z.string().uuid() })
 ]);
 
 export const workerToApiMessageSchema = z.discriminatedUnion("type", [
-  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("WORKER_READY"), workerId: z.string().uuid() }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("RECOVERY_REQUEST_GATE"), workerId: z.string().uuid(), jobId: z.string().uuid(), attemptId: z.string().uuid(), workerGeneration: z.string().uuid(), ordinal: z.number().int().min(1).max(10000), hmac: z.string().regex(/^[a-f0-9]{64}$/) }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("WORKER_IDENTITY_CONFIRMED"), workerId: z.string().uuid(), processBirth: z.string().regex(/^\d{16,20}$/), challenge: z.string().uuid() }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("WORKER_BOOTSTRAP_READY"), workerId: z.string().uuid(), processBirth: z.string().regex(/^\d{16,20}$/).optional() }),
+  z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("WORKER_READY"), workerId: z.string().uuid(), processBirth: z.string().regex(/^\d{16,20}$/).optional() }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("JOB_ACCEPTED"), workerId: z.string().uuid(), jobId: z.string().uuid() }),
   z.object({
     protocolVersion: z.literal(workerProtocolVersion),
@@ -126,7 +133,9 @@ export const workerToApiMessageSchema = z.discriminatedUnion("type", [
     jobId: z.string().uuid(),
     caseId: z.string().regex(/^[A-Za-z0-9._-]+$/).max(200),
     cleanupOutcome: z.enum(["ROLLBACK_VERIFIED", "CLEANUP_FAILED"]),
-    notes: z.array(z.string().max(800)).max(20)
+    notes: z.array(z.string().max(800)).max(20),
+    attemptId: z.string().uuid().optional(), workerGeneration: z.string().uuid().optional(), hmac: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    proof: z.object({sequence:z.number().int().positive(),entryDigest:z.string().regex(/^[a-f0-9]{64}$/)}).optional()
   }),
   z.object({ protocolVersion: z.literal(workerProtocolVersion), type: z.literal("JOB_COMPLETED"),
     workerId: z.string().uuid(),

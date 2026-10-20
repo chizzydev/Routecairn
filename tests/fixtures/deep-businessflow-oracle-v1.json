@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "procurement3:vulnerable",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "procurement4:vulnerable",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "procurement4:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "procurement4:missing-producer",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "procurement4:stale-version",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "procurement4:tenant-drift",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "procurement4:typed-disagreement",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "procurement4:missing-reference",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "procurement4:duplicate-reference",
+      "truth": "UNCERTAIN"
+    }
+  ]
+}

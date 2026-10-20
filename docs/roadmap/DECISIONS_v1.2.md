@@ -1,0 +1,12 @@
+# Roadmap decisions v1.2 — Guided mapping
+
+The full original master roadmap, RC-000 through RC-019, dependencies and Stage D/platform/release obligations remain governing. Read prior v1.1 decisions as history and this addendum as the current checkpoint. The owner's actual Workbench v0.1 verification PASS supersedes independent-review PENDING language; the exact pre-edit verifier passed again before this increment.
+
+- Continue the existing workbench and Adaptive/native execution architecture. Guided acquisition and policy entry replace JSON-first onboarding for this slice; the advanced JSON path remains available. No second scanner, inferred URL authority or held bridge is introduced.
+- Treat route seeds/templates and access policy as explicit operator declarations. Only the worker's actual requests, response decisions, identity verification and scalar marker hashes are observations. Values are not recovered from redacted report aliases.
+- Keep 32 observation checks / 40 shared requests / 8192-byte module bounds / concurrency one; require exact non-mutating GET confirmation and separate observation/proof approval. Existing target, vault, broker, immutable native plan, quarantine and cleanup authority remain in force.
+- Correct the real expired-ACK/UNKNOWN readback failure without authorizing a late new dispatch. Reject the reproduced case of distinct saved references representing a duplicated principal/tenant/role context. Missing positive controls or mismatched explicit identity/tenant markers cannot become proof-ready.
+- Retain every failed attempt, test source, native receipt and archive hash. Fresh targeted results are not a full-suite, independent benchmark, compiled release or deployment verdict. The generated native fixture uses string IDs; numeric binding has focused UI/contract evidence.
+- Next substantial Windows coding priority: reviewed local OpenAPI/schema seed import and map comparison on a second generated application, preserving explicit request approval and refusal of unbound/unsafe semantics. Then expand genuinely grounded hypotheses, role/business logic proof, continuous regression and team UX per the master backlog. Do not repeat proven custody/recovery engineering without new failure evidence.
+
+Ubuntu remains paused. Stage D D1-D4, Trusted Discovery execution, A1B nested750 / real609 materialization and release packaging remain HOLD; A1C ZERO-COMMIT remains. No external scan, production rollout, Git mutation, install or destructive owner-workspace operation is authorized by these decisions.

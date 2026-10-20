@@ -1,12 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { createOwnedTestDirectory, retainOwnedTestDirectory } from "../helpers/owned-test-directory.js";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { startDashboardServer } from "../../src/dashboard/server/DashboardServer.js";
 
 describe("dashboard worker operations API", () => {
   it("exposes diagnostics and audited fleet quarantine controls", async () => {
-    const directory = mkdtempSync(resolve(tmpdir(), "routecairn-worker-api-"));
+    const directory = createOwnedTestDirectory("routecairn-worker-api-");
     const handle = await startDashboardServer({ dataDir: directory, uiDistDir: resolve("apps", "dashboard-ui", "dist") });
     try {
       const auth = await authenticate(handle.url, handle.bootstrapUrl!);
@@ -22,7 +21,7 @@ describe("dashboard worker operations API", () => {
       expect(audit.events.map((event: { action: string }) => event.action)).toEqual(expect.arrayContaining(["WORKER_FLEET_QUARANTINED", "WORKER_FLEET_RELEASED"]));
     } finally {
       await handle.close();
-      rmSync(directory, { recursive: true, force: true });
+      retainOwnedTestDirectory(directory);
     }
   });
 });

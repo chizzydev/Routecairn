@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "orders:vulnerable",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "orders:secure",
+      "truth": "SECURE"
+    },
+    {
+      "id": "orders:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "orders:wrong-object",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "orders:stale-version",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "orders:missing-positive",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "orders:missing-reference",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "orders:type-confusion",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "care:vulnerable",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "care:secure",
+      "truth": "SECURE"
+    },
+    {
+      "id": "care:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "care:wrong-object",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "care:stale-version",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "care:missing-positive",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "care:missing-reference",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "care:type-confusion",
+      "truth": "UNCERTAIN"
+    }
+  ]
+}

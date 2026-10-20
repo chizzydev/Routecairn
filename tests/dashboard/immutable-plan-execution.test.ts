@@ -1,7 +1,7 @@
-import { createServer, type Server } from "node:http";
+import { createOwnedTestDirectory, retainOwnedTestDirectory } from "../helpers/owned-test-directory.js";
+import { createServer, type Server, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { exampleScope } from "../../src/config/defaults.js";
@@ -18,7 +18,7 @@ afterEach(async () => {
 
 describe("dashboard immutable reviewed plan execution", () => {
   it("executes the verified snapshot and rejects a manifest changed while its job is queued", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "routecairn-immutable-worker-"));
+    const directory = createOwnedTestDirectory("routecairn-immutable-worker-");
     let releaseFirst!: () => void;
     const firstRelease = new Promise<void>((resolve) => { releaseFirst = resolve; });
     let firstRequestSeen!: () => void;
@@ -71,12 +71,12 @@ describe("dashboard immutable reviewed plan execution", () => {
       releaseFirst?.();
       await execution.shutdown();
       database.close();
-      rmSync(directory, { recursive: true, force: true });
+      retainOwnedTestDirectory(directory);
     }
   }, 35_000);
 
   it("rejects encrypted snapshot tampering before launching the queued worker", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "routecairn-immutable-store-tamper-"));
+    const directory = createOwnedTestDirectory("routecairn-immutable-store-tamper-");
     let releaseFirst!: () => void;
     const release = new Promise<void>((resolve) => { releaseFirst = resolve; });
     let seen!: () => void;
@@ -109,12 +109,12 @@ describe("dashboard immutable reviewed plan execution", () => {
       releaseFirst?.();
       await execution.shutdown();
       database.close();
-      rmSync(directory, { recursive: true, force: true });
+      retainOwnedTestDirectory(directory);
     }
   }, 35_000);
 });
 
-async function fixture(handler: Parameters<typeof createServer>[0]): Promise<string> {
+async function fixture(handler: RequestListener): Promise<string> {
   const server = createServer(handler);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   servers.push(server);

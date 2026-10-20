@@ -1,0 +1,75 @@
+.business-relationship-panel,
+.application-evidence-triage {
+  margin: 1.2rem 0;
+  padding: 1.1rem;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 0.65rem;
+  background: var(--panel, #fff);
+  color: var(--text, #172033);
+}
+.business-relationship-panel h4,
+.application-evidence-triage h4 {
+  margin-top: 0;
+}
+.business-relationship-panel table,
+.application-evidence-triage table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+}
+.business-relationship-panel th,
+.business-relationship-panel td,
+.application-evidence-triage th,
+.application-evidence-triage td {
+  padding: 0.6rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #cbd5e1;
+  overflow-wrap: anywhere;
+}
+.business-relationship-panel fieldset > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+.business-relationship-panel label,
+.application-evidence-triage label {
+  display: block;
+  margin: 0.5rem 0;
+}
+.business-relationship-panel pre,
+.application-evidence-triage pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 22rem;
+  overflow: auto;
+}
+.business-relationship-panel input,
+.business-relationship-panel select,
+.application-evidence-triage textarea,
+.application-evidence-triage select {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.business-relationship-panel button:focus-visible,
+.application-evidence-triage button:focus-visible,
+.business-relationship-panel select:focus-visible,
+.application-evidence-triage textarea:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+@media (max-width: 650px) {
+  .business-relationship-panel,
+  .application-evidence-triage {
+    padding: 0.7rem;
+  }
+  .business-relationship-panel table,
+  .application-evidence-triage table {
+    font-size: 0.8rem;
+  }
+  .business-relationship-panel fieldset > div {
+    grid-template-columns: 1fr;
+  }
+}

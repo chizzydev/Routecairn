@@ -26,6 +26,8 @@ export interface ScanContextOptions {
   mutationJournalDir?: string;
   workflowRecovery?: WorkflowCheckpoint;
   recoveryScope?: RouteCairnScope;
+  /** Native managed recovery only: durable parent acknowledgement before entering the cleanup request broker. */
+  beforeRecoveryRequest?: () => Promise<void>;
   authProfile?: AuthProfile;
   authProfileSet?: AuthProfileSet;
   eventSink?: ScanEventSink;
@@ -384,6 +386,7 @@ export class ScanContext {
         await this.eventSink.emit({ type: "CLEANUP_STARTED", message: "Cancellation-safe cleanup or restoration verification started.", metadata: { timeoutMs: 120_000 } });
       }
       await this.options.checkpointReport?.();
+      await this.options.beforeRecoveryRequest?.();
       return send(request);
     };
     return broker;

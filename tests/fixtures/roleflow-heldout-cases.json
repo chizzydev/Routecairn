@@ -1,0 +1,86 @@
+{
+  "version": "1",
+  "classification": "SELF_MAINTAINED_PREREGISTERED_SYNTHETIC_NOT_INDEPENDENTLY_BLINDED",
+  "productionHypothesisEngineReadsThis": false,
+  "policySource": "Fixture owner predeclares values and grants; product never infers them from labels",
+  "cases": [
+    {
+      "id": "PROCUREMENT_PRIVATE",
+      "application": "procurement",
+      "setup": "two-stage request / approver preview",
+      "expected": "reviewed findings2 then fixed0; comparison2resolved"
+    },
+    {
+      "id": "MEMBERSHIP_PRIVATE",
+      "application": "membership",
+      "setup": "roster / sponsor endorsement / registrar preview",
+      "expected": "reviewed findings2 then fixed0; comparison2resolved"
+    },
+    {
+      "id": "SHARED_POLICY",
+      "application": "membership",
+      "setup": "asymmetric roster/sponsor grants, explicit shared preview",
+      "expected": "native findings0"
+    },
+    {
+      "id": "MISSING_STATE",
+      "application": "membership",
+      "setup": "missing selected typed state",
+      "expected": "ABSTAIN, no proof"
+    },
+    {
+      "id": "WRONG_OBJECT",
+      "application": "procurement",
+      "setup": "peer response differs from owner object",
+      "expected": "review refused when declared ALLOW control unproven"
+    },
+    {
+      "id": "REASSIGNMENT",
+      "application": "procurement",
+      "setup": "fixture changes object ID after review",
+      "expected": "native INCONCLUSIVE, findings0"
+    },
+    {
+      "id": "REVOKED_IDENTITY",
+      "application": "procurement",
+      "setup": "fixture revokes native identity endpoint",
+      "expected": "native blocked/inconclusive, findings0"
+    },
+    {
+      "id": "STATE_DRIFT",
+      "application": "procurement",
+      "setup": "prerequisite state changes after review",
+      "expected": "dependent INCONCLUSIVE, findings0"
+    },
+    {
+      "id": "ACTOR_STATE_DRIFT",
+      "application": "procurement",
+      "setup": "only account-a prerequisite changes",
+      "expected": "account-a INCONCLUSIVE; independent forbidden account-b finding1"
+    },
+    {
+      "id": "TENANT_REASSIGNMENT",
+      "application": "procurement",
+      "setup": "same ID and state belong to another tenant",
+      "expected": "exact resource unproven, INCONCLUSIVE findings0"
+    },
+    {
+      "id": "POLICY_ORDER_TYPE_DRIFT",
+      "application": "procurement",
+      "setup": "changed typed state/order/dependency policy",
+      "expected": "review/admission refused, extra wire0"
+    },
+    {
+      "id": "SUPERSESSION",
+      "application": "procurement",
+      "setup": "explicit superseding proposal before proof",
+      "expected": "old admission refused, extra wire0"
+    },
+    {
+      "id": "MISSING_MATRIX_ACK",
+      "application": "procurement",
+      "setup": "owned trigger fails linked matrix insertion",
+      "expected": "retained decision/no matrix, no replay or wire"
+    }
+  ]
+}

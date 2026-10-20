@@ -1,4 +1,9 @@
+import {cleanupMac,verifyCleanupMac} from "./CleanupAttemptProtocol.js";
+import {cleanupResultProof} from "../recovery/CleanupAttemptProof.js";
 import { mkdirSync } from "node:fs";
+import { windowsProcessBirth } from "./WindowsProcessIdentity.js";
+import { tmpdir } from "node:os";
+import { WorkerLifecycleEvidence } from "./WorkerLifecycleEvidence.js";
 import { lstat, readdir } from "node:fs/promises";
 import { workerRestorationGraceMs } from "../../core/engine/CleanupExecution.js";
 import { resolve } from "node:path";
@@ -31,10 +36,13 @@ const abortController = new AbortController();
 let runningJob: Promise<void> | undefined;
 let jobStarted = false;
 let shutdownRequested = false;
+let lifecycleEvidence: WorkerLifecycleEvidence | undefined;
 let acceptedEnvelope = false;
 let acceptedEnvelopeAuth: DashboardResolvedAuth | undefined;
 let acceptedExecutablePlan: BoundExecutablePlan | undefined;
 let acceptedMutationContracts: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract[] = [];
+let cleanupAttemptId = "", cleanupOrdinal = 0, gateRefused = false;
+const cleanupAcknowledgements = new Map<number,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
 let lastSensitiveSequence = 0;
 let messageChain = Promise.resolve();
 let heartbeatSequence = 0;
@@ -42,7 +50,13 @@ let heartbeatSampling = false;
 let currentModule: string | undefined;
 let cleanupState: "CLEAR" | "PENDING" | "RUNNING" | "REQUIRED" | "UNKNOWN" = "UNKNOWN";
 
-send({ protocolVersion: workerProtocolVersion, type: "WORKER_READY", workerId: requireWorkerId() });
+// A live worker attests its own birth on its private IPC channel. The manager
+// never adopts a process merely because a later lookup returns the same PID.
+void (async () => {
+  const birth = process.platform === "win32" ? process.env.ROUTECAIRN_WINDOWS_PROCESS_BIRTH ?? await windowsProcessBirth(process.pid, tmpdir()) : undefined;
+  if (process.platform === "win32" && !birth) throw Error("WORKER_PROCESS_BIRTH_UNAVAILABLE");
+  send({ protocolVersion: workerProtocolVersion, type: "WORKER_READY", workerId: requireWorkerId(), ...(birth ? { processBirth: birth } : {}) });
+})().catch(() => { send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: "WORKER_PROCESS_BIRTH_UNAVAILABLE" }); void shutdown(); });
 
 const heartbeat = setInterval(() => { void sendHeartbeat(); }, 1000);
 
@@ -55,12 +69,15 @@ process.on("message", (raw: unknown) => {
 process.on("disconnect", () => {
   void shutdown();
 });
+process.on("exit", code => { try { lifecycleEvidence?.record("PROCESS_EXIT", cleanupState, code); } catch { /* No writes through an uncertain resource. */ } });
+process.on("uncaughtExceptionMonitor", () => { try { lifecycleEvidence?.record("UNCAUGHT_FAILURE", "UNKNOWN"); } catch { /* Preserve the original exception behavior. */ } });
 process.on("SIGTERM", () => { void shutdown(); });
 process.on("SIGINT", () => { void shutdown(); });
 
 async function shutdown(): Promise<void> {
   if (shutdownRequested) return;
   shutdownRequested = true;
+  try { lifecycleEvidence?.record("SHUTDOWN_REQUESTED", cleanupState); } catch { cleanupState = "UNKNOWN"; }
   clearInterval(heartbeat);
   abortController.abort();
   const deadline = setTimeout(() => process.exit(1), workerRestorationGraceMs);
@@ -68,6 +85,7 @@ async function shutdown(): Promise<void> {
   try { await runningJob; }
   finally {
     clearTimeout(deadline);
+    try { lifecycleEvidence?.record("PROCESS_EXIT_READY", cleanupState); } catch { cleanupState = "UNKNOWN"; }
     if (process.connected) {
       process.send?.({ protocolVersion: workerProtocolVersion, type: "WORKER_SHUTDOWN", workerId: requireWorkerId() }, () => process.exit(0));
     } else process.exit(0);
@@ -78,6 +96,11 @@ async function handleMessage(raw: unknown): Promise<void> {
   const message = parseApiMessage(raw);
   if (message.workerId !== requireWorkerId()) throw new Error("Worker ID mismatch.");
   switch (message.type) {
+    case "RECOVERY_REQUEST_ACK": {
+      verifyCleanupMac(workerSecret,message);
+      if(message.jobId!==jobId||message.attemptId!==cleanupAttemptId||message.workerGeneration!==workerGeneration)throw Error("RECOVERY_ACK_BINDING_INVALID");
+      const pending=cleanupAcknowledgements.get(message.ordinal);if(!pending)throw Error("RECOVERY_ACK_REPLAY");cleanupAcknowledgements.delete(message.ordinal);clearTimeout(pending.timer);pending.resolve();break;
+    }
     case "INITIALIZE_JOB":
       initialize(message);
       break;
@@ -101,15 +124,21 @@ async function handleMessage(raw: unknown): Promise<void> {
       if (jobStarted || shutdownRequested) throw new Error("Worker job already started or shutting down.");
       jobStarted = true;
       cleanupState = "CLEAR";
-      runningJob = startJob();
+      lifecycleEvidence?.record("EXECUTION_REQUESTED", cleanupState);
+      runningJob = startJob().catch(error => { send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: safeError(error) }); });
       break;
     case "RECOVER_MUTATION":
       if (message.jobId !== jobId) throw new Error("Recovery job mismatch.");
       validateRecoveryMessage(message);
+      if(!message.cleanupAttemptId || !message.bundleDigest)throw Error("RECOVERY_ATTEMPT_REQUIRED");
+      cleanupAttemptId=message.cleanupAttemptId;
       if (jobStarted || shutdownRequested) throw new Error("Worker job already started or shutting down.");
       jobStarted = true;
-      runningJob = recoverMutation(message);
-      await runningJob;
+      // Cleanup runs independently of the IPC queue so cancellation and shutdown
+      // remain observable. Its authenticated recovery authority is unchanged.
+      runningJob = recoverMutation(message).catch(error => {
+        send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: safeError(error) });
+      });
       break;
     case "CANCEL_JOB":
       if (message.jobId === jobId) { cleanupState = "PENDING"; abortController.abort(message.reason); }
@@ -124,33 +153,37 @@ async function recoverMutation(message: Extract<ApiToWorkerMessage, { type: "REC
   if (!paths || !request || !acceptedEnvelope) throw new Error("Worker refused recovery without initialized paths and authenticated credentials.");
   const bundlePath = resolveRecoveryBundlePath(paths.mutationJournalDir, message.bundlePath, message.caseId);
   const vault = new MutationRecoveryVault(paths.mutationJournalDir);
-  const candidate = await vault.open<WorkflowCheckpoint>(bundlePath, message.caseId);
+  const candidate = await vault.open<WorkflowCheckpoint>(bundlePath, message.caseId, message.bundleDigest);
   if (candidate.kind === "WORKFLOW_CLEANUP_V1") {
     if (!request.workflowRecoveryDigest || candidate.digest !== request.workflowRecoveryDigest) throw new Error("RECOVERY_CHECKPOINT_CHANGED");
     if (candidate.targetOrigin !== new URL(request.target).origin) throw new Error("RECOVERY_TARGET_MISMATCH");
-    const result = await recoverWorkflow(candidate, { mutationJournalDir: paths.mutationJournalDir, ...(request.recoveryScope ? { recoveryScope: request.recoveryScope } : {}), ...(acceptedEnvelopeAuth?.authProfile ? { authProfile: acceptedEnvelopeAuth.authProfile } : {}), ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {}) });
-    send({ protocolVersion: workerProtocolVersion, type: "JOB_MUTATION_RECOVERY", workerId: requireWorkerId(), jobId: message.jobId, ...result });
+    const result = await recoverWorkflow(candidate, { beforeRecoveryRequest: beforeCleanupRequest, mutationJournalDir: paths.mutationJournalDir, ...(request.recoveryScope ? { recoveryScope: request.recoveryScope } : {}), ...(acceptedEnvelopeAuth?.authProfile ? { authProfile: acceptedEnvelopeAuth.authProfile } : {}), ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {}) });
+    await sendRecoveryResult(result);
     return;
   }
-  const bundle = await vault.open(bundlePath, message.caseId);
+  const bundle = await vault.open(bundlePath, message.caseId, message.bundleDigest);
   // Recovery cannot discard the program policy that authorized the original mutation.
   const resolved = await resolveDashboardScanPlan({ ...request, includeModules: ["baseline"], ...(bundle.targetAuthorization ? { targetAuthorization: bundle.targetAuthorization } : {}) }, acceptedEnvelopeAuth);
   const recoveryRequestBudget = (bundle.actorIdentityVerification?.attempts ?? 0) + (bundle.targetIdentityVerification?.attempts ?? 0) + 1 + (bundle.rollbackVerification.attempts ?? 3);
   const recoveryPlan = recoveryOnlyPlan(resolved.plan, recoveryRequestBudget);
-  const context = new ScanContext({ target: request.target, scope: resolved.scope, config: resolved.config, plan: recoveryPlan, outputDir: paths.mutationJournalDir, ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}), ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}) });
+  const context = new ScanContext({ target: request.target, scope: resolved.scope, config: resolved.config, plan: recoveryPlan, outputDir: paths.mutationJournalDir, beforeRecoveryRequest: beforeCleanupRequest, ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}), ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}) });
   const client = context.createWorkflowCleanupHttpClient(recoveryRequestBudget, 64 * 1024);
   const freshProfile = acceptedEnvelopeAuth?.authProfile;
   if (!freshProfile) throw new Error("Worker refused recovery without a fresh primary credential profile.");
   const freshHeaders = authHeadersForProfile(freshProfile);
   const transport: MutationTransport = { send: (request) => client.send({ ...request, skipCache: true, disableRetries: true, disableRedirects: true, headers: { ...Object.fromEntries(Object.entries(request.headers ?? {}).filter(([name]) => ["content-type", "accept"].includes(name.toLowerCase()))), ...freshHeaders } }) };
-  const result = await new ControlledMutationExecutor(transport, { journalDirectory: paths.mutationJournalDir, cleanupSleep: (ms) => context.cleanupWait(client, ms) }).recover(bundlePath, message.caseId).finally(() => context.dispose());
-  send({ protocolVersion: workerProtocolVersion, type: "JOB_MUTATION_RECOVERY", workerId: requireWorkerId(), jobId: message.jobId, caseId: message.caseId, cleanupOutcome: result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED", notes: result.notes.slice(0, 20) });
+  const result = await new ControlledMutationExecutor(transport, { retainRecoveryEvidence: true, journalDirectory: paths.mutationJournalDir, cleanupSleep: (ms) => context.cleanupWait(client, ms) }).recover(bundlePath, message.caseId, message.bundleDigest).finally(() => context.dispose());
+  await sendRecoveryResult({caseId:message.caseId,cleanupOutcome:result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED",notes:result.notes.slice(0,20)});
 }
 
 function initialize(message: Extract<ApiToWorkerMessage, { type: "INITIALIZE_JOB" }>): void {
   jobId = message.jobId;
   request = message.request as unknown as DashboardScanCreateRequest;
   paths = message.paths;
+  if (message.paths.resourceProof) {
+    lifecycleEvidence = new WorkerLifecycleEvidence(paths.tempDir, message.paths.resourceProof, { workerId: requireWorkerId(), generation: workerGeneration, jobId }, workerSecret);
+    lifecycleEvidence.record("INITIALIZED", cleanupState);
+  }
   mkdirSync(paths.tempDir, { recursive: true });
   send({ protocolVersion: workerProtocolVersion, type: "JOB_ACCEPTED", workerId: requireWorkerId(), jobId });
 }
@@ -406,4 +439,14 @@ function constantEqual(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+async function beforeCleanupRequest():Promise<void>{
+ if(!cleanupAttemptId||gateRefused||shutdownRequested||!process.connected)throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
+ const ordinal=++cleanupOrdinal,body={protocolVersion:workerProtocolVersion as 2,type:"RECOVERY_REQUEST_GATE" as const,workerId:requireWorkerId(),jobId,attemptId:cleanupAttemptId,workerGeneration,ordinal};
+ await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{cleanupAcknowledgements.delete(ordinal);gateRefused=true;reject(Error("RECOVERY_DISPATCH_ACK_UNKNOWN"));},5000);cleanupAcknowledgements.set(ordinal,{resolve,reject,timer});send({...body,hmac:cleanupMac(workerSecret,body)});});
+ if(gateRefused||shutdownRequested)throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
+}
+async function sendRecoveryResult(result:{caseId:string;cleanupOutcome:"ROLLBACK_VERIFIED"|"CLEANUP_FAILED";notes:string[]}){
+ const proof=await cleanupResultProof(paths!.mutationJournalDir,result.caseId),body={protocolVersion:workerProtocolVersion as 2,type:"JOB_MUTATION_RECOVERY" as const,workerId:requireWorkerId(),jobId,...result,attemptId:cleanupAttemptId,workerGeneration,...(proof?{proof}:{})};send({...body,hmac:cleanupMac(workerSecret,body)});
 }

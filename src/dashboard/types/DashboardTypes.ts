@@ -11,6 +11,8 @@ export type RetestStatus = "NOT_RETESTED" | "RETEST_SCHEDULED" | "RETEST_RUNNING
 export type ProofReadinessStatus = "NOT_READY" | "MISSING_REVIEW" | "MISSING_EVIDENCE" | "READY" | "IN_PROOF_PACK";
 
 export interface DashboardScanCreateRequest {
+  applicationMappingBinding?: {revisionId:string;digest:string} | undefined;
+  authorizationWorkbenchBinding?: {revisionId:string;digest:string} | undefined;
   target: string;
   recoveryScope?: import("../../config/ConfigSchema.js").RouteCairnScope | undefined;
   workflowRecoveryDigest?: string | undefined;

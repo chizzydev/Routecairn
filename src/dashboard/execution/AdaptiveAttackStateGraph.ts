@@ -251,7 +251,7 @@ function addGraphqlContracts(report: RouteCairnReport, graph: GraphBuilder, rout
     const documentedMethods = Array.isArray(routePlan.documentedMethods) ? routePlan.documentedMethods : [];
     const method = normalizeMethod(String(record(check.request)?.method ?? documentedMethods[0] ?? "GET"));
     const raw = String(routePlan.path ?? routePlan.url ?? ""); if (!raw) continue;
-    const routeUrl = adaptiveHttpUrl(String(routePlan.url ?? raw), report.target); if (!routeUrl) continue;
+    const routeUrl = adaptiveHttpUrl(String(routePlan.url ?? raw), report.target) ?? (String(routePlan.url) === "redacted://" + String(routePlan.safeAlias) && raw.startsWith("/") && !raw.startsWith("//") ? adaptiveHttpUrl(raw,report.target) : undefined); if (!routeUrl) continue;
     const displayUrl = adaptiveHttpUrl(raw, routeUrl.origin); if (!displayUrl) continue;
     const path = safePath(displayUrl.pathname);
     const requestPlan = record(check.request);

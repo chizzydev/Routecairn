@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "registeredAt": "2026-10-18T07:57:11.391Z",
+  "classification": "DEVELOPER_OWNED_RESERVED_FINAL_DATA_NOT_INDEPENDENTLY_BLINDED",
+  "engineNeverReadsLabels": true,
+  "seed": "908226b560231d0ecb9ed4da7290c0c8",
+  "cases": [
+    {
+      "id": "RESERVED_PROCUREMENT_SHARED",
+      "application": "procurement",
+      "mode": "shared",
+      "resource": 9471502,
+      "state": 9470602,
+      "roles": [
+        "owner-908226b5",
+        "peer-908226b5",
+        "partner-908226b5"
+      ],
+      "expectedFindings": 0
+    },
+    {
+      "id": "RESERVED_MEMBERSHIP_PRIVATE",
+      "application": "membership",
+      "mode": "vulnerable",
+      "resource": "member-908226b5",
+      "state": "ENROLLED_60231d0e",
+      "roles": [
+        "owner-908226b5",
+        "peer-908226b5",
+        "partner-908226b5"
+      ],
+      "expectedFindings": 2
+    }
+  ]
+}

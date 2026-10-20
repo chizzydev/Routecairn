@@ -1,3 +1,5 @@
+import {AuthorizationWorkbench} from "./AuthorizationWorkbench";
+import { RecoveryCenter } from "./RecoveryCenter";
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { apiGet, apiMutation, bootstrap, DashboardApiError, getActiveOrganizationId, setActiveOrganizationId, setCsrfToken, type AuditEvent, type FindingSummary, type PlanPreview, type ProjectSummary, type ScanSummary, type TargetSummary } from "./api";
@@ -20,7 +22,7 @@ import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TrustedDiscoveryWorkspace } from "./TrustedDiscoveryWorkspace";
 const ScanStudio = React.lazy(async () => ({ default: (await import("./ScanStudio")).ScanStudio }));
 
-type View = "trusted-discovery" | "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "operations" | "users" | "audit" | "settings";
+type View = "authorization-workbench" | "comparison-detail" | "recovery-center" | "trusted-discovery" | "overview" | "projects" | "project-detail" | "targets" | "target-detail" | "scans" | "new-scan" | "scan-detail" | "findings" | "compare" | "proof" | "offensive" | "mutation" | "production-mutation" | "live-acceptance" | "adaptive-security" | "provider-adapters" | "continuous-assurance" | "configurations" | "credentials" | "workers" | "operations" | "users" | "audit" | "settings";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -35,6 +37,7 @@ export function App() {
   const [error, setError] = useState("");
   const [organizations,setOrganizations]=useState<Array<{id:string;name:string;role:string}>>([]);
   const [organizationId,setOrganizationId]=useState(getActiveOrganizationId());
+  const [sessionEpoch,setSessionEpoch]=useState(0);
 
   useEffect(() => {
     let active = true;
@@ -43,13 +46,12 @@ export function App() {
         .then(async () => {
           const session = await apiGet<any>("/api/auth/session");
           if (!active) return;
-          setAuthenticated(true);
-          setPrincipal(session.principal);
           const organizationResponse=await apiGet<{organizations?:Array<{id:string;name:string;role:string}>}>("/api/operations/organizations");
           const availableOrganizations=Array.isArray(organizationResponse.organizations)?organizationResponse.organizations:[];
           if(!active)return;setOrganizations(availableOrganizations);
           const selected=availableOrganizations.some((item)=>item.id===getActiveOrganizationId())?getActiveOrganizationId():availableOrganizations[0]?.id??"";
           setActiveOrganizationId(selected);setOrganizationId(selected);
+          setAuthenticated(true);setPrincipal(session.principal);
           setError("");
         })
         .catch((cause: unknown) => {
@@ -65,10 +67,10 @@ export function App() {
       active = false;
       window.removeEventListener("hashchange", initialize);
     };
-  }, []);
+  }, [sessionEpoch]);
 
   if (!ready) return <main className="center">Starting RouteCairn Dashboard...</main>;
-  if (!authenticated && error) return <Login onLogin={(user) => { setPrincipal(user); setAuthenticated(true); setError(""); }} />;
+  if (!authenticated && error) return <Login onLogin={() => { setReady(false);setAuthenticated(false);setPrincipal(undefined);setOrganizations([]);setActiveOrganizationId("");setOrganizationId("");setSelectedId("");setView("overview");setError("");setSessionEpoch((value)=>value+1); }} />;
   if (error) return <main className="center error">{error}</main>;
 
   return (
@@ -89,11 +91,13 @@ export function App() {
         <button className={view === "production-mutation" ? "active" : ""} onClick={() => setView("production-mutation")}>Production Mutation</button>
         <button className={view === "live-acceptance" ? "active" : ""} onClick={() => setView("live-acceptance")}>Live Acceptance</button>
         <button className={view === "trusted-discovery" ? "active" : ""} onClick={() => setView("trusted-discovery")}>Trusted Discovery</button>
+        <button className={view === "authorization-workbench" ? "active" : ""} onClick={() => setView("authorization-workbench")}>Application Authorization</button>
         <button className={view === "adaptive-security" ? "active" : ""} onClick={() => setView("adaptive-security")}>Adaptive Security</button>
         <button className={view === "provider-adapters" ? "active" : ""} onClick={() => setView("provider-adapters")}>Fixture Adapters</button>
         <button className={view === "continuous-assurance" ? "active" : ""} onClick={() => setView("continuous-assurance")}>Continuous Assurance</button>
         <button className={view === "configurations" ? "active" : ""} onClick={() => setView("configurations")}>Configurations</button>
         <button className={view === "credentials" ? "active" : ""} onClick={() => setView("credentials")}>Credentials</button>
+        <button className={view === "recovery-center" ? "active" : ""} onClick={() => setView("recovery-center")}>Recovery & Uncertainty</button>
         <button className={view === "workers" ? "active" : ""} onClick={() => setView("workers")}>Workers</button>
         <button className={view === "operations" ? "active" : ""} onClick={() => setView("operations")}>Operations</button>
         <button className={view === "users" ? "active" : ""} onClick={() => setView("users")}>Users</button>
@@ -110,20 +114,23 @@ export function App() {
         {view === "target-detail" && <TargetDetail targetId={selectedId} onFindings={(filters) => { setFindingFilters(filters); setView("findings"); }} onScan={() => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setView("new-scan"); }} />}
         {view === "scans" && <ScanOverview onOpenScan={(id) => { setSelectedId(id); setView("scan-detail"); }} />}
         {view === "new-scan" && <ScanStudio {...(retestDraft ? { initialDraft: retestDraft } : {})} {...(adaptiveDraft ? { initialAdaptiveDraft: adaptiveDraft } : {})} {...(adapterDraft ? { initialAdapterDraft: adapterDraft } : {})} onLaunched={(id) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft(undefined); setSelectedId(id); setView("scan-detail"); }} />}
-        {view === "scan-detail" && <ScanDetail scanId={selectedId} onRecovery={() => setView("offensive")} onReviewFindings={() => { setFindingFilters({ scanId: selectedId }); setView("findings"); }} />}
+        {view === "scan-detail" && <ScanDetail scanId={selectedId} onRecovery={() => setView("recovery-center")} onReviewFindings={() => { setFindingFilters({ scanId: selectedId }); setView("findings"); }} />}
         {view === "findings" && <FindingsCommandCenter initialFilters={findingFilters} principal={principal} onRetest={(draft) => { setAdaptiveDraft(undefined); setRetestDraft(draft); setView("new-scan"); }} />}
         {view === "compare" && <Compare />}
+        {view === "comparison-detail" && <PersistedComparison id={selectedId} />}
         {view === "proof" && <ProofPacks />}
-        {view === "offensive" && <OffensiveSafety />}
+        {view === "offensive" && <OffensiveSafety canRecover={principal?.role === "OWNER"} />}
         {view === "mutation" && <ControlledMutationWorkspace />}
         {view === "production-mutation" && <ProductionMutationWorkspace />}
         {view === "live-acceptance" && <LiveAcceptanceWorkspace />}
         {view === "trusted-discovery" && <TrustedDiscoveryWorkspace organizationId={organizationId} />}
+        {view === "authorization-workbench" && <AuthorizationWorkbench canExecute={principal?.role === "OWNER" || principal?.role === "ANALYST"} onScan={(id)=>{setSelectedId(id);setView("scan-detail");}} onComparison={(id)=>{setSelectedId(id);setView("comparison-detail");}} />}
         {view === "adaptive-security" && <AdaptiveSecurityWorkspace canApprove={principal?.role === "OWNER"} onOpenBuilder={(draft) => { setRetestDraft(undefined); setAdaptiveDraft({ ...draft, engineId: draft.engineId as AdvancedEngineId }); setView("new-scan"); }} />}
         {view === "provider-adapters" && <ProviderAdapterWorkspace canManage={principal?.role === "OWNER"} onUse={({ target, input, binding }) => { setRetestDraft(undefined); setAdaptiveDraft(undefined); setAdapterDraft({ target, engineId: input.engineId, engineConfiguration: input.engineConfiguration, authentication: input.authentication, binding, limits: input.limits }); setView("new-scan"); }} />}
         {view === "continuous-assurance" && <ContinuousAssuranceWorkspace canManage={principal?.role === "OWNER"} />}
         {view === "configurations" && <Configurations onRun={(config) => { window.sessionStorage.setItem("routecairn.scan-studio.configuration", JSON.stringify(config)); setRetestDraft(undefined); setAdaptiveDraft(undefined); setView("new-scan"); }} />}
         {view === "credentials" && <Credentials />}
+        {view === "recovery-center" && <RecoveryCenter onOpenScan={(id) => { setSelectedId(id); setView("scan-detail"); }} onOpenComparison={(id) => { setSelectedId(id); setView("comparison-detail"); }} onOpenWorkers={() => setView("workers")} />}
         {view === "workers" && <WorkerDiagnostics canManage={principal?.role === "OWNER"} />}
         {view === "operations" && <OperationsWorkspace canManage={principal?.role === "OWNER"} />}
         {view === "users" && <Users />}
@@ -134,7 +141,7 @@ export function App() {
   );
 }
 
-function OffensiveSafety() {
+function OffensiveSafety({ canRecover = false }: { canRecover?: boolean }) {
   const [status, setStatus] = useState<any>();
   const [error, setError] = useState("");
   useEffect(() => {
@@ -169,7 +176,7 @@ function OffensiveSafety() {
       </div>)}
     </div>
     {status && status.cases.length === 0 && <EmptyState text="No unresolved controlled-mutation cleanup obligations were discovered across registered journal directories." />}
-    <WorkflowRecoveryPanel />
+    <WorkflowRecoveryPanel canRecover={canRecover} />
   </section>;
 }
 
@@ -574,6 +581,7 @@ function ScanDetail(props: { scanId: string; onReviewFindings: () => void; onRec
   return (
     <section>
       <Header title="Scan Detail" subtitle={`${detail.scan.target} · ${detail.scan.shortId}`} />
+      <button onClick={props.onReviewFindings}>Review scan findings</button>
       <ScanCancellationNotice status={detail.scan.status} hasArtifacts={detail.artifacts.length > 0} onRecovery={props.onRecovery} />
       <button disabled={!["RUNNING", "PLANNING", "QUEUED"].includes(detail.scan.status)} onClick={() => void apiMutation(`/api/scans/${props.scanId}/cancel`, "POST", {}).then(() => apiGet<any>(`/api/scans/${props.scanId}/detail`)).then(setDetail)}>Cancel scan</button>
       <AssistedReviewPanel key={props.scanId} scanId={props.scanId} onReviewFindings={props.onReviewFindings} />
@@ -653,6 +661,12 @@ function Compare() {
   );
 }
 
+function PersistedComparison({ id }: { id: string }) {
+  const [result, setResult] = useState<ComparisonResult>(), [error, setError] = useState("");
+  useEffect(() => { const controller = new AbortController(); setResult(undefined); setError(""); void apiGet<ComparisonResult>("/api/comparisons/" + id, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setResult(value); }).catch(() => { if (!controller.signal.aborted) setError("Comparison evidence is unavailable in this organization."); }); return () => controller.abort(); }, [id]);
+  return <section><Header title="Persisted comparison evidence" subtitle="Original evidence remains retained; this view does not change assurance gates." />{error && <p role="alert">{error}</p>}{result && <ComparisonWorkspace result={result} />}</section>;
+}
+
 function ComparisonWorkspace({ result: initialResult }: { result: ComparisonResult }) {
   const [result, setResult] = useState(initialResult);
   const [tab, setTab] = useState("findings");
@@ -665,13 +679,16 @@ function ComparisonWorkspace({ result: initialResult }: { result: ComparisonResu
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selected, setSelected] = useState<ComparisonResult["items"][number]>();
+  const [readError, setReadError] = useState("");
   useEffect(() => { setResult(initialResult); setPage(1); }, [initialResult]);
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), sort, direction });
     if (classification === "REGRESSION") params.set("regression", "true"); else if (classification) params.set("classification", classification);
     if (module) params.set("module", module); if (severity) params.set("severity", severity); if (coverage) params.set("coverage", coverage);
     history.replaceState(null, "", `${window.location.pathname}?${params}`);
-    void apiGet<ComparisonResult>(`/api/comparisons/${initialResult.comparisonId}?${params}`).then(setResult);
+    const controller = new AbortController(); setReadError("");
+    void apiGet<ComparisonResult>(`/api/comparisons/${initialResult.comparisonId}?${params}`, { signal: controller.signal }).then(value => { if (!controller.signal.aborted) setResult(value); }).catch(() => { if (!controller.signal.aborted) setReadError("Comparison evidence refresh failed. Current results cannot establish a healthy gate."); });
+    return () => controller.abort();
   }, [initialResult.comparisonId, page, pageSize, classification, module, severity, coverage, sort, direction]);
   const groups: Array<{ key: keyof ComparisonResult["summary"]; label: string; tone: string }> = [
     { key: "regressions", label: "Regressions", tone: "critical" }, { key: "new", label: "New", tone: "high" },
@@ -680,6 +697,8 @@ function ComparisonWorkspace({ result: initialResult }: { result: ComparisonResu
     { key: "incomparable", label: "Incomparable", tone: "neutral" }, { key: "severityIncreases", label: "Severity ↑", tone: "high" }
   ];
   const visible = result.items;
+  if (readError) return <section role="alert">{readError}</section>;
+  if (!["COMPLETED", "PARTIAL"].includes(result.state)) return <div role="alert"><h3>Comparison evidence is not computed</h3><p>{result.state} · {result.comparisonId}. Empty or default counts are not evidence of safety. Open Recovery & Uncertainty for review or an explicitly authorized offline recomputation.</p></div>;
   return <div className="comparison-workspace">
     <div className="comparison-meta"><strong>{result.compatibilityState.replaceAll("_", " ")}</strong><span>Engine {result.engineVersion}</span><span>{result.sourceQuality.older} → {result.sourceQuality.newer}</span><a href={`/api/comparisons/${result.comparisonId}/export/json`}>JSON export</a><a href={`/api/comparisons/${result.comparisonId}/export/markdown`}>Markdown export</a></div>
     <div className="comparison-summary">{groups.map((group) => <button className={`comparison-metric ${group.tone}`} key={group.key} onClick={() => { setClassification(group.key === "regressions" ? "REGRESSION" : group.key === "notRetested" ? "NOT_RETESTED" : group.key === "severityIncreases" ? "CHANGED" : group.key.toUpperCase()); setPage(1); setTab("findings"); }}><strong>{result.summary[group.key]}</strong><span>{group.label}</span></button>)}</div>

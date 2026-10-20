@@ -11,7 +11,7 @@ import { executeProtocolSecurity } from "../../modules/protocolSecurity/Protocol
 import { recoveryOnlyPlan } from "./RecoveryRequestBudget.js";
 
 /** This dispatch never enters the scan runner or any main/action phase. */
-export async function recoverWorkflow(checkpoint: WorkflowCheckpoint, options: Pick<ScanContextOptions, "mutationJournalDir" | "authProfile" | "authProfileSet" | "recoveryScope">): Promise<{ caseId: string; cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_FAILED"; notes: string[] }> {
+export async function recoverWorkflow(checkpoint: WorkflowCheckpoint, options: Pick<ScanContextOptions, "mutationJournalDir" | "authProfile" | "authProfileSet" | "recoveryScope" | "beforeRecoveryRequest">): Promise<{ caseId: string; cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_FAILED"; notes: string[] }> {
   const selected = checkpoint.plan[checkpoint.workflow];
   if (checkpoint.kind !== "WORKFLOW_CLEANUP_V1" || !selected || selected.cases.length !== 1 || selected.cases[0]?.id !== checkpoint.sourceCaseId) throw new Error("RECOVERY_PLAN_INVALID");
   const plan = structuredClone(checkpoint.plan);

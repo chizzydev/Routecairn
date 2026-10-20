@@ -1,3 +1,4 @@
+import {assertAuthorizationWorkbenchBinding} from "./AuthorizationWorkbenchBinding.js";
 import { canonicalScanReportPaths, preservePartialScanReport } from "./PartialScanReport.js";
 import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
@@ -196,12 +197,14 @@ export class ScanExecutionService {
     if (this.queue.length >= maxQueuedScans) {
       throw new Error(`Scan queue is full. Maximum queued scans: ${maxQueuedScans}.`);
     }
+    assertAuthorizationWorkbenchBinding(this.database,request);
     const scanId = randomUUID();
     const sourceBindings = await captureExecutablePlanSources(request);
     const credentialAuth = this.resolveCredentialAuth(request);
     const resolved = await resolveDashboardScanPlan(request, credentialAuth, mutationContracts);
     this.assertTargetBinding(request, resolved.scope, resolved.plan.limits);
     await assertExecutablePlanSourcesUnchanged(sourceBindings);
+    assertAuthorizationWorkbenchBinding(this.database,request);
     const { plan } = resolved;
     const credentialReadiness = this.evaluateCredentialReadiness(request, plan.limits.maxScanDurationMs);
     if (!credentialReadiness.ready) throw new Error(`CREDENTIAL_READINESS_BLOCKED: ${credentialReadiness.blockers.map((blocker) => blocker.message).join(" ")}`);
@@ -360,8 +363,12 @@ export class ScanExecutionService {
       this.scans.updateStatus(item.scanId, "INTERRUPTED", { errorSummary: "Dashboard shutdown interrupted queued scan." });
       this.events.append(item.scanId, "SCAN_INTERRUPTED", "Dashboard shutdown interrupted queued scan.", {});
     }
-    await this.workers.shutdown();
-    await this.activeCompletion;
+    // A native custody failure is still an error, but it must not let the
+    // caller close SQLite before the active scan finishes result bookkeeping.
+    const outcomes = await Promise.allSettled([this.workers.shutdown(), this.activeCompletion ?? Promise.resolve()]);
+    const failures = outcomes.filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected");
+    if (failures.length === 1) throw failures[0]!.reason;
+    if (failures.length > 1) throw new AggregateError(failures.map(failure => failure.reason), "Worker custody and scan bookkeeping failed during shutdown.");
   }
 
   private async pump(): Promise<void> {
@@ -396,6 +403,7 @@ export class ScanExecutionService {
           throw new Error(`CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION: ${readiness.blockers.map((blocker) => blocker.message).join(" ")}`);
         }
       }
+      assertAuthorizationWorkbenchBinding(this.database,item.request);
       this.scans.updateStatus(item.scanId, "RUNNING");
       const result = await this.workers.run(item.scanId, item.request, {
         onPlan: (message) => {

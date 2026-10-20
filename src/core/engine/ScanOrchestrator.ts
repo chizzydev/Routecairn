@@ -1,3 +1,4 @@
+import { DeferredPlugin } from "../plugins/DeferredPlugin.js";
 import type { HttpMethod } from "../http/HttpTypes.js";
 import { AppError } from "../errors/AppError.js";
 import { normalizeUrl } from "../urls/UrlNormalizer.js";
@@ -6,47 +7,6 @@ import { ModuleRunner } from "../plugins/ModuleRunner.js";
 import { PluginRegistry } from "../plugins/PluginRegistry.js";
 import { moduleMetadata } from "../planning/ModuleCatalog.js";
 import { throwIfScanAborted } from "./ScanEvents.js";
-import { ApiMapperModule } from "../../modules/apiMapper/ApiMapperModule.js";
-import { ApiProbeModule } from "../../modules/apiProbe/ApiProbeModule.js";
-import { AuthSurfaceModule } from "../../modules/authSurface/AuthSurfaceModule.js";
-import { AuthenticatedTestingModule } from "../../modules/authenticatedTesting/AuthenticatedTestingModule.js";
-import { AuthorizationMatrixModule } from "../../modules/authorizationMatrix/AuthorizationMatrixModule.js";
-import { BaselineDetector } from "../../modules/baseline/BaselineDetector.js";
-import { BrowserCrawlerModule } from "../../modules/browserCrawler/BrowserCrawlerModule.js";
-import { BulkAuthorizationModule } from "../../modules/bulkAuthorization/BulkAuthorizationModule.js";
-import { FileAuthorizationModule } from "../../modules/fileAuthorization/FileAuthorizationModule.js";
-import { CollectionAuthorizationModule } from "../../modules/collectionAuthorization/CollectionAuthorizationModule.js";
-import { CookieReviewModule } from "../../modules/cookieReview/CookieReviewModule.js";
-import { CorsReviewModule } from "../../modules/corsReview/CorsReviewModule.js";
-import { ExposureReviewModule } from "../../modules/exposureReview/ExposureReviewModule.js";
-import { EquivalentRouteModule } from "../../modules/equivalentRouteTesting/EquivalentRouteModule.js";
-import { FieldExposureTestingModule } from "../../modules/fieldExposureTesting/FieldExposureTestingModule.js";
-import { PrivilegeMutationModule } from "../../modules/privilegeMutation/PrivilegeMutationModule.js";
-import { HeaderReviewModule } from "../../modules/headerReview/HeaderReviewModule.js";
-import { JsDiscoveryModule } from "../../modules/jsIntelligence/JsDiscoveryModule.js";
-import { MethodReviewModule } from "../../modules/methodReview/MethodReviewModule.js";
-import { NextJsReviewModule } from "../../modules/nextjsReview/NextJsReviewModule.js";
-import { ObjectPairTestingModule } from "../../modules/objectPairTesting/ObjectPairTestingModule.js";
-import { ParameterAnalysisModule } from "../../modules/parameterAnalysis/ParameterAnalysisModule.js";
-import { PathDiscoveryModule } from "../../modules/pathDiscovery/PathDiscoveryModule.js";
-import { ProofModeModule } from "../../modules/proofMode/ProofModeModule.js";
-import { RoleComparisonModule } from "../../modules/roleComparison/RoleComparisonModule.js";
-import { StateAwareApiModule } from "../../modules/stateAwareApi/StateAwareApiModule.js";
-import { TechFingerprintModule } from "../../modules/techFingerprint/TechFingerprintModule.js";
-import { VulnerabilityWorkflowModule } from "../../modules/vulnerabilityWorkflows/VulnerabilityWorkflowModule.js";
-import { WorkflowValidationModule } from "../../modules/workflowValidation/WorkflowValidationModule.js";
-import { SupabaseAuthorizationModule } from "../../modules/supabaseAuthorization/SupabaseAuthorizationModule.js";
-import { AuthenticationLifecycleModule } from "../../modules/authenticationLifecycle/AuthenticationLifecycleModule.js";
-import { BusinessInvariantModule } from "../../modules/businessInvariant/BusinessInvariantModule.js";
-import { ControlledRaceModule } from "../../modules/controlledRace/ControlledRaceModule.js";
-import { ApiGraphqlModule } from "../../modules/apiGraphql/ApiGraphqlModule.js";
-import { ProtocolSecurityModule } from "../../modules/protocolSecurity/ProtocolSecurityModule.js";
-import { LinkPortalSecurityModule } from "../../modules/linkPortalSecurity/LinkPortalSecurityModule.js";
-import { OperationalEndpointSecurityModule } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityModule.js";
-import { BillingEntitlementModule } from "../../modules/billingEntitlement/BillingEntitlementModule.js";
-import { SecretBoundaryModule } from "../../modules/secretBoundary/SecretBoundaryModule.js";
-import { AssistedReviewModule } from "../../modules/assistedReview/AssistedReviewModule.js";
-import { ActiveVulnerabilityModule } from "../../modules/activeVulnerability/ActiveVulnerabilityModule.js";
 
 export class ScanOrchestrator {
   private readonly moduleRunner: ModuleRunner;
@@ -90,46 +50,326 @@ export class ScanOrchestrator {
 
 export function createDefaultPluginRegistry(): PluginRegistry {
   const registry = new PluginRegistry();
-  registry.register(new BaselineDetector(), moduleMetadata("baseline"));
-  registry.register(new TechFingerprintModule(), moduleMetadata("tech-fingerprint"));
-  registry.register(new JsDiscoveryModule(), moduleMetadata("js-intelligence"));
-  registry.register(new BrowserCrawlerModule(), moduleMetadata("browser-crawler"));
-  registry.register(new PathDiscoveryModule(), moduleMetadata("path-discovery"));
-  registry.register(new ApiMapperModule(), moduleMetadata("api-mapper"));
-  registry.register(new ApiProbeModule(), moduleMetadata("api-probe"));
-  registry.register(new AuthSurfaceModule(), moduleMetadata("auth-surface"));
-  registry.register(new ParameterAnalysisModule(), moduleMetadata("parameter-analysis"));
-  registry.register(new NextJsReviewModule(), moduleMetadata("nextjs-review"));
-  registry.register(new VulnerabilityWorkflowModule(), moduleMetadata("vulnerability-workflows"));
-  registry.register(new ActiveVulnerabilityModule(), moduleMetadata("active-vulnerability-validation"));
-  registry.register(new WorkflowValidationModule(), moduleMetadata("workflow-validation"));
-  registry.register(new AuthenticatedTestingModule(), moduleMetadata("authenticated-testing"));
-  registry.register(new RoleComparisonModule(), moduleMetadata("role-comparison"));
-  registry.register(new StateAwareApiModule(), moduleMetadata("state-aware-api"));
-  registry.register(new ObjectPairTestingModule(), moduleMetadata("object-pair-testing"));
-  registry.register(new FieldExposureTestingModule(), moduleMetadata("field-exposure-testing"));
-  registry.register(new AuthorizationMatrixModule(), moduleMetadata("authorization-matrix-testing"));
-  registry.register(new CollectionAuthorizationModule(), moduleMetadata("collection-authorization-testing"));
-  registry.register(new BulkAuthorizationModule(), moduleMetadata("bulk-authorization-testing"));
-  registry.register(new FileAuthorizationModule(), moduleMetadata("file-authorization-testing"));
-  registry.register(new EquivalentRouteModule(), moduleMetadata("equivalent-route-testing"));
-  registry.register(new PrivilegeMutationModule(), moduleMetadata("privilege-mutation-testing"));
-  registry.register(new SupabaseAuthorizationModule(), moduleMetadata("supabase-authorization"));
-  registry.register(new AuthenticationLifecycleModule(), moduleMetadata("authentication-lifecycle"));
-  registry.register(new BusinessInvariantModule(), moduleMetadata("business-invariant"));
-  registry.register(new ControlledRaceModule(), moduleMetadata("controlled-race"));
-  registry.register(new ApiGraphqlModule(), moduleMetadata("api-graphql-authorization"));
-  registry.register(new ProtocolSecurityModule(), moduleMetadata("protocol-security"));
-  registry.register(new LinkPortalSecurityModule(), moduleMetadata("link-portal-export-security"));
-  registry.register(new OperationalEndpointSecurityModule(), moduleMetadata("operational-endpoint-security"));
-  registry.register(new BillingEntitlementModule(), moduleMetadata("billing-entitlement-security"));
-  registry.register(new SecretBoundaryModule(), moduleMetadata("secret-boundary"));
-  registry.register(new AssistedReviewModule(), moduleMetadata("assisted-review"));
-  registry.register(new HeaderReviewModule(), moduleMetadata("header-review"));
-  registry.register(new CookieReviewModule(), moduleMetadata("cookie-review"));
-  registry.register(new CorsReviewModule(), moduleMetadata("cors-review"));
-  registry.register(new MethodReviewModule(), moduleMetadata("method-review"));
-  registry.register(new ExposureReviewModule(), moduleMetadata("exposure-review"));
-  registry.register(new ProofModeModule(), moduleMetadata("proof-mode"));
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("baseline"),
+      async () => new (await import("../../modules/baseline/BaselineDetector.js")).BaselineDetector()
+    ),
+    moduleMetadata("baseline")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("tech-fingerprint"),
+      async () => new (await import("../../modules/techFingerprint/TechFingerprintModule.js")).TechFingerprintModule()
+    ),
+    moduleMetadata("tech-fingerprint")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("js-intelligence"),
+      async () => new (await import("../../modules/jsIntelligence/JsDiscoveryModule.js")).JsDiscoveryModule()
+    ),
+    moduleMetadata("js-intelligence")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("browser-crawler"),
+      async () => new (await import("../../modules/browserCrawler/BrowserCrawlerModule.js")).BrowserCrawlerModule()
+    ),
+    moduleMetadata("browser-crawler")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("path-discovery"),
+      async () => new (await import("../../modules/pathDiscovery/PathDiscoveryModule.js")).PathDiscoveryModule()
+    ),
+    moduleMetadata("path-discovery")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("api-mapper"),
+      async () => new (await import("../../modules/apiMapper/ApiMapperModule.js")).ApiMapperModule()
+    ),
+    moduleMetadata("api-mapper")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("api-probe"),
+      async () => new (await import("../../modules/apiProbe/ApiProbeModule.js")).ApiProbeModule()
+    ),
+    moduleMetadata("api-probe")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("auth-surface"),
+      async () => new (await import("../../modules/authSurface/AuthSurfaceModule.js")).AuthSurfaceModule()
+    ),
+    moduleMetadata("auth-surface")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("parameter-analysis"),
+      async () =>
+        new (await import("../../modules/parameterAnalysis/ParameterAnalysisModule.js")).ParameterAnalysisModule()
+    ),
+    moduleMetadata("parameter-analysis")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("nextjs-review"),
+      async () => new (await import("../../modules/nextjsReview/NextJsReviewModule.js")).NextJsReviewModule()
+    ),
+    moduleMetadata("nextjs-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("vulnerability-workflows"),
+      async () =>
+        new (
+          await import("../../modules/vulnerabilityWorkflows/VulnerabilityWorkflowModule.js")
+        ).VulnerabilityWorkflowModule()
+    ),
+    moduleMetadata("vulnerability-workflows")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("active-vulnerability-validation"),
+      async () =>
+        new (await import("../../modules/activeVulnerability/ActiveVulnerabilityModule.js")).ActiveVulnerabilityModule()
+    ),
+    moduleMetadata("active-vulnerability-validation")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("workflow-validation"),
+      async () =>
+        new (await import("../../modules/workflowValidation/WorkflowValidationModule.js")).WorkflowValidationModule()
+    ),
+    moduleMetadata("workflow-validation")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("authenticated-testing"),
+      async () =>
+        new (
+          await import("../../modules/authenticatedTesting/AuthenticatedTestingModule.js")
+        ).AuthenticatedTestingModule()
+    ),
+    moduleMetadata("authenticated-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("role-comparison"),
+      async () => new (await import("../../modules/roleComparison/RoleComparisonModule.js")).RoleComparisonModule()
+    ),
+    moduleMetadata("role-comparison")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("state-aware-api"),
+      async () => new (await import("../../modules/stateAwareApi/StateAwareApiModule.js")).StateAwareApiModule()
+    ),
+    moduleMetadata("state-aware-api")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("object-pair-testing"),
+      async () =>
+        new (await import("../../modules/objectPairTesting/ObjectPairTestingModule.js")).ObjectPairTestingModule()
+    ),
+    moduleMetadata("object-pair-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("field-exposure-testing"),
+      async () =>
+        new (
+          await import("../../modules/fieldExposureTesting/FieldExposureTestingModule.js")
+        ).FieldExposureTestingModule()
+    ),
+    moduleMetadata("field-exposure-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("authorization-matrix-testing"),
+      async () =>
+        new (await import("../../modules/authorizationMatrix/AuthorizationMatrixModule.js")).AuthorizationMatrixModule()
+    ),
+    moduleMetadata("authorization-matrix-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("collection-authorization-testing"),
+      async () =>
+        new (
+          await import("../../modules/collectionAuthorization/CollectionAuthorizationModule.js")
+        ).CollectionAuthorizationModule()
+    ),
+    moduleMetadata("collection-authorization-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("bulk-authorization-testing"),
+      async () =>
+        new (await import("../../modules/bulkAuthorization/BulkAuthorizationModule.js")).BulkAuthorizationModule()
+    ),
+    moduleMetadata("bulk-authorization-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("file-authorization-testing"),
+      async () =>
+        new (await import("../../modules/fileAuthorization/FileAuthorizationModule.js")).FileAuthorizationModule()
+    ),
+    moduleMetadata("file-authorization-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("equivalent-route-testing"),
+      async () =>
+        new (await import("../../modules/equivalentRouteTesting/EquivalentRouteModule.js")).EquivalentRouteModule()
+    ),
+    moduleMetadata("equivalent-route-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("privilege-mutation-testing"),
+      async () =>
+        new (await import("../../modules/privilegeMutation/PrivilegeMutationModule.js")).PrivilegeMutationModule()
+    ),
+    moduleMetadata("privilege-mutation-testing")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("supabase-authorization"),
+      async () =>
+        new (
+          await import("../../modules/supabaseAuthorization/SupabaseAuthorizationModule.js")
+        ).SupabaseAuthorizationModule()
+    ),
+    moduleMetadata("supabase-authorization")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("authentication-lifecycle"),
+      async () =>
+        new (
+          await import("../../modules/authenticationLifecycle/AuthenticationLifecycleModule.js")
+        ).AuthenticationLifecycleModule()
+    ),
+    moduleMetadata("authentication-lifecycle")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("business-invariant"),
+      async () =>
+        new (await import("../../modules/businessInvariant/BusinessInvariantModule.js")).BusinessInvariantModule()
+    ),
+    moduleMetadata("business-invariant")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("controlled-race"),
+      async () => new (await import("../../modules/controlledRace/ControlledRaceModule.js")).ControlledRaceModule()
+    ),
+    moduleMetadata("controlled-race")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("api-graphql-authorization"),
+      async () => new (await import("../../modules/apiGraphql/ApiGraphqlModule.js")).ApiGraphqlModule()
+    ),
+    moduleMetadata("api-graphql-authorization")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("protocol-security"),
+      async () =>
+        new (await import("../../modules/protocolSecurity/ProtocolSecurityModule.js")).ProtocolSecurityModule()
+    ),
+    moduleMetadata("protocol-security")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("link-portal-export-security"),
+      async () =>
+        new (await import("../../modules/linkPortalSecurity/LinkPortalSecurityModule.js")).LinkPortalSecurityModule()
+    ),
+    moduleMetadata("link-portal-export-security")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("operational-endpoint-security"),
+      async () =>
+        new (
+          await import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityModule.js")
+        ).OperationalEndpointSecurityModule()
+    ),
+    moduleMetadata("operational-endpoint-security")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("billing-entitlement-security"),
+      async () =>
+        new (await import("../../modules/billingEntitlement/BillingEntitlementModule.js")).BillingEntitlementModule()
+    ),
+    moduleMetadata("billing-entitlement-security")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("secret-boundary"),
+      async () => new (await import("../../modules/secretBoundary/SecretBoundaryModule.js")).SecretBoundaryModule()
+    ),
+    moduleMetadata("secret-boundary")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("assisted-review"),
+      async () => new (await import("../../modules/assistedReview/AssistedReviewModule.js")).AssistedReviewModule()
+    ),
+    moduleMetadata("assisted-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("header-review"),
+      async () => new (await import("../../modules/headerReview/HeaderReviewModule.js")).HeaderReviewModule()
+    ),
+    moduleMetadata("header-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("cookie-review"),
+      async () => new (await import("../../modules/cookieReview/CookieReviewModule.js")).CookieReviewModule()
+    ),
+    moduleMetadata("cookie-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("cors-review"),
+      async () => new (await import("../../modules/corsReview/CorsReviewModule.js")).CorsReviewModule()
+    ),
+    moduleMetadata("cors-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("method-review"),
+      async () => new (await import("../../modules/methodReview/MethodReviewModule.js")).MethodReviewModule()
+    ),
+    moduleMetadata("method-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("exposure-review"),
+      async () => new (await import("../../modules/exposureReview/ExposureReviewModule.js")).ExposureReviewModule()
+    ),
+    moduleMetadata("exposure-review")
+  );
+  registry.register(
+    new DeferredPlugin(
+      moduleMetadata("proof-mode"),
+      async () => new (await import("../../modules/proofMode/ProofModeModule.js")).ProofModeModule()
+    ),
+    moduleMetadata("proof-mode")
+  );
   return registry;
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,8 +7,11 @@ import { DashboardDatabase } from "../../src/dashboard/db/DashboardDatabase.js";
 import { ScanRepository, TargetRepository } from "../../src/dashboard/db/DashboardRepositories.js";
 import { ContinuousAssuranceService } from "../../src/dashboard/execution/ContinuousAssuranceService.js";
 import { resolveDashboardPaths } from "../../src/dashboard/services/DashboardPaths.js";
+import { syntheticAssuranceComparison } from "../helpers/continuous-assurance-comparison-result.js";
 
-const cleanup:string[]=[];afterEach(()=>{while(cleanup.length)rmSync(cleanup.pop()!,{recursive:true,force:true});});
+// Retain newly generated fixtures on success and failure. Never recursively delete
+// a path from a test hook; the isolated comparison runner supplies a private TEMP.
+const cleanup:string[]=[];afterEach(()=>{while(cleanup.length){const dir=cleanup.pop()!;if(!lstatSync(dir).isDirectory()||lstatSync(dir).isSymbolicLink()||realpathSync.native(dir)!==dir)throw new Error("Fixture custody changed");writeFileSync(join(dir,"RETAINED_FIXTURE"),"RETAINED_NOT_DELETED\n",{flag:"wx"});}});
 
 describe("continuous assurance",()=>{
   it("binds review to the full policy semantics and rejects target drift",async()=>{
@@ -62,7 +65,7 @@ function fixture(options:{failEnqueue?:boolean}={}){
   const request={target:"https://owned.example.test",targetId,profile:"full"} as any;
   const execution={preview:async()=>({previewIdentity:"p".repeat(64),profile:"full",modules:[],limits:{maxScanDurationMs:60000,maxRequests:10,cleanupReservedRequests:2},evidence:{},skippedModules:[],controlledWorkflowRequests:[],planSnapshot:{},credentialReadiness:{ready:true,checkedAt:now,requiredValidThrough:now,blockers:[],warnings:[],profiles:[]},warnings:[]}),enqueue:async()=>{if(options.failEnqueue)throw new Error("Fixture enqueue failed");const id=randomUUID();new ScanRepository(database).create({id,source:"DASHBOARD",status:"QUEUED",targetOrigin:"https://owned.example.test",safeTargetLabel:"owned",profile:"full",evidenceLevel:"strong",safeConfigurationSummary:{},targetId});return id;}};
   const adapters={materialize:()=>({target:{id:targetId,rowVersion:1},input:{targetId},binding:{profileId:adapterId,versionId,adapterDigest:"a".repeat(64)}}),materializeScanRequest:()=>request,assertExecutionBinding:async()=>undefined,bindScan:(scanId:string,binding:any)=>database.db.prepare("INSERT INTO scan_provider_adapter_bindings (scan_id,profile_id,version_id,adapter_digest,created_at) VALUES (?,?,?,?,?)").run(scanId,binding.profileId,binding.versionId,binding.adapterDigest,new Date().toISOString())};
-  const comparison={compare:(oldScanId:string,newScanId:string)=>({comparisonId:randomUUID(),summary:{new:0,regressions:0,recurrences:0,persisting:0,changed:0,resolved:0,notRetested:0,incomparable:0,severityIncreases:0},oldScanId,newScanId}) as any},evidence={available:()=>true,createExport:()=>({id:randomUUID()})};
+  const comparison={compare:(older:string,newer:string)=>syntheticAssuranceComparison(older,newer)},evidence={available:()=>true,createExport:()=>({id:randomUUID()})};
   return{dir,paths,database,targetId,adapterId,baselineId,service:new ContinuousAssuranceService(database,paths,execution as any,adapters as any,comparison as any,evidence,{startTimers:false})};
 }
 function policyInput(targetId:string,adapterId:string,baselineId:string){return{schemaVersion:1 as const,name:"Continuous API assurance",description:"Exact regression policy",targetId,authorization:{proofReference:"approval://owned/42",proofDigest:"b".repeat(64),validFrom:new Date(Date.now()-60000).toISOString(),expiresAt:new Date(Date.now()+86400000).toISOString()},triggers:{scheduleEnabled:true,intervalMinutes:60,deploymentEnabled:true,quietWhenHealthy:true as const},adapterProfileIds:[adapterId],baselines:[{adapterProfileId:adapterId,scanId:baselineId}],requiredCases:[{adapterProfileId:adapterId,workflowId:"api-graphql-authorization",caseFingerprint:"c".repeat(64)}],gates:{failOnRegression:true as const,failOnNewFinding:true,failOnOpenDrift:true,requireExactCases:true as const,requireCleanupResolved:true as const},evidence:{retentionDays:90,autoExportOn:["REGRESSION","FAILED","CLEANUP_REQUIRED","APPROVAL_REQUIRED"] as const,preserveFailures:true as const,preserveCleanupEvidence:true as const}};}

@@ -13,11 +13,11 @@ async function readInventory(): Promise<Inventory> {
   return value;
 }
 
-export function WorkflowRecoveryPanel() {
+export function WorkflowRecoveryPanel({ initialCaseId = "", canRecover = false }: { initialCaseId?: string; canRecover?: boolean } = {}) {
   const [inventory, setInventory] = useState<Inventory>({ cases: [], jobs: [] });
   const [targets, setTargets] = useState<Target[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(initialCaseId);
   const [targetId, setTargetId] = useState("");
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [confirmed, setConfirmed] = useState(false);
@@ -36,7 +36,7 @@ export function WorkflowRecoveryPanel() {
     return () => { active = false; window.clearInterval(timer); };
   }, []);
   const recover = async () => {
-    if (!current?.checkpointDigest || !confirmed || !targetId || busy) return;
+    if (!canRecover || !current?.checkpointDigest || !confirmed || !targetId || busy) return;
     setBusy(true); setError(""); setMessage("");
     try {
       const result = await apiMutation<{ jobId: string }>("/api/workflow-mutations/recovery", "POST", {
@@ -52,6 +52,7 @@ export function WorkflowRecoveryPanel() {
   const activeJob = inventory.jobs.some((job) => job.case_id === selected && job.status === "RUNNING");
   return <section aria-label="Workflow cleanup recovery">
     <h2>Workflow cleanup recovery</h2>
+    {!canRecover && <p>Recovery permission is required. Stored cleanup cannot be started here.</p>}
     <p>Recover authentication, invariant, race, link, operational and billing cases here. Only the encrypted, stored cleanup and verification steps run. Original attack steps are never replayed.</p>
     {error && <p role="alert" className="error">{error}</p>}
     {message && <p role="status">{message}</p>}
@@ -61,7 +62,7 @@ export function WorkflowRecoveryPanel() {
       <label>Registered target<select value={targetId} onChange={(event) => { setTargetId(event.target.value); setProfiles({}); setConfirmed(false); }}><option value="">Select matching target</option>{targets.filter((target) => target.baseOrigin === current.targetOrigin).map((target) => <option key={target.id} value={target.id}>{target.displayName}</option>)}</select></label>
       {(current.actorSlots ?? []).map((slot) => <label key={slot}>Fresh {slot} credential<select value={profiles[slot] ?? ""} onChange={(event) => { setProfiles({ ...profiles, [slot]: event.target.value }); setConfirmed(false); }}><option value="">Select saved credential</option>{credentials.filter((profile) => profile.enabled && (!profile.targetId || profile.targetId === targetId)).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label>)}
       <label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />I authorize only this checkpoint’s stored cleanup and restoration verification.</label>
-      <button type="button" onClick={() => void recover()} disabled={!confirmed || !targetId || busy || activeJob || (current.actorSlots ?? []).some((slot) => !profiles[slot])}>{busy || activeJob ? "Recovery running…" : "Run cleanup recovery"}</button>
+      <button type="button" onClick={() => void recover()} disabled={!canRecover || !confirmed || !targetId || busy || activeJob || (current.actorSlots ?? []).some((slot) => !profiles[slot])}>{busy || activeJob ? "Recovery running…" : "Run cleanup recovery"}</button>
     </>}
     <h3>Recovery timeline</h3>
     {inventory.jobs.length === 0 ? <p>No workflow recovery jobs yet.</p> : <ul>{inventory.jobs.map((job) => <li key={job.id}><strong>{job.case_id}: {job.status}</strong> — {job.safe_summary}</li>)}</ul>}

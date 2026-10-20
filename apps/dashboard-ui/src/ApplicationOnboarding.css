@@ -1,0 +1,74 @@
+[aria-label="Application onboarding"] {
+  max-width: 980px;
+  padding: 20px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: #172338;
+}
+[aria-label="Application onboarding"] h3 {
+  margin-top: 0;
+  font-size: 1.4rem;
+}
+[aria-label="Application onboarding"] p {
+  max-width: 78ch;
+  line-height: 1.6;
+}
+[aria-label="Application onboarding"] > details {
+  margin: 16px 0;
+  padding: 16px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+[aria-label="Application onboarding"] summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 6px;
+}
+[aria-label="Application onboarding"] label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+}
+[aria-label="Application onboarding"] .onboarding-steps {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  border: 0;
+  padding: 0;
+}
+[aria-label="Application onboarding"] .onboarding-steps label {
+  flex-direction: row;
+  align-items: center;
+  padding: 10px 14px;
+  background: #e5edf7;
+  border-radius: 8px;
+}
+[aria-label="Application onboarding"] input[type="radio"],
+[aria-label="Application onboarding"] input[type="checkbox"] {
+  width: auto;
+  align-self: flex-start;
+}
+[aria-label="Application onboarding"] :focus-visible {
+  outline: 3px solid #174a8b;
+  outline-offset: 3px;
+}
+[aria-label="Application onboarding"] [role="alert"] {
+  border-left: 4px solid #9c3327;
+  padding: 12px;
+  background: #fff0ec;
+}
+[aria-label="Application onboarding"] dd {
+  margin: 4px 0 12px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  [aria-label="Application onboarding"] {
+    padding: 12px;
+  }
+  [aria-label="Application onboarding"] .onboarding-steps {
+    gap: 4px;
+  }
+}

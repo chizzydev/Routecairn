@@ -1,6 +1,8 @@
 export type DashboardRole = "OWNER" | "ANALYST" | "VIEWER";
 
 export type DashboardPermission =
+  | "recovery.read"
+  | "recovery.review"
   | "scans.read"
   | "scans.create"
   | "scans.cancel"
@@ -52,7 +54,7 @@ export type DashboardPermission =
   | "modules.manage";
 
 const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>> = {
-  OWNER: new Set([
+  OWNER: new Set(["recovery.read", "recovery.review",
     "scans.read",
     "scans.create",
     "scans.cancel",
@@ -92,7 +94,7 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "workers.manage",
     "operations.read", "organizations.manage", "sso.manage", "notifications.manage", "sync.manage", "backups.manage", "integrations.manage", "modules.manage"
   ]),
-  ANALYST: new Set([
+  ANALYST: new Set(["recovery.read", "recovery.review",
     "scans.read",
     "scans.create",
     "scans.cancel",
@@ -120,7 +122,7 @@ const permissionsByRole: Record<DashboardRole, ReadonlySet<DashboardPermission>>
     "workers.read",
     "operations.read", "integrations.manage"
   ]),
-  VIEWER: new Set(["scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download", "workers.read", "operations.read"])
+  VIEWER: new Set(["recovery.read","scans.read", "findings.read", "comparisons.read", "proofPacks.read", "artifacts.download", "workers.read", "operations.read"])
 };
 
 export interface DashboardPrincipal {

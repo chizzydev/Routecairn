@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "roadmapVersion": "1.2",
+  "frozenDate": "2026-10-16",
+  "timezone": "Africa/Lagos",
+  "project": "RouteCairn",
+  "northStar": "Evidence-driven, application-aware authorized security assessment: application model -> grounded hypotheses -> bounded approved proof -> retained evidence -> safe recovery -> regression verification",
+  "worktree": {
+    "repositoryWindows": "C:\\Users\\HP\\RouteCairn",
+    "sourceState": "OWNER_VERIFIED_WORKBENCH_V01_THEN_GUIDED_MAPPING",
+    "frozenParentLocalRef": "8192cda2b8475306ecbec215f7c3623d74af25ee",
+    "lastOwnerVerifiedPacket": "ROUTECAIRN_AUTHORIZATION_WORKBENCH_v0.1_20261016_9a993075.zip",
+    "lastOwnerVerifiedPacketSha256": "05e6d529a0caf66928366db969f5315f46db4084159a44d6dc3aee6ce4bd08e6",
+    "pendingPaths": 149,
+    "nonignoredWorkingFiles": 1158,
+    "verifiedPacketChecksumMembers": 5063,
+    "generatedFiles": 1277,
+    "ownerReadOnlyVerifier": "PASS",
+    "freshPreEditOwnerVerifier": "PASS",
+    "latestCodexWorkingTreeAfterCurrentTask": {
+      "pendingPaths": 174,
+      "nonignoredWorkingFiles": 1180,
+      "incrementFiles": 35,
+      "generatedFilesPreserved": 1277,
+      "newOwnerVerification": "PENDING_INDEPENDENT_OWNER_RUN",
+      "codexReadOnlyVerifier": "SEE_CURRENT_PACKET_RECEIPT"
+    },
+    "gitMutationReported": false
+  },
+  "reportedTests": {
+    "priorOwnerSourceVerified": true,
+    "priorTargetedUniqueAutomatedPassed": 575,
+    "priorRealEdgeScenarios": 4,
+    "current": "See current packet actual results; no historical counts added",
+    "fullApplicationAcceptance": false,
+    "currentFreshDistinctAutomatedPassed": 597,
+    "currentFreshFiles": 67,
+    "currentFreshGuidedEdgeScenarios": 5,
+    "currentFreshLegacyEdgeScenarios": 4
+  },
+  "currentIncrement": {
+    "id": "RC-001/RC-002/RC-007/RC-010",
+    "name": "Guided Authenticated Application Mapping v0.1 (Workbench guided journey v0.2)",
+    "continuityVersion": "0.7",
+    "status": "TARGETED_GREEN_INDEPENDENT_REVIEW_PENDING",
+    "deliverable": "ONE COMPLETE VERIFIED ZIP"
+  },
+  "roadmapPhases": [
+    "M0 durability",
+    "M1 full local assessment vertical slice and UX",
+    "M2 authenticated app graph",
+    "M3 grounded hypothesis engine",
+    "M4 role and business logic differential proof",
+    "M5 continuous regression/team product",
+    "M6 platform/release/Stage D gates"
+  ],
+  "holds": {
+    "ubuntu": "DEFERRED_OWNER_DO_NOT_TOUCH",
+    "stageD": [
+      "D1 independent witness custody",
+      "D2 external anchor",
+      "D3 separately authorized execution bridge",
+      "D4 cross-platform/release"
+    ],
+    "trustedDiscoveryExecution": "OFF_NOT_AUTHORIZED",
+    "A1BNested750": "HOLD",
+    "A1C": "ZERO_COMMIT",
+    "real609FileMaterialization": "HOLD",
+    "releasePackaging": "HOLD",
+    "fullApplicationAcceptance": "HOLD"
+  },
+  "nonNegotiables": [
+    "explicit prior authorization",
+    "immutable target/plan/credentials/scope bindings",
+    "unknown!=success",
+    "no automatic replay of ambiguous mutations",
+    "evidence retention",
+    "server side roles+tenant checks",
+    "no external scanning without owner consent",
+    "no destructive original workspace operations"
+  ],
+  "nextAfterCurrent": "Scope-reviewed OpenAPI/schema seed import and authenticated map comparison on a second generated application; retain explicit bounded acquisition approval, provenance and the proven guided proof/remediation journey.",
+  "codexDelivery": "one verified comprehensive ZIP only; complete sources, increment+cumulative patches, RED/GREEN receipts, hash/owner verifier, decision and continuity",
+  "externalEvidenceNotBundled": [
+    "Live owner working tree and installed dependencies are not a portable release; all current changed source and transitive inspection context are in the packet",
+    "Prior archives are referenced by authenticated hashes; current increment raw evidence and prior source/preservation bindings are bundled"
+  ],
+  "sourceArchives": [
+    {
+      "name": "ROUTECAIRN_RECOVERY_OPERATIONS_v0.3_20261016_27e785e9.zip",
+      "sha256": "ebfd616bf22b8a8bcbf2772dead6c720a7e3f14fb8150ae9163836ab86a03b54"
+    },
+    {
+      "name": "ROUTECAIRN_WINDOWS_WORKER_CUSTODY_v0.2_20261015_4763f706.zip",
+      "sha256": "db75a9b133e4a8d32b9ac28eb7db4d5ccd7ec735cae2dd82b2915d6db4bdcee5"
+    }
+  ],
+  "newCapabilities": {
+    "observation": "Explicit bounded GET seeds -> real native response/marker evidence; not automatic crawling",
+    "matrix": "Guided operator policy/identity bindings; native ALLOW controls; existing IR/workbench",
+    "runtime": "Existing policy broker and native worker with immutable observation binding",
+    "regression": "Existing findings and comparison; no automatic CA policy or historical rewriting",
+    "limitations": [
+      "Existing target/vault setup required",
+      "No broad crawler/schema import or inferred ownership truth",
+      "Self-maintained string-ID two-tenant native fixture; numeric IDs focused UI/contract tests only",
+      "Source-mode Windows targeted acceptance, not release/production/full-suite acceptance"
+    ]
+  }
+}

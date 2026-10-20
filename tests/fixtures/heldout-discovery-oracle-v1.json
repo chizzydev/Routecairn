@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "ledger:restricted",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "ledger:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "ledger:personal",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "ledger:missing",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "ledger:sealed",
+      "truth": "SECURE"
+    },
+    {
+      "id": "ledger:untyped",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "clinic:restricted",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "clinic:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "clinic:personal",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "clinic:missing",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "clinic:sealed",
+      "truth": "SECURE"
+    },
+    {
+      "id": "clinic:untyped",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "helpdesk:restricted",
+      "truth": "VULNERABLE"
+    },
+    {
+      "id": "helpdesk:shared",
+      "truth": "SECURE"
+    },
+    {
+      "id": "helpdesk:personal",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "helpdesk:missing",
+      "truth": "UNCERTAIN"
+    },
+    {
+      "id": "helpdesk:sealed",
+      "truth": "SECURE"
+    },
+    {
+      "id": "helpdesk:untyped",
+      "truth": "UNCERTAIN"
+    }
+  ]
+}

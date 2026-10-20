@@ -34,18 +34,30 @@ export class RouteCairnEngine {
   public async scan(options: ScanContextOptions): Promise<ScanResult> {
     const deadlineController = new AbortController();
     let deadlineExceeded = false;
-    const deadlineTimer = setTimeout(() => { deadlineExceeded = true; deadlineController.abort(); }, options.plan.limits.maxScanDurationMs);
-    const effectiveAbortSignal = options.abortSignal ? AbortSignal.any([options.abortSignal, deadlineController.signal]) : deadlineController.signal;
+    const deadlineTimer = setTimeout(() => {
+      deadlineExceeded = true;
+      deadlineController.abort();
+    }, options.plan.limits.maxScanDurationMs);
+    const effectiveAbortSignal = options.abortSignal
+      ? AbortSignal.any([options.abortSignal, deadlineController.signal])
+      : deadlineController.signal;
     let status: NonNullable<RouteCairnReport["execution"]>["status"] = "RUNNING";
     let reason = "Execution is incomplete; missing coverage is not a security pass.";
     let checkpointQueue = Promise.resolve();
-    const context = new ScanContext({ ...options, abortSignal: effectiveAbortSignal, checkpointReport: () => checkpoint() });
+    const context = new ScanContext({
+      ...options,
+      abortSignal: effectiveAbortSignal,
+      checkpointReport: () => checkpoint()
+    });
 
     const makeReport = async (): Promise<RouteCairnReport> => {
       const partialResults = [...context.partialModules.values()].map((snapshot) => {
         const raw = snapshot();
-        try { return acceptAssistedWorkflowFindings(raw); }
-        catch { return { ...raw, findings: [] }; }
+        try {
+          return acceptAssistedWorkflowFindings(raw);
+        } catch {
+          return { ...raw, findings: [] };
+        }
       });
       const stateReport = context.state.toReport(options.plan);
       for (const result of partialResults) {
@@ -54,19 +66,38 @@ export class RouteCairnEngine {
       }
       let cleanup: NonNullable<RouteCairnReport["execution"]>["cleanup"];
       try {
-        const pending = await readMutationCleanupStatus(context.mutations.directory, join(context.mutations.directory, "mutation-journals.json"));
+        const pending = await readMutationCleanupStatus(
+          context.mutations.directory,
+          join(context.mutations.directory, "mutation-journals.json")
+        );
         // Global obligations are deliberately retained: they block this scan's
         // subsequent mutation workflows even when another job created them.
-        cleanup = { state: pending.cases.length ? "REQUIRED" : "CLEAR", cases: pending.cases.map(({ caseId, stage, recoveryBundleAvailable }) => ({ caseId, stage, recoveryBundleAvailable })) };
-      } catch { cleanup = { state: "UNKNOWN", cases: [] }; }
+        cleanup = {
+          state: pending.cases.length ? "REQUIRED" : "CLEAR",
+          cases: pending.cases.map(({ caseId, stage, recoveryBundleAvailable }) => ({
+            caseId,
+            stage,
+            recoveryBundleAvailable
+          }))
+        };
+      } catch {
+        cleanup = { state: "UNKNOWN", cases: [] };
+      }
       const baseReport = {
-        routeCairnVersion: "0.1.0", target: options.target,
+        routeCairnVersion: "0.1.0",
+        target: options.target,
         mode: options.plan.metadata.legacyMode ?? legacyModeForProfile(options.plan.profile),
-        profile: profileSummary(options.plan), scanPlan: safePlanForReport(options.plan), program: options.scope.program,
+        profile: profileSummary(options.plan),
+        scanPlan: safePlanForReport(options.plan),
+        program: options.scope.program,
         scope: {
-          allowedDomains: options.scope.allowedDomains, disallowedPaths: options.scope.disallowedPaths,
-          allowedMethods: options.scope.allowedMethods, rateLimitPerSecond: options.plan.limits.rateLimitPerSecond,
-          concurrency: options.plan.limits.concurrency, sameOriginOnly: options.scope.sameOriginOnly, includeSubdomains: options.scope.includeSubdomains
+          allowedDomains: options.scope.allowedDomains,
+          disallowedPaths: options.scope.disallowedPaths,
+          allowedMethods: options.scope.allowedMethods,
+          rateLimitPerSecond: options.plan.limits.rateLimitPerSecond,
+          concurrency: options.plan.limits.concurrency,
+          sameOriginOnly: options.scope.sameOriginOnly,
+          includeSubdomains: options.scope.includeSubdomains
         },
         transport: context.transportDiagnostics(),
         ...safeStateReportForReport(stateReport, options.plan),
@@ -75,14 +106,20 @@ export class RouteCairnEngine {
       return { ...baseReport, standardsCoverage: buildStandardsCoverage(baseReport) };
     };
     const checkpoint = (): Promise<void> => {
-      checkpointQueue = checkpointQueue.then(async () => {
-        const report = await makeReport();
-        await durableAtomicWrite(join(options.outputDir, "report.partial.json"), JSON.stringify(report));
-      }).catch(async () => {
-        // Report I/O must never prevent restoration. Encrypted mutation intent
-        // and recovery material have their own fail-closed durability boundary.
-        await options.eventSink?.emit({ type: "OBSERVATION_RECORDED", message: "Partial report checkpoint could not be written; recovery obligations remain independent.", metadata: { category: "PARTIAL_REPORT_WRITE_FAILED" } });
-      });
+      checkpointQueue = checkpointQueue
+        .then(async () => {
+          const report = await makeReport();
+          await durableAtomicWrite(join(options.outputDir, "report.partial.json"), JSON.stringify(report));
+        })
+        .catch(async () => {
+          // Report I/O must never prevent restoration. Encrypted mutation intent
+          // and recovery material have their own fail-closed durability boundary.
+          await options.eventSink?.emit({
+            type: "OBSERVATION_RECORDED",
+            message: "Partial report checkpoint could not be written; recovery obligations remain independent.",
+            metadata: { category: "PARTIAL_REPORT_WRITE_FAILED" }
+          });
+        });
       return checkpointQueue;
     };
     try {
@@ -96,10 +133,16 @@ export class RouteCairnEngine {
     } catch (error) {
       context.state.complete();
       status = error instanceof ScanCancelledError || effectiveAbortSignal.aborted ? "CANCELLED" : "FAILED";
-      reason = status === "CANCELLED"
-        ? deadlineExceeded ? "Scan duration limit reached; remaining coverage was not assessed." : "Operator cancelled execution; remaining coverage was not assessed."
-        : "Execution failed; only evidence collected before the failure is included.";
-      await options.eventSink?.emit({ type: status === "CANCELLED" ? "SCAN_CANCELLED" : "SCAN_FAILED", message: reason });
+      reason =
+        status === "CANCELLED"
+          ? deadlineExceeded
+            ? "Scan duration limit reached; remaining coverage was not assessed."
+            : "Operator cancelled execution; remaining coverage was not assessed."
+          : "Execution failed; only evidence collected before the failure is included.";
+      await options.eventSink?.emit({
+        type: status === "CANCELLED" ? "SCAN_CANCELLED" : "SCAN_FAILED",
+        message: reason
+      });
     } finally {
       clearTimeout(deadlineTimer);
       await context.dispose();
@@ -110,12 +153,34 @@ export class RouteCairnEngine {
     const markdownReportPath = await this.markdownReportWriter.write(options.outputDir, report);
     const htmlReportPath = await this.htmlReportWriter.write(options.outputDir, report);
     if (report.standardsCoverage) await this.standardsCoverageWriter.write(options.outputDir, report.standardsCoverage);
-    await options.eventSink?.emit({ type: "REPORT_WRITTEN", message: report.execution?.partial ? "Partial reports written." : "Reports written.", metadata: { reportPath, markdownReportPath, htmlReportPath, partial: report.execution?.partial } });
+    await options.eventSink?.emit({
+      type: "REPORT_WRITTEN",
+      message: report.execution?.partial ? "Partial reports written." : "Reports written.",
+      metadata: { reportPath, markdownReportPath, htmlReportPath, partial: report.execution?.partial }
+    });
     return { status, reportPath, markdownReportPath, htmlReportPath };
   }
 }
-function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toReport"]>>(stateReport: T, plan: ScanContextOptions["plan"]): T {
-  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.protocolSecurity && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement && !plan.activeVulnerability) {
+function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toReport"]>>(
+  stateReport: T,
+  plan: ScanContextOptions["plan"]
+): T {
+  if (
+    !plan.objectPairTesting &&
+    !plan.fieldExposureTesting &&
+    !plan.authorizationMatrixTesting &&
+    !plan.collectionAuthorizationTesting &&
+    !plan.bulkAuthorizationTesting &&
+    !plan.fileAuthorizationTesting &&
+    !plan.equivalentRouteTesting &&
+    !plan.supabaseAuthorization &&
+    !plan.apiGraphql &&
+    !plan.protocolSecurity &&
+    !plan.linkPortalSecurity &&
+    !plan.operationalEndpointSecurity &&
+    !plan.billingEntitlement &&
+    !plan.activeVulnerability
+  ) {
     return stateReport;
   }
 
@@ -125,41 +190,108 @@ function safeStateReportForReport<T extends ReturnType<ScanContext["state"]["toR
     ...stateReport,
     requestAudit: stateReport.requestAudit.map((entry) => ({
       ...entry,
-      requestedUrl: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.requestedUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes),
-      ...(entry.finalUrl ? { finalUrl: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(entry.finalUrl, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) } : {}),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: plan.protocolSecurity ? "redacted://protocol-security/audit" : plan.activeVulnerability ? "redacted://active-vulnerability/audit" : redactApiRoutes(redactSupabaseQuery(redactObjectIds(hop.location, objectIds), Boolean(plan.supabaseAuthorization)), apiRoutes) }))
+      requestedUrl: plan.protocolSecurity
+        ? "redacted://protocol-security/audit"
+        : plan.activeVulnerability
+          ? "redacted://active-vulnerability/audit"
+          : redactApiRoutes(
+              redactSupabaseQuery(redactObjectIds(entry.requestedUrl, objectIds), Boolean(plan.supabaseAuthorization)),
+              apiRoutes
+            ),
+      ...(entry.finalUrl
+        ? {
+            finalUrl: plan.protocolSecurity
+              ? "redacted://protocol-security/audit"
+              : plan.activeVulnerability
+                ? "redacted://active-vulnerability/audit"
+                : redactApiRoutes(
+                    redactSupabaseQuery(
+                      redactObjectIds(entry.finalUrl, objectIds),
+                      Boolean(plan.supabaseAuthorization)
+                    ),
+                    apiRoutes
+                  )
+          }
+        : {}),
+      redirectChain: entry.redirectChain.map((hop) => ({
+        ...hop,
+        location: plan.protocolSecurity
+          ? "redacted://protocol-security/audit"
+          : plan.activeVulnerability
+            ? "redacted://active-vulnerability/audit"
+            : redactApiRoutes(
+                redactSupabaseQuery(redactObjectIds(hop.location, objectIds), Boolean(plan.supabaseAuthorization)),
+                apiRoutes
+              )
+      }))
     }))
   };
 }
 
 function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions["plan"] {
-  if (!plan.objectPairTesting && !plan.fieldExposureTesting && !plan.authorizationMatrixTesting && !plan.collectionAuthorizationTesting && !plan.bulkAuthorizationTesting && !plan.fileAuthorizationTesting && !plan.equivalentRouteTesting && !plan.supabaseAuthorization && !plan.apiGraphql && !plan.protocolSecurity && !plan.linkPortalSecurity && !plan.operationalEndpointSecurity && !plan.billingEntitlement && !plan.activeVulnerability && !plan.privilegeMutationTesting) {
+  if (
+    !plan.objectPairTesting &&
+    !plan.fieldExposureTesting &&
+    !plan.authorizationMatrixTesting &&
+    !plan.collectionAuthorizationTesting &&
+    !plan.bulkAuthorizationTesting &&
+    !plan.fileAuthorizationTesting &&
+    !plan.equivalentRouteTesting &&
+    !plan.supabaseAuthorization &&
+    !plan.apiGraphql &&
+    !plan.protocolSecurity &&
+    !plan.linkPortalSecurity &&
+    !plan.operationalEndpointSecurity &&
+    !plan.billingEntitlement &&
+    !plan.activeVulnerability &&
+    !plan.privilegeMutationTesting
+  ) {
     return plan;
   }
 
   const objectIds = objectIdRedactionPairs(plan);
 
-  const redactAssertions = <T extends { expectedValue?: unknown }>(assertions: readonly T[]): T[] => assertions.map((assertion) => ({ ...assertion, ...(Object.hasOwn(assertion, "expectedValue") ? { expectedValue: "<redacted>" } : {}) }));
+  const redactAssertions = <T extends { expectedValue?: unknown }>(assertions: readonly T[]): T[] =>
+    assertions.map((assertion) => ({
+      ...assertion,
+      ...(Object.hasOwn(assertion, "expectedValue") ? { expectedValue: "<redacted>" } : {})
+    }));
 
   return {
     ...plan,
-    ...(plan.privilegeMutationTesting ? { privilegeMutationTesting: {
-      ...plan.privilegeMutationTesting,
-      cases: plan.privilegeMutationTesting.cases.map((item) => ({
-        ...item,
-        target: { ...item.target, identityAssertions: redactAssertions(item.target.identityAssertions) },
-        originalAuthority: { ...item.originalAuthority, assertions: redactAssertions(item.originalAuthority.assertions) },
-        impact: { ...item.impact, assertions: redactAssertions(item.impact.assertions) },
-        rollback: { ...item.rollback, verification: { ...item.rollback.verification, assertions: redactAssertions(item.rollback.verification.assertions) } }
-      }))
-    } } : {}),
+    ...(plan.privilegeMutationTesting
+      ? {
+          privilegeMutationTesting: {
+            ...plan.privilegeMutationTesting,
+            cases: plan.privilegeMutationTesting.cases.map((item) => ({
+              ...item,
+              target: { ...item.target, identityAssertions: redactAssertions(item.target.identityAssertions) },
+              originalAuthority: {
+                ...item.originalAuthority,
+                assertions: redactAssertions(item.originalAuthority.assertions)
+              },
+              impact: { ...item.impact, assertions: redactAssertions(item.impact.assertions) },
+              rollback: {
+                ...item.rollback,
+                verification: {
+                  ...item.rollback.verification,
+                  assertions: redactAssertions(item.rollback.verification.assertions)
+                }
+              }
+            }))
+          }
+        }
+      : {}),
     ...(plan.objectPairTesting
       ? {
           objectPairTesting: {
             ...plan.objectPairTesting,
             cases: plan.objectPairTesting.cases.map((testCase) => ({
               ...testCase,
-              template: { ...testCase.template, urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds) },
+              template: {
+                ...testCase.template,
+                urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds)
+              },
               accountAObject: redactObjectPairAssertion(testCase.accountAObject),
               accountBObject: redactObjectPairAssertion(testCase.accountBObject),
               requestMatrix: testCase.requestMatrix.map((request) => ({
@@ -183,12 +315,21 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
             cases: plan.fieldExposureTesting.cases.map((testCase) => ({
               ...testCase,
               objectId: "<redacted>",
-              template: { ...testCase.template, urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds) },
+              template: {
+                ...testCase.template,
+                urlTemplate: redactObjectIds(testCase.template.urlTemplate, objectIds)
+              },
               objectConfirmation: redactFieldExposureObjectConfirmation(testCase.objectConfirmation),
               fieldExpectations: testCase.fieldExpectations.map(redactFieldExpectation),
-              requestMatrix: testCase.requestMatrix.map((request) => ({ ...request, url: redactObjectIds(request.url, objectIds) }))
+              requestMatrix: testCase.requestMatrix.map((request) => ({
+                ...request,
+                url: redactObjectIds(request.url, objectIds)
+              }))
             })),
-            requestMatrix: plan.fieldExposureTesting.requestMatrix.map((request) => ({ ...request, url: redactObjectIds(request.url, objectIds) }))
+            requestMatrix: plan.fieldExposureTesting.requestMatrix.map((request) => ({
+              ...request,
+              url: redactObjectIds(request.url, objectIds)
+            }))
           }
         }
       : {}),
@@ -219,7 +360,7 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
           }
         }
       : {}),
-	    ...(plan.bulkAuthorizationTesting
+    ...(plan.bulkAuthorizationTesting
       ? {
           bulkAuthorizationTesting: {
             ...plan.bulkAuthorizationTesting,
@@ -230,7 +371,7 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
             requestMatrix: plan.bulkAuthorizationTesting.requestMatrix.map(redactBulkAuthorizationCase)
           }
         }
-	      : {}),
+      : {}),
     ...(plan.fileAuthorizationTesting
       ? {
           fileAuthorizationTesting: {
@@ -251,8 +392,13 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
             routeSets: plan.equivalentRouteTesting.routeSets.map((routeSet) => ({
               ...routeSet,
               objectId: "<redacted>",
-              ...(routeSet.expectedObjectState ? { expectedObjectState: `<state:${hashValue(routeSet.expectedObjectState)}>` } : {}),
-              routes: routeSet.routes.map((route) => ({ ...route, template: { ...route.template, urlTemplate: redactObjectIds(route.template.urlTemplate, objectIds) } })),
+              ...(routeSet.expectedObjectState
+                ? { expectedObjectState: `<state:${hashValue(routeSet.expectedObjectState)}>` }
+                : {}),
+              routes: routeSet.routes.map((route) => ({
+                ...route,
+                template: { ...route.template, urlTemplate: redactObjectIds(route.template.urlTemplate, objectIds) }
+              })),
               cells: routeSet.cells.map(redactEquivalentRouteCell)
             })),
             requestMatrix: plan.equivalentRouteTesting.requestMatrix.map(redactEquivalentRouteCell)
@@ -266,8 +412,13 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
             cases: plan.supabaseAuthorization.cases.map((testCase) => ({
               ...testCase,
               url: redactSupabaseQuery(redactObjectIds(testCase.url, objectIds), true),
-              identityAssertions: testCase.identityAssertions.map((assertion) => ({ ...assertion, expectedValue: "<redacted>" })),
-              ...(testCase.signedUrl?.expectedPathContains ? { signedUrl: { ...testCase.signedUrl, expectedPathContains: "<redacted>" } } : {})
+              identityAssertions: testCase.identityAssertions.map((assertion) => ({
+                ...assertion,
+                expectedValue: "<redacted>"
+              })),
+              ...(testCase.signedUrl?.expectedPathContains
+                ? { signedUrl: { ...testCase.signedUrl, expectedPathContains: "<redacted>" } }
+                : {})
             }))
           }
         }
@@ -275,20 +426,117 @@ function safePlanForReport(plan: ScanContextOptions["plan"]): ScanContextOptions
     ...(plan.apiGraphql ? { apiGraphql: redactApiGraphqlPlan(plan.apiGraphql) } : {}),
     ...(plan.protocolSecurity ? { protocolSecurity: redactProtocolSecurityPlan(plan.protocolSecurity) } : {}),
     ...(plan.linkPortalSecurity ? { linkPortalSecurity: redactLinkPortalPlan(plan.linkPortalSecurity) } : {}),
-    ...(plan.operationalEndpointSecurity ? { operationalEndpointSecurity: redactOperationalEndpointPlan(plan.operationalEndpointSecurity) } : {}),
+    ...(plan.operationalEndpointSecurity
+      ? { operationalEndpointSecurity: redactOperationalEndpointPlan(plan.operationalEndpointSecurity) }
+      : {}),
     ...(plan.billingEntitlement ? { billingEntitlement: redactBillingEntitlementPlan(plan.billingEntitlement) } : {}),
-    ...(plan.activeVulnerability ? { activeVulnerability: redactActiveVulnerabilityPlan(plan.activeVulnerability) } : {})
+    ...(plan.activeVulnerability
+      ? { activeVulnerability: redactActiveVulnerabilityPlan(plan.activeVulnerability) }
+      : {})
   };
 }
 
-function redactProtocolSecurityPlan(plan: NonNullable<ScanContextOptions["plan"]["protocolSecurity"]>): NonNullable<ScanContextOptions["plan"]["protocolSecurity"]> {
-  return { ...plan, cases: plan.cases.map((item) => ({ ...item, url: `redacted://protocol/${item.id}`, headers: {}, expectation: { ...item.expectation, ...(item.expectation.equals !== undefined ? { equals: "<redacted>" } : {}) }, ...(item.kind === "WEBSOCKET" ? { messages: item.messages.map(() => "<redacted>") } : {}), ...(item.kind === "WEBSOCKET_AUTH_STATE_MACHINE" ? { states: item.states.map((state) => ({ ...state, ...(state.send !== undefined ? { send: "<redacted>" } : {}), ...(state.equals !== undefined ? { equals: "<redacted>" } : {}) })) } : {}), ...(item.kind === "SSE" && item.body !== undefined ? { body: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_MUTATION" || item.kind === "GRAPHQL_SUBSCRIPTION" || item.kind === "GRAPHQL_INCREMENTAL" || item.kind === "GRAPHQL_PERSISTED_QUERY" || item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH" ? { document: `<redacted-operation:${hashValue(item.document)}>`, variables: {}, ...(item.kind === "GRAPHQL_SUBSCRIPTION" && item.connectionPayload !== undefined ? { connectionPayload: "<redacted>" } : {}), ...(item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH" ? { initialConnectionPayload: "<redacted>", reauthConnectionPayload: "<redacted>" } : {}) } : {}), ...(item.kind === "GRAPHQL_FEDERATION" ? { representations: [] } : {}), ...(item.kind === "MULTIPART_UPLOAD" ? { fields: {}, files: item.files.map((file) => ({ ...file, contentSecretRef: "<redacted-ref>" })) } : {}), ...(item.kind === "GRPC_UNARY" || item.kind === "GRPC_SERVER_STREAM" || item.kind === "GRPC_CLIENT_STREAM" || item.kind === "GRPC_BIDI_STREAM" ? { ...(item.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {}), ...(item.payloadSecretRefs ? { payloadSecretRefs: item.payloadSecretRefs.map(() => "<redacted-ref>") } : {}) } : {}), ...(item.kind === "WEBTRANSPORT_DATAGRAM" ? { datagramSecretRefs: item.datagramSecretRefs.map(() => "<redacted-ref>") } : {}), ...("bodySecretRef" in item && item.bodySecretRef ? { bodySecretRef: "<redacted-ref>" } : {}), ...(item.kind === "STREAMING_UPLOAD_INTERRUPT" ? { verificationUrl: "redacted://protocol-verification" } : {}), ...(item.kind === "CROSS_PROTOCOL_IDENTITY" ? { legs: item.legs.map((leg) => ({ ...leg, url: "redacted://protocol-leg", headers: {}, ...(leg.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {}) })) } : {}), ...(item.kind === "PROXY_CHAIN_DESYNCHRONIZATION" ? { proxyChain: item.proxyChain.map((hop) => ({ ...hop, origin: "redacted://protocol-proxy" })) } : {}), ...("authorization" in item && item.authorization ? { authorization: { ...item.authorization, operator: "<redacted>", ticket: "<redacted>" } } : {}), ...("cleanup" in item && item.cleanup ? { cleanup: { ...item.cleanup, url: "redacted://protocol-cleanup", headers: {}, ...(item.cleanup.body !== undefined ? { body: "<redacted>" } : {}) } } : {}) })) as typeof plan.cases };
-}
-
-function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["plan"]["activeVulnerability"]>): NonNullable<ScanContextOptions["plan"]["activeVulnerability"]> {
+function redactProtocolSecurityPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["protocolSecurity"]>
+): NonNullable<ScanContextOptions["plan"]["protocolSecurity"]> {
   return {
     ...plan,
-    ...(plan.oast ? { oast: { ...plan.oast, apiBaseUrl: "redacted://oast-api", tenantId: "<redacted-binding>", workerId: "<redacted-binding>", jobId: "<redacted-binding>" } } : {}),
+    cases: plan.cases.map((item) => ({
+      ...item,
+      url: `redacted://protocol/${item.id}`,
+      headers: {},
+      expectation: { ...item.expectation, ...(item.expectation.equals !== undefined ? { equals: "<redacted>" } : {}) },
+      ...(item.kind === "WEBSOCKET" ? { messages: item.messages.map(() => "<redacted>") } : {}),
+      ...(item.kind === "WEBSOCKET_AUTH_STATE_MACHINE"
+        ? {
+            states: item.states.map((state) => ({
+              ...state,
+              ...(state.send !== undefined ? { send: "<redacted>" } : {}),
+              ...(state.equals !== undefined ? { equals: "<redacted>" } : {})
+            }))
+          }
+        : {}),
+      ...(item.kind === "SSE" && item.body !== undefined ? { body: "<redacted>" } : {}),
+      ...(item.kind === "GRAPHQL_MUTATION" ||
+      item.kind === "GRAPHQL_SUBSCRIPTION" ||
+      item.kind === "GRAPHQL_INCREMENTAL" ||
+      item.kind === "GRAPHQL_PERSISTED_QUERY" ||
+      item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH"
+        ? {
+            document: `<redacted-operation:${hashValue(item.document)}>`,
+            variables: {},
+            ...(item.kind === "GRAPHQL_SUBSCRIPTION" && item.connectionPayload !== undefined
+              ? { connectionPayload: "<redacted>" }
+              : {}),
+            ...(item.kind === "GRAPHQL_SUBSCRIPTION_REAUTH"
+              ? { initialConnectionPayload: "<redacted>", reauthConnectionPayload: "<redacted>" }
+              : {})
+          }
+        : {}),
+      ...(item.kind === "GRAPHQL_FEDERATION" ? { representations: [] } : {}),
+      ...(item.kind === "MULTIPART_UPLOAD"
+        ? { fields: {}, files: item.files.map((file) => ({ ...file, contentSecretRef: "<redacted-ref>" })) }
+        : {}),
+      ...(item.kind === "GRPC_UNARY" ||
+      item.kind === "GRPC_SERVER_STREAM" ||
+      item.kind === "GRPC_CLIENT_STREAM" ||
+      item.kind === "GRPC_BIDI_STREAM"
+        ? {
+            ...(item.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {}),
+            ...(item.payloadSecretRefs ? { payloadSecretRefs: item.payloadSecretRefs.map(() => "<redacted-ref>") } : {})
+          }
+        : {}),
+      ...(item.kind === "WEBTRANSPORT_DATAGRAM"
+        ? { datagramSecretRefs: item.datagramSecretRefs.map(() => "<redacted-ref>") }
+        : {}),
+      ...("bodySecretRef" in item && item.bodySecretRef ? { bodySecretRef: "<redacted-ref>" } : {}),
+      ...(item.kind === "STREAMING_UPLOAD_INTERRUPT" ? { verificationUrl: "redacted://protocol-verification" } : {}),
+      ...(item.kind === "CROSS_PROTOCOL_IDENTITY"
+        ? {
+            legs: item.legs.map((leg) => ({
+              ...leg,
+              url: "redacted://protocol-leg",
+              headers: {},
+              ...(leg.payloadSecretRef ? { payloadSecretRef: "<redacted-ref>" } : {})
+            }))
+          }
+        : {}),
+      ...(item.kind === "PROXY_CHAIN_DESYNCHRONIZATION"
+        ? { proxyChain: item.proxyChain.map((hop) => ({ ...hop, origin: "redacted://protocol-proxy" })) }
+        : {}),
+      ...("authorization" in item && item.authorization
+        ? { authorization: { ...item.authorization, operator: "<redacted>", ticket: "<redacted>" } }
+        : {}),
+      ...("cleanup" in item && item.cleanup
+        ? {
+            cleanup: {
+              ...item.cleanup,
+              url: "redacted://protocol-cleanup",
+              headers: {},
+              ...(item.cleanup.body !== undefined ? { body: "<redacted>" } : {})
+            }
+          }
+        : {})
+    })) as typeof plan.cases
+  };
+}
+
+function redactActiveVulnerabilityPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["activeVulnerability"]>
+): NonNullable<ScanContextOptions["plan"]["activeVulnerability"]> {
+  return {
+    ...plan,
+    ...(plan.oast
+      ? {
+          oast: {
+            ...plan.oast,
+            apiBaseUrl: "redacted://oast-api",
+            tenantId: "<redacted-binding>",
+            workerId: "<redacted-binding>",
+            jobId: "<redacted-binding>"
+          }
+        }
+      : {}),
     cases: plan.cases.map((testCase) => ({
       ...testCase,
       request: {
@@ -296,7 +544,11 @@ function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["pla
         url: `redacted://active-vulnerability/${testCase.id}`,
         headers: Object.fromEntries(Object.keys(testCase.request.headers).map((name) => [name, "<redacted>"])),
         ...(testCase.request.body !== undefined ? { body: "<redacted>" } : {}),
-        injection: { ...testCase.request.injection, originalValue: "<redacted>", ...(testCase.request.injection.pathTemplate ? { pathTemplate: "<redacted>" } : {}) }
+        injection: {
+          ...testCase.request.injection,
+          originalValue: "<redacted>",
+          ...(testCase.request.injection.pathTemplate ? { pathTemplate: "<redacted>" } : {})
+        }
       },
       proof: {
         ...testCase.proof,
@@ -307,7 +559,13 @@ function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["pla
         ...(testCase.proof.verificationUrl ? { verificationUrl: "redacted://active-verification" } : {}),
         ...(testCase.proof.cleanupUrl ? { cleanupUrl: "redacted://active-cleanup" } : {}),
         ...(testCase.proof.cleanupBody ? { cleanupBody: "<redacted>" } : {}),
-        ...(testCase.proof.cleanupHeaders ? { cleanupHeaders: Object.fromEntries(Object.keys(testCase.proof.cleanupHeaders).map((name) => [name, "<redacted>"])) } : {}),
+        ...(testCase.proof.cleanupHeaders
+          ? {
+              cleanupHeaders: Object.fromEntries(
+                Object.keys(testCase.proof.cleanupHeaders).map((name) => [name, "<redacted>"])
+              )
+            }
+          : {}),
         ...(testCase.proof.expectedSubject ? { expectedSubject: "<redacted>" } : {}),
         ...(testCase.proof.oauthExpectedAccount ? { oauthExpectedAccount: "<redacted>" } : {})
       }
@@ -315,17 +573,82 @@ function redactActiveVulnerabilityPlan(plan: NonNullable<ScanContextOptions["pla
   };
 }
 
-function redactBillingEntitlementPlan(plan: NonNullable<ScanContextOptions["plan"]["billingEntitlement"]>): NonNullable<ScanContextOptions["plan"]["billingEntitlement"]> {
+function redactBillingEntitlementPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["billingEntitlement"]>
+): NonNullable<ScanContextOptions["plan"]["billingEntitlement"]> {
   const endpoints = new Map(plan.endpoints.map((endpoint) => [endpoint.id, endpoint.safeAlias]));
-  return { ...plan, provider: { ...plan.provider, fixturePathPrefix: "<redacted-fixture-path>" }, cases: plan.cases.map((testCase) => ({ ...testCase, steps: testCase.steps.map((step) => ({ ...step, request: { ...step.request, urlTemplate: `redacted://${endpoints.get(step.endpointId) ?? "endpoint"}`, headers: {}, ...(step.request.fields !== undefined ? { fields: "<redacted>" } : {}), ...(step.request.hmac ? { hmac: { ...step.request.hmac, secretRef: "<redacted-ref>", ...(step.request.hmac.timestampSecretRef ? { timestampSecretRef: "<redacted-ref>" } : {}) } } : {}) } })), assertions: testCase.assertions.map((assertion) => assertion.kind === "VALUE_EQUALS_SECRET" || assertion.kind === "VALUE_NOT_EQUALS_SECRET" ? { ...assertion, secretRef: "<redacted-ref>" } : assertion) })) };
+  return {
+    ...plan,
+    provider: { ...plan.provider, fixturePathPrefix: "<redacted-fixture-path>" },
+    cases: plan.cases.map((testCase) => ({
+      ...testCase,
+      steps: testCase.steps.map((step) => ({
+        ...step,
+        request: {
+          ...step.request,
+          urlTemplate: `redacted://${endpoints.get(step.endpointId) ?? "endpoint"}`,
+          headers: {},
+          ...(step.request.fields !== undefined ? { fields: "<redacted>" } : {}),
+          ...(step.request.hmac
+            ? {
+                hmac: {
+                  ...step.request.hmac,
+                  secretRef: "<redacted-ref>",
+                  ...(step.request.hmac.timestampSecretRef ? { timestampSecretRef: "<redacted-ref>" } : {})
+                }
+              }
+            : {})
+        }
+      })),
+      assertions: testCase.assertions.map((assertion) =>
+        assertion.kind === "VALUE_EQUALS_SECRET" || assertion.kind === "VALUE_NOT_EQUALS_SECRET"
+          ? { ...assertion, secretRef: "<redacted-ref>" }
+          : assertion
+      )
+    }))
+  };
 }
 
-function redactOperationalEndpointPlan(plan: NonNullable<ScanContextOptions["plan"]["operationalEndpointSecurity"]>): NonNullable<ScanContextOptions["plan"]["operationalEndpointSecurity"]> {
+function redactOperationalEndpointPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["operationalEndpointSecurity"]>
+): NonNullable<ScanContextOptions["plan"]["operationalEndpointSecurity"]> {
   const endpoints = new Map(plan.endpoints.map((endpoint) => [endpoint.id, endpoint.safeAlias]));
-  return { ...plan, cases: plan.cases.map((testCase) => ({ ...testCase, steps: testCase.steps.map((step) => ({ ...step, request: { ...step.request, urlTemplate: `redacted://${endpoints.get(step.endpointId) ?? "endpoint"}`, headers: {}, ...(step.request.fields !== undefined ? { fields: "<redacted>" } : {}), ...(step.request.hmac ? { hmac: { ...step.request.hmac, secretRef: "<redacted-ref>", ...(step.request.hmac.timestampSecretRef ? { timestampSecretRef: "<redacted-ref>" } : {}) } } : {}) }, assertions: step.assertions.map((assertion) => assertion.kind === "JSON_EQUALS_SECRET" || assertion.kind === "CAPTURE_EQUALS_SECRET" || assertion.kind === "CAPTURE_NOT_EQUALS_SECRET" ? { ...assertion, secretRef: "<redacted-ref>" } : assertion) })) })) };
+  return {
+    ...plan,
+    cases: plan.cases.map((testCase) => ({
+      ...testCase,
+      steps: testCase.steps.map((step) => ({
+        ...step,
+        request: {
+          ...step.request,
+          urlTemplate: `redacted://${endpoints.get(step.endpointId) ?? "endpoint"}`,
+          headers: {},
+          ...(step.request.fields !== undefined ? { fields: "<redacted>" } : {}),
+          ...(step.request.hmac
+            ? {
+                hmac: {
+                  ...step.request.hmac,
+                  secretRef: "<redacted-ref>",
+                  ...(step.request.hmac.timestampSecretRef ? { timestampSecretRef: "<redacted-ref>" } : {})
+                }
+              }
+            : {})
+        },
+        assertions: step.assertions.map((assertion) =>
+          assertion.kind === "JSON_EQUALS_SECRET" ||
+          assertion.kind === "CAPTURE_EQUALS_SECRET" ||
+          assertion.kind === "CAPTURE_NOT_EQUALS_SECRET"
+            ? { ...assertion, secretRef: "<redacted-ref>" }
+            : assertion
+        )
+      }))
+    }))
+  };
 }
 
-function redactLinkPortalPlan(plan: NonNullable<ScanContextOptions["plan"]["linkPortalSecurity"]>): NonNullable<ScanContextOptions["plan"]["linkPortalSecurity"]> {
+function redactLinkPortalPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["linkPortalSecurity"]>
+): NonNullable<ScanContextOptions["plan"]["linkPortalSecurity"]> {
   const resources = new Map(plan.resources.map((resource) => [resource.id, resource.safeAlias]));
   return {
     ...plan,
@@ -344,18 +667,42 @@ function redactLinkPortalPlan(plan: NonNullable<ScanContextOptions["plan"]["link
   };
 }
 
-function redactApiGraphqlPlan(plan: NonNullable<ScanContextOptions["plan"]["apiGraphql"]>): NonNullable<ScanContextOptions["plan"]["apiGraphql"]> {
-  const redactRequest = <T extends { body?: unknown; graphql?: { variables: Readonly<Record<string, unknown>> } }>(request: T): T => ({
+function redactApiGraphqlPlan(
+  plan: NonNullable<ScanContextOptions["plan"]["apiGraphql"]>
+): NonNullable<ScanContextOptions["plan"]["apiGraphql"]> {
+  const redactRequest = <T extends { body?: unknown; graphql?: { variables: Readonly<Record<string, unknown>> } }>(
+    request: T
+  ): T => ({
     ...request,
     ...(request.body !== undefined ? { body: "<redacted>" } : {}),
-    ...(request.graphql ? { graphql: { ...request.graphql, document: `<redacted-query:${hashValue((request.graphql as { document?: string }).document ?? "")}>`, variables: {} } } : {})
+    ...(request.graphql
+      ? {
+          graphql: {
+            ...request.graphql,
+            document: `<redacted-query:${hashValue((request.graphql as { document?: string }).document ?? "")}>`,
+            variables: {}
+          }
+        }
+      : {})
   });
   return {
     ...plan,
-    routes: plan.routes.map((route) => ({ ...route, url: `redacted://${route.safeAlias}` })),
+    routes: plan.routes.map((route) => ({
+      ...route,
+      urlFingerprint: createHash("sha256").update(route.url).digest("hex"),
+      url: `redacted://${route.safeAlias}`
+    })),
     checks: plan.checks.map((check) => {
       if (check.kind === "GRAPHQL_INTROSPECTION") return check;
-      if (check.kind === "GRAPHQL_ALIAS_LIMIT" || check.kind === "GRAPHQL_BATCH_LIMIT") return { ...check, documents: check.documents.map((operation) => ({ ...operation, document: `<redacted-query:${hashValue(operation.document)}>`, variables: {} })) };
+      if (check.kind === "GRAPHQL_ALIAS_LIMIT" || check.kind === "GRAPHQL_BATCH_LIMIT")
+        return {
+          ...check,
+          documents: check.documents.map((operation) => ({
+            ...operation,
+            document: `<redacted-query:${hashValue(operation.document)}>`,
+            variables: {}
+          }))
+        };
       if (check.kind === "METHOD_CONFUSION") return { ...check, request: redactRequest(check.request) };
       if (check.kind === "VERSION_BOUNDARY") return { ...check, request: redactRequest(check.request) };
       if (!("request" in check) || !("response" in check)) return check;
@@ -365,56 +712,95 @@ function redactApiGraphqlPlan(plan: NonNullable<ScanContextOptions["plan"]["apiG
         response: {
           ...check.response,
           ...(check.response.identity ? { identity: { ...check.response.identity, expectedValue: "<redacted>" } } : {}),
-          ...(check.response.tenant ? { tenant: { ...check.response.tenant, ...(check.response.tenant.expectedValue !== undefined ? { expectedValue: "<redacted>" } : {}), forbiddenValues: [] } } : {})
+          ...(check.response.tenant
+            ? {
+                tenant: {
+                  ...check.response.tenant,
+                  ...(check.response.tenant.expectedValue !== undefined ? { expectedValue: "<redacted>" } : {}),
+                  forbiddenValues: []
+                }
+              }
+            : {})
         }
       };
     })
   };
 }
 
-function apiRouteRedactionPairs(plan: ScanContextOptions["plan"]): Array<{ url: string; alias: string }> { return plan.apiGraphql?.routes.map((route) => ({ url: route.url, alias: route.safeAlias })) ?? []; }
-function redactApiRoutes(value: string, routes: readonly { url: string; alias: string }[]): string { const match = routes.find((route) => value === route.url || value.startsWith(`${route.url}?`)); return match ? `redacted://${match.alias}` : value; }
+function apiRouteRedactionPairs(plan: ScanContextOptions["plan"]): Array<{ url: string; alias: string }> {
+  return plan.apiGraphql?.routes.map((route) => ({ url: route.url, alias: route.safeAlias })) ?? [];
+}
+function redactApiRoutes(value: string, routes: readonly { url: string; alias: string }[]): string {
+  const match = routes.find((route) => value === route.url || value.startsWith(`${route.url}?`));
+  return match ? `redacted://${match.alias}` : value;
+}
 
-function redactObjectPairAssertion<T extends { objectId: string; expectedOwnerValue?: string; expectedTenantValue?: string }>(assertion: T): T {
+function redactObjectPairAssertion<
+  T extends { objectId: string; expectedOwnerValue?: string; expectedTenantValue?: string }
+>(assertion: T): T {
   return {
     ...assertion,
     objectId: "<redacted>",
-    ...(assertion.expectedOwnerValue ? { expectedOwnerValue: `<principal:${hashValue(assertion.expectedOwnerValue)}>` } : {}),
-    ...(assertion.expectedTenantValue ? { expectedTenantValue: `<tenant:${hashValue(assertion.expectedTenantValue)}>` } : {})
+    ...(assertion.expectedOwnerValue
+      ? { expectedOwnerValue: `<principal:${hashValue(assertion.expectedOwnerValue)}>` }
+      : {}),
+    ...(assertion.expectedTenantValue
+      ? { expectedTenantValue: `<tenant:${hashValue(assertion.expectedTenantValue)}>` }
+      : {})
   };
 }
 
 function objectIdRedactionPairs(plan: ScanContextOptions["plan"]): Array<{ id: string; hash: string }> {
-  return (
-    [
-      ...(plan.objectPairTesting?.cases.flatMap((testCase) => [
+  return [
+    ...(plan.objectPairTesting?.cases.flatMap((testCase) => [
       { id: testCase.accountAObject.objectId, hash: testCase.accountAObject.objectIdHash },
       { id: testCase.accountBObject.objectId, hash: testCase.accountBObject.objectIdHash }
-      ]) ?? []),
-      ...(plan.fieldExposureTesting?.cases.map((testCase) => ({ id: testCase.objectId, hash: testCase.objectIdHash })) ?? [])
-      ,
-      ...(plan.authorizationMatrixTesting?.requestMatrix.map((testCase) => ({ id: testCase.objectId, hash: testCase.objectIdHash })) ?? [])
-      ,
-      ...(plan.collectionAuthorizationTesting?.requestMatrix.flatMap((testCase) => (testCase.objectId && testCase.objectIdHash ? [{ id: testCase.objectId, hash: testCase.objectIdHash }] : [])) ?? [])
-      ,
-      ...(plan.bulkAuthorizationTesting?.requestMatrix.flatMap((testCase) => testCase.objects.map((object) => ({ id: object.objectId, hash: object.objectIdHash }))) ?? [])
-      ,
-      ...(plan.fileAuthorizationTesting?.requestMatrix.map((testCase) => ({ id: testCase.fileRef, hash: testCase.fileRefHash })) ?? [])
-      ,
-      ...(plan.equivalentRouteTesting?.requestMatrix.map((cell) => ({ id: cell.objectId, hash: cell.objectIdHash })) ?? []),
-      ...(plan.supabaseAuthorization?.cases.flatMap((testCase) => [
-        ...testCase.identityAssertions.flatMap((assertion) => typeof assertion.expectedValue === "string" ? [{ id: assertion.expectedValue, hash: assertion.expectedValueHash }] : []),
-        ...(testCase.signedUrl?.expectedPathContains ? [{ id: testCase.signedUrl.expectedPathContains.split("/").filter(Boolean).at(-1) ?? testCase.signedUrl.expectedPathContains, hash: hashValue(testCase.signedUrl.expectedPathContains) }] : [])
-      ]) ?? [])
-    ]
-  );
+    ]) ?? []),
+    ...(plan.fieldExposureTesting?.cases.map((testCase) => ({ id: testCase.objectId, hash: testCase.objectIdHash })) ??
+      []),
+    ...(plan.authorizationMatrixTesting?.requestMatrix.map((testCase) => ({
+      id: testCase.objectId,
+      hash: testCase.objectIdHash
+    })) ?? []),
+    ...(plan.collectionAuthorizationTesting?.requestMatrix.flatMap((testCase) =>
+      testCase.objectId && testCase.objectIdHash ? [{ id: testCase.objectId, hash: testCase.objectIdHash }] : []
+    ) ?? []),
+    ...(plan.bulkAuthorizationTesting?.requestMatrix.flatMap((testCase) =>
+      testCase.objects.map((object) => ({ id: object.objectId, hash: object.objectIdHash }))
+    ) ?? []),
+    ...(plan.fileAuthorizationTesting?.requestMatrix.map((testCase) => ({
+      id: testCase.fileRef,
+      hash: testCase.fileRefHash
+    })) ?? []),
+    ...(plan.equivalentRouteTesting?.requestMatrix.map((cell) => ({ id: cell.objectId, hash: cell.objectIdHash })) ??
+      []),
+    ...(plan.supabaseAuthorization?.cases.flatMap((testCase) => [
+      ...testCase.identityAssertions.flatMap((assertion) =>
+        typeof assertion.expectedValue === "string"
+          ? [{ id: assertion.expectedValue, hash: assertion.expectedValueHash }]
+          : []
+      ),
+      ...(testCase.signedUrl?.expectedPathContains
+        ? [
+            {
+              id:
+                testCase.signedUrl.expectedPathContains.split("/").filter(Boolean).at(-1) ??
+                testCase.signedUrl.expectedPathContains,
+              hash: hashValue(testCase.signedUrl.expectedPathContains)
+            }
+          ]
+        : [])
+    ]) ?? [])
+  ];
 }
 
 function redactBulkAuthorizationCase<
   T extends {
     url: string;
     body?: string;
-    objects: Array<{ objectId: string; objectIdHash: string; state?: string; baseline?: { url: string } }> | readonly { objectId: string; objectIdHash: string; state?: string; baseline?: { url: string } }[];
+    objects:
+      | Array<{ objectId: string; objectIdHash: string; state?: string; baseline?: { url: string } }>
+      | readonly { objectId: string; objectIdHash: string; state?: string; baseline?: { url: string } }[];
     postconditionChecks?: readonly { url: string; objectId: string; objectIdHash: string }[];
   }
 >(testCase: T): T {
@@ -423,11 +809,21 @@ function redactBulkAuthorizationCase<
     ...testCase,
     url: redactObjectIds(testCase.url, pairs),
     ...(testCase.body ? { body: redactObjectIds(testCase.body, pairs) } : {}),
-    ...(testCase.postconditionChecks ? { postconditionChecks: testCase.postconditionChecks.map((check) => ({ ...check, objectId: "<redacted>", url: redactObjectIds(check.url, pairs) })) } : {}),
+    ...(testCase.postconditionChecks
+      ? {
+          postconditionChecks: testCase.postconditionChecks.map((check) => ({
+            ...check,
+            objectId: "<redacted>",
+            url: redactObjectIds(check.url, pairs)
+          }))
+        }
+      : {}),
     objects: testCase.objects.map((object) => ({
       ...object,
       objectId: "<redacted>",
-      ...(object.baseline ? { baseline: { ...object.baseline, url: redactObjectIds(object.baseline.url, pairs) } } : {}),
+      ...(object.baseline
+        ? { baseline: { ...object.baseline, url: redactObjectIds(object.baseline.url, pairs) } }
+        : {}),
       ...(object.state ? { state: `<state:${hashValue(object.state)}>` } : {})
     }))
   };
@@ -442,10 +838,16 @@ function redactFileAuthorizationCase<T extends { url: string; fileRef: string; f
 }
 
 function redactFileRefs(value: string, refs: Array<{ id: string; hash: string }>): string {
-  return refs.reduce((current, ref) => current.split(encodeURIComponent(ref.id)).join(`<file:${ref.hash}>`).split(ref.id).join(`<file:${ref.hash}>`), value);
+  return refs.reduce(
+    (current, ref) =>
+      current.split(encodeURIComponent(ref.id)).join(`<file:${ref.hash}>`).split(ref.id).join(`<file:${ref.hash}>`),
+    value
+  );
 }
 
-function redactKnownCollectionObject<T extends { objectId: string; objectIdHash: string; state?: string }>(knownObject: T): T {
+function redactKnownCollectionObject<T extends { objectId: string; objectIdHash: string; state?: string }>(
+  knownObject: T
+): T {
   return {
     ...knownObject,
     objectId: "<redacted>",
@@ -453,26 +855,37 @@ function redactKnownCollectionObject<T extends { objectId: string; objectIdHash:
   };
 }
 
-function redactCollectionAuthorizationCase<T extends { objectId?: string; objectIdHash?: string; url: string; expectedObjectState?: string }>(testCase: T): T {
-  const pairs = testCase.objectId && testCase.objectIdHash ? [{ id: testCase.objectId, hash: testCase.objectIdHash }] : [];
+function redactCollectionAuthorizationCase<
+  T extends { objectId?: string; objectIdHash?: string; url: string; expectedObjectState?: string }
+>(testCase: T): T {
+  const pairs =
+    testCase.objectId && testCase.objectIdHash ? [{ id: testCase.objectId, hash: testCase.objectIdHash }] : [];
   return {
     ...testCase,
     ...(testCase.objectId ? { objectId: "<redacted>" } : {}),
     url: redactObjectIds(testCase.url, pairs),
-    ...(testCase.expectedObjectState ? { expectedObjectState: `<state:${hashValue(testCase.expectedObjectState)}>` } : {})
+    ...(testCase.expectedObjectState
+      ? { expectedObjectState: `<state:${hashValue(testCase.expectedObjectState)}>` }
+      : {})
   };
 }
 
-function redactAuthorizationMatrixCase<T extends { objectId: string; objectIdHash: string; url: string; expectedObjectState?: string }>(testCase: T): T {
+function redactAuthorizationMatrixCase<
+  T extends { objectId: string; objectIdHash: string; url: string; expectedObjectState?: string }
+>(testCase: T): T {
   return {
     ...testCase,
     objectId: "<redacted>",
     url: redactObjectIds(testCase.url, [{ id: testCase.objectId, hash: testCase.objectIdHash }]),
-    ...(testCase.expectedObjectState ? { expectedObjectState: `<state:${hashValue(testCase.expectedObjectState)}>` } : {})
+    ...(testCase.expectedObjectState
+      ? { expectedObjectState: `<state:${hashValue(testCase.expectedObjectState)}>` }
+      : {})
   };
 }
 
-function redactEquivalentRouteCell<T extends { objectId: string; objectIdHash: string; url: string; expectedObjectState?: string }>(cell: T): T {
+function redactEquivalentRouteCell<
+  T extends { objectId: string; objectIdHash: string; url: string; expectedObjectState?: string }
+>(cell: T): T {
   return {
     ...cell,
     objectId: "<redacted>",
@@ -481,7 +894,9 @@ function redactEquivalentRouteCell<T extends { objectId: string; objectIdHash: s
   };
 }
 
-function redactFieldExposureObjectConfirmation<T extends { expectedOwnerHash?: string; expectedTenantHash?: string }>(confirmation: T): T {
+function redactFieldExposureObjectConfirmation<T extends { expectedOwnerHash?: string; expectedTenantHash?: string }>(
+  confirmation: T
+): T {
   return {
     ...confirmation,
     ...(confirmation.expectedOwnerHash ? { expectedOwnerHash: `<principal:${confirmation.expectedOwnerHash}>` } : {}),
@@ -496,13 +911,20 @@ function redactFieldExpectation<T extends { path: string; label: string }>(expec
   return {
     ...expectation,
     path: `<field:${hashValue(expectation.path)}>`,
-    label: expectation.label.replace(/(?:token|secret|password|api[_-]?key|session|cookie)[^.\s]*/gi, "<sensitive-label>")
+    label: expectation.label.replace(
+      /(?:token|secret|password|api[_-]?key|session|cookie)[^.\s]*/gi,
+      "<sensitive-label>"
+    )
   };
 }
 
 function redactObjectIds(url: string, objectIds: Array<{ id: string; hash: string }>): string {
   return objectIds.reduce((safeUrl, objectId) => {
-    return safeUrl.split(encodeURIComponent(objectId.id)).join(`<object:${objectId.hash}>`).split(objectId.id).join(`<object:${objectId.hash}>`);
+    return safeUrl
+      .split(encodeURIComponent(objectId.id))
+      .join(`<object:${objectId.hash}>`)
+      .split(objectId.id)
+      .join(`<object:${objectId.hash}>`);
   }, url);
 }
 

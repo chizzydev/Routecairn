@@ -1,0 +1,11 @@
+# RouteCairn continuity v0.15
+
+Owner-verified input: Held-out Discovery & Onboarding v0.1, 351 pending paths, 1350 working files, 10912 packet checksum rows and 1277 protected generated files. Owner reports exact membership, reverse patches and exit0. Frozen Stage C remains 8192cda2b8475306ecbec215f7c3623d74af25ee. Current packet records exact final membership, hashes and native identities. New independent owner verification remains pending.
+
+Increment: guided secure onboarding, confirmed stale-response/unmount RED/FIX/GREEN, passive JSON:API/HAL/HTML pagination and advisory path shapes, real Python/SQLite owned assessment presentations, fixed-denominator repeatable benchmark intake and optional publisher byte signatures. Existing graph, IR, map, review, workbench, proof, custody, immutable comparisons, recovery and Continuous Assurance remain the architecture. See current report for actual Windows/Edge passes and failures, not projected outcomes.
+
+Current timing investigation retains the reproduced 3/3 combined 30s failures, failed private compile-cache experiment, subsequent instrumented 3/3 pass and exact message/phase observations. Variable readiness overhead is observed; a common causal repair for historical 679/8, 677/10, prior50/1 and59/1 is not established. Do not reclassify those failures or increase timeouts.
+
+HOLD: independent/blinded oracle; full application/combined reliability; Ubuntu paused; Trusted Discovery execution off; Stage D1–D4; A1B nested750/real609 materialization; A1C ZERO-COMMIT; target mutation; release/build/package/publishing. No Git mutation, source-data adoption, evidence deletion or new execution bypass.
+
+Next substantial milestone: reviewed application-specific multi-step business-flow policies and remediation/observed-state regression across owner-supplied applications, using concrete producer/consumer relationships and clear inconclusive outcomes. Seek an independently controlled prospective corpus, preserve fixed denominators and operator consent; do not fabricate independence. Improve practical assessment triage and team handoff. Preserve all20 RC000–019 and M0–M6 in roadmap1.10, rather than returning to completed worker internals without new evidence.

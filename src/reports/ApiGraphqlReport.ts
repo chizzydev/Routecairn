@@ -36,6 +36,10 @@ export interface ApiRequestObservation {
 }
 
 export interface ApiGraphqlCheckObservation {
+  /** Explicit native attribution; absent in historical reports. */
+  actorId?: string;
+  authSlot?: import("../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlActorSlot;
+  routeIds?: readonly string[];
   checkId: string;
   label: string;
   kind: ApiGraphqlCheckKind;
@@ -48,6 +52,8 @@ export interface ApiGraphqlCheckObservation {
   comparisonFingerprint: string;
   requests: readonly ApiRequestObservation[];
   fields: readonly ApiFieldExposureObservation[];
+  observedLinks?: import("../modules/apiGraphql/ObservedLinks.js").ObservedLinks;
+  observedMarkers?: readonly { path: string; valueFingerprint: string; scalarType: "string" | "number" }[];
   objectIdentityConfirmed?: boolean;
   tenantBoundaryConfirmed?: boolean;
   introspectionClassification?: "DISABLED" | "RESTRICTED" | "AVAILABLE" | "INCONCLUSIVE";
@@ -59,7 +65,13 @@ export interface ApiAuthorizationMatrixObservation {
   matrixId: string;
   dimension: "OBJECT" | "FUNCTION" | "FIELD" | "TENANT";
   routeAliases: readonly string[];
-  cells: readonly { checkId: string; actorAlias: string; relationship: string; outcome: ApiGraphqlOutcome; observedDecision: string }[];
+  cells: readonly {
+    checkId: string;
+    actorAlias: string;
+    relationship: string;
+    outcome: ApiGraphqlOutcome;
+    observedDecision: string;
+  }[];
 }
 
 export interface ApiSchemaComparisonObservation {

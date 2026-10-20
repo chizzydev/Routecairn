@@ -1,0 +1,11 @@
+{
+  "sha256": "07051cb9c4819e354a5f94f8c7c7f2dde33c7e04be35596c05b5ea14b84db9c5",
+  "bytes": 107790,
+  "origin": "Retained real Windows native owned orders proof from internal first freeze",
+  "sourceVersionId": "source-v018-9fa3809b05926d1f",
+  "logicalPath": "internal-v018-first-freeze/witness-study/reports/07051cb9c4819e354a5f94f8c7c7f2dde33c7e04be35596c05b5ea14b84db9c5.json",
+  "unchangedRawReceipt": true,
+  "developmentFixture": true,
+  "independentAcceptance": false,
+  "blinded": false
+}

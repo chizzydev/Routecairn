@@ -1,0 +1,158 @@
+RouteCairn Stage D master gate registry v1.0
+Frozen parent8192cda2b8475306ecbec215f7c3623d74af25ee
+D0 authorized; D1-D4 operational activation NOT authorized.
+All gates below remain HOLD. Source-matched local fixtures may support a gate, but never satisfy missing independent/platform/operational obligations.
+
+GATE=D1.1
+REQUIRED_OUTCOME=Independent canonical out-of-dataDir custody; Windows ACL/Linux ownership+mode; path/inode/SQLite/key backup proof
+SOURCE_FIXTURE=Witness/PrivateRoot + P01
+PLATFORM=Windows and Ubuntu
+PROOF_ARTIFACTS=Operational ACL, POSIX owner/mode, key backup and directory identity receipts
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=No approved operational independent root
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Owner selects/protects root; independently verify without changing runtime
+
+GATE=D1.2
+REQUIRED_OUTCOME=Non-resetting new-installation ceremony binding identity/origin/install/path/key/genesis/main heads; refuse historical records/mismatch/key rotation
+SOURCE_FIXTURE=Witness/ReviewStore; NEW reviewed ceremony required
+PLATFORM=Windows and Ubuntu
+PROOF_ARTIFACTS=Signed ceremony/backup/restore audit; historical-record refusal
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=No product provisioning authorization or ceremony
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Design and approve ceremony separately; no reset, migration or drop/recreate
+
+GATE=D1.3
+REQUIRED_OUTCOME=Runbooks for key loss/partial crash/copied DB/old backup/disposal/full4096/8MiB/locks/multi-process; never erase spent attempts or guess wire
+SOURCE_FIXTURE=Outcome tests, P02-P04, BackupRestore
+PLATFORM=Windows and Ubuntu
+PROOF_ARTIFACTS=Owner runbooks plus real process/restore/retention/lock evidence
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=Local fixture proofs are not operational recovery
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Review retention/capacity/unknown-state handling with independent operator
+
+GATE=D1.4
+REQUIRED_OUTCOME=Real ordinary-permission Windows AND Linux custody proof; unsupported rollback profiles deny
+SOURCE_FIXTURE=P01-P04 and original protected suites
+PLATFORM=Windows and Ubuntu
+PROOF_ARTIFACTS=Source-matched native transcripts, permission proof, denial cases
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=Linux native and operational permissions pending
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Owner runs both platform scripts with installed dependencies
+
+GATE=D2.1
+REQUIRED_OUTCOME=Research multiple actual independent anchors: trust boundary, monotonic append/CAS, authentication, cost/connectivity/failure/restore/observability/custody
+SOURCE_FIXTURE=Separate anchor design; not local witness/registry/timestamps
+PLATFORM=Independent approved infrastructure
+PROOF_ARTIFACTS=Primary-source options, threat/cost comparison and separate approval
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=No provider/accounts/secrets/spend authorized
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Research/design options before choosing; obtain owner approval
+
+GATE=D2.2
+REQUIRED_OUTCOME=EXTERNAL_MONOTONIC_ANCHOR=HOLD until independently protected custody supplied; offline/timeout/ambiguous ack denies before new request, never resends spent GET
+SOURCE_FIXTURE=Future approved anchor integration
+PLATFORM=Independent provider plus client platforms
+PROOF_ARTIFACTS=Fail-closed no-wire receipts, availability/restore contract
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=No real external anchor exists in D0
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Continue review-only; do not enable deployment
+
+GATE=D2.3
+REQUIRED_OUTCOME=Real approved anchor crash/replay/tamper and coherent rollback proof; simulations supplemental only
+SOURCE_FIXTURE=Future independent anchor fixture
+PLATFORM=Windows and Ubuntu plus independent anchor
+PROOF_ARTIFACTS=Real independent custody/runtime operator evidence
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=All-disks/paired-history rollback remains indistinguishable locally
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Approve and execute real anchor exercise; never call local table external
+
+GATE=D3.1
+REQUIRED_OUTCOME=Separately reviewed disposable-only native-to-HTTP bridge AFTER D1/D2/platform proof; exact cookie/Origin/CSRF/tenant/review/consent/spend/final broker guards
+SOURCE_FIXTURE=Future bridge; current execute endpoint404
+PLATFORM=Approved disposable loopback only
+PROOF_ARTIFACTS=Independent audit and true native at-most-one receipts
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=D1/D2 incomplete; activation unauthorized
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Do not add a route, flag, new constructor or generalized target mode
+
+GATE=D3.2
+REQUIRED_OUTCOME=Explicit private disposable fixture UI; spent vs initiated/response/persistence/cleanup; no retry/refund; accessible audited stale/session state transitions
+SOURCE_FIXTURE=Current locked workspace; future separately approved execution UI
+PLATFORM=Windows and Ubuntu browsers
+PROOF_ARTIFACTS=Keyboard/screen-reader/platform audit and signed custody facts
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=Current shipping UI intentionally has no execution adapter
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Retain Execute (unavailable) until approved bridge/custody
+
+GATE=D3.3
+REQUIRED_OUTCOME=No general/public/external-target or remotely reachable execution without new threat model/audit/consent/platform proof; no owner/private-network boolean bypass
+SOURCE_FIXTURE=Current namespace/default-off guard
+PLATFORM=Every supported shipping mode
+PROOF_ARTIFACTS=Native negative route/default/identity/network evidence
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=General execution is not authorized
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Leave public execution unregistered
+
+GATE=D4.1
+REQUIRED_OUTCOME=Real Chromium Windows AND Linux, native modules/permissions/backup, full regressions/resource/cancel/cleanup, package/offline smoke, runtime lock/dependency review
+SOURCE_FIXTURE=D0 harness + original suites/release scripts
+PLATFORM=Windows and Ubuntu
+PROOF_ARTIFACTS=Fixed-source full counts, real browsers/native receipts/package/dependency artifacts
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=Linux and install-dependent package smoke not performed
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Owner independently reviews and runs; installs require separate consent
+
+GATE=D4.2
+REQUIRED_OUTCOME=Document installed/package layout/privacy/consent/nondestructive fixtures/profiles/limits/system requirements/recovery/support/review-only fallback
+SOURCE_FIXTURE=D0 design/owner scripts plus future operator manual
+PLATFORM=Supported deployments
+PROOF_ARTIFACTS=Owner-reviewed documentation tied to actual package/custody
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=Operational custody/deployment profile unspecified
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Complete operational manual after approved profile, preserve fallback
+
+GATE=D4.3
+REQUIRED_OUTCOME=Staged verification packets and independent review; distinguish ENGINEERING_LOCAL_FIXTURE_PASS, REPO_REVIEW_ONLY_RELEASE_READY, EXECUTION_DEPLOYMENT_AUTHORIZED
+SOURCE_FIXTURE=D0 report/patch/manifests/verifiers
+PLATFORM=Independent owner/operator
+PROOF_ARTIFACTS=Reviewed source/scripts and separate signed acceptance/release decision
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=No independent current-tree signoff or publication authorization
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Review first; do not push/tag/publish or infer execution authorization
+
+GATE=D4.4
+REQUIRED_OUTCOME=Stable continuity packet preserving all StageD obligations and source/evidence changes across chats
+SOURCE_FIXTURE=Master registry, crash workbook, receipt and hashes
+PLATFORM=All platforms
+PROOF_ARTIFACTS=Versioned registry/manifest/receipt with exact pending gates
+RESPONSIBLE_OPERATOR=Owner plus independent reviewer/operator
+BLOCKING_CONDITION=D0 delivery is not complete StageD
+CURRENT_STATE=HOLD
+CURRENT_EVIDENCE=NOT_TESTED operationally; D0 fixture evidence referenced only by final report/receipt
+NEXT_ACTION=Retain packet and update only evidenced gate states

@@ -65,8 +65,9 @@ export async function processTreeIds(rootPid: number, platform: NodeJS.Platform 
 }
 
 export async function terminateProcessTree(rootPid: number, force: boolean, platform: NodeJS.Platform = process.platform): Promise<void> {
+  if (platform === "win32") throw new Error("WORKER_PROCESS_CUSTODY_REQUIRED");
   if (!Number.isSafeInteger(rootPid) || rootPid <= 0 || rootPid === process.pid) throw new Error("Refusing unsafe process-tree termination target.");
-  const plan = workerProcessTreePlan(rootPid, platform === "win32" ? "win32" : platform === "darwin" ? "darwin" : "linux", force);
+  const plan = workerProcessTreePlan(rootPid, platform === "darwin" ? "darwin" : "linux", force);
   if (plan.termination.kind === "command") {
     await execFileAsync(plan.termination.file, plan.termination.args).catch((error: unknown) => {
       if (processAlive(rootPid)) throw error;
