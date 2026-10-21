@@ -1,3 +1,6 @@
+import { legacyProductionCampaignSchema } from "../../core/authorization/ProductionCampaign.js";
+import { actorRegistryDigest, loadActorRegistry } from "../../core/auth/ActorRegistry.js";
+import { assertProductionRegistry } from "../../core/authorization/ProductionCampaign.js";
 import { Command } from "commander";
 import { z } from "zod";
 import { createHash, randomUUID } from "node:crypto";
@@ -55,11 +58,14 @@ export const productionWebInputSchema = z
 export type ProductionWebInput = z.infer<typeof productionWebInputSchema>;
 export const productionCampaignDigest = (v: ProductionWebInput) =>
   fp(JSON.stringify(productionWebInputSchema.parse(v)));
+export type LegacyProductionWebInput = ProductionWebInput & {
+  authorization: { productionCampaign: import("zod").infer<typeof legacyProductionCampaignSchema> };
+};
 export function prepareProductionWebCampaign(
   entryUrl: string,
   reference: string,
   now = Date.now()
-): ProductionWebInput {
+): LegacyProductionWebInput {
   const url = new URL(entryUrl);
   if (url.username || url.password || url.search || url.hash) throw Error("PUBLIC_ENTRY_URL_REQUIRED");
   return productionWebInputSchema.parse({
@@ -121,13 +127,20 @@ export function prepareProductionWebCampaign(
         }
       }
     }
-  });
+  }) as LegacyProductionWebInput;
 }
 export async function runProductionWebCampaign(
   value: unknown,
   approvedDigest: string,
   parent: string,
-  options: { auth?: string; authA?: string; authB?: string; signal?: AbortSignal } = {}
+  options: {
+    actorRegistry?: string;
+    organization?: string;
+    auth?: string;
+    authA?: string;
+    authB?: string;
+    signal?: AbortSignal;
+  } = {}
 ) {
   const input = productionWebInputSchema.parse(value),
     digest = productionCampaignDigest(input),
@@ -135,8 +148,19 @@ export async function runProductionWebCampaign(
   if (approvedDigest !== digest) throw Error("PRODUCTION_CAMPAIGN_REVIEW_DIGEST_MISMATCH");
   if (!p.authenticationPermitted && (options.auth || options.authA || options.authB))
     throw Error("PRODUCTION_CAMPAIGN_CREDENTIALS_PROHIBITED");
-  if (p.authenticationPermitted && (!options.auth || !options.authA || !options.authB))
+  if (!("contractVersion" in p) && p.authenticationPermitted && (!options.auth || !options.authA || !options.authB))
     throw Error("PRODUCTION_CAMPAIGN_THREE_FRESH_IDENTITIES_REQUIRED");
+  const actorSet = options.actorRegistry
+    ? await loadActorRegistry(resolve(options.actorRegistry), input.entryUrl, options.organization ?? "")
+    : undefined;
+  assertProductionRegistry(
+    p,
+    actorSet?.registry,
+    actorSet?.profiles,
+    options.organization,
+    input.entryUrl,
+    actorSet?.bindingKey
+  );
   const owned = OwnedTemporaryResource.create(resolve(parent), {
       purpose: "production-web-assessment",
       campaignId: p.campaignId,
@@ -191,31 +215,33 @@ export async function runProductionWebCampaign(
     const authorization = save("authorization.json", input.authorization);
     const api =
       input.apiGraphql ??
-      apiGraphqlInputSchema.parse({
-        maxRequests: Math.min(300, p.maxRequests),
-        maxResponseBytes: Math.min(524288, p.maxResponseBytes),
-        actors: [{ id: "public", safeAlias: "public", authSlot: "anonymous", relationship: "PUBLIC" }],
-        routes: p.requests.map((r, i) => ({
-          id: "campaign-control-" + i,
-          safeAlias: "campaign-control-" + i,
-          protocol: "REST",
-          kind: "FUNCTION",
-          functionName: "approved-public-http-control",
-          url: r.origin + r.path,
-          documentedMethods: [r.method]
-        })),
-        checks: p.requests.map((r, i) => ({
-          id: "campaign-control-" + i,
-          matrixId: "campaign-control-" + i,
-          label: "Owner reviewed public HTTP status observation",
-          kind: "FUNCTION_AUTHORIZATION",
-          routeId: "campaign-control-" + i,
-          actorId: "public",
-          requireVerifiedIdentity: false,
-          request: { method: r.method },
-          response: { expectedDecision: "OBSERVE" }
-        }))
-      });
+      (actorSet
+        ? flexiblePublicChecks(input, actorSet.registry)
+        : apiGraphqlInputSchema.parse({
+            maxRequests: Math.min(300, p.maxRequests),
+            maxResponseBytes: Math.min(524288, p.maxResponseBytes),
+            actors: [{ id: "public", safeAlias: "public", authSlot: "anonymous", relationship: "PUBLIC" }],
+            routes: p.requests.map((r, i) => ({
+              id: "campaign-control-" + i,
+              safeAlias: "campaign-control-" + i,
+              protocol: "REST",
+              kind: "FUNCTION",
+              functionName: "approved-public-http-control",
+              url: r.origin + r.path,
+              documentedMethods: [r.method]
+            })),
+            checks: p.requests.map((r, i) => ({
+              id: "campaign-control-" + i,
+              matrixId: "campaign-control-" + i,
+              label: "Owner reviewed public HTTP status observation",
+              kind: "FUNCTION_AUTHORIZATION",
+              routeId: "campaign-control-" + i,
+              actorId: "public",
+              requireVerifiedIdentity: false,
+              request: { method: r.method },
+              response: { expectedDecision: "OBSERVE" }
+            }))
+          }));
     const apiPath = save("native-checks.json", api);
     const result = await runScanCommand(
       input.entryUrl,
@@ -242,6 +268,7 @@ export async function runProductionWebCampaign(
         output: join(root, "reports"),
         historyDirectory: join(root, "history"),
         suppressProcessExitCode: true,
+        ...(actorSet ? { actorRegistry: options.actorRegistry!, organization: options.organization! } : {}),
         ...(options.auth ? { auth: options.auth } : {}),
         ...(options.authA ? { authA: options.authA } : {}),
         ...(options.authB ? { authB: options.authB } : {})
@@ -283,11 +310,20 @@ export function registerWebAssessmentCommand(program: Command) {
     .argument("<entry-url>")
     .requiredOption("--reference <reference>", "Owner authorization reference")
     .requiredOption("--output <file>", "New draft file")
-    .action((entry: string, o: { reference: string; output: string }) => {
-      const campaign = prepareProductionWebCampaign(entry, o.reference);
-      writeFileSync(resolve(o.output), JSON.stringify(campaign, null, 2), { flag: "wx" });
-      console.log("DRAFT_ONLY_NO_REQUESTS");
-    });
+    .option("--actor-registry <file>", "Private version-2 registry and profile references")
+    .option("--organization <id>", "Exact registry organization")
+    .action(
+      async (
+        entry: string,
+        o: { reference: string; output: string; actorRegistry?: string; organization?: string }
+      ) => {
+        const campaign = o.actorRegistry
+          ? await prepareRegistryProductionCampaign(entry, o.reference, o.actorRegistry, o.organization ?? "")
+          : prepareProductionWebCampaign(entry, o.reference);
+        writeFileSync(resolve(o.output), JSON.stringify(campaign, null, 2), { flag: "wx" });
+        console.log("DRAFT_ONLY_NO_REQUESTS");
+      }
+    );
   command
     .command("review")
     .requiredOption("--campaign <file>", "Exact edited campaign JSON")
@@ -316,6 +352,8 @@ export function registerWebAssessmentCommand(program: Command) {
     .requiredOption("--campaign <file>", "Reviewed campaign JSON (not the draft envelope)")
     .requiredOption("--approved-digest <sha256>", "Digest of the exact reviewed campaign")
     .requiredOption("--output-parent <directory>", "Parent for a new owned retained run directory")
+    .option("--actor-registry <file>", "Version-2 registry with private profile references")
+    .option("--organization <id>", "Exact registry organization")
     .option("--auth <file>", "Fresh primary profile")
     .option("--auth-a <file>", "Fresh account A profile")
     .option("--auth-b <file>", "Fresh account B profile")
@@ -324,6 +362,8 @@ export function registerWebAssessmentCommand(program: Command) {
         campaign: string;
         approvedDigest: string;
         outputParent: string;
+        actorRegistry?: string;
+        organization?: string;
         auth?: string;
         authA?: string;
         authB?: string;
@@ -346,4 +386,98 @@ export function registerWebAssessmentCommand(program: Command) {
         }
       }
     );
+}
+
+function flexiblePublicChecks(
+  input: ProductionWebInput,
+  registry: import("../../core/auth/ActorRegistry.js").ActorRegistry
+) {
+  const p = input.authorization.productionCampaign!;
+  let publicId = "public";
+  while (registry.actors.some((a) => a.id === publicId)) publicId += "0";
+  const actors = [
+    { id: publicId, safeAlias: "Public", authSlot: "anonymous", relationship: "PUBLIC" },
+    ...registry.actors
+      .filter((a) => a.authentication.mechanism !== "ANONYMOUS")
+      .map((a) => ({ id: a.id, safeAlias: a.label, authSlot: "registry", relationship: "OWNER_REVIEWED_TEST_ACTOR" }))
+  ];
+  const checks: unknown[] = [];
+  let n = 0;
+  for (const [i, r] of p.requests.entries())
+    for (const w of registry.workflows) {
+      const ids =
+        w.family === "PUBLIC_OBSERVATION" ? [publicId] : w.family === "AUTHENTICATED_OBSERVATION" ? w.actorIds : [];
+      for (const actorId of ids)
+        checks.push({
+          id: "campaign-observe-" + n++,
+          matrixId: w.id,
+          label: "Reviewed native HTTP observation",
+          kind: "FUNCTION_AUTHORIZATION",
+          routeId: "campaign-control-" + i,
+          actorId,
+          requireVerifiedIdentity: false,
+          request: { method: r.method },
+          response: { expectedDecision: "OBSERVE" }
+        });
+    }
+  return apiGraphqlInputSchema.parse({
+    maxRequests: p.maxRequests,
+    maxResponseBytes: Math.min(524288, p.maxResponseBytes),
+    actors,
+    routes: p.requests.map((r, i) => ({
+      id: "campaign-control-" + i,
+      safeAlias: "campaign-control-" + i,
+      protocol: "REST",
+      kind: "FUNCTION",
+      functionName: "reviewed-native-control",
+      url: r.origin + r.path,
+      documentedMethods: [r.method]
+    })),
+    checks
+  });
+}
+
+export async function prepareRegistryProductionCampaign(
+  entry: string,
+  reference: string,
+  path: string,
+  organization: string
+): Promise<ProductionWebInput> {
+  const source = await loadActorRegistry(resolve(path), entry, organization),
+    old = prepareProductionWebCampaign(entry, reference),
+    { identities: _, disposableAccountsSupplied: __, ...common } = old.authorization.productionCampaign;
+  const authenticated = source.registry.actors.some((a) => a.authentication.mechanism !== "ANONYMOUS"),
+    requests = [...common.requests];
+  for (const p of Object.values(source.profiles)) {
+    if (!p.identityVerification.endpoint) continue;
+    const u = new URL(p.identityVerification.endpoint, entry);
+    if (!requests.some((r) => r.origin === u.origin && r.path === u.pathname))
+      requests.push({
+        origin: u.origin,
+        path: u.pathname,
+        method: "GET",
+        effect: "READ",
+        expectedStatuses: [200, 401, 403]
+      });
+  }
+  return productionWebInputSchema.parse({
+    ...old,
+    authorization: {
+      ...old.authorization,
+      productionCampaign: {
+        ...common,
+        contractVersion: 2,
+        requests,
+        actorRegistryDigest: actorRegistryDigest(source.registry),
+        actorIds: source.registry.actors.filter((a) => a.authentication.mechanism !== "ANONYMOUS").map((a) => a.id),
+        workflowAuthorizations: source.registry.workflows,
+        authenticationPermitted: authenticated,
+        workflows: [authenticated ? "AUTHENTICATED_READ_ONLY" : "PUBLIC_READ_ONLY"],
+        effects: {
+          sessionHousekeeping: authenticated ? "SESSION_LAST_USED_AT_UPDATE" : "NONE_PUBLIC_UNAUTHENTICATED",
+          approved: true
+        }
+      }
+    }
+  });
 }

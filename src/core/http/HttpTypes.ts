@@ -18,6 +18,9 @@ export interface HttpClientOptions {
 }
 
 export interface RequestBrokerOptions extends HttpClientOptions {
+  /** Private credential metadata used only for evidence redaction, never transmission authority. */
+  privateHeaderNames?: readonly string[];
+  privateValues?: readonly string[];
   rateLimitPerSecond: number;
   concurrency: number;
   maxRequests: number;

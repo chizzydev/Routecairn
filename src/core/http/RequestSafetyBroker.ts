@@ -1,3 +1,4 @@
+import { privateScrubContext, privateAuditRecorder } from "./PrivateScrubContext.js";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { redactBodyPreview, redactHeaders } from "../evidence/EvidenceBuilder.js";
 import {
@@ -127,6 +128,7 @@ export class RequestSafetyBroker {
   private readonly controlledMutationEnabled: boolean;
   private readonly controlledDeletionEnabled: boolean;
   private readonly controlledRaceEnabled: boolean;
+  private readonly privateValues: readonly string[];
   private readonly userAgent: string;
   private readonly timeoutMs: number;
   private readonly maxResponseBytes: number;
@@ -139,6 +141,8 @@ export class RequestSafetyBroker {
     private readonly recordAudit: RequestAuditRecorder,
     private readonly coordination?: RequestBrokerCoordination
   ) {
+    this.privateValues = Object.freeze([...(options.privateValues ?? [])]);
+    this.recordAudit = privateAuditRecorder(recordAudit, options.privateHeaderNames ?? []);
     this.abortSignal = options.abortSignal;
     this.userAgent = options.userAgent;
     this.timeoutMs = options.timeoutMs;
@@ -563,7 +567,7 @@ export class RequestSafetyBroker {
         } catch (error) {
           this.requestCache.delete(key);
           if (error instanceof StopTransportRetry)
-            reused = sanitizeResponse(cloneResponse(error.response), observation);
+            reused = sanitizeResponse(cloneResponse(error.response), observation, this.privateValues);
           else {
             if (!(error instanceof DispatchPolicyDenied)) throw error;
             reused = dispatchDeniedResponse(scopedRequest.method, error.message);
@@ -623,7 +627,10 @@ export class RequestSafetyBroker {
         headers: rawResponse.headers,
         ...(rawResponse.redirectLocation ? { redirectLocation: rawResponse.redirectLocation } : {})
       });
-      return attachTransientResponseAnalysis(sanitizeResponse(rawResponse, observation), rawResponse);
+      return attachTransientResponseAnalysis(
+        sanitizeResponse(rawResponse, observation, this.privateValues),
+        rawResponse
+      );
     });
 
     if (cacheable) this.requestCache.set(key, responsePromise);
@@ -632,7 +639,8 @@ export class RequestSafetyBroker {
       response = cloneResponse(await responsePromise);
     } catch (error) {
       if (cacheable) this.requestCache.delete(key);
-      if (error instanceof StopTransportRetry) response = sanitizeResponse(cloneResponse(error.response), observation);
+      if (error instanceof StopTransportRetry)
+        response = sanitizeResponse(cloneResponse(error.response), observation, this.privateValues);
       else {
         if (!(error instanceof DispatchPolicyDenied)) throw error;
         response = dispatchDeniedResponse(scopedRequest.method, error.message);
@@ -1592,7 +1600,15 @@ function cloneResponse(response: HttpResponse): HttpResponse {
   return copyTransientResponseAnalysis(response, cloned);
 }
 
-function sanitizeResponse(response: HttpResponse, observation: TransientValueObservation): HttpResponse {
+function sanitizeResponse(
+  response: HttpResponse,
+  observation: TransientValueObservation,
+  privateValues: readonly string[] = []
+): HttpResponse {
+  // A derived local scrub context is never returned to the attestor. Private
+  // context knowledge is not evidence that those values were transmitted.
+  observation = privateScrubContext(observation, privateValues);
+
   const scrubbedHeaders = Object.fromEntries(
     Object.entries(response.headers).map(([name, value]) => [
       name,

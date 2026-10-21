@@ -294,7 +294,12 @@ export interface AuthProfileSummary {
 }
 
 export async function loadAuthProfile(filePath: string): Promise<AuthProfile> {
-  const raw = (await readFile(filePath, "utf8")).replace(/^\uFEFF/, "");
+  return parseAuthProfile(await readFile(filePath, "utf8"));
+}
+
+/** Shared parser preserves the legacy validation contract for bounded registry files. */
+export function parseAuthProfile(text: string): AuthProfile {
+  const raw = text.replace(/^\uFEFF/, "");
   const parsed = authProfileSchema.safeParse(JSON.parse(raw));
 
   if (!parsed.success) {

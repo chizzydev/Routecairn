@@ -1,3 +1,5 @@
+import { authProfileSchema } from "../../core/auth/AuthProfile.js";
+import { validateActorRegistry, actorRegistryDigest, type ActorProfiles } from "../../core/auth/ActorRegistry.js";
 import { applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -99,6 +101,8 @@ import {
 } from "../../intelligence/inventory/LiveInventoryResolver.js";
 
 export interface DashboardResolvedAuth {
+  actorBindingKey?: string | undefined;
+  actorProfiles?: ActorProfiles | undefined;
   authProfile?: AuthProfile | undefined;
   authProfileSet?: AuthProfileSet | undefined;
   safeSummary: Record<string, unknown>;
@@ -118,6 +122,29 @@ export async function resolveDashboardScanPlan(
   ) {
     throw new Error("Account-pair credential profiles require both Account A and Account B.");
   }
+  if (
+    request.actorRegistry &&
+    (request.authFile ||
+      request.authAFile ||
+      request.authBFile ||
+      request.credentialProfileId ||
+      request.credentialProfileAId ||
+      request.credentialProfileBId ||
+      request.inventoryImport ||
+      request.inventoryImportFile ||
+      (request.studio && request.studio.authentication.mode !== "public"))
+  )
+    throw Error("REGISTRY_LEGACY_AUTH_OR_IMPORT_MIX_FORBIDDEN");
+  const actorProfiles = resolvedAuth?.actorProfiles,
+    actorBindingKey = resolvedAuth?.actorBindingKey;
+  if (request.actorRegistry)
+    validateActorRegistry(
+      request.actorRegistry,
+      actorProfiles ?? {},
+      request.target,
+      request.actorRegistry.organizationId,
+      actorBindingKey
+    );
   const baseConfig = request.configFile
     ? await loadRouteCairnConfig(resolve(request.configFile))
     : routeCairnConfigSchema.parse(defaultConfig);
@@ -154,6 +181,14 @@ export async function resolveDashboardScanPlan(
         scope,
         ...(authProfile ? { authProfile } : {}),
         ...(authProfileSet ? { authProfileSet } : {}),
+        ...(request.actorRegistry
+          ? {
+              actorRegistry: request.actorRegistry,
+              actorProfiles: actorProfiles ?? {},
+              ...(actorBindingKey ? { actorBindingKey } : {}),
+              organizationId: request.actorRegistry.organizationId
+            }
+          : {}),
         ...(targetAuthorization ? { targetAuthorization } : {}),
         userAgent: scope.userAgent
       })
@@ -162,7 +197,15 @@ export async function resolveDashboardScanPlan(
   const workflowPlans = resolveStudioWorkflowPlans(request, {
     target: request.target,
     scope,
-    ...(authProfileSet ? { authProfileSet } : {})
+    ...(authProfileSet ? { authProfileSet } : {}),
+    ...(request.actorRegistry
+      ? {
+          actorRegistry: request.actorRegistry,
+          actorProfiles: actorProfiles ?? {},
+          ...(actorBindingKey ? { actorBindingKey } : {}),
+          organizationId: request.actorRegistry.organizationId
+        }
+      : {})
   });
   if (importedInventory?.objectPairTesting && workflowPlans.objectPairTesting)
     throw new Error("Inventory import conflicts with the configured object-pair workflow.");
@@ -177,7 +220,15 @@ export async function resolveDashboardScanPlan(
           objectPairTesting: planObjectPairTesting(importedInventory.objectPairTesting, {
             target: request.target,
             scope,
-            ...(authProfileSet ? { authProfileSet } : {})
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(request.actorRegistry
+              ? {
+                  actorRegistry: request.actorRegistry,
+                  actorProfiles: actorProfiles ?? {},
+                  ...(actorBindingKey ? { actorBindingKey } : {}),
+                  organizationId: request.actorRegistry.organizationId
+                }
+              : {})
           })
         }
       : {}),
@@ -185,7 +236,19 @@ export async function resolveDashboardScanPlan(
       ? {
           collectionAuthorizationTesting: planCollectionAuthorizationTesting(
             importedInventory.collectionAuthorization,
-            { target: request.target, scope, ...(authProfileSet ? { authProfileSet } : {}) }
+            {
+              target: request.target,
+              scope,
+              ...(authProfileSet ? { authProfileSet } : {}),
+              ...(request.actorRegistry
+                ? {
+                    actorRegistry: request.actorRegistry,
+                    actorProfiles: actorProfiles ?? {},
+                    ...(actorBindingKey ? { actorBindingKey } : {}),
+                    organizationId: request.actorRegistry.organizationId
+                  }
+                : {})
+            }
           )
         }
       : {}),
@@ -194,7 +257,15 @@ export async function resolveDashboardScanPlan(
           fileAuthorizationTesting: planFileAuthorizationTesting(importedInventory.fileAuthorization, {
             target: request.target,
             scope,
-            ...(authProfileSet ? { authProfileSet } : {})
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(request.actorRegistry
+              ? {
+                  actorRegistry: request.actorRegistry,
+                  actorProfiles: actorProfiles ?? {},
+                  ...(actorBindingKey ? { actorBindingKey } : {}),
+                  organizationId: request.actorRegistry.organizationId
+                }
+              : {})
           })
         }
       : {})
@@ -204,6 +275,14 @@ export async function resolveDashboardScanPlan(
     scope,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
+    ...(request.actorRegistry
+      ? {
+          actorRegistry: request.actorRegistry,
+          actorProfiles: actorProfiles ?? {},
+          ...(actorBindingKey ? { actorBindingKey } : {}),
+          organizationId: request.actorRegistry.organizationId
+        }
+      : {}),
     ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {})
   };
   if (importedInventory?.supabaseAuthorization && (request.supabaseAuthorization || request.supabaseAuthorizationFile))
@@ -217,7 +296,15 @@ export async function resolveDashboardScanPlan(
     ? planSupabaseAuthorization(supabaseInput, {
         target: request.target,
         scope,
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(request.actorRegistry
+          ? {
+              actorRegistry: request.actorRegistry,
+              actorProfiles: actorProfiles ?? {},
+              ...(actorBindingKey ? { actorBindingKey } : {}),
+              organizationId: request.actorRegistry.organizationId
+            }
+          : {})
       })
     : undefined;
   const lifecycleInput = request.authenticationLifecycle
@@ -358,6 +445,14 @@ export async function resolveDashboardScanPlan(
     config,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
+    ...(request.actorRegistry
+      ? {
+          actorRegistry: request.actorRegistry,
+          actorProfiles: actorProfiles ?? {},
+          ...(actorBindingKey ? { actorBindingKey } : {}),
+          organizationId: request.actorRegistry.organizationId
+        }
+      : {}),
     ...importedWorkflowPlans,
     ...(supabaseAuthorization ? { supabaseAuthorization } : {}),
     ...(authenticationLifecycle ? { authenticationLifecycle } : {}),
@@ -410,7 +505,15 @@ export async function resolveDashboardScanPlan(
     config,
     scope,
     ...(authProfile ? { authProfile } : {}),
-    ...(authProfileSet ? { authProfileSet } : {})
+    ...(authProfileSet ? { authProfileSet } : {}),
+    ...(request.actorRegistry
+      ? {
+          actorRegistry: request.actorRegistry,
+          actorProfiles: actorProfiles ?? {},
+          ...(actorBindingKey ? { actorBindingKey } : {}),
+          organizationId: request.actorRegistry.organizationId
+        }
+      : {})
   };
 }
 
@@ -418,6 +521,51 @@ export function resolveCredentialAuthForDashboardScan(
   vault: CredentialVault,
   request: DashboardScanCreateRequest
 ): DashboardResolvedAuth {
+  if (request.actorRegistry) {
+    if (!request.targetId) throw Error("REGISTRY_REGISTERED_TARGET_REQUIRED");
+    const profiles: Record<string, AuthProfile> = Object.create(null),
+      actorBindingKey = request.actorRegistry.actors.some(
+        (a) => a.authentication.mechanism !== "ANONYMOUS" && a.authentication.availability === "AVAILABLE"
+      )
+        ? vault.actorBindingKey(
+            request.actorRegistry.organizationId,
+            request.targetId,
+            request.actorRegistry.registryId
+          )
+        : undefined;
+    for (const a of request.actorRegistry.actors) {
+      if (a.authentication.mechanism === "ANONYMOUS" || a.authentication.availability !== "AVAILABLE") continue;
+      const id = request.actorCredentials?.[a.id];
+      if (!id || id !== a.authentication.credentialRef) throw Error("REGISTRY_CREDENTIAL_REFERENCE_MISMATCH");
+      const summary = vault.getSummary(id, request.actorRegistry.organizationId);
+      if (
+        !summary ||
+        summary.organizationId !== request.actorRegistry.organizationId ||
+        summary.targetId !== request.targetId ||
+        !summary.enabled
+      )
+        throw Error("REGISTRY_CREDENTIAL_CONTEXT_OR_REVOCATION");
+      const p = authProfileSchema.parse(authProfileFromCredential(summary, vault.decryptForHealthCheck(id)));
+      profiles[a.id] = p;
+    }
+    validateActorRegistry(
+      request.actorRegistry,
+      profiles,
+      request.target,
+      request.actorRegistry.organizationId,
+      actorBindingKey
+    );
+    return {
+      actorProfiles: profiles,
+      ...(actorBindingKey ? { actorBindingKey } : {}),
+      safeSummary: {
+        contractVersion: 2,
+        actorRegistryDigest: actorRegistryDigest(request.actorRegistry),
+        actors: request.actorRegistry.actors.map((a) => ({ id: a.id, mechanism: a.authentication.mechanism })),
+        redactionApplied: true
+      }
+    };
+  }
   if (request.studio?.authentication.mode && request.studio.authentication.mode !== "public") {
     return resolveStudioAuth(vault, request);
   }
@@ -485,6 +633,13 @@ export function safeConfigurationSummary(request: DashboardScanCreateRequest): R
     credentialProfile: request.credentialProfileId
       ? safeCredentialReferenceForId(request.credentialProfileId, "single")
       : undefined,
+    ...(request.actorRegistry
+      ? {
+          actorRegistryDigest: actorRegistryDigest(request.actorRegistry),
+          actorIds: request.actorRegistry.actors.map((a) => a.id),
+          actorCredentials: request.actorCredentials
+        }
+      : {}),
     credentialProfileA: request.credentialProfileAId
       ? safeCredentialReferenceForId(request.credentialProfileAId, "accountA")
       : undefined,
@@ -644,6 +799,10 @@ export function outputDirFromReport(reportPath: string): string {
 }
 
 export interface ResolvedPlanInputs {
+  actorBindingKey?: string;
+  actorProfiles?: ActorProfiles;
+  actorRegistry?: import("../../core/auth/ActorRegistry.js").ActorRegistry;
+  organizationId?: string;
   plan: ResolvedScanPlan;
   config: Awaited<ReturnType<typeof loadRouteCairnConfig>>;
   scope: Awaited<ReturnType<typeof loadScope>>;

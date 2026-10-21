@@ -1,3 +1,4 @@
+import { loadActorRegistry } from "../../core/auth/ActorRegistry.js";
 import { Command } from "commander";
 import { dirname, resolve } from "node:path";
 import { routeCairnConfigSchema, scanModeSchema, type ScanMode } from "../../config/ConfigSchema.js";
@@ -96,6 +97,8 @@ import {
 const logger = createLogger();
 
 export interface ScanCommandOptions {
+  actorRegistry?: string;
+  organization?: string;
   scope?: string;
   mode?: string;
   profile?: string;
@@ -149,6 +152,8 @@ export function registerScanCommand(program: Command): void {
     .description("Run a scoped RouteCairn scan against an authorized target.")
     .argument("<target>", "Target URL to scan.")
     .requiredOption("--scope <file>", "Path to a RouteCairn scope JSON file.")
+    .option("--actor-registry <file>", "Versioned actor registry and private profile references")
+    .option("--organization <id>", "Exact registry organization context")
     .option("--mode <mode>", "Scan mode for this run. Kept for compatibility; profiles are preferred for normal use.")
     .option("--profile <profile>", `Scan profile: ${profileNames().join(", ")}.`)
     .option("--rate <number>", "Override requests per second from the scope file.")
@@ -267,6 +272,11 @@ export async function runScanCommand(
 
   const engine = new RouteCairnEngine();
   const outputDir = resolveOutputDir(options.output, config.reportsDir, target, profile);
+  const actors = options.actorRegistry
+    ? await loadActorRegistry(resolve(options.actorRegistry), target, options.organization ?? "")
+    : undefined;
+  if (actors && (options.auth || options.authA || options.authB || options.inventoryImport))
+    throw Error("MIXED_ACTOR_CONTRACTS_FORBIDDEN");
   const authProfile = options.auth ? await loadAuthProfile(resolve(options.auth)) : undefined;
   const targetAuthorization = options.targetAuthorization
     ? targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8")))
@@ -297,6 +307,14 @@ export async function runScanCommand(
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
         ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {}),
         ...(targetAuthorization ? { targetAuthorization } : {}),
         ...(abortSignal ? { abortSignal } : {}),
         userAgent: finalScope.userAgent
@@ -314,21 +332,49 @@ export async function runScanCommand(
           options.objectPairs
             ? await loadObjectPairInput(resolve(options.objectPairs))
             : importedInventory!.objectPairTesting!,
-          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+          {
+            target,
+            scope: finalScope,
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(actors
+              ? {
+                  actorRegistry: actors.registry,
+                  actorProfiles: actors.profiles,
+                  ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                  organizationId: options.organization!
+                }
+              : {})
+          }
         )
       : undefined;
   const fieldExposureTesting = options.fieldExposure
     ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), {
         target,
         scope: finalScope,
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const authorizationMatrixTesting = options.authorizationMatrix
     ? planAuthorizationMatrixTesting(await loadAuthorizationMatrixInput(resolve(options.authorizationMatrix)), {
         target,
         scope: finalScope,
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   if (importedInventory?.collectionAuthorization && options.collectionAuthorization)
@@ -357,14 +403,34 @@ export async function runScanCommand(
           options.collectionAuthorization
             ? await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization))
             : importedInventory!.collectionAuthorization!,
-          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+          {
+            target,
+            scope: finalScope,
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(actors
+              ? {
+                  actorRegistry: actors.registry,
+                  actorProfiles: actors.profiles,
+                  ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                  organizationId: options.organization!
+                }
+              : {})
+          }
         )
       : undefined;
   const bulkAuthorizationTesting = options.bulkAuthorization
     ? planBulkAuthorizationTesting(await loadBulkAuthorizationInput(resolve(options.bulkAuthorization)), {
         target,
         scope: finalScope,
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const fileAuthorizationTesting =
@@ -373,14 +439,34 @@ export async function runScanCommand(
           options.fileAuthorization
             ? await loadFileAuthorizationInput(resolve(options.fileAuthorization))
             : importedInventory!.fileAuthorization!,
-          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+          {
+            target,
+            scope: finalScope,
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(actors
+              ? {
+                  actorRegistry: actors.registry,
+                  actorProfiles: actors.profiles,
+                  ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                  organizationId: options.organization!
+                }
+              : {})
+          }
         )
       : undefined;
   const equivalentRouteTesting = options.equivalentRoutes
     ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), {
         target,
         scope: finalScope,
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const supabaseAuthorization =
@@ -389,7 +475,19 @@ export async function runScanCommand(
           options.supabaseAuthorization
             ? await loadSupabaseAuthorizationInput(resolve(options.supabaseAuthorization))
             : importedInventory!.supabaseAuthorization!,
-          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+          {
+            target,
+            scope: finalScope,
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(actors
+              ? {
+                  actorRegistry: actors.registry,
+                  actorProfiles: actors.profiles,
+                  ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                  organizationId: options.organization!
+                }
+              : {})
+          }
         )
       : undefined;
   const authenticationLifecycle = options.authenticationLifecycle
@@ -397,7 +495,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : options.authenticationLifecycleAuto
       ? planBrowserLearnedLifecycleAutomation(
@@ -410,7 +516,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const controlledRace = options.controlledRaces
@@ -418,7 +532,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const apiGraphql =
@@ -430,7 +552,15 @@ export async function runScanCommand(
             scope: finalScope,
             ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
             ...(authProfile ? { authProfile } : {}),
-            ...(authProfileSet ? { authProfileSet } : {})
+            ...(authProfileSet ? { authProfileSet } : {}),
+            ...(actors
+              ? {
+                  actorRegistry: actors.registry,
+                  actorProfiles: actors.profiles,
+                  ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                  organizationId: options.organization!
+                }
+              : {})
           }
         )
       : undefined;
@@ -439,7 +569,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const linkPortalSecurity = options.linkPortalSecurity
@@ -447,7 +585,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const operationalEndpointSecurity = options.operationalEndpoints
@@ -457,7 +603,15 @@ export async function runScanCommand(
           target,
           scope: finalScope,
           ...(authProfile ? { authProfile } : {}),
-          ...(authProfileSet ? { authProfileSet } : {})
+          ...(authProfileSet ? { authProfileSet } : {}),
+          ...(actors
+            ? {
+                actorRegistry: actors.registry,
+                actorProfiles: actors.profiles,
+                ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+                organizationId: options.organization!
+              }
+            : {})
         }
       )
     : undefined;
@@ -466,7 +620,15 @@ export async function runScanCommand(
         target,
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
-        ...(authProfileSet ? { authProfileSet } : {})
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {})
       })
     : undefined;
   const activeVulnerability = options.activeVulnerability
@@ -475,6 +637,14 @@ export async function runScanCommand(
         scope: finalScope,
         ...(authProfile ? { authProfile } : {}),
         ...(authProfileSet ? { authProfileSet } : {}),
+        ...(actors
+          ? {
+              actorRegistry: actors.registry,
+              actorProfiles: actors.profiles,
+              ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+              organizationId: options.organization!
+            }
+          : {}),
         ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {})
       })
     : undefined;
@@ -567,6 +737,14 @@ export async function runScanCommand(
     config: finalConfig,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
+    ...(actors
+      ? {
+          actorRegistry: actors.registry,
+          actorProfiles: actors.profiles,
+          ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+          organizationId: options.organization!
+        }
+      : {}),
     overrides: {
       ...(production
         ? {
@@ -658,6 +836,14 @@ export async function runScanCommand(
     outputDir,
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
+    ...(actors
+      ? {
+          actorRegistry: actors.registry,
+          actorProfiles: actors.profiles,
+          ...(actors.bindingKey ? { actorBindingKey: actors.bindingKey } : {}),
+          organizationId: options.organization!
+        }
+      : {}),
     ...(parsedMutationContracts ? { controlledMutationContracts: parsedMutationContracts } : {})
   });
 

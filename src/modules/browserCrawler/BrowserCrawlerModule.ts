@@ -1,3 +1,5 @@
+import { actorRegistryDigest } from "../../core/auth/ActorRegistry.js";
+import { assessWorkflow } from "../../core/auth/AssessmentCapabilities.js";
 import type { HttpMethod } from "../../core/http/HttpTypes.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
 import type { ModuleResult, RouteCairnPlugin } from "../../core/plugins/Plugin.js";
@@ -35,6 +37,34 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
     }
 
     try {
+      let browserAuthProfile = context.options.authProfile;
+      const registry = context.options.plan.actorRegistry;
+      let registryWorkflow: import("../../reports/ReportTypes.js").BrowserCrawlReport["assessmentWorkflow"];
+      if (registry) {
+        const w = registry.workflows.find((w) => w.family === "BROWSER_OBSERVATION");
+        if (w) {
+          const d = assessWorkflow(
+            registry,
+            w.id,
+            context.state.getIdentityVerification()?.actors,
+            Date.now(),
+            context.identityExecutionId
+          );
+          if (d.status !== "ELIGIBLE" || w.actorIds.length !== 1)
+            return { pluginName: this.name, notes: ["BLOCKED: " + d.reason] };
+          browserAuthProfile = context.actorProfile(w.actorIds[0]!);
+          registryWorkflow = {
+            registryId: registry.registryId,
+            registryFingerprint: actorRegistryDigest(registry),
+            workflowId: w.id,
+            actorId: w.actorIds[0]!
+          };
+        } else if (registry.actors.some((a) => a.authentication.mechanism !== "ANONYMOUS"))
+          return {
+            pluginName: this.name,
+            notes: ["NOT_ASSESSED: review a single-actor browser workflow; no anonymous downgrade."]
+          };
+      }
       const settings = context.moduleSettings("browser-crawler");
       const policy = browserPolicyFromSettings(settings, context.options.plan.limits, context.options.plan.evidence);
       const crawlerOptions = {
@@ -58,7 +88,7 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
             metadata: { kind: "BROWSER_NETWORK_BOUNDARY", ...diagnostics }
           });
         },
-        ...(context.options.authProfile ? { authProfile: context.options.authProfile } : {}),
+        ...(browserAuthProfile ? { authProfile: browserAuthProfile } : {}),
         ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
       };
       let browserCrawl;
@@ -80,7 +110,7 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
 
       return {
         pluginName: this.name,
-        browserCrawl,
+        browserCrawl: { ...browserCrawl, ...(registryWorkflow ? { assessmentWorkflow: registryWorkflow } : {}) },
         notes: browserCrawl.notes
       };
     } catch (error) {

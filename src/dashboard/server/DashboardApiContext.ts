@@ -1,17 +1,26 @@
 import type { TrustedDiscoveryOperatorService } from "../execution/TrustedDiscoveryOperatorService.js";
-import { type IncomingMessage,type ServerResponse } from "node:http";
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { ZodError } from "zod";
 import { ControlPlaneInfrastructure } from "../../controlPlane/ControlPlaneInfrastructure.js";
 import { WorkloadIdentityError } from "../../controlPlane/WorkloadIdentity.js";
 import { AppError } from "../../core/errors/AppError.js";
-import { LocalSessionManager,SessionError } from "../auth/LocalSession.js";
-import type { DashboardPermission,DashboardPrincipal } from "../auth/Permissions.js";
-import { PermissionError,ServerSessionManager } from "../auth/ServerSession.js";
+import { LocalSessionManager, SessionError } from "../auth/LocalSession.js";
+import type { DashboardPermission, DashboardPrincipal } from "../auth/Permissions.js";
+import { PermissionError, ServerSessionManager } from "../auth/ServerSession.js";
 import { savedConfigurationSchema } from "../contracts/DashboardSchemas.js";
 import { CredentialVault } from "../credentials/CredentialVault.js";
 import { ControlledMutationApprovalRepository } from "../db/ControlledMutationApprovalRepository.js";
-import { DashboardDatabase,nowIso } from "../db/DashboardDatabase.js";
-import { ArtifactRepository,AuditRepository,EventRepository,FindingRepository,ProjectRepository,SavedConfigurationRepository,ScanRepository,TargetRepository } from "../db/DashboardRepositories.js";
+import { DashboardDatabase, nowIso } from "../db/DashboardDatabase.js";
+import {
+  ArtifactRepository,
+  AuditRepository,
+  EventRepository,
+  FindingRepository,
+  ProjectRepository,
+  SavedConfigurationRepository,
+  ScanRepository,
+  TargetRepository
+} from "../db/DashboardRepositories.js";
 import { AdaptiveSecurityService } from "../execution/AdaptiveSecurityService.js";
 import { ContinuousAssuranceService } from "../execution/ContinuousAssuranceService.js";
 import { ControlledMutationRecoveryService } from "../execution/ControlledMutationRecoveryService.js";
@@ -20,14 +29,17 @@ import { LiveAcceptanceService } from "../execution/LiveAcceptanceService.js";
 import { ProviderAdapterService } from "../execution/ProviderAdapterService.js";
 import { ScanExecutionService } from "../execution/ScanExecutionService.js";
 import { WorkflowRecoveryService } from "../execution/WorkflowRecoveryService.js";
-import { FindingCommandCenterService,FindingCommandError } from "../findings/FindingCommandCenterService.js";
+import { FindingCommandCenterService, FindingCommandError } from "../findings/FindingCommandCenterService.js";
 import { HistoricalReportImporter } from "../import/HistoricalReportImporter.js";
 import { BackupRestoreService } from "../operations/BackupRestoreService.js";
-import { CloudSyncAuthError,CloudSyncService } from "../operations/CloudSyncService.js";
-import { DistributedMutationCoordinatorError,DistributedMutationCoordinatorService } from "../operations/DistributedMutationCoordinatorService.js";
+import { CloudSyncAuthError, CloudSyncService } from "../operations/CloudSyncService.js";
+import {
+  DistributedMutationCoordinatorError,
+  DistributedMutationCoordinatorService
+} from "../operations/DistributedMutationCoordinatorService.js";
 import { IntegrationExportService } from "../operations/IntegrationExportService.js";
 import { NotificationService } from "../operations/NotificationService.js";
-import { OrganizationPermissionError,OrganizationService } from "../operations/OrganizationService.js";
+import { OrganizationPermissionError, OrganizationService } from "../operations/OrganizationService.js";
 import type { RemoteWorkerOperations } from "../operations/RemoteWorkerOperations.js";
 import { RemoteWorkerAuthError } from "../operations/RemoteWorkerService.js";
 import { SsoService } from "../operations/SsoService.js";
@@ -36,10 +48,7 @@ import { ProofPackService } from "../proofPacks/ProofPackService.js";
 import { ComparisonService } from "../services/ComparisonService.js";
 import { type DashboardPaths } from "../services/DashboardPaths.js";
 import type { DashboardScanCreateRequest } from "../types/DashboardTypes.js";
-import {
-HttpError
-} from "./DashboardHttpSupport.js";
-
+import { HttpError } from "./DashboardHttpSupport.js";
 
 export const maxJsonBodyBytes = 1024 * 1024;
 
@@ -116,74 +125,187 @@ export function operationalOrganization(context: ApiContext): string {
   return context.url.searchParams.get("organizationId") ?? context.organizations.defaultOrganizationId();
 }
 
-export function resourceOrganization(context: ApiContext, permission: import("../operations/OrganizationService.js").OrganizationPermission = "org.read"): string {
+export function resourceOrganization(
+  context: ApiContext,
+  permission: import("../operations/OrganizationService.js").OrganizationPermission = "org.read"
+): string {
   const header = context.request.headers["x-routecairn-organization-id"];
-  const organizationId = (typeof header === "string" && header) || context.url.searchParams.get("organizationId") || context.organizations.defaultOrganizationId();
+  const organizationId =
+    (typeof header === "string" && header) ||
+    context.url.searchParams.get("organizationId") ||
+    context.organizations.defaultOrganizationId();
   requireOrg(context, organizationId, permission);
   return organizationId;
 }
 
-export function requireOrg(context: ApiContext, organizationId: string, permission: import("../operations/OrganizationService.js").OrganizationPermission): void {
+export function requireOrg(
+  context: ApiContext,
+  organizationId: string,
+  permission: import("../operations/OrganizationService.js").OrganizationPermission
+): void {
   context.organizations.require(organizationId, context.principal!.userId, permission, context.mode === "local");
 }
 
 export function enforceTenantMutationBoundary(context: ApiContext): void {
-  const match = /^\/api\/(?<kind>projects|targets|scans|findings|credential-profiles|configurations)\/(?<id>[0-9a-f-]{36})(?:\/|$)/i.exec(context.url.pathname);
+  const match =
+    /^\/api\/(?<kind>projects|targets|scans|findings|credential-profiles|configurations)\/(?<id>[0-9a-f-]{36})(?:\/|$)/i.exec(
+      context.url.pathname
+    );
   if (!match?.groups?.kind || !match.groups.id) return;
-  const kind = ({ projects:"project", targets:"target", scans:"scan", findings:"finding", "credential-profiles":"credential", configurations:"configuration" } as const)[match.groups.kind.toLowerCase() as "projects"|"targets"|"scans"|"findings"|"credential-profiles"|"configurations"];
-  requireSelectedResource(context,kind,match.groups.id,"resources.use");
+  const kind = (
+    {
+      projects: "project",
+      targets: "target",
+      scans: "scan",
+      findings: "finding",
+      "credential-profiles": "credential",
+      configurations: "configuration"
+    } as const
+  )[
+    match.groups.kind.toLowerCase() as
+      "projects" | "targets" | "scans" | "findings" | "credential-profiles" | "configurations"
+  ];
+  requireSelectedResource(context, kind, match.groups.id, "resources.use");
 }
 
-export function requireSelectedResource(context:ApiContext,kind:"project"|"target"|"scan"|"finding"|"credential"|"configuration",id:string,permission:import("../operations/OrganizationService.js").OrganizationPermission):string{
-  const selected=resourceOrganization(context,permission),actual=context.organizations.resourceOrganization(kind,id);
-  if(!actual||actual!==selected)throw new HttpError(404,"Resource not found in the selected organization.");
+export function requireSelectedResource(
+  context: ApiContext,
+  kind: "project" | "target" | "scan" | "finding" | "credential" | "configuration",
+  id: string,
+  permission: import("../operations/OrganizationService.js").OrganizationPermission
+): string {
+  const selected = resourceOrganization(context, permission),
+    actual = context.organizations.resourceOrganization(kind, id);
+  if (!actual || actual !== selected) throw new HttpError(404, "Resource not found in the selected organization.");
   return selected;
 }
 
-export function requireSelectedResources(context:ApiContext,kind:"project"|"target"|"scan"|"finding"|"credential"|"configuration",ids:readonly string[],permission:import("../operations/OrganizationService.js").OrganizationPermission):void{for(const id of ids)requireSelectedResource(context,kind,id,permission);}
+export function requireSelectedResources(
+  context: ApiContext,
+  kind: "project" | "target" | "scan" | "finding" | "credential" | "configuration",
+  ids: readonly string[],
+  permission: import("../operations/OrganizationService.js").OrganizationPermission
+): void {
+  for (const id of ids) requireSelectedResource(context, kind, id, permission);
+}
 
-export function requireSelectedComparison(context:ApiContext,id:string):void{
-  const organizationId=resourceOrganization(context);
-  const row=context.database.db.prepare(`SELECT 1 FROM scan_comparisons c
+export function requireSelectedComparison(context: ApiContext, id: string): void {
+  const organizationId = resourceOrganization(context);
+  const row = context.database.db
+    .prepare(
+      `SELECT 1 FROM scan_comparisons c
     JOIN scans older ON older.id=c.older_scan_id
     JOIN scans newer ON newer.id=c.newer_scan_id
-    WHERE c.id=? AND c.deleted_at IS NULL AND older.organization_id=? AND newer.organization_id=?`).get(id,organizationId,organizationId);
-  if(!row)throw new HttpError(404,"Comparison not found in the selected organization.");
+    WHERE c.id=? AND c.deleted_at IS NULL AND older.organization_id=? AND newer.organization_id=?`
+    )
+    .get(id, organizationId, organizationId);
+  if (!row) throw new HttpError(404, "Comparison not found in the selected organization.");
 }
 
-export async function assertProviderAdapterExecution(context: ApiContext, request: DashboardScanCreateRequest): Promise<void> {
-  try { await context.providerAdapters.assertExecutionBinding(request); }
-  catch (error) { throw new HttpError(409, error instanceof Error ? error.message : "PROVIDER_ADAPTER_EXECUTION_REJECTED"); }
-}
-
-export function requireCredentialUsePermission(context: ApiContext, request: { credentialProfileId?: string | undefined; credentialProfileAId?: string | undefined; credentialProfileBId?: string | undefined; studio?: { authentication: { mode: string; primary?: { source: string; credentialProfileId?: string }; accountA?: { source: string; credentialProfileId?: string }; accountB?: { source: string; credentialProfileId?: string } } } | undefined }): void {
-  const studioUsesSaved = request.studio?.authentication.primary?.source === "saved" || request.studio?.authentication.accountA?.source === "saved" || request.studio?.authentication.accountB?.source === "saved";
-  if (request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId || studioUsesSaved) {
-    requirePermission(context, "credentials.use");
-    const organizationId=resourceOrganization(context,"resources.use");
-    const ids=[request.credentialProfileId,request.credentialProfileAId,request.credentialProfileBId,request.studio?.authentication.primary?.credentialProfileId,request.studio?.authentication.accountA?.credentialProfileId,request.studio?.authentication.accountB?.credentialProfileId].filter((id):id is string=>Boolean(id));
-    for(const id of ids)if(!context.vault.getSummary(id,organizationId))throw new HttpError(404,"Credential profile not found in the selected organization.");
+export async function assertProviderAdapterExecution(
+  context: ApiContext,
+  request: DashboardScanCreateRequest
+): Promise<void> {
+  try {
+    await context.providerAdapters.assertExecutionBinding(request);
+  } catch (error) {
+    throw new HttpError(409, error instanceof Error ? error.message : "PROVIDER_ADAPTER_EXECUTION_REJECTED");
   }
 }
 
-export function validateScanReferences(context: ApiContext, request: { projectId?: string | undefined; targetId?: string | undefined; target: string }): void {
-  const organizationId=resourceOrganization(context,"resources.use");
-  if (request.projectId && !context.projects.get(request.projectId,true,organizationId)) throw new HttpError(404, "TARGET_NOT_FOUND: Project not found.");
-  if (!request.targetId) return;
-  const target = context.targets.get(request.targetId,true,organizationId);
-  if (!target) throw new HttpError(404, "TARGET_NOT_FOUND: Target not found.");
-  if (request.projectId && target.projectId !== request.projectId) throw new HttpError(400, "TARGET_INVALID: Target is not assigned to the selected project.");
-  if (new URL(target.baseOrigin).origin !== new URL(request.target).origin) throw new HttpError(400, "TARGET_INVALID: Target URL does not match the selected target record.");
+export function requireCredentialUsePermission(
+  context: ApiContext,
+  request: {
+    actorRegistry?: import("../../core/auth/ActorRegistry.js").ActorRegistry | undefined;
+    actorCredentials?: Record<string, string> | undefined;
+    credentialProfileId?: string | undefined;
+    credentialProfileAId?: string | undefined;
+    credentialProfileBId?: string | undefined;
+    studio?:
+      | {
+          authentication: {
+            mode: string;
+            primary?: { source: string; credentialProfileId?: string };
+            accountA?: { source: string; credentialProfileId?: string };
+            accountB?: { source: string; credentialProfileId?: string };
+          };
+        }
+      | undefined;
+  }
+): void {
+  if (request.actorRegistry) {
+    const org = resourceOrganization(context, "resources.use");
+    if (request.actorRegistry.organizationId !== org) throw new HttpError(403, "Actor registry organization mismatch");
+    for (const id of Object.values(request.actorCredentials ?? {})) {
+      requirePermission(context, "credentials.use");
+      requireSelectedResource(context, "credential", id, "resources.use");
+      const c = context.vault.getSummary(id, org);
+      if (!c) throw new HttpError(404, "Registry credential unavailable");
+    }
+  }
+  const studioUsesSaved =
+    request.studio?.authentication.primary?.source === "saved" ||
+    request.studio?.authentication.accountA?.source === "saved" ||
+    request.studio?.authentication.accountB?.source === "saved";
+  if (request.credentialProfileId || request.credentialProfileAId || request.credentialProfileBId || studioUsesSaved) {
+    requirePermission(context, "credentials.use");
+    const organizationId = resourceOrganization(context, "resources.use");
+    const ids = [
+      request.credentialProfileId,
+      request.credentialProfileAId,
+      request.credentialProfileBId,
+      request.studio?.authentication.primary?.credentialProfileId,
+      request.studio?.authentication.accountA?.credentialProfileId,
+      request.studio?.authentication.accountB?.credentialProfileId
+    ].filter((id): id is string => Boolean(id));
+    for (const id of ids)
+      if (!context.vault.getSummary(id, organizationId))
+        throw new HttpError(404, "Credential profile not found in the selected organization.");
+  }
 }
 
-export function validateTargetDefaults(context: ApiContext, request: { projectId?: string | undefined; defaultConfigurationId?: string | undefined; defaultCredentialProfileId?: string | undefined }): void {
-  const organizationId=resourceOrganization(context,"resources.use");
-  if (request.projectId && !context.projects.get(request.projectId,true,organizationId)) throw new HttpError(404, "Project not found.");
-  if (request.defaultConfigurationId && !context.configurations.get(request.defaultConfigurationId,false,organizationId)) throw new HttpError(400, "Default configuration is unavailable or archived.");
+export function validateScanReferences(
+  context: ApiContext,
+  request: { projectId?: string | undefined; targetId?: string | undefined; target: string }
+): void {
+  const organizationId = resourceOrganization(context, "resources.use");
+  if (request.projectId && !context.projects.get(request.projectId, true, organizationId))
+    throw new HttpError(404, "TARGET_NOT_FOUND: Project not found.");
+  if (!request.targetId) return;
+  const target = context.targets.get(request.targetId, true, organizationId);
+  if (!target) throw new HttpError(404, "TARGET_NOT_FOUND: Target not found.");
+  if (request.projectId && target.projectId !== request.projectId)
+    throw new HttpError(400, "TARGET_INVALID: Target is not assigned to the selected project.");
+  if (new URL(target.baseOrigin).origin !== new URL(request.target).origin)
+    throw new HttpError(400, "TARGET_INVALID: Target URL does not match the selected target record.");
+}
+
+export function validateTargetDefaults(
+  context: ApiContext,
+  request: {
+    projectId?: string | undefined;
+    defaultConfigurationId?: string | undefined;
+    defaultCredentialProfileId?: string | undefined;
+  }
+): void {
+  const organizationId = resourceOrganization(context, "resources.use");
+  if (request.projectId && !context.projects.get(request.projectId, true, organizationId))
+    throw new HttpError(404, "Project not found.");
+  if (
+    request.defaultConfigurationId &&
+    !context.configurations.get(request.defaultConfigurationId, false, organizationId)
+  )
+    throw new HttpError(400, "Default configuration is unavailable or archived.");
   if (request.defaultCredentialProfileId) {
-    const credential = context.vault.getSummary(request.defaultCredentialProfileId,organizationId);
-    if (!credential || !credential.enabled || ["EXPIRED", "INVALID", "IDENTITY_MISMATCH", "DISABLED"].includes(credential.health.classification)) throw new HttpError(400, "Default credential profile is unavailable or not scan-eligible.");
-    if (credential.projectId && request.projectId && credential.projectId !== request.projectId) throw new HttpError(400, "Default credential profile is not assigned to the selected project.");
+    const credential = context.vault.getSummary(request.defaultCredentialProfileId, organizationId);
+    if (
+      !credential ||
+      !credential.enabled ||
+      ["EXPIRED", "INVALID", "IDENTITY_MISMATCH", "DISABLED"].includes(credential.health.classification)
+    )
+      throw new HttpError(400, "Default credential profile is unavailable or not scan-eligible.");
+    if (credential.projectId && request.projectId && credential.projectId !== request.projectId)
+      throw new HttpError(400, "Default credential profile is not assigned to the selected project.");
   }
 }
 
@@ -191,7 +313,8 @@ export function identityResultCategories(result: Record<string, unknown>): Recor
   const categories: Record<string, string> = {};
   for (const slot of ["primary", "accountA", "accountB"] as const) {
     const value = result[slot];
-    if (typeof value === "object" && value !== null && "category" in value && typeof value.category === "string") categories[slot] = value.category;
+    if (typeof value === "object" && value !== null && "category" in value && typeof value.category === "string")
+      categories[slot] = value.category;
   }
   return categories;
 }
@@ -204,39 +327,59 @@ export async function serveEventStream(context: ApiContext, scanId: string): Pro
     connection: "keep-alive"
   });
   let cursor = Number.isFinite(lastEventId) ? lastEventId : 0;
-  let closed = false, paused=false;
+  let closed = false,
+    paused = false;
   const sendEvents = () => {
     if (closed || paused) return;
     const events = context.events.list(scanId, cursor, 100);
     for (const event of events) {
       cursor = event.seq;
-      if(!context.response.write(`id: ${event.seq}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event)}\n\n`)){
-        paused=true;context.response.once("drain",()=>{paused=false;sendEvents();});return;
+      if (!context.response.write(`id: ${event.seq}\nevent: ${event.eventType}\ndata: ${JSON.stringify(event)}\n\n`)) {
+        paused = true;
+        context.response.once("drain", () => {
+          paused = false;
+          sendEvents();
+        });
+        return;
       }
     }
     const scan = context.scans.get(scanId);
-    if(events.length===100){setImmediate(sendEvents);return;}
+    if (events.length === 100) {
+      setImmediate(sendEvents);
+      return;
+    }
     if (scan && ["COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED", "IMPORTED"].includes(scan.status)) {
       close();
       context.response.end();
     }
   };
   const unsubscribe = context.infrastructure.subscribe("scan-events", (partitionKey) => {
-    if(partitionKey===scanId)sendEvents();
+    if (partitionKey === scanId) sendEvents();
   });
   const timer = setInterval(() => {
     sendEvents();
-    if(!closed)context.response.write(": heartbeat\n\n");
+    if (!closed) context.response.write(": heartbeat\n\n");
   }, 15_000);
   timer.unref();
-  function close(): void { if (closed) return; closed = true; clearInterval(timer); unsubscribe(); }
+  function close(): void {
+    if (closed) return;
+    closed = true;
+    clearInterval(timer);
+    unsubscribe();
+  }
   context.request.on("close", close);
   sendEvents();
 }
 
 export function routeTemplate(pathname: string): string {
-  if (pathname === "/api/trusted-discovery" || pathname.startsWith("/api/trusted-discovery/")) return ["/api/trusted-discovery/review", "/api/trusted-discovery/pre-consent"].includes(pathname) ? pathname : "/api/trusted-discovery/:operation";
-  return pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ":id").replace(/\/[0-9]+(?=\/|$)/g, "/:number").slice(0, 200);
+  if (pathname === "/api/trusted-discovery" || pathname.startsWith("/api/trusted-discovery/"))
+    return ["/api/trusted-discovery/review", "/api/trusted-discovery/pre-consent"].includes(pathname)
+      ? pathname
+      : "/api/trusted-discovery/:operation";
+  return pathname
+    .replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, ":id")
+    .replace(/\/[0-9]+(?=\/|$)/g, "/:number")
+    .slice(0, 200);
 }
 
 export function normalizeSavedConfiguration(parsed: ReturnType<typeof savedConfigurationSchema.parse>) {
@@ -275,13 +418,33 @@ export const mutableSettingDefaults = {
   workerCrashLoopWindowMs: 300_000
 } as const;
 
-export function mutableSettings(context: ApiContext): Record<string, { value: unknown; defaultValue: unknown; rowVersion: number; source: "database" | "default"; updatedAt?: string }> {
-  const rows = context.database.db.prepare("SELECT key, value_json, row_version, updated_at FROM dashboard_settings").all() as Array<{ key: string; value_json: string; row_version: number; updated_at: string }>;
+export function mutableSettings(
+  context: ApiContext
+): Record<
+  string,
+  { value: unknown; defaultValue: unknown; rowVersion: number; source: "database" | "default"; updatedAt?: string }
+> {
+  const rows = context.database.db
+    .prepare("SELECT key, value_json, row_version, updated_at FROM dashboard_settings")
+    .all() as Array<{ key: string; value_json: string; row_version: number; updated_at: string }>;
   const stored = new Map(rows.map((row) => [row.key, row]));
-  return Object.fromEntries(Object.entries(mutableSettingDefaults).map(([key, defaultValue]) => {
-    const row = stored.get(key);
-    return [key, row ? { value: JSON.parse(row.value_json), defaultValue, rowVersion: row.row_version, source: "database", updatedAt: row.updated_at } : { value: defaultValue, defaultValue, rowVersion: 1, source: "default" }];
-  }));
+  return Object.fromEntries(
+    Object.entries(mutableSettingDefaults).map(([key, defaultValue]) => {
+      const row = stored.get(key);
+      return [
+        key,
+        row
+          ? {
+              value: JSON.parse(row.value_json),
+              defaultValue,
+              rowVersion: row.row_version,
+              source: "database",
+              updatedAt: row.updated_at
+            }
+          : { value: defaultValue, defaultValue, rowVersion: 1, source: "default" }
+      ];
+    })
+  );
 }
 
 export function settingValue(context: ApiContext, key: keyof typeof mutableSettingDefaults, fallback: number): number {
@@ -292,30 +455,71 @@ export function settingValue(context: ApiContext, key: keyof typeof mutableSetti
 export function environmentSettings(context: ApiContext): Record<string, unknown> {
   return {
     serverMode: { classification: "restart-required", source: "environment", configured: context.mode === "server" },
-    publicOrigin: { classification: "restart-required", source: "environment", configured: Boolean(process.env.ROUTECAIRN_PUBLIC_ORIGIN) },
-    trustProxy: { classification: "restart-required", source: "environment", configured: process.env.ROUTECAIRN_TRUST_PROXY === "true" },
-    masterKey: { classification: "offline-sensitive", source: "environment", configured: context.vault.status().enabled },
-    masterKeyVersion: { classification: "offline-sensitive", source: "environment", value: context.vault.status().keyVersion ?? "not configured" },
-    distributedMutationCoordinator: { classification: "restart-required", source: "environment", configured: Boolean(context.mutationCoordinator) }
+    publicOrigin: {
+      classification: "restart-required",
+      source: "environment",
+      configured: Boolean(process.env.ROUTECAIRN_PUBLIC_ORIGIN)
+    },
+    trustProxy: {
+      classification: "restart-required",
+      source: "environment",
+      configured: process.env.ROUTECAIRN_TRUST_PROXY === "true"
+    },
+    masterKey: {
+      classification: "offline-sensitive",
+      source: "environment",
+      configured: context.vault.status().enabled
+    },
+    masterKeyVersion: {
+      classification: "offline-sensitive",
+      source: "environment",
+      value: context.vault.status().keyVersion ?? "not configured"
+    },
+    distributedMutationCoordinator: {
+      classification: "restart-required",
+      source: "environment",
+      configured: Boolean(context.mutationCoordinator)
+    }
   };
 }
 
-export function updateSettings(context: ApiContext, values: Record<string, unknown>, expectedVersions: Record<string, number>, actor?: string): void {
+export function updateSettings(
+  context: ApiContext,
+  values: Record<string, unknown>,
+  expectedVersions: Record<string, number>,
+  actor?: string
+): void {
   context.database.transaction(() => {
     for (const [key, value] of Object.entries(values)) {
       if (!(key in mutableSettingDefaults)) throw new Error(`Unknown mutable setting: ${key}`);
-      const current = context.database.db.prepare("SELECT row_version FROM dashboard_settings WHERE key = ?").get(key) as { row_version: number } | undefined;
+      const current = context.database.db
+        .prepare("SELECT row_version FROM dashboard_settings WHERE key = ?")
+        .get(key) as { row_version: number } | undefined;
       const expected = expectedVersions[key];
-      if (current && expected !== undefined && current.row_version !== expected) throw new Error(`SETTINGS_CONFLICT: ${key} changed concurrently.`);
-      if (current) context.database.db.prepare("UPDATE dashboard_settings SET value_json = ?, row_version = row_version + 1, updated_by = ?, updated_at = ? WHERE key = ?").run(JSON.stringify(value), actor ?? null, nowIso(), key);
-      else context.database.db.prepare("INSERT INTO dashboard_settings (key, value_json, row_version, updated_by, updated_at) VALUES (?, ?, 1, ?, ?)").run(key, JSON.stringify(value), actor ?? null, nowIso());
+      if (current && expected !== undefined && current.row_version !== expected)
+        throw new Error(`SETTINGS_CONFLICT: ${key} changed concurrently.`);
+      if (current)
+        context.database.db
+          .prepare(
+            "UPDATE dashboard_settings SET value_json = ?, row_version = row_version + 1, updated_by = ?, updated_at = ? WHERE key = ?"
+          )
+          .run(JSON.stringify(value), actor ?? null, nowIso(), key);
+      else
+        context.database.db
+          .prepare(
+            "INSERT INTO dashboard_settings (key, value_json, row_version, updated_by, updated_at) VALUES (?, ?, 1, ?, ?)"
+          )
+          .run(key, JSON.stringify(value), actor ?? null, nowIso());
     }
   });
 }
 
 export function resetSettings(context: ApiContext, keys: string[]): void {
   if (keys.length === 0) context.database.db.prepare("DELETE FROM dashboard_settings").run();
-  else context.database.transaction(() => { for (const key of keys) context.database.db.prepare("DELETE FROM dashboard_settings WHERE key = ?").run(key); });
+  else
+    context.database.transaction(() => {
+      for (const key of keys) context.database.db.prepare("DELETE FROM dashboard_settings WHERE key = ?").run(key);
+    });
 }
 
 export async function readJson(request: IncomingMessage, limit = maxJsonBodyBytes): Promise<unknown> {
@@ -346,12 +550,38 @@ export function redirect(response: ServerResponse, location: string): void {
 
 export function sendError(response: ServerResponse, error: unknown): void {
   const message = error instanceof Error ? error.message : "Dashboard request failed.";
-  const conflictCode = /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|WORKER_CUSTODY_REVIEW_REQUIRED|CLEANUP_ATTEMPT_REVIEW_REQUIRED|MUTATION_RECOVERY_UNAVAILABLE|MUTATION_RECOVERY_STATE_CONFLICT|RECOVERY_BUNDLE_CHANGED|RECOVERY_CREDENTIAL_UNAVAILABLE|RECOVERY_APPROVAL_MISMATCH|RECOVERY_BINDING_MISMATCH|RECOVERY_ORIGIN_MISMATCH|RECOVERY_AUTHORITY_ALREADY_CONSUMED|RECOVERY_PRIOR_ATTEMPT_UNRESOLVED|RECOVERY_REQUEST_IDENTITY_CHANGED|RECOVERY_CREDENTIAL_CHANGED|RECOVERY_TARGET_CHANGED|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(message)?.[1];
-  const statusCode = error instanceof DistributedMutationCoordinatorError ? error.statusCode : conflictCode ? 409 : error instanceof HttpError || error instanceof FindingCommandError ? error.statusCode : error instanceof PermissionError || error instanceof OrganizationPermissionError ? 403 : error instanceof SessionError || error instanceof RemoteWorkerAuthError || error instanceof WorkloadIdentityError || error instanceof CloudSyncAuthError ? 401 : error instanceof ZodError || error instanceof AppError ? 400 : 500;
-  if (error instanceof DistributedMutationCoordinatorError) { sendJson(response, statusCode, { error: "Mutation coordination request rejected.", code: error.code }); return; }
+  const conflictCode =
+    /^(PROJECT_CONFLICT|TARGET_CONFLICT|CONFIGURATION_CONFLICT|SETTINGS_CONFLICT|FINAL_OWNER_REQUIRED|CREDENTIAL_IN_USE|CREDENTIAL_DEPENDENCY_IMPACT_CHANGED|CREDENTIAL_CHANGED_AFTER_QUEUE|CREDENTIAL_READINESS_BLOCKED|CREDENTIAL_READINESS_BLOCKED_AT_EXECUTION|WORKER_CUSTODY_REVIEW_REQUIRED|CLEANUP_ATTEMPT_REVIEW_REQUIRED|MUTATION_RECOVERY_UNAVAILABLE|MUTATION_RECOVERY_STATE_CONFLICT|RECOVERY_BUNDLE_CHANGED|RECOVERY_CREDENTIAL_UNAVAILABLE|RECOVERY_APPROVAL_MISMATCH|RECOVERY_BINDING_MISMATCH|RECOVERY_ORIGIN_MISMATCH|RECOVERY_AUTHORITY_ALREADY_CONSUMED|RECOVERY_PRIOR_ATTEMPT_UNRESOLVED|RECOVERY_REQUEST_IDENTITY_CHANGED|RECOVERY_CREDENTIAL_CHANGED|RECOVERY_TARGET_CHANGED|RECOVERY_ALREADY_RUNNING|RECOVERY_CHECKPOINT_CHANGED|RECOVERY_NOT_REQUIRED|RECOVERY_TARGET_MISMATCH|RECOVERY_SERVICE_STOPPING):?/.exec(
+      message
+    )?.[1];
+  const statusCode =
+    error instanceof DistributedMutationCoordinatorError
+      ? error.statusCode
+      : conflictCode
+        ? 409
+        : error instanceof HttpError || error instanceof FindingCommandError
+          ? error.statusCode
+          : error instanceof PermissionError || error instanceof OrganizationPermissionError
+            ? 403
+            : error instanceof SessionError ||
+                error instanceof RemoteWorkerAuthError ||
+                error instanceof WorkloadIdentityError ||
+                error instanceof CloudSyncAuthError
+              ? 401
+              : error instanceof ZodError || error instanceof AppError
+                ? 400
+                : 500;
+  if (error instanceof DistributedMutationCoordinatorError) {
+    sendJson(response, statusCode, { error: "Mutation coordination request rejected.", code: error.code });
+    return;
+  }
   if (error instanceof ZodError) {
     const workflowError = error.issues.some((issue) => issue.path.map(String).includes("workflows"));
-    sendJson(response, statusCode, { error: workflowError ? "Workflow validation failed." : "Request validation failed.", code: workflowError ? "WORKFLOW_CASE_INVALID" : "REQUEST_VALIDATION_FAILED", diagnostics: error.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message })) });
+    sendJson(response, statusCode, {
+      error: workflowError ? "Workflow validation failed." : "Request validation failed.",
+      code: workflowError ? "WORKFLOW_CASE_INVALID" : "REQUEST_VALIDATION_FAILED",
+      diagnostics: error.issues.map((issue) => ({ path: issue.path.map(String), message: issue.message }))
+    });
     return;
   }
   if (error instanceof AppError) {
@@ -378,6 +608,11 @@ export function workflowErrorCategory(code: string): string {
   if (/DUPLICATE|IDENTICAL_OBJECT/.test(code)) return "WORKFLOW_DUPLICATE_OBJECT";
   if (/COMPLETENESS/.test(code)) return "WORKFLOW_COMPLETENESS_INVALID";
   if (/ORIGIN|SIGNED_URL/.test(code)) return "WORKFLOW_FILE_ORIGIN_INVALID";
-  if (/(?:OBJECT_PAIR|FIELD_EXPOSURE|AUTHORIZATION_MATRIX|EQUIVALENT_ROUTE|COLLECTION_AUTHORIZATION|BULK_AUTHORIZATION|FILE_AUTHORIZATION)/.test(code)) return "WORKFLOW_CASE_INVALID";
+  if (
+    /(?:OBJECT_PAIR|FIELD_EXPOSURE|AUTHORIZATION_MATRIX|EQUIVALENT_ROUTE|COLLECTION_AUTHORIZATION|BULK_AUTHORIZATION|FILE_AUTHORIZATION)/.test(
+      code
+    )
+  )
+    return "WORKFLOW_CASE_INVALID";
   return code.startsWith("SCAN_PLAN") || code.includes("MODULE") ? "WORKFLOW_TYPE_INVALID" : code;
 }

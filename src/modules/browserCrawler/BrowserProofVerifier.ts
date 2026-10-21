@@ -1,14 +1,37 @@
+import { bindBrowserLanguage } from "./BrowserContinuationHeaders.js";
 import { chromium } from "playwright";
 import type { AuthProfile } from "../../core/auth/AuthProfile.js";
 import type { RequestSafetyBroker } from "../../core/http/RequestSafetyBroker.js";
-import type { ControlledMutationBrowserObserver, ControlledMutationContract } from "../../core/offensive/ControlledMutationTypes.js";
+import type {
+  ControlledMutationBrowserObserver,
+  ControlledMutationContract
+} from "../../core/offensive/ControlledMutationTypes.js";
 import type { BrowserPolicy } from "./BrowserPolicy.js";
 import { BrowserNetworkBoundary } from "./BrowserNetworkBoundary.js";
 import { BrowserPolicyEngine } from "./BrowserPolicy.js";
-import { applyBrowserCredentials, browserExtraHeaders, executeLogin, isExplicitLoginWriteAllowed, isWriteMethod, type BrowserLoginWriteGate } from "./BrowserLearning.js";
+import {
+  applyBrowserCredentials,
+  browserExtraHeaders,
+  executeLogin,
+  isExplicitLoginWriteAllowed,
+  isWriteMethod,
+  type BrowserLoginWriteGate
+} from "./BrowserLearning.js";
 
 export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
-  public constructor(private readonly options: { authProfile: AuthProfile; policy: BrowserPolicy; requestBroker: RequestSafetyBroker; cleanupRequestBroker?: RequestSafetyBroker; abortSignal?: AbortSignal; cleanupSignal?: () => AbortSignal; targetUrl: string; timeoutMs: number; userAgent: string }) {}
+  public constructor(
+    private readonly options: {
+      authProfile: AuthProfile;
+      policy: BrowserPolicy;
+      requestBroker: RequestSafetyBroker;
+      cleanupRequestBroker?: RequestSafetyBroker;
+      abortSignal?: AbortSignal;
+      cleanupSignal?: () => AbortSignal;
+      targetUrl: string;
+      timeoutMs: number;
+      userAgent: string;
+    }
+  ) {}
 
   public verifyProtectedAction(contract: ControlledMutationContract) {
     return this.verify(contract, "protectedAction");
@@ -18,30 +41,74 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
     return this.verify(contract, "rollback");
   }
 
-  private async verify(contract: ControlledMutationContract, phase: "protectedAction" | "rollback", restartAttempt = 0): Promise<{ configured: boolean; matched: boolean; notes: string[] }> {
+  private async verify(
+    contract: ControlledMutationContract,
+    phase: "protectedAction" | "rollback",
+    restartAttempt = 0
+  ): Promise<{ configured: boolean; matched: boolean; notes: string[] }> {
     const proof = this.options.authProfile.browserBootstrap?.proofCases.find((item) => item.caseId === contract.caseId);
     if (!proof) return { configured: false, matched: true, notes: [] };
     const assertion = proof[phase];
-    if (new URL(assertion.url).origin !== contract.targetOrigin || contract.targetOrigin !== new URL(this.options.targetUrl).origin) {
-      return { configured: true, matched: false, notes: [`Browser ${phase} proof was blocked because its origin did not match the approved mutation contract.`] };
+    if (
+      new URL(assertion.url).origin !== contract.targetOrigin ||
+      contract.targetOrigin !== new URL(this.options.targetUrl).origin
+    ) {
+      return {
+        configured: true,
+        matched: false,
+        notes: [`Browser ${phase} proof was blocked because its origin did not match the approved mutation contract.`]
+      };
     }
-    const requestBroker = phase === "rollback" ? this.options.cleanupRequestBroker ?? this.options.requestBroker : this.options.requestBroker;
+    const requestBroker =
+      phase === "rollback"
+        ? (this.options.cleanupRequestBroker ?? this.options.requestBroker)
+        : this.options.requestBroker;
     const signal = phase === "rollback" ? this.options.cleanupSignal?.() : this.options.abortSignal;
-    if (signal?.aborted) return { configured: true, matched: false, notes: ["Browser proof deadline or cancellation reached."] };
-    const boundary = new BrowserNetworkBoundary({ targetUrl: this.options.targetUrl, policy: this.options.policy, timeoutMs: this.options.timeoutMs, requestBroker });
+    if (signal?.aborted)
+      return { configured: true, matched: false, notes: ["Browser proof deadline or cancellation reached."] };
+    const boundary = new BrowserNetworkBoundary({
+      targetUrl: this.options.targetUrl,
+      policy: this.options.policy,
+      timeoutMs: this.options.timeoutMs,
+      requestBroker
+    });
     await boundary.start();
-    const browser = await chromium.launch({ headless: true, timeout: this.options.timeoutMs, proxy: boundary.playwrightProxy(), args: ["--proxy-bypass-list=<-loopback>", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1", "--disable-quic", "--disable-background-networking"] }).catch(async (error: unknown) => { await boundary.close(); throw error; });
-    const closeOnAbort = () => { void browser.close().catch(() => undefined); };
+    const browser = await chromium
+      .launch({
+        headless: true,
+        timeout: this.options.timeoutMs,
+        proxy: boundary.playwrightProxy(),
+        args: [
+          "--proxy-bypass-list=<-loopback>",
+          "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+          "--disable-quic",
+          "--disable-background-networking"
+        ]
+      })
+      .catch(async (error: unknown) => {
+        await boundary.close();
+        throw error;
+      });
+    const closeOnAbort = () => {
+      void browser.close().catch(() => undefined);
+    };
     signal?.addEventListener("abort", closeOnAbort, { once: true });
     if (signal?.aborted) closeOnAbort();
-    const gate: BrowserLoginWriteGate = { active: false, allowedPaths: new Set(this.options.authProfile.browserBootstrap?.login?.allowedWritePaths ?? []), allowed: 0, blocked: 0 };
+    const gate: BrowserLoginWriteGate = {
+      active: false,
+      allowedPaths: new Set(this.options.authProfile.browserBootstrap?.login?.allowedWritePaths ?? []),
+      allowed: 0,
+      blocked: 0
+    };
     try {
       const context = await browser.newContext({
         userAgent: this.options.userAgent,
         ignoreHTTPSErrors: true,
         acceptDownloads: false,
         serviceWorkers: "block",
-        ...(Object.keys(browserExtraHeaders(this.options.authProfile)).length > 0 ? { extraHTTPHeaders: browserExtraHeaders(this.options.authProfile) } : {})
+        ...(Object.keys(browserExtraHeaders(this.options.authProfile)).length > 0
+          ? { extraHTTPHeaders: browserExtraHeaders(this.options.authProfile) }
+          : {})
       });
       await applyBrowserCredentials(context, this.options.authProfile, this.options.targetUrl);
       const policy = new BrowserPolicyEngine(this.options.targetUrl, this.options.policy);
@@ -52,25 +119,67 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
         const explicitLogin = write && isExplicitLoginWriteAllowed(request.url(), gate);
         if (write && !explicitLogin) {
           gate.blocked += 1;
-          requestBroker.recordBrowserPolicyBlock({ url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl }, "browser-proof-is-read-only");
+          requestBroker.recordBrowserPolicyBlock(
+            { url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl },
+            "browser-proof-is-read-only"
+          );
           await route.abort("blockedbyclient").catch(() => undefined);
           return;
         }
-        const policyDecision = await policy.evaluateRequest({ url: request.url(), pageUrl, resourceType: request.resourceType(), requestsSeenForPage: 1 });
+        const policyDecision = await policy.evaluateRequest({
+          url: request.url(),
+          pageUrl,
+          resourceType: request.resourceType(),
+          requestsSeenForPage: 1
+        });
         if (!policyDecision.allowed) {
-          requestBroker.recordBrowserPolicyBlock({ url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl }, policyDecision.reason);
+          requestBroker.recordBrowserPolicyBlock(
+            { url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl },
+            policyDecision.reason
+          );
           await route.abort("blockedbyclient").catch(() => undefined);
           return;
         }
-        const brokerInput = { url: policyDecision.normalizedUrl, method: request.method(), resourceType: request.resourceType(), pageUrl, isRedirect: request.redirectedFrom() !== null };
+        const brokerInput = {
+          url: policyDecision.normalizedUrl,
+          method: request.method(),
+          resourceType: request.resourceType(),
+          pageUrl,
+          isRedirect: request.redirectedFrom() !== null
+        };
         const capturedHeaders = await request.allHeaders();
-        if (!capturedHeaders.cookie) { const cookies = await context.cookies(request.url()); if (cookies.length) capturedHeaders.cookie = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "); }
-        const headers = proofContinuationHeaders(capturedHeaders, request.url(), this.options.authProfile, contract.targetOrigin);
-        const source = { route, session: boundary, headers, onInitiated: () => { if (explicitLogin) gate.allowed += 1; } };
-        const decision = explicitLogin ? requestBroker.evaluateBrowserLoginRequest(brokerInput, source) : requestBroker.evaluateBrowserRequest(brokerInput, source);
-        if (!decision.allowed) { await route.abort("blockedbyclient").catch(() => undefined); return; }
-        try { boundary.bindDecision(decision, route); }
-        catch { await route.abort("blockedbyclient").catch(() => undefined); return; }
+        if (!capturedHeaders.cookie) {
+          const cookies = await context.cookies(request.url());
+          if (cookies.length)
+            capturedHeaders.cookie = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+        }
+        const headers = proofContinuationHeaders(
+          capturedHeaders,
+          request.url(),
+          this.options.authProfile,
+          contract.targetOrigin
+        );
+        const source = {
+          route,
+          session: boundary,
+          headers,
+          onInitiated: () => {
+            if (explicitLogin) gate.allowed += 1;
+          }
+        };
+        const decision = explicitLogin
+          ? requestBroker.evaluateBrowserLoginRequest(brokerInput, source)
+          : requestBroker.evaluateBrowserRequest(brokerInput, source);
+        if (!decision.allowed) {
+          await route.abort("blockedbyclient").catch(() => undefined);
+          return;
+        }
+        try {
+          boundary.bindDecision(decision, route);
+        } catch {
+          await route.abort("blockedbyclient").catch(() => undefined);
+          return;
+        }
         await requestBroker.dispatchBrowserRoute(decision, route, boundary);
       });
       const page = await context.newPage();
@@ -80,25 +189,54 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
       // Network idleness is unrelated to application readiness (polling and blocked
       // learned writes can keep it busy indefinitely). Bind proof to an explicit
       // authenticated DOM readiness marker and a successful document response.
-      const document = await page.goto(assertion.url, { waitUntil: "domcontentloaded", timeout: this.options.timeoutMs });
+      const document = await page.goto(assertion.url, {
+        waitUntil: "domcontentloaded",
+        timeout: this.options.timeoutMs
+      });
       const principalSelector = this.options.authProfile.browserBootstrap?.identitySelectors?.principal;
       const readiness = assertion.readySelector ?? principalSelector;
-      if (!document?.ok() || !readiness || !principalSelector || !this.options.authProfile.principalId) return { configured: true, matched: false, notes: [`Browser ${phase} proof requires a successful document, readiness marker and verified principal selector.`] };
+      if (!document?.ok() || !readiness || !principalSelector || !this.options.authProfile.principalId)
+        return {
+          configured: true,
+          matched: false,
+          notes: [
+            `Browser ${phase} proof requires a successful document, readiness marker and verified principal selector.`
+          ]
+        };
       await page.locator(readiness).first().waitFor({ state: "visible" });
-      if ((await page.locator(principalSelector).first().textContent())?.trim() !== this.options.authProfile.principalId) return { configured: true, matched: false, notes: [`Browser ${phase} proof principal did not match the approved actor.`] };
+      if (
+        (await page.locator(principalSelector).first().textContent())?.trim() !== this.options.authProfile.principalId
+      )
+        return {
+          configured: true,
+          matched: false,
+          notes: [`Browser ${phase} proof principal did not match the approved actor.`]
+        };
       const locator = page.locator(assertion.selector).first();
       await locator.waitFor({ state: assertion.expected === "visible" ? "visible" : "hidden" });
       const count = await locator.count();
-      const visible = count > 0 && await locator.isVisible();
+      const visible = count > 0 && (await locator.isVisible());
       const matched = assertion.expected === "visible" ? visible : count === 0 || !visible;
       await context.close();
-      return { configured: true, matched, notes: [`Browser ${phase} proof ${matched ? "matched" : "did not match"} the approved selector-state assertion in a fresh isolated session.`] };
+      return {
+        configured: true,
+        matched,
+        notes: [
+          `Browser ${phase} proof ${matched ? "matched" : "did not match"} the approved selector-state assertion in a fresh isolated session.`
+        ]
+      };
     } catch (error) {
       if (restartAttempt === 0 && !signal?.aborted) {
         await browser.close().catch(() => undefined);
         await boundary.close();
         const retried = await this.verify(contract, phase, 1);
-        return { ...retried, notes: [`Browser ${phase} proof restarted one isolated Chromium session after an infrastructure failure.`, ...retried.notes] };
+        return {
+          ...retried,
+          notes: [
+            `Browser ${phase} proof restarted one isolated Chromium session after an infrastructure failure.`,
+            ...retried.notes
+          ]
+        };
       }
       return { configured: true, matched: false, notes: [`Browser ${phase} proof failed safely: ${safeError(error)}`] };
     } finally {
@@ -112,49 +250,99 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
 /** Executes returned markup in an offline, credential-free browser context.
  * This stays in the hardened browser layer so active validation cannot create
  * an unsupervised Playwright session. */
-export async function verifyOfflineXssExecution(html: string, nonce: string, timeoutMs: number): Promise<"EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
+export async function verifyOfflineXssExecution(
+  html: string,
+  nonce: string,
+  timeoutMs: number
+): Promise<"EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   try {
     browser = await chromium.launch({ headless: true, timeout: Math.min(timeoutMs, 15_000) });
-    const context = await browser.newContext({ offline: true, serviceWorkers: "block", javaScriptEnabled: true, acceptDownloads: false });
+    const context = await browser.newContext({
+      offline: true,
+      serviceWorkers: "block",
+      javaScriptEnabled: true,
+      acceptDownloads: false
+    });
     await context.route("**/*", (route) => route.abort("blockedbyclient"));
     const page = await context.newPage();
     await page.setContent(html, { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 10_000) });
-    const observed = await page.evaluate(() => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof);
+    const observed = await page.evaluate(
+      () => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof
+    );
     await context.close();
     return observed === nonce ? "EXECUTED" : "NOT_EXECUTED";
-  } catch { return "UNAVAILABLE"; }
-  finally { await browser?.close().catch(() => undefined); }
+  } catch {
+    return "UNAVAILABLE";
+  } finally {
+    await browser?.close().catch(() => undefined);
+  }
 }
 
 /** Replays a response at its exact generated URL in an isolated browser. The
  * document is fulfilled from memory and every other request is aborted, so a
  * DOM finding requires both a nonce-bearing source URL and observed execution
  * at a browser sink without contacting the target again. */
-export async function verifyOfflineDomXssExecution(html: string, nonce: string, sourceUrl: string, timeoutMs: number): Promise<"SOURCE_TO_SINK_EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
+export async function verifyOfflineDomXssExecution(
+  html: string,
+  nonce: string,
+  sourceUrl: string,
+  timeoutMs: number
+): Promise<"SOURCE_TO_SINK_EXECUTED" | "NOT_EXECUTED" | "UNAVAILABLE"> {
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
   try {
-    const parsed = new URL(sourceUrl); if (!parsed.toString().includes(nonce)) return "NOT_EXECUTED";
+    const parsed = new URL(sourceUrl);
+    if (!parsed.toString().includes(nonce)) return "NOT_EXECUTED";
     browser = await chromium.launch({ headless: true, timeout: Math.min(timeoutMs, 15_000) });
-    const context = await browser.newContext({ serviceWorkers: "block", javaScriptEnabled: true, acceptDownloads: false });
-    await context.route("**/*", async (route) => route.request().isNavigationRequest() && route.request().url() === parsed.toString()
-      ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html })
-      : route.abort("blockedbyclient"));
+    const context = await browser.newContext({
+      serviceWorkers: "block",
+      javaScriptEnabled: true,
+      acceptDownloads: false
+    });
+    await context.route("**/*", async (route) =>
+      route.request().isNavigationRequest() && route.request().url() === parsed.toString()
+        ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html })
+        : route.abort("blockedbyclient")
+    );
     const page = await context.newPage();
     await page.goto(parsed.toString(), { waitUntil: "domcontentloaded", timeout: Math.min(timeoutMs, 10_000) });
-    const observed = await page.evaluate(() => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof);
+    const observed = await page.evaluate(
+      () => (globalThis as typeof globalThis & { __routeCairnActiveProof?: string }).__routeCairnActiveProof
+    );
     await context.close();
     return observed === nonce ? "SOURCE_TO_SINK_EXECUTED" : "NOT_EXECUTED";
-  } catch { return "UNAVAILABLE"; }
-  finally { await browser?.close().catch(() => undefined); }
+  } catch {
+    return "UNAVAILABLE";
+  } finally {
+    await browser?.close().catch(() => undefined);
+  }
 }
 
-function assertOrigin(url: string, origin: string): void { if (new URL(url).origin !== origin) throw new Error("Browser proof bootstrap left the approved origin."); }
-function safePageUrl(request: import("playwright").Request, fallback: string): string { try { return request.frame().url() || fallback; } catch { return fallback; } }
-function safeError(_error: unknown): string { return "BROWSER_PROOF_EXECUTION_FAILED"; }
-function proofContinuationHeaders(headers: Record<string, string>, url: string, profile: AuthProfile, targetOrigin: string): Record<string, string> {
-  const copy = { ...headers };
-  for (const name of Object.keys(copy)) if (["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())) delete copy[name];
+function assertOrigin(url: string, origin: string): void {
+  if (new URL(url).origin !== origin) throw new Error("Browser proof bootstrap left the approved origin.");
+}
+function safePageUrl(request: import("playwright").Request, fallback: string): string {
+  try {
+    return request.frame().url() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+function safeError(_error: unknown): string {
+  return "BROWSER_PROOF_EXECUTION_FAILED";
+}
+function proofContinuationHeaders(
+  headers: Record<string, string>,
+  url: string,
+  profile: AuthProfile,
+  targetOrigin: string
+): Record<string, string> {
+  const copy = bindBrowserLanguage({ ...headers });
+  for (const name of Object.keys(copy))
+    if (
+      ["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())
+    )
+      delete copy[name];
   if (new URL(url).origin === targetOrigin) return copy;
   const profileNames = new Set(Object.keys(profile.headers).map((name) => name.toLowerCase()));
   for (const name of Object.keys(copy)) if (profileNames.has(name.toLowerCase())) delete copy[name];

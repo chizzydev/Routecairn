@@ -1,3 +1,4 @@
+import { registryModuleDecision } from "../auth/AssessmentCapabilities.js";
 import type { ScanContext } from "../engine/ScanContext.js";
 import { ScanCancelledError, throwIfScanAborted } from "../engine/ScanEvents.js";
 import type { ResolvedScanPlan } from "../planning/ScanPlan.js";
@@ -14,8 +15,32 @@ export class ModuleRunner {
 
     for (const [index, modulePlan] of plan.modules.entries()) {
       throwIfScanAborted(context.options.abortSignal);
-      if (plan.preHandover && modulePlan.id !== "assisted-review" && results.flatMap((result) => collectAssistedCases(result, context.state.getFindings())).some((item) => item.cleanupFailed)) {
-        await context.eventSink.emit({ type: "OBSERVATION_RECORDED", moduleId: modulePlan.id, message: "Pre-handover sequence stopped: prior cleanup is unresolved." });
+      if (
+        plan.preHandover &&
+        modulePlan.id !== "assisted-review" &&
+        results
+          .flatMap((result) => collectAssistedCases(result, context.state.getFindings()))
+          .some((item) => item.cleanupFailed)
+      ) {
+        await context.eventSink.emit({
+          type: "OBSERVATION_RECORDED",
+          moduleId: modulePlan.id,
+          message: "Pre-handover sequence stopped: prior cleanup is unresolved."
+        });
+        continue;
+      }
+      if (plan.actorRegistry && registryModuleDecision(modulePlan.id).status === "BLOCKED") {
+        context.state.recordModuleResult({
+          pluginName: modulePlan.id,
+          notes: [
+            "BLOCKED: specialized version-1 workflow requires its original reviewed actor/identity/recovery contract; use flexible native API workflows where eligible."
+          ]
+        });
+        await context.eventSink.emit({
+          type: "MODULE_BLOCKED",
+          moduleId: modulePlan.id,
+          message: "Explicit legacy workflow adapter required; unrelated assessment coverage continues."
+        });
         continue;
       }
       const registration = this.registry.get(modulePlan.id);
@@ -36,7 +61,14 @@ export class ModuleRunner {
         try {
           result = acceptAssistedWorkflowFindings(rawResult);
         } catch (error) {
-          context.state.recordModuleResult({ ...rawResult, findings: [], notes: [...(rawResult.notes ?? []), "FINDING_ACCEPTANCE_REJECTED: case evidence and cleanup results retained."] });
+          context.state.recordModuleResult({
+            ...rawResult,
+            findings: [],
+            notes: [
+              ...(rawResult.notes ?? []),
+              "FINDING_ACCEPTANCE_REJECTED: case evidence and cleanup results retained."
+            ]
+          });
           throw error;
         }
         context.state.recordModuleResult(result);
@@ -55,11 +87,19 @@ export class ModuleRunner {
         });
       } catch (error) {
         if (error instanceof ScanCancelledError || context.options.abortSignal?.aborted) {
-          await context.eventSink.emit({ type: "MODULE_CANCELLED", moduleId: modulePlan.id, message: `Module ${modulePlan.id} cancelled.` });
+          await context.eventSink.emit({
+            type: "MODULE_CANCELLED",
+            moduleId: modulePlan.id,
+            message: `Module ${modulePlan.id} cancelled.`
+          });
           throw new ScanCancelledError();
         }
 
-        await context.eventSink.emit({ type: "MODULE_FAILED", moduleId: modulePlan.id, message: safeErrorMessage(error) });
+        await context.eventSink.emit({
+          type: "MODULE_FAILED",
+          moduleId: modulePlan.id,
+          message: safeErrorMessage(error)
+        });
         throw error;
       }
     }

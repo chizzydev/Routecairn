@@ -1,3 +1,9 @@
+import {
+  actorRegistryDigest,
+  type ActorRegistry,
+  type ActorProfiles,
+  validateActorRegistry
+} from "../../core/auth/ActorRegistry.js";
 import { targetAuthorizationSchema, type TargetAuthorization } from "../../core/authorization/TargetAuthorization.js";
 import type { ProductionCampaign } from "../../core/authorization/ProductionCampaign.js";
 import { collectionContractSchema } from "./CollectionOwnership.js";
@@ -25,7 +31,7 @@ import type {
 const maxFileBytes = 512 * 1024;
 const identifier = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/);
 const scalar = z.union([z.string().max(512), z.number().finite(), z.boolean(), z.null()]);
-const actorSlot = z.enum(["anonymous", "primary", "account_a", "account_b"]);
+const actorSlot = z.enum(["anonymous", "primary", "account_a", "account_b", "registry"]);
 const method = z.enum(["GET", "HEAD", "OPTIONS", "POST"]);
 const statusList = z.array(z.number().int().min(100).max(599)).min(1).max(30);
 const defaultAllowed = [200, 201, 202, 204] as const;
@@ -231,7 +237,7 @@ export const apiGraphqlInputSchema = z
     maxGraphqlDocumentBytes: z.number().int().min(256).max(65536).default(16384),
     maxGraphqlAliases: z.number().int().min(2).max(10).default(5),
     maxGraphqlBatchOperations: z.number().int().min(2).max(5).default(3),
-    actors: z.array(actorSchema).min(1).max(4),
+    actors: z.array(actorSchema).min(1).max(9),
     routes: z.array(routeSchema).min(1).max(100),
     checks: z.array(checkSchema).min(1).max(100)
   })
@@ -239,6 +245,10 @@ export const apiGraphqlInputSchema = z
 
 export type ApiGraphqlInput = z.infer<typeof apiGraphqlInputSchema>;
 type PlannerContext = {
+  actorRegistry?: ActorRegistry;
+  actorProfiles?: ActorProfiles;
+  actorBindingKey?: string;
+  organizationId?: string;
   targetAuthorization?: TargetAuthorization;
   target: string;
   scope: RouteCairnScope;
@@ -263,6 +273,15 @@ export async function loadApiGraphqlInput(filePath: string): Promise<ApiGraphqlI
 
 export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerContext): ApiGraphqlReviewPlan {
   const parsed = apiGraphqlInputSchema.parse(input);
+  if (!context.actorRegistry && parsed.actors.length > 4) throw Error("LEGACY_API_ACTOR_CAPACITY_EXCEEDED");
+  if (context.actorRegistry)
+    validateActorRegistry(
+      context.actorRegistry,
+      context.actorProfiles ?? {},
+      context.target,
+      context.organizationId ?? "",
+      context.actorBindingKey
+    );
   const origin = new URL(context.target).origin;
   const production = context.targetAuthorization
     ? targetAuthorizationSchema.parse(context.targetAuthorization).productionCampaign
@@ -292,6 +311,34 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
         `Route ${route.id} references unknown inventory actor ${route.inventoryActorId}.`,
         "API_GRAPHQL_UNKNOWN_ACTOR"
       );
+  if (context.actorRegistry) {
+    for (const c of parsed.checks) {
+      const actor = actors.find((a) => a.id === c.actorId);
+      const key = "matrixId" in c ? c.matrixId : c.id;
+      const w = context.actorRegistry.workflows.find((w) => w.id === key);
+      if (
+        !w ||
+        (!w.actorIds.includes(c.actorId) &&
+          !(actor?.authSlot === "anonymous" && w.family === "PUBLIC_OBSERVATION" && w.actorIds.length === 0))
+      )
+        throw Error("API_REGISTRY_WORKFLOW_ACTOR_NOT_REVIEWED");
+      if (w.family === "BROWSER_OBSERVATION") throw Error("API_REGISTRY_BROWSER_WORKFLOW_REQUIRES_BROWSER_TRANSPORT");
+      if (actor?.authSlot !== "anonymous" && actor?.authSlot !== "registry")
+        throw Error("API_REGISTRY_LEGACY_SLOT_MIX");
+      if (
+        "response" in c &&
+        c.response.expectedDecision !== "OBSERVE" &&
+        (!w.ownerPolicySha256 ||
+          !c.requireVerifiedIdentity ||
+          ["PUBLIC_OBSERVATION", "AUTHENTICATED_OBSERVATION", "BROWSER_OBSERVATION"].includes(w.family))
+      )
+        throw Error("API_REGISTRY_STRONGER_EVIDENCE_REQUIRED");
+      if ("response" in c && c.response.tenant && w.family !== "TENANT_COMPARISON")
+        throw Error("API_REGISTRY_TENANT_ASSURANCE_REQUIRED");
+      if (c.kind === "TENANT_ISOLATION" && w.family !== "TENANT_COMPARISON")
+        throw Error("API_REGISTRY_TENANT_ASSURANCE_REQUIRED");
+    }
+  }
   const checks = parsed.checks.map((value) => planCheck(value, routeById, actorIds, parsed));
   for (const c of checks) {
     if ("routeId" in c && new URL(routeById.get(c.routeId)!.url).origin !== origin) {
@@ -351,6 +398,13 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
   }
   validateAuthorizationMatrices(checks);
   for (const check of checks) validateCheckScope(check, routeById, matcher);
+  if (context.actorRegistry)
+    for (const c of checks)
+      c.comparisonFingerprint = securityContractFingerprint("api-graphql-registry-v2", {
+        contractVersion: 2,
+        semanticFingerprint: c.comparisonFingerprint,
+        actorRegistryDigest: actorRegistryDigest(context.actorRegistry)
+      });
   const requestCount =
     routes.filter((value) => value.kind === "SCHEMA" || value.kind === "DOCUMENTATION").length +
     checks.reduce((sum, value) => sum + requestCountFor(value), 0);
@@ -382,6 +436,30 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
 }
 
 function planActor(value: ApiGraphqlInput["actors"][number], context: PlannerContext): ApiGraphqlActorPlan {
+  if (value.authSlot === "registry") {
+    const a = context.actorRegistry?.actors.find((a) => a.id === value.id),
+      p = context.actorProfiles?.[value.id];
+    if (!a || a.authentication.mechanism === "ANONYMOUS" || (a.authentication.availability === "AVAILABLE" && !p))
+      throw Error("API_GRAPHQL_ACTOR_REGISTRY_REQUIRED");
+    if (
+      value.identityModel !== undefined ||
+      value.principalId !== undefined ||
+      value.role !== undefined ||
+      value.tenantId !== undefined
+    )
+      throw Error("REGISTRY_ACTOR_METADATA_MUST_COME_FROM_BOUND_PROFILE");
+    return {
+      id: a.id,
+      safeAlias: a.label,
+      authSlot: "registry",
+      registryId: context.actorRegistry!.registryId,
+      relationship: value.relationship,
+      ...(a.principalFingerprint ? { principalFingerprint: a.principalFingerprint } : {}),
+      ...(a.tenantFingerprint ? { tenantFingerprint: a.tenantFingerprint } : {}),
+      ...(p?.role ? { role: p.role } : {})
+    };
+  }
+
   const profile =
     value.authSlot === "primary"
       ? context.authProfile

@@ -300,6 +300,11 @@ export type IdentityVerificationCategory =
   | "EXECUTION_ERROR";
 
 export interface IdentityVerificationResult {
+  actorRegistryId?: string;
+  actorReference?: string;
+  actorCredentialBinding?: string;
+  actorRegistryFingerprint?: string;
+  identityExecutionId?: string;
   identityModel?: import("../core/auth/IdentityModel.js").IdentityModel;
   tenantVerification?: "REQUIRED" | "NOT_APPLICABLE";
   profileLabel: string;
@@ -327,6 +332,7 @@ export interface IdentityVerificationResult {
 }
 
 export interface IdentityVerificationReport {
+  actors?: Record<string, IdentityVerificationResult>;
   enabled: boolean;
   accountA?: IdentityVerificationResult;
   accountB?: IdentityVerificationResult;
@@ -1342,6 +1348,7 @@ export interface BrowserAuthenticationReport {
 }
 
 export interface BrowserCrawlReport {
+  assessmentWorkflow?: { registryId: string; registryFingerprint: string; workflowId: string; actorId: string };
   startUrl: string;
   renderedLinks: PathCandidate[];
   networkRequests: BrowserNetworkRequest[];
@@ -1510,6 +1517,9 @@ export interface RouteCairnReport {
   roleComparison?: RoleComparisonReport;
   stateAwareApi?: StateAwareApiReport;
   identityVerification?: IdentityVerificationReport;
+  assessmentCapabilities?: ReturnType<
+    typeof import("../core/auth/AssessmentCapabilities.js").runtimeAssessmentCapabilities
+  >;
   objectPairTesting?: ObjectPairTestingReport;
   fieldExposureTesting?: FieldExposureTestingReport;
   authorizationMatrix?: AuthorizationMatrixReport;

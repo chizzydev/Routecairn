@@ -1,3 +1,4 @@
+import { runtimeAssessmentCapabilities } from "../auth/AssessmentCapabilities.js";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { durableAtomicWrite } from "../offensive/MutationJournal.js";
@@ -103,7 +104,22 @@ export class RouteCairnEngine {
         ...safeStateReportForReport(stateReport, options.plan),
         execution: { status, partial: status !== "COMPLETED", reason, checkpointAt: new Date().toISOString(), cleanup }
       } satisfies Omit<RouteCairnReport, "standardsCoverage">;
-      return { ...baseReport, standardsCoverage: buildStandardsCoverage(baseReport) };
+      return {
+        ...baseReport,
+        ...(options.plan.actorRegistry
+          ? {
+              assessmentCapabilities: runtimeAssessmentCapabilities(
+                options.plan.actorRegistry,
+                context.state.getIdentityVerification()?.actors,
+                options.plan.apiGraphql,
+                baseReport.apiGraphql?.checks,
+                context.identityExecutionId,
+                baseReport.browserCrawl
+              )
+            }
+          : {}),
+        standardsCoverage: buildStandardsCoverage(baseReport)
+      };
     };
     const checkpoint = (): Promise<void> => {
       checkpointQueue = checkpointQueue

@@ -1,3 +1,4 @@
+import { actorRegistryDigest } from "./ActorRegistry.js";
 import { createHash } from "node:crypto";
 import { authHeadersForProfile, type AuthProfile } from "./AuthProfile.js";
 import type { ScanContext } from "../engine/ScanContext.js";
@@ -10,7 +11,7 @@ import type {
   IdentityVerificationResult
 } from "../../reports/ReportTypes.js";
 
-type IdentityProfileSlot = "primary" | "accountA" | "accountB";
+type IdentityProfileSlot = string;
 
 interface IdentityVerificationInput {
   slot: IdentityProfileSlot;
@@ -30,6 +31,14 @@ const forbiddenPathSegments = new Set(["__proto__", "prototype", "constructor"])
 
 export async function verifyScanIdentities(context: ScanContext): Promise<IdentityVerificationReport | undefined> {
   const inputs: IdentityVerificationInput[] = [
+    ...(context.options.plan.actorRegistry?.actors
+      .filter(
+        (a) =>
+          a.authentication.mechanism !== "ANONYMOUS" &&
+          a.authentication.availability === "AVAILABLE" &&
+          Date.parse(a.authentication.credentialExpiresAt) > Date.now()
+      )
+      .map((a) => ({ slot: "registry:" + a.id, profile: context.actorProfile(a.id)! })) ?? []),
     ...(context.options.authProfile ? [{ slot: "primary" as const, profile: context.options.authProfile }] : []),
     ...(context.options.authProfileSet
       ? [
@@ -53,6 +62,22 @@ export async function verifyScanIdentities(context: ScanContext): Promise<Identi
   };
 
   for (const entry of entries) {
+    if (entry.slot.startsWith("registry:")) {
+      report.actors ??= {};
+      const actorId = entry.slot.slice(9),
+        registry = context.options.plan.actorRegistry!,
+        actor = registry.actors.find((a) => a.id === actorId)!;
+      report.actors[actorId] = {
+        ...entry.result,
+        actorRegistryId: registry.registryId,
+        actorReference: actorId,
+        actorRegistryFingerprint: actorRegistryDigest(registry),
+        identityExecutionId: context.identityExecutionId,
+        ...(actor.authentication.mechanism !== "ANONYMOUS" && actor.authentication.credentialDigest
+          ? { actorCredentialBinding: actor.authentication.credentialDigest }
+          : {})
+      };
+    }
     if (entry.slot === "primary") report.primary = entry.result;
     if (entry.slot === "accountA") report.accountA = entry.result;
     if (entry.slot === "accountB") report.accountB = entry.result;
@@ -122,6 +147,8 @@ async function verifyIdentity(
   const response = await context.createHttpClient().send({
     url,
     method: config.method,
+    streamLimitBytes: Math.min(config.maxResponseBytes, context.options.plan.limits.maxResponseBytes),
+    disableRetries: true,
     headers: authHeadersForProfile(input.profile)
   });
 
@@ -156,7 +183,11 @@ function classifyIdentityResponse(profile: AuthProfile, response: HttpResponse):
     return { ...base, category: "LOGIN_PAGE_RESPONSE", notes: ["Identity endpoint redirected toward login."] };
   if (!config.successStatusCodes.includes(response.statusCode ?? 0))
     return { ...base, category: "INCONCLUSIVE", notes: ["Identity endpoint returned an unexpected status code."] };
-  if ((response.contentLength ?? 0) > config.maxResponseBytes)
+  if (
+    response.streamTruncated ||
+    (response.bytesRead ?? 0) > config.maxResponseBytes ||
+    (response.contentLength ?? 0) > config.maxResponseBytes
+  )
     return { ...base, category: "RESPONSE_TOO_LARGE", notes: ["Identity response exceeded configured size."] };
   const analysisBody = bodyPreviewForAnalysis(response) ?? "";
   if (/login|sign in|required to log in/i.test(analysisBody))

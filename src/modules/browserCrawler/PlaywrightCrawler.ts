@@ -1,3 +1,4 @@
+import { bindBrowserLanguage } from "./BrowserContinuationHeaders.js";
 import { chromium, type ConsoleMessage, type Page, type Request, type Route, type WebSocketRoute } from "playwright";
 import type {
   BrowserConsoleError,
@@ -856,7 +857,7 @@ async function browserContinuationHeaders(
   profile: AuthProfile | undefined,
   targetOrigin: string
 ): Promise<Record<string, string>> {
-  const headers = { ...(await request.allHeaders()) };
+  const headers = bindBrowserLanguage({ ...(await request.allHeaders()) });
   if (!headers.cookie) {
     try {
       const cookies = await request.frame().page().context().cookies(request.url());

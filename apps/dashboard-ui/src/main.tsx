@@ -1,3 +1,4 @@
+import { AssessmentCapabilitiesPanel } from "./AssessmentCapabilitiesPanel";
 import {AuthorizationWorkbench} from "./AuthorizationWorkbench";
 import { RecoveryCenter } from "./RecoveryCenter";
 import React, { useEffect, useMemo, useState } from "react";
@@ -577,6 +578,7 @@ function ScanDetail(props: { scanId: string; onReviewFindings: () => void; onRec
   if (!detail) return <EmptyState text="Loading scan detail." />;
   const requestBudget = [...detail.events].reverse().find((event: any) => event.eventType === "BUDGET_UPDATED")?.metadata;
   const browserNetwork = [...detail.events].reverse().find((event: any) => event.metadata?.kind === "BROWSER_NETWORK_BOUNDARY")?.metadata;
+  const capabilityCoverage = detail.capabilityCoverage;
   const standardsCoverage = [...detail.events].reverse().find((event: any) => event.metadata?.kind === "STANDARDS_COVERAGE")?.metadata;
   return (
     <section>
@@ -596,6 +598,7 @@ function ScanDetail(props: { scanId: string; onReviewFindings: () => void; onRec
         <p className="muted">All engines, retries, redirects, browser traffic, and dedicated transports share this ledger. Ordinary traffic cannot consume cleanup capacity.</p>
       </>}
       <BrowserNetworkDiagnostics value={browserNetwork} />
+      {capabilityCoverage?.state === "INCONCLUSIVE" ? <p role="alert">Capability coverage is inconclusive: {capabilityCoverage.reason}. Inspect the source report.</p> : capabilityCoverage && <AssessmentCapabilitiesPanel value={capabilityCoverage} />}
       {standardsCoverage && <StandardsCoveragePanel value={standardsCoverage} />}
       {detail.executablePlan && <>
         <h3>Immutable Execution Plan</h3>

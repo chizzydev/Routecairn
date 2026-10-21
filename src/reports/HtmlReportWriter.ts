@@ -35,6 +35,7 @@ interface DashboardFinding {
 }
 
 interface DashboardData {
+  assessmentCapabilities: RouteCairnReport["assessmentCapabilities"];
   target: string;
   program: string;
   mode: string;
@@ -296,7 +297,7 @@ function renderHtml(outputDir: string, report: RouteCairnReport, triage: TriageS
         '<div class="card band"><h3>JavaScript</h3><p>' + data.js.scripts + ' scripts, ' + data.js.queuedEndpoints + ' queued endpoints, ' + data.js.sourceMaps + ' source maps.</p></div>' +
         '<div class="card band"><h3>Browser</h3><p>' + data.browser.renderedLinks + ' rendered links, ' + data.browser.networkRequests + ' network requests, ' + data.browser.consoleErrors + ' console errors.</p></div>' +
         '<div class="card band"><h3>Auth Compare</h3><p>' + (data.authenticatedScan?.profile?.enabled ? (data.authenticatedScan.comparedUrls + ' URLs compared, ' + data.authenticatedScan.changedSurfaces.length + ' changed surfaces.') : 'No auth profile supplied.') + '</p></div>' +
-      '</div>';
+      '</div>' + (data.assessmentCapabilities ? sectionTitle('Assessment capabilities', 'Eligibility is not execution evidence. Human review never becomes native proof.') + '<div class="card">' + data.assessmentCapabilities.workflows.map(w => '<h4>' + esc(w.workflowId) + ' · ' + esc(w.status) + '</h4><p>' + esc(w.reason) + '</p>' + list((w.evidence || []).map(e => e.checkId + ' · ' + e.outcome + ' · ' + e.comparisonFingerprint)) + '<p>' + esc(w.manualVerification.instructions) + '</p>').join('') + '</div>' : '');
     }
     function stat(label, value) { return '<div class="card stat"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>'; }
     function progress(label, value, total) { const pct = total ? Math.round((value / total) * 100) : 0; return '<p>' + esc(label) + ' <strong>' + value + '</strong></p><div class="bar"><i style="width:' + pct + '%"></i></div>'; }
@@ -548,6 +549,7 @@ function dashboardData(outputDir: string, report: RouteCairnReport, triage: Tria
     activeVulnerability: report.activeVulnerability,
     assistedReview: report.assistedReview,
     standardsCoverage: report.standardsCoverage,
+    assessmentCapabilities: report.assessmentCapabilities,
     js: {
       scripts: report.jsIntelligence?.scripts.length ?? 0,
       queuedEndpoints: report.jsIntelligence?.queuedEndpoints.length ?? 0,
@@ -562,21 +564,27 @@ function dashboardData(outputDir: string, report: RouteCairnReport, triage: Tria
       consoleErrors: report.browserCrawl?.consoleErrors.length ?? 0,
       formsDetected: report.browserCrawl?.formsDetected ?? 0,
       formsSubmitted: report.browserCrawl?.formsSubmitted ?? 0,
-      ...(report.browserCrawl?.authentication ? { authentication: {
-        mode: report.browserCrawl.authentication.mode,
-        bootstrapSucceeded: report.browserCrawl.authentication.bootstrapSucceeded,
-        storage: report.browserCrawl.authentication.storage.length,
-        fields: report.browserCrawl.authentication.fields.length,
-        adminRoutes: report.browserCrawl.authentication.adminRoutes.length,
-        learnedCases: report.browserCrawl.authentication.learnedTestCases.length,
-        restarts: report.browserCrawl.authentication.browserRestartCount
-      } } : {})
+      ...(report.browserCrawl?.authentication
+        ? {
+            authentication: {
+              mode: report.browserCrawl.authentication.mode,
+              bootstrapSucceeded: report.browserCrawl.authentication.bootstrapSucceeded,
+              storage: report.browserCrawl.authentication.storage.length,
+              fields: report.browserCrawl.authentication.fields.length,
+              adminRoutes: report.browserCrawl.authentication.adminRoutes.length,
+              learnedCases: report.browserCrawl.authentication.learnedTestCases.length,
+              restarts: report.browserCrawl.authentication.browserRestartCount
+            }
+          }
+        : {})
     },
     discovered: {
       total: report.discoveredUrls.length,
       likelyValid: report.discoveredUrls.filter((item) => item.falsePositiveStatus === "likely-valid").length,
-      maybeFalsePositive: report.discoveredUrls.filter((item) => item.falsePositiveStatus === "maybe-false-positive").length,
-      likelyFalsePositive: report.discoveredUrls.filter((item) => item.falsePositiveStatus === "likely-false-positive").length
+      maybeFalsePositive: report.discoveredUrls.filter((item) => item.falsePositiveStatus === "maybe-false-positive")
+        .length,
+      likelyFalsePositive: report.discoveredUrls.filter((item) => item.falsePositiveStatus === "likely-false-positive")
+        .length
     },
     triageSummary: countBy(findings, "triageStatus")
   };
@@ -594,7 +602,10 @@ function toDashboardFinding(finding: Finding, triage: TriageState): DashboardFin
     url: finding.url,
     sourceModule: finding.sourceModule,
     falsePositiveStatus: finding.falsePositiveStatus,
-    needsManualVerification: finding.falsePositiveStatus !== "likely-valid" || finding.tags.includes("manual-review") || finding.type === "Interesting But Needs Manual Testing",
+    needsManualVerification:
+      finding.falsePositiveStatus !== "likely-valid" ||
+      finding.tags.includes("manual-review") ||
+      finding.type === "Interesting But Needs Manual Testing",
     evidenceSource: finding.evidence.source ?? "",
     curlCommand: finding.evidence.curlCommand ?? `curl -i "${finding.url}"`,
     severityReason: finding.evidence.severityReason ?? "Not recorded.",

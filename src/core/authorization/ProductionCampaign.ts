@@ -1,3 +1,11 @@
+import {
+  workflowAuthorizationSchema,
+  actorWorkflowDigest,
+  actorRegistryDigest,
+  type ActorRegistry,
+  type ActorProfiles,
+  validateActorRegistry
+} from "../auth/ActorRegistry.js";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { AuthProfile } from "../auth/AuthProfile.js";
@@ -23,7 +31,7 @@ const path = z
   );
 const asset = z.object({ origin, pathPrefix: path }).strict();
 const fp = z.string().regex(/^[a-f0-9]{64}$/);
-export const productionCampaignSchema = z
+export const legacyProductionCampaignSchema = z
   .object({
     campaignId: z.string().uuid(),
     program: z.string().min(3).max(160),
@@ -154,6 +162,70 @@ export const productionCampaignSchema = z
     )
       fail("Public campaign cannot adopt identities or session effects");
   });
+const productionCampaignV2Schema = legacyProductionCampaignSchema
+  .innerType()
+  .omit({ identities: true, disposableAccountsSupplied: true })
+  .extend({
+    contractVersion: z.literal(2),
+    actorRegistryDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    actorIds: z.array(z.string().min(1).max(64)).max(8),
+    workflowAuthorizations: z.array(workflowAuthorizationSchema).max(64)
+  })
+  .strict()
+  .superRefine((v, c) => {
+    const fail = (message: string) => c.addIssue({ code: z.ZodIssueCode.custom, message });
+    if (Date.parse(v.startsAt) >= Date.parse(v.expiresAt)) fail("Invalid campaign window");
+    if (new Set(v.requests.map((r) => r.origin + r.path + ":" + r.method)).size !== v.requests.length)
+      fail("Duplicate campaign requests");
+    if (new Set(v.workflowAuthorizations.map((w) => w.id)).size !== v.workflowAuthorizations.length)
+      fail("Duplicate campaign workflows");
+    if (v.authenticationPermitted && !v.workflows.includes("AUTHENTICATED_READ_ONLY"))
+      fail("Authenticated workflow declaration required");
+    if (
+      !v.authenticationPermitted &&
+      (v.workflows.includes("AUTHENTICATED_READ_ONLY") ||
+        v.effects.sessionHousekeeping !== "NONE_PUBLIC_UNAUTHENTICATED")
+    )
+      fail("Public campaign cannot adopt session effects");
+    if (new Set(v.actorIds).size !== v.actorIds.length) fail("Duplicate actor ids");
+    if (v.workflowAuthorizations.some((w) => w.actorIds.some((id) => !v.actorIds.includes(id))))
+      fail("Workflow actor outside campaign");
+    if (!v.authenticationPermitted && v.actorIds.length) fail("Public campaign cannot adopt credentials");
+    if (
+      v.authenticationPermitted &&
+      (v.effects.sessionHousekeeping !== "SESSION_LAST_USED_AT_UPDATE" || v.staticAssets.length)
+    )
+      fail("Review session effects and prevent asset credential forwarding");
+    for (const r of [...v.requests, ...v.staticAssets.map((a) => ({ ...a, path: a.pathPrefix }))])
+      if (
+        !v.inScope.some((a) => productionAssetMatches(new URL(r.origin + r.path), a)) ||
+        v.outOfScope.some((a) => productionAssetMatches(new URL(r.origin + r.path), a))
+      )
+        fail("Request outside scope");
+  });
+export const productionCampaignSchema = z.union([legacyProductionCampaignSchema, productionCampaignV2Schema]);
+export function assertProductionRegistry(
+  c: ProductionCampaign,
+  registry: ActorRegistry | undefined,
+  profiles: ActorProfiles | undefined,
+  organization: string | undefined,
+  target: string,
+  bindingKey?: string
+) {
+  if (!("contractVersion" in c)) {
+    if (registry) throw Error("LEGACY_CAMPAIGN_REGISTRY_MIX_FORBIDDEN");
+    return;
+  }
+  if (!registry || !profiles || !organization) throw Error("CAMPAIGN_ACTOR_REGISTRY_REQUIRED");
+  validateActorRegistry(registry, profiles, target, organization, bindingKey);
+  if (
+    actorRegistryDigest(registry) !== c.actorRegistryDigest ||
+    JSON.stringify(registry.actors.filter((a) => a.authentication.mechanism !== "ANONYMOUS").map((a) => a.id)) !==
+      JSON.stringify(c.actorIds) ||
+    actorWorkflowDigest(registry.workflows) !== actorWorkflowDigest(c.workflowAuthorizations)
+  )
+    throw Error("CAMPAIGN_REGISTRY_OR_WORKFLOW_CHANGED");
+}
 export type ProductionCampaign = z.infer<typeof productionCampaignSchema>;
 export function productionAssetMatches(u: URL, a: { origin: string; pathPrefix: string }) {
   const p = a.pathPrefix.replace(/\/$/, "");
@@ -178,6 +250,10 @@ export function assertProductionCampaignProfiles(
   primary: AuthProfile | undefined,
   pair: AuthProfileSet | undefined
 ) {
+  if ("contractVersion" in c) {
+    if (primary || pair) throw Error("REGISTRY_CAMPAIGN_LEGACY_CREDENTIALS_FORBIDDEN");
+    return;
+  }
   if (!c.authenticationPermitted) {
     if (primary || pair) throw Error("PRODUCTION_CAMPAIGN_CREDENTIALS_PROHIBITED");
     return;

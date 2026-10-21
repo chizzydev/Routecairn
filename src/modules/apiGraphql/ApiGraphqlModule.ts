@@ -1,3 +1,5 @@
+import { assessWorkflow } from "../../core/auth/AssessmentCapabilities.js";
+import { actorProofMatches } from "../../core/auth/ActorRegistry.js";
 import { observeCollection } from "./CollectionOwnership.js";
 import { nativeApplicationProofMatches } from "../../core/auth/NativeIdentityAdmission.js";
 import { observeLinks, type ObservedLinks } from "./ObservedLinks.js";
@@ -106,6 +108,20 @@ async function executeCheck(
   const routeIds =
     check.kind === "VERSION_BOUNDARY" ? [check.baselineRouteId, check.candidateRouteId] : [check.routeId];
   const routes = routeIds.map((id) => routeMap.get(id)!);
+  if (context.options.plan.actorRegistry) {
+    const registry = context.options.plan.actorRegistry;
+    if (!registry || (actor.authSlot === "registry" && actor.registryId !== registry.registryId))
+      return blocked(check, actor, routes, "ACTOR_REGISTRY_BINDING_REQUIRED");
+    const key = "matrixId" in check ? check.matrixId : check.id;
+    const d = assessWorkflow(
+      registry,
+      key,
+      context.state.getIdentityVerification()?.actors,
+      Date.now(),
+      context.identityExecutionId
+    );
+    if (d.status !== "ELIGIBLE") return blocked(check, actor, routes, d.reason);
+  }
   if (identityBlocked(context, actor, check.requireVerifiedIdentity))
     return blocked(check, actor, routes, "VERIFIED_IDENTITY_REQUIRED");
   try {
@@ -504,7 +520,9 @@ async function sendBody(
     disableRedirects: true,
     retainBodyPreview: true
   };
-  return snapshot(await transport.send(request), context.options.plan.apiGraphql?.maxJsonDepth ?? 12);
+  const response = await transport.send(request);
+  if (actor.authSlot === "registry" && response.statusCode === 401) context.invalidateActor(actor.id);
+  return snapshot(response, context.options.plan.apiGraphql?.maxJsonDepth ?? 12);
 }
 
 function snapshot(response: HttpResponse, maxDepth: number): Snapshot {
@@ -871,6 +889,17 @@ function inconclusive(
 function identityBlocked(context: ScanContext, actor: ApiGraphqlActorPlan, required: boolean): boolean {
   if (!required || actor.authSlot === "anonymous") return false;
   const report = context.state.getIdentityVerification();
+  if (actor.authSlot === "registry") {
+    const registry = context.options.plan.actorRegistry;
+    if (!registry) return true;
+    return !actorProofMatches(
+      registry,
+      actor.id,
+      report?.actors?.[actor.id],
+      ["PRINCIPAL"],
+      context.identityExecutionId
+    );
+  }
   const result =
     actor.authSlot === "primary"
       ? report?.primary
@@ -881,6 +910,7 @@ function identityBlocked(context: ScanContext, actor: ApiGraphqlActorPlan, requi
 }
 
 function profileFor(context: ScanContext, actor: ApiGraphqlActorPlan): AuthProfile | undefined {
+  if (actor.authSlot === "registry") return context.actorProfile(actor.id);
   return actor.authSlot === "anonymous"
     ? undefined
     : actor.authSlot === "primary"

@@ -1,11 +1,8 @@
-
 import { type PlanPreview } from "./api";
 import { type WorkflowCapability, type WorkflowDraft } from "./AuthorizationWorkflowStudio";
 
 import type { RetestDraft } from "./FindingsCommandCenter";
 import { type AdvancedEngineDraft } from "./AdvancedEngineStudio";
-
-
 
 export type AuthSource = "ephemeral" | "saved";
 
@@ -87,12 +84,7 @@ export type StudioState = {
   projectId: string;
   targetId: string;
   target: string;
-  authorizationCategory:
-    | "OWNED"
-    | "CLIENT_AUTHORIZED"
-    | "BUG_BOUNTY"
-    | "CONTROLLED_LAB"
-    | "OTHER_AUTHORIZED";
+  authorizationCategory: "OWNED" | "CLIENT_AUTHORIZED" | "BUG_BOUNTY" | "CONTROLLED_LAB" | "OTHER_AUTHORIZED";
   authorizationConfirmed: boolean;
   authorizationNote: string;
   scope: ScopeState;
@@ -100,6 +92,8 @@ export type StudioState = {
   selectedModules: string[];
   nextJsReview: NextJsReviewSettings;
   transport: TransportState;
+  useActorRegistry?: boolean;
+  flexibleAssessment?: import("./FlexibleAuthentication").FlexibleAssessmentPreview | undefined;
   authMode: AuthMode;
   primary: ActorState;
   accountA: ActorState;
@@ -111,7 +105,14 @@ export type StudioState = {
   workflows: WorkflowDraft[];
   advancedEngines: AdvancedEngineDraft[];
   providerAdapterBinding?: { profileId: string; versionId: string; adapterDigest: string };
-  adaptiveExecutionBinding?: { recommendationId: string; sourceFingerprint: string; executionFingerprint: string; compilerVersion: 1 | 2; graphFingerprint?: string; graphPathIds?: string[] };
+  adaptiveExecutionBinding?: {
+    recommendationId: string;
+    sourceFingerprint: string;
+    executionFingerprint: string;
+    compilerVersion: 1 | 2;
+    graphFingerprint?: string;
+    graphPathIds?: string[];
+  };
   authenticationLifecycleFile: string;
   authenticationLifecycleAutoFile: string;
   businessInvariantFile: string;
@@ -168,7 +169,7 @@ export const steps = [
   "Evidence & Outputs",
   "Controlled Workflows",
   "Plan Review",
-  "Launch",
+  "Launch"
 ];
 
 export const headerNamePattern = /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/;
@@ -181,7 +182,7 @@ export const forbiddenHeaders = new Set([
   "upgrade",
   "expect",
   "te",
-  "trailer",
+  "trailer"
 ]);
 
 export const fieldPathPattern =
@@ -199,7 +200,7 @@ export const emptyIdentity = (): IdentityState => ({
   expectedTenant: "",
   expectedRole: "",
   expectedState: "",
-  maxResponseBytes: 8192,
+  maxResponseBytes: 8192
 });
 
 export const emptyActor = (alias: string): ActorState => ({
@@ -209,7 +210,7 @@ export const emptyActor = (alias: string): ActorState => ({
   bearerToken: "",
   headers: [],
   cookies: [],
-  identity: emptyIdentity(),
+  identity: emptyIdentity()
 });
 
 export type ValidationError = { step: number; message: string };

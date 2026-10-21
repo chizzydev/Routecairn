@@ -1,5 +1,6 @@
-import {cleanupMac,verifyCleanupMac} from "./CleanupAttemptProtocol.js";
-import {cleanupResultProof} from "../recovery/CleanupAttemptProof.js";
+import { z } from "zod";
+import { cleanupMac, verifyCleanupMac } from "./CleanupAttemptProtocol.js";
+import { cleanupResultProof } from "../recovery/CleanupAttemptProof.js";
 import { mkdirSync } from "node:fs";
 import { windowsProcessBirth } from "./WindowsProcessIdentity.js";
 import { tmpdir } from "node:os";
@@ -23,15 +24,35 @@ import { authProfileSchema, authHeadersForProfile, type AuthProfile } from "../.
 import type { AuthProfileSet } from "../../core/auth/AuthProfileSet.js";
 import { planSnapshot, resolveDashboardScanPlan } from "../execution/ScanExecutionShared.js";
 import type { DashboardResolvedAuth } from "../execution/ScanExecutionShared.js";
-import { assertExecutablePlanSourcesUnchanged, executableAuthenticationDigest, executablePlanContentDigest, parseExecutablePlanPayload, type BoundExecutablePlan } from "../execution/ExecutablePlanSnapshot.js";
-import { parseApiMessage, workerProtocolVersion, type ApiToWorkerMessage, type WorkerToApiMessage } from "./ScanWorkerProtocol.js";
+import {
+  assertExecutablePlanSourcesUnchanged,
+  executableAuthenticationDigest,
+  executablePlanContentDigest,
+  parseExecutablePlanPayload,
+  type BoundExecutablePlan
+} from "../execution/ExecutablePlanSnapshot.js";
+import {
+  parseApiMessage,
+  workerProtocolVersion,
+  type ApiToWorkerMessage,
+  type WorkerToApiMessage
+} from "./ScanWorkerProtocol.js";
 
 let workerId = process.env.ROUTECAIRN_WORKER_ID ?? "";
 const workerGeneration = process.env.ROUTECAIRN_WORKER_GENERATION ?? "";
 const workerSecret = process.env.ROUTECAIRN_WORKER_SESSION_SECRET ?? "";
 let jobId = "";
 let request: DashboardScanCreateRequest | undefined;
-let paths: { reportsDir: string; artifactsDir: string; proofPacksDir: string; fingerprintKeyPath: string; mutationJournalDir: string; tempDir: string } | undefined;
+let paths:
+  | {
+      reportsDir: string;
+      artifactsDir: string;
+      proofPacksDir: string;
+      fingerprintKeyPath: string;
+      mutationJournalDir: string;
+      tempDir: string;
+    }
+  | undefined;
 const abortController = new AbortController();
 let runningJob: Promise<void> | undefined;
 let jobStarted = false;
@@ -40,9 +61,15 @@ let lifecycleEvidence: WorkerLifecycleEvidence | undefined;
 let acceptedEnvelope = false;
 let acceptedEnvelopeAuth: DashboardResolvedAuth | undefined;
 let acceptedExecutablePlan: BoundExecutablePlan | undefined;
-let acceptedMutationContracts: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract[] = [];
-let cleanupAttemptId = "", cleanupOrdinal = 0, gateRefused = false;
-const cleanupAcknowledgements = new Map<number,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+let acceptedMutationContracts: import("../../core/offensive/ControlledMutationTypes.js").ControlledMutationContract[] =
+  [];
+let cleanupAttemptId = "",
+  cleanupOrdinal = 0,
+  gateRefused = false;
+const cleanupAcknowledgements = new Map<
+  number,
+  { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+>();
 let lastSensitiveSequence = 0;
 let messageChain = Promise.resolve();
 let heartbeatSequence = 0;
@@ -53,41 +80,94 @@ let cleanupState: "CLEAR" | "PENDING" | "RUNNING" | "REQUIRED" | "UNKNOWN" = "UN
 // A live worker attests its own birth on its private IPC channel. The manager
 // never adopts a process merely because a later lookup returns the same PID.
 void (async () => {
-  const birth = process.platform === "win32" ? process.env.ROUTECAIRN_WINDOWS_PROCESS_BIRTH ?? await windowsProcessBirth(process.pid, tmpdir()) : undefined;
+  const birth =
+    process.platform === "win32"
+      ? (process.env.ROUTECAIRN_WINDOWS_PROCESS_BIRTH ?? (await windowsProcessBirth(process.pid, tmpdir())))
+      : undefined;
   if (process.platform === "win32" && !birth) throw Error("WORKER_PROCESS_BIRTH_UNAVAILABLE");
-  send({ protocolVersion: workerProtocolVersion, type: "WORKER_READY", workerId: requireWorkerId(), ...(birth ? { processBirth: birth } : {}) });
-})().catch(() => { send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: "WORKER_PROCESS_BIRTH_UNAVAILABLE" }); void shutdown(); });
+  send({
+    protocolVersion: workerProtocolVersion,
+    type: "WORKER_READY",
+    workerId: requireWorkerId(),
+    ...(birth ? { processBirth: birth } : {})
+  });
+})().catch(() => {
+  send({
+    protocolVersion: workerProtocolVersion,
+    type: "WORKER_ERROR",
+    workerId: requireWorkerId(),
+    error: "WORKER_PROCESS_BIRTH_UNAVAILABLE"
+  });
+  void shutdown();
+});
 
-const heartbeat = setInterval(() => { void sendHeartbeat(); }, 1000);
+const heartbeat = setInterval(() => {
+  void sendHeartbeat();
+}, 1000);
 
 process.on("message", (raw: unknown) => {
-  messageChain = messageChain.then(() => handleMessage(raw)).catch((error: unknown) => {
-    send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: safeError(error) });
-  });
+  messageChain = messageChain
+    .then(() => handleMessage(raw))
+    .catch((error: unknown) => {
+      send({
+        protocolVersion: workerProtocolVersion,
+        type: "WORKER_ERROR",
+        workerId: requireWorkerId(),
+        error: safeError(error)
+      });
+    });
 });
 
 process.on("disconnect", () => {
   void shutdown();
 });
-process.on("exit", code => { try { lifecycleEvidence?.record("PROCESS_EXIT", cleanupState, code); } catch { /* No writes through an uncertain resource. */ } });
-process.on("uncaughtExceptionMonitor", () => { try { lifecycleEvidence?.record("UNCAUGHT_FAILURE", "UNKNOWN"); } catch { /* Preserve the original exception behavior. */ } });
-process.on("SIGTERM", () => { void shutdown(); });
-process.on("SIGINT", () => { void shutdown(); });
+process.on("exit", (code) => {
+  try {
+    lifecycleEvidence?.record("PROCESS_EXIT", cleanupState, code);
+  } catch {
+    /* No writes through an uncertain resource. */
+  }
+});
+process.on("uncaughtExceptionMonitor", () => {
+  try {
+    lifecycleEvidence?.record("UNCAUGHT_FAILURE", "UNKNOWN");
+  } catch {
+    /* Preserve the original exception behavior. */
+  }
+});
+process.on("SIGTERM", () => {
+  void shutdown();
+});
+process.on("SIGINT", () => {
+  void shutdown();
+});
 
 async function shutdown(): Promise<void> {
   if (shutdownRequested) return;
   shutdownRequested = true;
-  try { lifecycleEvidence?.record("SHUTDOWN_REQUESTED", cleanupState); } catch { cleanupState = "UNKNOWN"; }
+  try {
+    lifecycleEvidence?.record("SHUTDOWN_REQUESTED", cleanupState);
+  } catch {
+    cleanupState = "UNKNOWN";
+  }
   clearInterval(heartbeat);
   abortController.abort();
   const deadline = setTimeout(() => process.exit(1), workerRestorationGraceMs);
   deadline.unref();
-  try { await runningJob; }
-  finally {
+  try {
+    await runningJob;
+  } finally {
     clearTimeout(deadline);
-    try { lifecycleEvidence?.record("PROCESS_EXIT_READY", cleanupState); } catch { cleanupState = "UNKNOWN"; }
+    try {
+      lifecycleEvidence?.record("PROCESS_EXIT_READY", cleanupState);
+    } catch {
+      cleanupState = "UNKNOWN";
+    }
     if (process.connected) {
-      process.send?.({ protocolVersion: workerProtocolVersion, type: "WORKER_SHUTDOWN", workerId: requireWorkerId() }, () => process.exit(0));
+      process.send?.(
+        { protocolVersion: workerProtocolVersion, type: "WORKER_SHUTDOWN", workerId: requireWorkerId() },
+        () => process.exit(0)
+      );
     } else process.exit(0);
   }
 }
@@ -97,9 +177,19 @@ async function handleMessage(raw: unknown): Promise<void> {
   if (message.workerId !== requireWorkerId()) throw new Error("Worker ID mismatch.");
   switch (message.type) {
     case "RECOVERY_REQUEST_ACK": {
-      verifyCleanupMac(workerSecret,message);
-      if(message.jobId!==jobId||message.attemptId!==cleanupAttemptId||message.workerGeneration!==workerGeneration)throw Error("RECOVERY_ACK_BINDING_INVALID");
-      const pending=cleanupAcknowledgements.get(message.ordinal);if(!pending)throw Error("RECOVERY_ACK_REPLAY");cleanupAcknowledgements.delete(message.ordinal);clearTimeout(pending.timer);pending.resolve();break;
+      verifyCleanupMac(workerSecret, message);
+      if (
+        message.jobId !== jobId ||
+        message.attemptId !== cleanupAttemptId ||
+        message.workerGeneration !== workerGeneration
+      )
+        throw Error("RECOVERY_ACK_BINDING_INVALID");
+      const pending = cleanupAcknowledgements.get(message.ordinal);
+      if (!pending) throw Error("RECOVERY_ACK_REPLAY");
+      cleanupAcknowledgements.delete(message.ordinal);
+      clearTimeout(pending.timer);
+      pending.resolve();
+      break;
     }
     case "INITIALIZE_JOB":
       initialize(message);
@@ -125,23 +215,38 @@ async function handleMessage(raw: unknown): Promise<void> {
       jobStarted = true;
       cleanupState = "CLEAR";
       lifecycleEvidence?.record("EXECUTION_REQUESTED", cleanupState);
-      runningJob = startJob().catch(error => { send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: safeError(error) }); });
+      runningJob = startJob().catch((error) => {
+        send({
+          protocolVersion: workerProtocolVersion,
+          type: "WORKER_ERROR",
+          workerId: requireWorkerId(),
+          error: safeError(error)
+        });
+      });
       break;
     case "RECOVER_MUTATION":
       if (message.jobId !== jobId) throw new Error("Recovery job mismatch.");
       validateRecoveryMessage(message);
-      if(!message.cleanupAttemptId || !message.bundleDigest)throw Error("RECOVERY_ATTEMPT_REQUIRED");
-      cleanupAttemptId=message.cleanupAttemptId;
+      if (!message.cleanupAttemptId || !message.bundleDigest) throw Error("RECOVERY_ATTEMPT_REQUIRED");
+      cleanupAttemptId = message.cleanupAttemptId;
       if (jobStarted || shutdownRequested) throw new Error("Worker job already started or shutting down.");
       jobStarted = true;
       // Cleanup runs independently of the IPC queue so cancellation and shutdown
       // remain observable. Its authenticated recovery authority is unchanged.
-      runningJob = recoverMutation(message).catch(error => {
-        send({ protocolVersion: workerProtocolVersion, type: "WORKER_ERROR", workerId: requireWorkerId(), error: safeError(error) });
+      runningJob = recoverMutation(message).catch((error) => {
+        send({
+          protocolVersion: workerProtocolVersion,
+          type: "WORKER_ERROR",
+          workerId: requireWorkerId(),
+          error: safeError(error)
+        });
       });
       break;
     case "CANCEL_JOB":
-      if (message.jobId === jobId) { cleanupState = "PENDING"; abortController.abort(message.reason); }
+      if (message.jobId === jobId) {
+        cleanupState = "PENDING";
+        abortController.abort(message.reason);
+      }
       break;
     case "SHUTDOWN":
       await shutdown();
@@ -150,30 +255,97 @@ async function handleMessage(raw: unknown): Promise<void> {
 }
 
 async function recoverMutation(message: Extract<ApiToWorkerMessage, { type: "RECOVER_MUTATION" }>): Promise<void> {
-  if (!paths || !request || !acceptedEnvelope) throw new Error("Worker refused recovery without initialized paths and authenticated credentials.");
+  if (!paths || !request || !acceptedEnvelope)
+    throw new Error("Worker refused recovery without initialized paths and authenticated credentials.");
   const bundlePath = resolveRecoveryBundlePath(paths.mutationJournalDir, message.bundlePath, message.caseId);
   const vault = new MutationRecoveryVault(paths.mutationJournalDir);
   const candidate = await vault.open<WorkflowCheckpoint>(bundlePath, message.caseId, message.bundleDigest);
   if (candidate.kind === "WORKFLOW_CLEANUP_V1") {
-    if (!request.workflowRecoveryDigest || candidate.digest !== request.workflowRecoveryDigest) throw new Error("RECOVERY_CHECKPOINT_CHANGED");
+    if (!request.workflowRecoveryDigest || candidate.digest !== request.workflowRecoveryDigest)
+      throw new Error("RECOVERY_CHECKPOINT_CHANGED");
     if (candidate.targetOrigin !== new URL(request.target).origin) throw new Error("RECOVERY_TARGET_MISMATCH");
-    const result = await recoverWorkflow(candidate, { beforeRecoveryRequest: beforeCleanupRequest, mutationJournalDir: paths.mutationJournalDir, ...(request.recoveryScope ? { recoveryScope: request.recoveryScope } : {}), ...(acceptedEnvelopeAuth?.authProfile ? { authProfile: acceptedEnvelopeAuth.authProfile } : {}), ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {}) });
+    const result = await recoverWorkflow(candidate, {
+      beforeRecoveryRequest: beforeCleanupRequest,
+      mutationJournalDir: paths.mutationJournalDir,
+      ...(request.recoveryScope ? { recoveryScope: request.recoveryScope } : {}),
+      ...(acceptedEnvelopeAuth?.authProfile ? { authProfile: acceptedEnvelopeAuth.authProfile } : {}),
+      ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {}),
+      ...(acceptedEnvelopeAuth?.actorProfiles
+        ? {
+            actorProfiles: acceptedEnvelopeAuth.actorProfiles,
+            ...(acceptedEnvelopeAuth.actorBindingKey ? { actorBindingKey: acceptedEnvelopeAuth.actorBindingKey } : {})
+          }
+        : {})
+    });
     await sendRecoveryResult(result);
     return;
   }
   const bundle = await vault.open(bundlePath, message.caseId, message.bundleDigest);
   // Recovery cannot discard the program policy that authorized the original mutation.
-  const resolved = await resolveDashboardScanPlan({ ...request, includeModules: ["baseline"], ...(bundle.targetAuthorization ? { targetAuthorization: bundle.targetAuthorization } : {}) }, acceptedEnvelopeAuth);
-  const recoveryRequestBudget = (bundle.actorIdentityVerification?.attempts ?? 0) + (bundle.targetIdentityVerification?.attempts ?? 0) + 1 + (bundle.rollbackVerification.attempts ?? 3);
+  const resolved = await resolveDashboardScanPlan(
+    {
+      ...request,
+      includeModules: ["baseline"],
+      ...(bundle.targetAuthorization ? { targetAuthorization: bundle.targetAuthorization } : {})
+    },
+    acceptedEnvelopeAuth
+  );
+  const recoveryRequestBudget =
+    (bundle.actorIdentityVerification?.attempts ?? 0) +
+    (bundle.targetIdentityVerification?.attempts ?? 0) +
+    1 +
+    (bundle.rollbackVerification.attempts ?? 3);
   const recoveryPlan = recoveryOnlyPlan(resolved.plan, recoveryRequestBudget);
-  const context = new ScanContext({ target: request.target, scope: resolved.scope, config: resolved.config, plan: recoveryPlan, outputDir: paths.mutationJournalDir, beforeRecoveryRequest: beforeCleanupRequest, ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}), ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}) });
+  const context = new ScanContext({
+    target: request.target,
+    scope: resolved.scope,
+    config: resolved.config,
+    plan: recoveryPlan,
+    outputDir: paths.mutationJournalDir,
+    beforeRecoveryRequest: beforeCleanupRequest,
+    ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}),
+    ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}),
+    ...(resolved.actorProfiles
+      ? {
+          actorProfiles: resolved.actorProfiles,
+          ...(resolved.actorBindingKey ? { actorBindingKey: resolved.actorBindingKey } : {}),
+          organizationId: resolved.plan.actorRegistry!.organizationId
+        }
+      : {})
+  });
   const client = context.createWorkflowCleanupHttpClient(recoveryRequestBudget, 64 * 1024);
   const freshProfile = acceptedEnvelopeAuth?.authProfile;
   if (!freshProfile) throw new Error("Worker refused recovery without a fresh primary credential profile.");
   const freshHeaders = authHeadersForProfile(freshProfile);
-  const transport: MutationTransport = { send: (request) => client.send({ ...request, skipCache: true, disableRetries: true, disableRedirects: true, headers: { ...Object.fromEntries(Object.entries(request.headers ?? {}).filter(([name]) => ["content-type", "accept"].includes(name.toLowerCase()))), ...freshHeaders } }) };
-  const result = await new ControlledMutationExecutor(transport, { retainRecoveryEvidence: true, journalDirectory: paths.mutationJournalDir, cleanupSleep: (ms) => context.cleanupWait(client, ms) }).recover(bundlePath, message.caseId, message.bundleDigest).finally(() => context.dispose());
-  await sendRecoveryResult({caseId:message.caseId,cleanupOutcome:result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED",notes:result.notes.slice(0,20)});
+  const transport: MutationTransport = {
+    send: (request) =>
+      client.send({
+        ...request,
+        skipCache: true,
+        disableRetries: true,
+        disableRedirects: true,
+        headers: {
+          ...Object.fromEntries(
+            Object.entries(request.headers ?? {}).filter(([name]) =>
+              ["content-type", "accept"].includes(name.toLowerCase())
+            )
+          ),
+          ...freshHeaders
+        }
+      })
+  };
+  const result = await new ControlledMutationExecutor(transport, {
+    retainRecoveryEvidence: true,
+    journalDirectory: paths.mutationJournalDir,
+    cleanupSleep: (ms) => context.cleanupWait(client, ms)
+  })
+    .recover(bundlePath, message.caseId, message.bundleDigest)
+    .finally(() => context.dispose());
+  await sendRecoveryResult({
+    caseId: message.caseId,
+    cleanupOutcome: result.cleanupOutcome === "ROLLBACK_VERIFIED" ? "ROLLBACK_VERIFIED" : "CLEANUP_FAILED",
+    notes: result.notes.slice(0, 20)
+  });
 }
 
 function initialize(message: Extract<ApiToWorkerMessage, { type: "INITIALIZE_JOB" }>): void {
@@ -181,7 +353,12 @@ function initialize(message: Extract<ApiToWorkerMessage, { type: "INITIALIZE_JOB
   request = message.request as unknown as DashboardScanCreateRequest;
   paths = message.paths;
   if (message.paths.resourceProof) {
-    lifecycleEvidence = new WorkerLifecycleEvidence(paths.tempDir, message.paths.resourceProof, { workerId: requireWorkerId(), generation: workerGeneration, jobId }, workerSecret);
+    lifecycleEvidence = new WorkerLifecycleEvidence(
+      paths.tempDir,
+      message.paths.resourceProof,
+      { workerId: requireWorkerId(), generation: workerGeneration, jobId },
+      workerSecret
+    );
     lifecycleEvidence.record("INITIALIZED", cleanupState);
   }
   mkdirSync(paths.tempDir, { recursive: true });
@@ -195,18 +372,56 @@ async function startJob(): Promise<void> {
   const outputDir = resolve(paths.reportsDir, jobId);
   mkdirSync(outputDir, { recursive: true });
   try {
-    if (acceptedExecutablePlan.payload.target !== new URL(request.target).href) throw new Error("EXECUTABLE_PLAN_TARGET_BINDING_INVALID");
+    if (acceptedExecutablePlan.payload.target !== new URL(request.target).href)
+      throw new Error("EXECUTABLE_PLAN_TARGET_BINDING_INVALID");
     const resolved = {
       plan: acceptedExecutablePlan.payload.plan,
       config: acceptedExecutablePlan.payload.config,
       scope: acceptedExecutablePlan.payload.scope,
       ...(acceptedEnvelopeAuth?.authProfile ? { authProfile: acceptedEnvelopeAuth.authProfile } : {}),
-      ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {})
+      ...(acceptedEnvelopeAuth?.authProfileSet ? { authProfileSet: acceptedEnvelopeAuth.authProfileSet } : {}),
+      ...(acceptedEnvelopeAuth?.actorProfiles
+        ? {
+            actorProfiles: acceptedEnvelopeAuth.actorProfiles,
+            ...(acceptedEnvelopeAuth.actorBindingKey ? { actorBindingKey: acceptedEnvelopeAuth.actorBindingKey } : {})
+          }
+        : {})
     };
     if (acceptedMutationContracts.length && resolved.authProfile) {
       const freshHeaders = authHeadersForProfile(resolved.authProfile);
-      const withFreshHeaders = <T extends { headers?: Record<string, string> | undefined }>(value: T): T => ({ ...value, headers: Object.fromEntries([...Object.entries(value.headers ?? {}), ...Object.entries(freshHeaders)].map(([name, content]) => [name.toLowerCase(), content])) });
-      acceptedMutationContracts = acceptedMutationContracts.map((contract) => ({ ...contract, ...(contract.identity ? { identity: { ...contract.identity, request: withFreshHeaders(contract.identity.request) } } : {}), attack: { ...contract.attack, request: withFreshHeaders(contract.attack.request) }, precondition: { ...contract.precondition, request: withFreshHeaders(contract.precondition.request) }, impact: { ...contract.impact, request: withFreshHeaders(contract.impact.request) }, ...(contract.protectedAction ? { protectedAction: { ...contract.protectedAction, request: withFreshHeaders(contract.protectedAction.request) } } : {}), rollback: { request: withFreshHeaders(contract.rollback.request), verification: { ...contract.rollback.verification, request: withFreshHeaders(contract.rollback.verification.request) } } }));
+      const withFreshHeaders = <T extends { headers?: Record<string, string> | undefined }>(value: T): T => ({
+        ...value,
+        headers: Object.fromEntries(
+          [...Object.entries(value.headers ?? {}), ...Object.entries(freshHeaders)].map(([name, content]) => [
+            name.toLowerCase(),
+            content
+          ])
+        )
+      });
+      acceptedMutationContracts = acceptedMutationContracts.map((contract) => ({
+        ...contract,
+        ...(contract.identity
+          ? { identity: { ...contract.identity, request: withFreshHeaders(contract.identity.request) } }
+          : {}),
+        attack: { ...contract.attack, request: withFreshHeaders(contract.attack.request) },
+        precondition: { ...contract.precondition, request: withFreshHeaders(contract.precondition.request) },
+        impact: { ...contract.impact, request: withFreshHeaders(contract.impact.request) },
+        ...(contract.protectedAction
+          ? {
+              protectedAction: {
+                ...contract.protectedAction,
+                request: withFreshHeaders(contract.protectedAction.request)
+              }
+            }
+          : {}),
+        rollback: {
+          request: withFreshHeaders(contract.rollback.request),
+          verification: {
+            ...contract.rollback.verification,
+            request: withFreshHeaders(contract.rollback.verification.request)
+          }
+        }
+      }));
     }
     send({
       protocolVersion: workerProtocolVersion,
@@ -221,7 +436,11 @@ async function startJob(): Promise<void> {
     const sink: ScanEventSink = {
       emit: (event: ScanExecutionEvent) => {
         if (event.type === "MODULE_STARTED" && event.moduleId) currentModule = event.moduleId;
-        if (["MODULE_COMPLETED", "MODULE_FAILED", "MODULE_BLOCKED", "MODULE_CANCELLED"].includes(event.type) && event.moduleId === currentModule) currentModule = undefined;
+        if (
+          ["MODULE_COMPLETED", "MODULE_FAILED", "MODULE_BLOCKED", "MODULE_CANCELLED"].includes(event.type) &&
+          event.moduleId === currentModule
+        )
+          currentModule = undefined;
         if (event.type === "CLEANUP_STARTED") cleanupState = "RUNNING";
         if (event.type === "MUTATION_CLEANUP_REQUIRED") cleanupState = "REQUIRED";
         send({
@@ -247,17 +466,43 @@ async function startJob(): Promise<void> {
       mutationJournalDir: paths.mutationJournalDir,
       ...(resolved.authProfile ? { authProfile: resolved.authProfile } : {}),
       ...(resolved.authProfileSet ? { authProfileSet: resolved.authProfileSet } : {}),
+      ...(resolved.actorProfiles
+        ? {
+            actorProfiles: resolved.actorProfiles,
+            ...(resolved.actorBindingKey ? { actorBindingKey: resolved.actorBindingKey } : {}),
+            organizationId: resolved.plan.actorRegistry!.organizationId
+          }
+        : {}),
       ...(acceptedMutationContracts.length > 0 ? { controlledMutationContracts: acceptedMutationContracts } : {}),
       eventSink: sink,
       abortSignal: abortController.signal
     });
-    cleanupState = result.status === "COMPLETED" && cleanupState !== "REQUIRED" ? "CLEAR" : cleanupState === "RUNNING" || cleanupState === "PENDING" ? "UNKNOWN" : cleanupState;
+    cleanupState =
+      result.status === "COMPLETED" && cleanupState !== "REQUIRED"
+        ? "CLEAR"
+        : cleanupState === "RUNNING" || cleanupState === "PENDING"
+          ? "UNKNOWN"
+          : cleanupState;
     if (result.status === "CANCELLED") {
-      send({ protocolVersion: workerProtocolVersion, type: "JOB_CANCELLED", workerId: requireWorkerId(), jobId, summary: "Scan cancelled; partial evidence retained.", ...result });
+      send({
+        protocolVersion: workerProtocolVersion,
+        type: "JOB_CANCELLED",
+        workerId: requireWorkerId(),
+        jobId,
+        summary: "Scan cancelled; partial evidence retained.",
+        ...result
+      });
       return;
     }
     if (result.status === "FAILED") {
-      send({ protocolVersion: workerProtocolVersion, type: "JOB_FAILED", workerId: requireWorkerId(), jobId, error: "Execution failed; partial evidence retained.", ...result });
+      send({
+        protocolVersion: workerProtocolVersion,
+        type: "JOB_FAILED",
+        workerId: requireWorkerId(),
+        jobId,
+        error: "Execution failed; partial evidence retained.",
+        ...result
+      });
       return;
     }
     send({
@@ -271,10 +516,22 @@ async function startJob(): Promise<void> {
     });
   } catch (error) {
     if (abortController.signal.aborted) {
-      send({ protocolVersion: workerProtocolVersion, type: "JOB_CANCELLED", workerId: requireWorkerId(), jobId, summary: "Scan cancelled." });
+      send({
+        protocolVersion: workerProtocolVersion,
+        type: "JOB_CANCELLED",
+        workerId: requireWorkerId(),
+        jobId,
+        summary: "Scan cancelled."
+      });
       return;
     }
-    send({ protocolVersion: workerProtocolVersion, type: "JOB_FAILED", workerId: requireWorkerId(), jobId, error: safeError(error) });
+    send({
+      protocolVersion: workerProtocolVersion,
+      type: "JOB_FAILED",
+      workerId: requireWorkerId(),
+      jobId,
+      error: safeError(error)
+    });
   }
 }
 
@@ -319,14 +576,21 @@ async function directoryBytes(root: string): Promise<number> {
   while (pending.length) {
     const directory = pending.pop()!;
     let entries;
-    try { entries = await readdir(directory, { withFileTypes: true }); }
-    catch { continue; }
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
     for (const entry of entries) {
       const path = resolve(directory, entry.name);
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) pending.push(path);
       else if (entry.isFile()) {
-        try { total += (await lstat(path)).size; } catch { /* A concurrent writer may replace a file. */ }
+        try {
+          total += (await lstat(path)).size;
+        } catch {
+          /* A concurrent writer may replace a file. */
+        }
       }
     }
   }
@@ -336,10 +600,18 @@ async function directoryBytes(root: string): Promise<number> {
 function authFromEnvelope(envelope: Record<string, unknown>): DashboardResolvedAuth | undefined {
   const authProfile = envelope.authProfile ? authProfileSchema.parse(envelope.authProfile) : undefined;
   const authProfileSet = envelope.authProfileSet ? authProfileSetFromEnvelope(envelope.authProfileSet) : undefined;
-  if (!authProfile && !authProfileSet) return { safeSummary: safeEnvelopeSummary(envelope) };
+  const actorBindingKey = envelope.actorBindingKey
+    ? z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{43}$/)
+        .parse(envelope.actorBindingKey)
+    : undefined;
+  const actorProfiles = envelope.actorProfiles ? z.record(authProfileSchema).parse(envelope.actorProfiles) : undefined;
+  if (!authProfile && !authProfileSet && !actorProfiles) return { safeSummary: safeEnvelopeSummary(envelope) };
   return {
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
+    ...(actorProfiles ? { actorProfiles, ...(actorBindingKey ? { actorBindingKey } : {}) } : {}),
     safeSummary: safeEnvelopeSummary(envelope)
   };
 }
@@ -379,7 +651,8 @@ function validateSecretEnvelope(message: Extract<ApiToWorkerMessage, { type: "PR
   if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired secret envelope rejected.");
   if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order secret envelope rejected.");
   const { hmac, ...body } = message;
-  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Secret envelope authentication failed.");
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex")))
+    throw new Error("Secret envelope authentication failed.");
   lastSensitiveSequence = message.sequence;
 }
 
@@ -389,11 +662,14 @@ function validateMutationContracts(message: Extract<ApiToWorkerMessage, { type: 
   if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order mutation contract envelope rejected.");
   if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired mutation contract envelope rejected.");
   const { hmac, ...body } = message;
-  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Mutation contract envelope authentication failed.");
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex")))
+    throw new Error("Mutation contract envelope authentication failed.");
   lastSensitiveSequence = message.sequence;
 }
 
-async function validateExecutablePlan(message: Extract<ApiToWorkerMessage, { type: "PROVIDE_EXECUTABLE_PLAN" }>): Promise<BoundExecutablePlan> {
+async function validateExecutablePlan(
+  message: Extract<ApiToWorkerMessage, { type: "PROVIDE_EXECUTABLE_PLAN" }>
+): Promise<BoundExecutablePlan> {
   if (!workerSecret || !workerGeneration) throw new Error("Worker IPC authentication was not initialized.");
   if (!acceptedEnvelope) throw new Error("Executable plan received before the authenticated credential envelope.");
   if (acceptedExecutablePlan) throw new Error("Duplicate executable plan rejected.");
@@ -402,11 +678,15 @@ async function validateExecutablePlan(message: Extract<ApiToWorkerMessage, { typ
   if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order executable plan envelope rejected.");
   if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired executable plan envelope rejected.");
   const { hmac, ...body } = message;
-  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Executable plan envelope authentication failed.");
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex")))
+    throw new Error("Executable plan envelope authentication failed.");
   const payload = parseExecutablePlanPayload(message.payload);
-  if (!constantEqual(executablePlanContentDigest(payload), message.contentDigest)) throw new Error("EXECUTABLE_PLAN_SNAPSHOT_CHANGED");
-  if (!constantEqual(payload.authenticationDigest, executableAuthenticationDigest(acceptedEnvelopeAuth))) throw new Error("EXECUTABLE_PLAN_AUTH_BINDING_MISMATCH");
-  if (!request || payload.target !== new URL(request.target).href) throw new Error("EXECUTABLE_PLAN_TARGET_BINDING_INVALID");
+  if (!constantEqual(executablePlanContentDigest(payload), message.contentDigest))
+    throw new Error("EXECUTABLE_PLAN_SNAPSHOT_CHANGED");
+  if (!constantEqual(payload.authenticationDigest, executableAuthenticationDigest(acceptedEnvelopeAuth)))
+    throw new Error("EXECUTABLE_PLAN_AUTH_BINDING_MISMATCH");
+  if (!request || payload.target !== new URL(request.target).href)
+    throw new Error("EXECUTABLE_PLAN_TARGET_BINDING_INVALID");
   await assertExecutablePlanSourcesUnchanged(payload.sourceBindings);
   lastSensitiveSequence = message.sequence;
   return { payload, contentDigest: message.contentDigest, binding: message.binding };
@@ -418,12 +698,16 @@ function validateRecoveryMessage(message: Extract<ApiToWorkerMessage, { type: "R
   if (message.sequence <= lastSensitiveSequence) throw new Error("Out-of-order recovery envelope rejected.");
   if (Date.parse(message.expiresAt) < Date.now()) throw new Error("Expired recovery envelope rejected.");
   const { hmac, ...body } = message;
-  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex"))) throw new Error("Recovery envelope authentication failed.");
+  if (!constantEqual(hmac, createHmac("sha256", workerSecret).update(JSON.stringify(body)).digest("hex")))
+    throw new Error("Recovery envelope authentication failed.");
   lastSensitiveSequence = message.sequence;
 }
 
 function send(message: WorkerToApiMessage): void {
-  if (process.connected) process.send?.(message, () => { /* IPC loss must not interrupt restoration. */ });
+  if (process.connected)
+    process.send?.(message, () => {
+      /* IPC loss must not interrupt restoration. */
+    });
 }
 
 function safeError(error: unknown): string {
@@ -441,12 +725,45 @@ function constantEqual(left: string, right: string): boolean {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-async function beforeCleanupRequest():Promise<void>{
- if(!cleanupAttemptId||gateRefused||shutdownRequested||!process.connected)throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
- const ordinal=++cleanupOrdinal,body={protocolVersion:workerProtocolVersion as 2,type:"RECOVERY_REQUEST_GATE" as const,workerId:requireWorkerId(),jobId,attemptId:cleanupAttemptId,workerGeneration,ordinal};
- await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{cleanupAcknowledgements.delete(ordinal);gateRefused=true;reject(Error("RECOVERY_DISPATCH_ACK_UNKNOWN"));},5000);cleanupAcknowledgements.set(ordinal,{resolve,reject,timer});send({...body,hmac:cleanupMac(workerSecret,body)});});
- if(gateRefused||shutdownRequested)throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
+async function beforeCleanupRequest(): Promise<void> {
+  if (!cleanupAttemptId || gateRefused || shutdownRequested || !process.connected)
+    throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
+  const ordinal = ++cleanupOrdinal,
+    body = {
+      protocolVersion: workerProtocolVersion as 2,
+      type: "RECOVERY_REQUEST_GATE" as const,
+      workerId: requireWorkerId(),
+      jobId,
+      attemptId: cleanupAttemptId,
+      workerGeneration,
+      ordinal
+    };
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanupAcknowledgements.delete(ordinal);
+      gateRefused = true;
+      reject(Error("RECOVERY_DISPATCH_ACK_UNKNOWN"));
+    }, 5000);
+    cleanupAcknowledgements.set(ordinal, { resolve, reject, timer });
+    send({ ...body, hmac: cleanupMac(workerSecret, body) });
+  });
+  if (gateRefused || shutdownRequested) throw Error("RECOVERY_DISPATCH_GATE_REFUSED");
 }
-async function sendRecoveryResult(result:{caseId:string;cleanupOutcome:"ROLLBACK_VERIFIED"|"CLEANUP_FAILED";notes:string[]}){
- const proof=await cleanupResultProof(paths!.mutationJournalDir,result.caseId),body={protocolVersion:workerProtocolVersion as 2,type:"JOB_MUTATION_RECOVERY" as const,workerId:requireWorkerId(),jobId,...result,attemptId:cleanupAttemptId,workerGeneration,...(proof?{proof}:{})};send({...body,hmac:cleanupMac(workerSecret,body)});
+async function sendRecoveryResult(result: {
+  caseId: string;
+  cleanupOutcome: "ROLLBACK_VERIFIED" | "CLEANUP_FAILED";
+  notes: string[];
+}) {
+  const proof = await cleanupResultProof(paths!.mutationJournalDir, result.caseId),
+    body = {
+      protocolVersion: workerProtocolVersion as 2,
+      type: "JOB_MUTATION_RECOVERY" as const,
+      workerId: requireWorkerId(),
+      jobId,
+      ...result,
+      attemptId: cleanupAttemptId,
+      workerGeneration,
+      ...(proof ? { proof } : {})
+    };
+  send({ ...body, hmac: cleanupMac(workerSecret, body) });
 }

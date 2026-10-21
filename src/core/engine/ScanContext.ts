@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { validateActorRegistry, credentialDigest, type ActorProfiles } from "../auth/ActorRegistry.js";
+import { assertProductionRegistry } from "../authorization/ProductionCampaign.js";
 import { assertProductionCampaignProfiles } from "../authorization/ProductionCampaign.js";
 import type { RouteCairnConfig, RouteCairnScope } from "../../config/ConfigSchema.js";
 import type { AuthProfile } from "../auth/AuthProfile.js";
@@ -19,6 +22,9 @@ import { ScanRequestLedger, type RequestLedgerLane } from "../http/ScanRequestLe
 import { PinnedOriginPool } from "../http/PinnedOriginPool.js";
 
 export interface ScanContextOptions {
+  actorBindingKey?: string;
+  actorProfiles?: ActorProfiles;
+  organizationId?: string;
   target: string;
   scope: RouteCairnScope;
   config: RouteCairnConfig;
@@ -39,6 +45,68 @@ export interface ScanContextOptions {
 }
 
 export class ScanContext {
+  public readonly identityExecutionId = randomUUID();
+  private credentialRedaction() {
+    const profiles = [
+      this.options.authProfile,
+      ...Object.values(this.options.actorProfiles ?? {}),
+      this.options.authProfileSet?.accountA,
+      this.options.authProfileSet?.accountB
+    ].filter((p): p is AuthProfile => !!p);
+    return {
+      privateHeaderNames: [...new Set(profiles.flatMap((p) => Object.keys(p.headers)))],
+      privateValues: [
+        ...new Set(
+          profiles
+            .flatMap((p) => [
+              ...Object.values(p.headers),
+              ...p.cookies.map((c) => c.value),
+              ...Object.values(p.browserBootstrap?.loginSecrets ?? {}),
+              ...Object.values(p.lifecycleSecrets ?? {})
+            ])
+            .flatMap((v) => [/^Bearer /i.test(v) ? v.slice(7) : v, v])
+            .filter(Boolean)
+        )
+      ]
+    };
+  }
+
+  public invalidateActor(id: string) {
+    const prior = this.state.getIdentityVerification();
+    this.state.recordIdentityVerification({
+      ...prior,
+      enabled: true,
+      notes: prior?.notes ?? [],
+      actors: {
+        ...prior?.actors,
+        [id]: {
+          profileLabel: id,
+          mode: "disabled",
+          category: "AUTHENTICATION_FAILED",
+          verified: false,
+          required: false,
+          principalMatched: false,
+          statusCode: 401,
+          timestamp: new Date().toISOString(),
+          notes: ["Native credential-bound response returned 401; later authenticated workflows blocked."]
+        }
+      }
+    });
+  }
+  public actorProfile(id: string) {
+    const a = this.options.plan.actorRegistry?.actors.find((a) => a.id === id);
+    if (!a) throw Error("ACTOR_REFERENCE_UNBOUND");
+    if (a.authentication.mechanism === "ANONYMOUS") return undefined;
+    const p = this.options.actorProfiles?.[id];
+    if (a.authentication.availability !== "AVAILABLE") throw Error("ACTOR_CREDENTIAL_UNAVAILABLE");
+    if (
+      !p ||
+      Date.parse(a.authentication.credentialExpiresAt) <= Date.now() ||
+      credentialDigest(p, this.options.actorBindingKey) !== a.authentication.credentialDigest
+    )
+      throw Error("ACTOR_CREDENTIAL_EXPIRED_OR_CHANGED");
+    return p;
+  }
   public readonly mutations: WorkflowMutationCoordinator;
   public readonly scopeMatcher: ScopeMatcher;
   public readonly httpClient: RequestSafetyBroker;
@@ -63,7 +131,9 @@ export class ScanContext {
     if (
       authorization?.requestPolicy &&
       !authorization.requestPolicy.authenticationPermitted &&
-      (options.authProfile || options.authProfileSet)
+      (options.authProfile ||
+        options.authProfileSet ||
+        options.plan.actorRegistry?.actors.some((a) => a.authentication.mechanism !== "ANONYMOUS"))
     )
       throw new Error("TARGET_AUTHENTICATION_PROHIBITED");
     if (authorization?.plan.productionCampaign) {
@@ -81,6 +151,26 @@ export class ScanContext {
         throw Error("PRODUCTION_CAMPAIGN_LIMIT_MISMATCH");
       assertProductionCampaignProfiles(c, options.authProfile, options.authProfileSet);
     }
+    if (options.plan.actorRegistry) {
+      if (options.authProfile || options.authProfileSet || !options.organizationId)
+        throw Error("MIXED_OR_UNBOUND_ACTOR_REGISTRY");
+      validateActorRegistry(
+        options.plan.actorRegistry,
+        options.actorProfiles ?? {},
+        options.target,
+        options.organizationId,
+        options.actorBindingKey
+      );
+    }
+    if (authorization?.plan.productionCampaign)
+      assertProductionRegistry(
+        authorization.plan.productionCampaign,
+        options.plan.actorRegistry,
+        options.actorProfiles,
+        options.organizationId,
+        options.target,
+        options.actorBindingKey
+      );
     this.scopeMatcher = new ScopeMatcher(options.target, options.scope, authorization);
     if (options.recoveryScope) {
       const currentScope = new ScopeMatcher(options.target, options.recoveryScope);
@@ -118,6 +208,7 @@ export class ScanContext {
 
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -152,6 +243,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(attackBudget + cleanupBudget + browserProofBudget * 2);
     const attackTransport = new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -180,6 +272,7 @@ export class ScanContext {
     const protectedProofTransport = proofConfigured
       ? new RequestSafetyBroker(
           {
+            ...this.credentialRedaction(),
             userAgent: this.options.scope.userAgent,
             timeoutMs: this.options.plan.limits.requestTimeoutMs,
             rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -253,6 +346,7 @@ export class ScanContext {
     ];
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -293,6 +387,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -323,6 +418,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -347,6 +443,7 @@ export class ScanContext {
   public createApiGraphqlHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -376,6 +473,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -414,6 +512,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -449,6 +548,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -487,6 +587,7 @@ export class ScanContext {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
     return new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
@@ -526,6 +627,7 @@ export class ScanContext {
     const window = new CleanupExecution();
     const broker = new RequestSafetyBroker(
       {
+        ...this.credentialRedaction(),
         userAgent: this.options.scope.userAgent,
         timeoutMs: this.options.plan.limits.requestTimeoutMs,
         rateLimitPerSecond: Math.min(

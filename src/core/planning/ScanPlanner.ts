@@ -58,6 +58,8 @@ export class ScanPlanner {
   ) {}
 
   public resolve(input: ScanPlannerInput): ResolvedScanPlan {
+    if (input.actorRegistry && (input.authProfile || input.authProfileSet))
+      throw Error("MIXED_ACTOR_CONTRACTS_FORBIDDEN");
     validatePreHandoverBindings(input);
     if (input.targetAuthorization) {
       const authorization = targetAuthorizationSchema.parse(input.targetAuthorization);
@@ -100,6 +102,7 @@ export class ScanPlanner {
 
     const authentication = {
       ...definition.authentication,
+      ...(input.actorRegistry ? { required: false, requireSingleProfile: false, requireAccountPair: false } : {}),
       hasSingleProfile: Boolean(input.authProfile),
       hasAccountPair: Boolean(input.authProfileSet)
     };
@@ -137,14 +140,20 @@ export class ScanPlanner {
           }
         : resolvedLimits
     );
-    if (input.assistedReview?.requireVerifiedIdentity && !input.authProfile && !input.authProfileSet)
+    if (
+      !input.actorRegistry &&
+      input.assistedReview?.requireVerifiedIdentity &&
+      !input.authProfile &&
+      !input.authProfileSet
+    )
       throw new AppError("This review requires an authenticated identity profile.", "ASSISTED_REVIEW_AUTH_REQUIRED");
-    if (input.assistedReview?.requireAccountPair && !input.authProfileSet)
+    if (!input.actorRegistry && input.assistedReview?.requireAccountPair && !input.authProfileSet)
       throw new AppError("This review requires an Account A/B profile pair.", "ASSISTED_REVIEW_AUTH_PAIR_REQUIRED");
     const { modules, skippedModules } = this.resolveModules(definition, limits, authentication, input);
 
     const plan: ResolvedScanPlan = deepFreeze({
       schemaVersion: scanPlanSchemaVersion,
+      ...(input.actorRegistry ? { actorRegistry: input.actorRegistry } : {}),
       profile: definition.name,
       displayName: definition.displayName,
       description: definition.description,

@@ -1,3 +1,4 @@
+import { assessmentActorInputSchema, prepareAssessmentActors } from "../execution/AssessmentActorRegistry.js";
 import {
   requireAssuranceTarget,
   requireAssurancePolicy,
@@ -142,6 +143,18 @@ export async function handleApiMutation(context: ApiContext): Promise<void> {
     mutationRecovery
   } = context;
   enforceTenantMutationBoundary(context);
+  if (request.method === "POST" && url.pathname === "/api/scans/actor-registry") {
+    requirePermission(context, "scans.create");
+    const input = assessmentActorInputSchema.parse(await readJson(request));
+    requireSelectedResource(context, "target", input.targetId, "resources.use");
+    const org = resourceOrganization(context, "resources.use");
+    for (const a of input.actors) {
+      requirePermission(context, "credentials.use");
+      requireSelectedResource(context, "credential", a.credentialProfileId, "resources.use");
+    }
+    sendJson(response, 200, prepareAssessmentActors(context.database, context.vault, org, input));
+    return;
+  }
   if (await handleAuthorizationWorkbench(context)) return;
   if (await handleRecoveryCenter(context)) return;
   if (request.method === "POST" && url.pathname === "/api/operations/organizations") {

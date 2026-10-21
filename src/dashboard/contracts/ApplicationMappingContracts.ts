@@ -1,4 +1,4 @@
-import { routeObservationSchema } from "../../modules/apiGraphql/CollectionOwnership.js";
+import { routeObservationSchema } from "../../modules/apiGraphql/CollectionContracts.js";
 import { identityModelSchema } from "../../core/auth/IdentityModel.js";
 import { discoveryBindingSchema } from "./ApplicationDiscoveryContracts.js";
 import { schemaSelectionSchema } from "./ApplicationSchemaContracts.js";

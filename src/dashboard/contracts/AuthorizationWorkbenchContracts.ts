@@ -1,4 +1,4 @@
-import { collectionContractSchema } from "../../modules/apiGraphql/CollectionOwnership.js";
+import { collectionContractSchema } from "../../modules/apiGraphql/CollectionContracts.js";
 import { z } from "zod";
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/);
 const scalar = z.union([z.string().min(1).max(256), z.number().finite()]);

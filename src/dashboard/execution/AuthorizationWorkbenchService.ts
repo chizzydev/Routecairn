@@ -100,6 +100,7 @@ export class AuthorizationWorkbenchService {
     const actors: ApiGraphqlInput["actors"] = source.actors.map((a) => {
       if (a.authSlot === "anonymous")
         return { id: a.id, safeAlias: a.safeAlias, authSlot: a.authSlot, relationship: a.relationship };
+      if (a.authSlot === "registry") throw Error("LEGACY_WORKBENCH_REQUIRES_VERSIONED_REGISTRY_ADAPTER");
       const credentialId = input.credentials[a.authSlot],
         c = credentialId ? this.vault.getSummary(credentialId, organizationId) : undefined,
         m = c?.safeIdentitySummary;
@@ -328,6 +329,7 @@ export class AuthorizationWorkbenchService {
     }> = [{ purpose: "CORE_BASELINE", actorId: "anonymous", method: "GET", url: new URL("/", target.baseOrigin).href }];
     for (const actor of actors) {
       if (actor.authSlot === "anonymous") continue;
+      if (actor.authSlot === "registry") throw Error("LEGACY_WORKBENCH_REQUIRES_VERSIONED_REGISTRY_ADAPTER");
       const credentialProfileId = input.credentials[actor.authSlot];
       if (!credentialProfileId) continue;
       const identity = this.vault.decryptForHealthCheck(credentialProfileId).identityVerification;

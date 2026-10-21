@@ -158,7 +158,13 @@ export interface OutputExpectations {
 export type ObjectPairPrincipalLabel = "account_a" | "account_b";
 export type ObjectPairMatrixPurpose = "owner-baseline" | "cross-account";
 export type ObjectPairDirection = "A_TO_A" | "B_TO_B" | "A_TO_B" | "B_TO_A";
-export type ObjectVisibilityExpectation = "PRIVATE_TO_OWNER" | "SHARED_WITH_SPECIFIC_PRINCIPALS" | "TENANT_VISIBLE" | "ROLE_VISIBLE" | "PUBLIC" | "UNKNOWN_REQUIRES_REVIEW";
+export type ObjectVisibilityExpectation =
+  | "PRIVATE_TO_OWNER"
+  | "SHARED_WITH_SPECIFIC_PRINCIPALS"
+  | "TENANT_VISIBLE"
+  | "ROLE_VISIBLE"
+  | "PUBLIC"
+  | "UNKNOWN_REQUIRES_REVIEW";
 
 export interface ObjectPairPrincipalPlan {
   label: ObjectPairPrincipalLabel;
@@ -593,8 +599,20 @@ export type CollectionActorRelationship =
   | "DEACTIVATED_ACCOUNT"
   | "PUBLIC"
   | "CUSTOM_DECLARED_RELATIONSHIP";
-export type CollectionEndpointCategory = "LIST" | "SEARCH" | "COUNT" | "SUMMARY" | "DASHBOARD" | "RECENT" | "ARCHIVE" | "ADMIN_LIST" | "TENANT_LIST" | "PUBLIC_LIST" | "CUSTOM_DECLARED";
-export type CollectionCompletenessPolicy = "COMPLETE_COLLECTION" | "FIXED_RESULT_WINDOW" | "SEARCH_RESULT_SET" | "SUMMARY_ONLY" | "UNKNOWN_COMPLETENESS";
+export type CollectionEndpointCategory =
+  | "LIST"
+  | "SEARCH"
+  | "COUNT"
+  | "SUMMARY"
+  | "DASHBOARD"
+  | "RECENT"
+  | "ARCHIVE"
+  | "ADMIN_LIST"
+  | "TENANT_LIST"
+  | "PUBLIC_LIST"
+  | "CUSTOM_DECLARED";
+export type CollectionCompletenessPolicy =
+  "COMPLETE_COLLECTION" | "FIXED_RESULT_WINDOW" | "SEARCH_RESULT_SET" | "SUMMARY_ONLY" | "UNKNOWN_COMPLETENESS";
 export type CollectionMembershipExpectation =
   | "MUST_CONTAIN"
   | "MUST_NOT_CONTAIN"
@@ -603,8 +621,10 @@ export type CollectionMembershipExpectation =
   | "MUST_MATCH_REFERENCE_CASE"
   | "MUST_NOT_EXCEED_REFERENCE_MEMBERSHIP"
   | "OBSERVE_ONLY";
-export type CollectionCountExpectationType = "MUST_EQUAL" | "MUST_MATCH_REFERENCE" | "MUST_NOT_EXCEED_REFERENCE" | "MUST_BE_ZERO" | "MAY_DIFFER" | "OBSERVE_ONLY";
-export type CollectionSummaryExpectationType = "MUST_EQUAL" | "MUST_MATCH_REFERENCE" | "MUST_NOT_EXCEED_REFERENCE" | "MUST_BE_ZERO" | "MAY_DIFFER" | "OBSERVE_ONLY";
+export type CollectionCountExpectationType =
+  "MUST_EQUAL" | "MUST_MATCH_REFERENCE" | "MUST_NOT_EXCEED_REFERENCE" | "MUST_BE_ZERO" | "MAY_DIFFER" | "OBSERVE_ONLY";
+export type CollectionSummaryExpectationType =
+  "MUST_EQUAL" | "MUST_MATCH_REFERENCE" | "MUST_NOT_EXCEED_REFERENCE" | "MUST_BE_ZERO" | "MAY_DIFFER" | "OBSERVE_ONLY";
 
 export interface CollectionActorPlan {
   id: string;
@@ -717,15 +737,61 @@ export interface CollectionAuthorizationTestingPlan {
 
 export type BulkAuthorizationAuthSlot = "account_a" | "account_b";
 export type BulkActorRelationship = CollectionActorRelationship;
-export type BulkOperationType = "PREVIEW" | "VALIDATE" | "DRY_RUN" | "EXPORT_SUMMARY" | "EXPORT_MANIFEST_PREVIEW" | "SELECTION_SUMMARY" | "ELIGIBILITY_CHECK" | "PERMISSION_CHECK" | "SIMULATION" | "OBSERVE_ONLY";
-export type BulkEnvironment = "CONTROLLED_TEST" | "LOCAL_FIXTURE" | "AUTHORIZED_STAGING" | "AUTHORIZED_PRODUCTION_TEST_DATA";
+export type BulkOperationType =
+  | "PREVIEW"
+  | "VALIDATE"
+  | "DRY_RUN"
+  | "EXPORT_SUMMARY"
+  | "EXPORT_MANIFEST_PREVIEW"
+  | "SELECTION_SUMMARY"
+  | "ELIGIBILITY_CHECK"
+  | "PERMISSION_CHECK"
+  | "SIMULATION"
+  | "OBSERVE_ONLY";
+export type BulkEnvironment =
+  "CONTROLLED_TEST" | "LOCAL_FIXTURE" | "AUTHORIZED_STAGING" | "AUTHORIZED_PRODUCTION_TEST_DATA";
 export type BulkRequestStyle = "GET_REPEATED_QUERY" | "GET_COMMA_QUERY" | "JSON_POST";
-export type BulkCaseType = "SINGLE_ALLOWED" | "SINGLE_DENIED" | "ALL_ALLOWED" | "ALL_DENIED" | "MIXED_OWNERSHIP" | "MIXED_TENANT" | "MIXED_ROLE_VISIBILITY" | "MIXED_OBJECT_STATE" | "PUBLIC_MIXED_VISIBILITY" | "REFERENCE_COMPARISON";
-export type BulkObjectExpectedDecision = "ALLOW" | "DENY" | "FILTER_OUT" | "EXPLICIT_REJECTION" | "REDACTED_METADATA_ONLY" | "PUBLIC_SUMMARY_ONLY" | "MATCH_SINGLE_OBJECT_DECISION" | "OBSERVE_ONLY";
-export type BulkBatchPolicy = "MUST_ALLOW_ENTIRE_BATCH" | "MUST_REJECT_ENTIRE_BATCH" | "MUST_FILTER_UNAUTHORIZED_OBJECTS" | "MUST_RETURN_PER_OBJECT_DECISIONS" | "MUST_NOT_EXPOSE_RESTRICTED_METADATA" | "MUST_MATCH_SINGLE_OBJECT_DECISIONS" | "MUST_MATCH_REFERENCE_CASE" | "OBSERVE_ONLY";
-export type BulkResponseContractType = "ATOMIC_DECISION" | "FILTERED_OBJECT_LIST" | "PER_OBJECT_DECISIONS" | "PREVIEW_OBJECT_LIST" | "SUMMARY_ONLY" | "EXPORT_MANIFEST_PREVIEW" | "VALIDATION_RESULTS" | "REFERENCE_ONLY";
+export type BulkCaseType =
+  | "SINGLE_ALLOWED"
+  | "SINGLE_DENIED"
+  | "ALL_ALLOWED"
+  | "ALL_DENIED"
+  | "MIXED_OWNERSHIP"
+  | "MIXED_TENANT"
+  | "MIXED_ROLE_VISIBILITY"
+  | "MIXED_OBJECT_STATE"
+  | "PUBLIC_MIXED_VISIBILITY"
+  | "REFERENCE_COMPARISON";
+export type BulkObjectExpectedDecision =
+  | "ALLOW"
+  | "DENY"
+  | "FILTER_OUT"
+  | "EXPLICIT_REJECTION"
+  | "REDACTED_METADATA_ONLY"
+  | "PUBLIC_SUMMARY_ONLY"
+  | "MATCH_SINGLE_OBJECT_DECISION"
+  | "OBSERVE_ONLY";
+export type BulkBatchPolicy =
+  | "MUST_ALLOW_ENTIRE_BATCH"
+  | "MUST_REJECT_ENTIRE_BATCH"
+  | "MUST_FILTER_UNAUTHORIZED_OBJECTS"
+  | "MUST_RETURN_PER_OBJECT_DECISIONS"
+  | "MUST_NOT_EXPOSE_RESTRICTED_METADATA"
+  | "MUST_MATCH_SINGLE_OBJECT_DECISIONS"
+  | "MUST_MATCH_REFERENCE_CASE"
+  | "OBSERVE_ONLY";
+export type BulkResponseContractType =
+  | "ATOMIC_DECISION"
+  | "FILTERED_OBJECT_LIST"
+  | "PER_OBJECT_DECISIONS"
+  | "PREVIEW_OBJECT_LIST"
+  | "SUMMARY_ONLY"
+  | "EXPORT_MANIFEST_PREVIEW"
+  | "VALIDATION_RESULTS"
+  | "REFERENCE_ONLY";
 export type BulkPostSafetyMode = "GET_ONLY" | "OPERATOR_ATTESTED_DRY_RUN" | "POSTCONDITION_VERIFIED_DRY_RUN";
-export type BulkBaselineExpectedDecision = "MUST_ALLOW" | "MUST_DENY" | "MUST_REQUIRE_AUTHENTICATION" | "MUST_RETURN_NOT_FOUND" | "OBSERVE_ONLY";
+export type BulkBaselineExpectedDecision =
+  "MUST_ALLOW" | "MUST_DENY" | "MUST_REQUIRE_AUTHENTICATION" | "MUST_RETURN_NOT_FOUND" | "OBSERVE_ONLY";
 export type BulkBaselineSource = "SAFE_GET" | "REUSE_OBJECT_PAIR_RESULT" | "REUSE_AUTHORIZATION_MATRIX_RESULT";
 
 export interface BulkActorPlan {
@@ -902,8 +968,10 @@ export type FileAccessExpectation =
   | "MUST_NOT_RECEIVE_SIGNED_URL"
   | "MUST_MATCH_REFERENCE_CASE"
   | "OBSERVE_ONLY";
-export type FileIdentityStrategy = "METADATA_FIELD_MATCH" | "OPERATOR_SUPPLIED_FINGERPRINT" | "SIGNED_URL_FIELD_MATCH" | "OBSERVE_ONLY";
-export type FileContentProofMode = "HEADERS_ONLY" | "METADATA_ONLY" | "BOUNDED_PREFIX" | "FULL_STREAM_FINGERPRINT" | "SIGNED_URL_ONLY";
+export type FileIdentityStrategy =
+  "METADATA_FIELD_MATCH" | "OPERATOR_SUPPLIED_FINGERPRINT" | "SIGNED_URL_FIELD_MATCH" | "OBSERVE_ONLY";
+export type FileContentProofMode =
+  "HEADERS_ONLY" | "METADATA_ONLY" | "BOUNDED_PREFIX" | "FULL_STREAM_FINGERPRINT" | "SIGNED_URL_ONLY";
 
 export interface FileAuthorizationActorPlan {
   id: string;
@@ -1062,6 +1130,7 @@ export interface ScanPlanMetadata {
 }
 
 export interface ResolvedScanPlan {
+  actorRegistry?: import("../auth/ActorRegistry.js").ActorRegistry;
   targetAuthorization?: import("../authorization/TargetAuthorization.js").TargetAuthorization;
   preHandover?: import("../../modules/preHandover/PreHandoverPlanner.js").PreHandoverPlan;
   assistedReview?: Readonly<import("../../modules/assistedReview/AssistedReviewTypes.js").AssistedReviewPlan>;
@@ -1086,17 +1155,33 @@ export interface ResolvedScanPlan {
   bulkAuthorizationTesting?: Readonly<BulkAuthorizationTestingPlan>;
   fileAuthorizationTesting?: Readonly<FileAuthorizationTestingPlan>;
   equivalentRouteTesting?: Readonly<EquivalentRouteTestingPlan>;
-  privilegeMutationTesting?: Readonly<import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan>;
-  supabaseAuthorization?: Readonly<import("../../modules/supabaseAuthorization/SupabaseAuthorizationTypes.js").SupabaseAuthorizationPlan>;
-  authenticationLifecycle?: Readonly<import("../../modules/authenticationLifecycle/AuthenticationLifecycleTypes.js").AuthenticationLifecyclePlan>;
-  businessInvariant?: Readonly<import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan>;
+  privilegeMutationTesting?: Readonly<
+    import("../../modules/privilegeMutation/PrivilegeMutationPlanner.js").PrivilegeMutationTestingPlan
+  >;
+  supabaseAuthorization?: Readonly<
+    import("../../modules/supabaseAuthorization/SupabaseAuthorizationTypes.js").SupabaseAuthorizationPlan
+  >;
+  authenticationLifecycle?: Readonly<
+    import("../../modules/authenticationLifecycle/AuthenticationLifecycleTypes.js").AuthenticationLifecyclePlan
+  >;
+  businessInvariant?: Readonly<
+    import("../../modules/businessInvariant/BusinessInvariantTypes.js").BusinessInvariantPlan
+  >;
   controlledRace?: Readonly<import("../../modules/controlledRace/ControlledRaceTypes.js").ControlledRacePlan>;
   apiGraphql?: Readonly<import("../../modules/apiGraphql/ApiGraphqlTypes.js").ApiGraphqlReviewPlan>;
   protocolSecurity?: Readonly<import("../../modules/protocolSecurity/ProtocolSecurityTypes.js").ProtocolSecurityPlan>;
-  linkPortalSecurity?: Readonly<import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan>;
-  operationalEndpointSecurity?: Readonly<import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan>;
-  billingEntitlement?: Readonly<import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan>;
-  activeVulnerability?: Readonly<import("../../modules/activeVulnerability/ActiveVulnerabilityTypes.js").ActiveVulnerabilityPlan>;
+  linkPortalSecurity?: Readonly<
+    import("../../modules/linkPortalSecurity/LinkPortalSecurityTypes.js").LinkPortalSecurityPlan
+  >;
+  operationalEndpointSecurity?: Readonly<
+    import("../../modules/operationalEndpointSecurity/OperationalEndpointSecurityTypes.js").OperationalEndpointSecurityPlan
+  >;
+  billingEntitlement?: Readonly<
+    import("../../modules/billingEntitlement/BillingEntitlementTypes.js").BillingEntitlementPlan
+  >;
+  activeVulnerability?: Readonly<
+    import("../../modules/activeVulnerability/ActiveVulnerabilityTypes.js").ActiveVulnerabilityPlan
+  >;
 }
 
 export interface ModuleMetadata {
@@ -1134,6 +1219,7 @@ export interface ScanProfileDefinition {
 }
 
 export interface ScanPlannerInput {
+  actorRegistry?: import("../auth/ActorRegistry.js").ActorRegistry;
   targetAuthorization?: import("../authorization/TargetAuthorization.js").TargetAuthorization;
   preHandover?: import("../../modules/preHandover/PreHandoverPlanner.js").PreHandoverPlan;
   assistedReview?: import("../../modules/assistedReview/AssistedReviewTypes.js").AssistedReviewPlan;

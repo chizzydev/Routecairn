@@ -13,11 +13,12 @@ export const apiGraphqlCheckKinds = [
 ] as const;
 
 export type ApiGraphqlCheckKind = (typeof apiGraphqlCheckKinds)[number];
-export type ApiGraphqlActorSlot = "anonymous" | "primary" | "account_a" | "account_b";
+export type ApiGraphqlActorSlot = "anonymous" | "primary" | "account_a" | "account_b" | "registry";
 export type ApiGraphqlDecision = "ALLOW" | "DENY" | "OBSERVE";
 export type ApiGraphqlOutcome = "PASS" | "FAIL" | "INCONCLUSIVE" | "BLOCKED";
 
 export interface ApiGraphqlActorPlan {
+  registryId?: string;
   identityModel?: import("../../core/auth/IdentityModel.js").IdentityModel;
   id: string;
   safeAlias: string;

@@ -1,7 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { durableAtomicWrite } from "../core/offensive/MutationJournal.js";
-import type { FalsePositiveStatus, IdentityVerificationResult, ResponseObservation, RouteCairnReport } from "./ReportTypes.js";
+import type {
+  FalsePositiveStatus,
+  IdentityVerificationResult,
+  ResponseObservation,
+  RouteCairnReport
+} from "./ReportTypes.js";
 
 export class MarkdownReportWriter {
   public async write(outputDir: string, report: RouteCairnReport): Promise<string> {
@@ -19,7 +24,9 @@ function renderMarkdown(report: RouteCairnReport): string {
     "# RouteCairn Report",
     "",
     ...(report.execution?.partial ? ["> PARTIAL REPORT — " + report.execution.reason, ""] : []),
-    ...(report.execution && report.execution.cleanup.state !== "CLEAR" ? ["> CLEANUP " + report.execution.cleanup.state + " — verify recovery before reusing disposable state.", ""] : []),
+    ...(report.execution && report.execution.cleanup.state !== "CLEAR"
+      ? ["> CLEANUP " + report.execution.cleanup.state + " — verify recovery before reusing disposable state.", ""]
+      : []),
     "## Scan Metadata",
     "",
     `- Target: ${report.target}`,
@@ -38,23 +45,43 @@ function renderMarkdown(report: RouteCairnReport): string {
     `- Completed: ${report.metadata.completedAt}`,
     `- Duration: ${report.metadata.durationMs} ms`,
     `- Total requests: ${report.metadata.totalRequests}`,
-    ...(report.requestBudget ? [
-      `- Scan request capacity: ${report.requestBudget.scanCapacity}`,
-      `- Cleanup capacity reserved: ${report.requestBudget.cleanupReservedRequests}`,
-      `- Ordinary / cleanup transmitted: ${report.requestBudget.scanTransmitted} / ${report.requestBudget.cleanupTransmitted}`,
-      `- Ordinary / cleanup remaining: ${report.requestBudget.scanRemaining} / ${report.requestBudget.cleanupRemaining}`
-    ] : []),
-    ...(report.transport ? [
-      `- Connection pooling: ${report.transport.poolingEnabled ? "enabled" : "disabled"}`,
-      `- Constrained HTTP/2: ${report.transport.http2Enabled ? "enabled for TLS origins" : "disabled"}`,
-      `- Origin pool hits / misses: ${report.transport.poolHits} / ${report.transport.poolMisses}`,
-      `- Connections created / estimated reuses: ${report.transport.connectionsCreated} / ${report.transport.estimatedConnectionReuses}`,
-      `- HTTP/1.1 / HTTP/2 connections: ${report.transport.http1Connections} / ${report.transport.http2Connections}`,
-      `- DNS resolutions / cache hits / blocked: ${report.transport.dnsResolutions} / ${report.transport.dnsCacheHits} / ${report.transport.blockedResolutions}`,
-      `- Pin rotations / origin evictions: ${report.transport.pinRotations} / ${report.transport.originEvictions}`
-    ] : []),
+    ...(report.requestBudget
+      ? [
+          `- Scan request capacity: ${report.requestBudget.scanCapacity}`,
+          `- Cleanup capacity reserved: ${report.requestBudget.cleanupReservedRequests}`,
+          `- Ordinary / cleanup transmitted: ${report.requestBudget.scanTransmitted} / ${report.requestBudget.cleanupTransmitted}`,
+          `- Ordinary / cleanup remaining: ${report.requestBudget.scanRemaining} / ${report.requestBudget.cleanupRemaining}`
+        ]
+      : []),
+    ...(report.transport
+      ? [
+          `- Connection pooling: ${report.transport.poolingEnabled ? "enabled" : "disabled"}`,
+          `- Constrained HTTP/2: ${report.transport.http2Enabled ? "enabled for TLS origins" : "disabled"}`,
+          `- Origin pool hits / misses: ${report.transport.poolHits} / ${report.transport.poolMisses}`,
+          `- Connections created / estimated reuses: ${report.transport.connectionsCreated} / ${report.transport.estimatedConnectionReuses}`,
+          `- HTTP/1.1 / HTTP/2 connections: ${report.transport.http1Connections} / ${report.transport.http2Connections}`,
+          `- DNS resolutions / cache hits / blocked: ${report.transport.dnsResolutions} / ${report.transport.dnsCacheHits} / ${report.transport.blockedResolutions}`,
+          `- Pin rotations / origin evictions: ${report.transport.pinRotations} / ${report.transport.originEvictions}`
+        ]
+      : []),
     `- Technologies detected: ${report.technologies.length}`,
     "",
+    ...(report.assessmentCapabilities
+      ? [
+          "## Actor assurance and capability coverage",
+          "",
+          "Eligibility is not execution, authentication success, a verified finding or an application-secure conclusion.",
+          ...report.assessmentCapabilities.actors.map(
+            (a) =>
+              `- Actor ${a.id}: ${a.assurance}; role verified ${a.roleVerified}; tenant verified ${a.tenantVerified}.`
+          ),
+          ...report.assessmentCapabilities.workflows.map(
+            (w) =>
+              `- ${w.workflowId} / ${w.family}: ${w.status} — ${w.reason}. Human review remains separately labeled.`
+          ),
+          ""
+        ]
+      : []),
     "## Standards Coverage",
     "",
     ...standardsCoverageLines(report),
@@ -240,22 +267,47 @@ function standardsCoverageLines(report: RouteCairnReport): string[] {
     `- Findings / no findings / inconclusive / blocked / observed: ${coverage.accounting.findings} / ${coverage.accounting.noFindings} / ${coverage.accounting.inconclusive} / ${coverage.accounting.blocked} / ${coverage.accounting.observed}`,
     `- Catalogs: OWASP WSTG ${coverage.catalog.wstg} (snapshot ${coverage.catalog.wstgSnapshotDate}); OWASP ASVS ${coverage.catalog.asvs}; OWASP API Security Top 10 ${coverage.catalog.apiSecurityTop10}; CWE ${coverage.catalog.cwe}; CAPEC ${coverage.catalog.capec}.`,
     "",
-    ...(coverage.frameworkTotals ? ["### Catalog Denominators", "", "| Framework | Active catalog | Mapped | Conclusive case evidence | Unassessed |", "| --- | ---: | ---: | ---: | ---: |", ...coverage.frameworkTotals.map((item) => `| ${item.framework} | ${item.activeEntries} | ${item.mappedEntries} | ${item.conclusiveEntries} | ${item.unassessedEntries} |`), "", `Catalog SHA-256: ${coverage.catalog.sha256}. Mapping scope: bounded case association.`, ""] : []),
+    ...(coverage.frameworkTotals
+      ? [
+          "### Catalog Denominators",
+          "",
+          "| Framework | Active catalog | Mapped | Conclusive case evidence | Unassessed |",
+          "| --- | ---: | ---: | ---: | ---: |",
+          ...coverage.frameworkTotals.map(
+            (item) =>
+              `| ${item.framework} | ${item.activeEntries} | ${item.mappedEntries} | ${item.conclusiveEntries} | ${item.unassessedEntries} |`
+          ),
+          "",
+          `Catalog SHA-256: ${coverage.catalog.sha256}. Mapping scope: bounded case association.`,
+          ""
+        ]
+      : []),
     "### WSTG Area Accounting",
     "",
     "| Area | Status | Executed | Conclusive | Mapped identifiers |",
     "| --- | --- | ---: | ---: | --- |",
-    ...coverage.wstgAreas.map((item) => `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${item.executedCases} | ${item.conclusiveCases} | ${escapeCell(item.requirementIds.join(", ") || "none")} |`),
+    ...coverage.wstgAreas.map(
+      (item) =>
+        `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${item.executedCases} | ${item.conclusiveCases} | ${escapeCell(item.requirementIds.join(", ") || "none")} |`
+    ),
     "",
     "### API Security First-Class Objectives",
     "",
     "| Objective | Status | Engines | Executed | Conclusive |",
     "| --- | --- | --- | ---: | ---: |",
-    ...coverage.apiRiskObjectives.map((item) => `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${escapeCell(item.engineIds.join(", ") || "none")} | ${item.executedCases} | ${item.conclusiveCases} |`),
+    ...coverage.apiRiskObjectives.map(
+      (item) =>
+        `| ${item.id} — ${escapeCell(item.title)} | ${item.status} | ${escapeCell(item.engineIds.join(", ") || "none")} | ${item.executedCases} | ${item.conclusiveCases} |`
+    ),
     "",
     "### Priority Coverage Gaps",
     "",
-    ...(coverage.gaps.length ? coverage.gaps.map((item) => `- ${item.priority} ${item.framework}/${item.id} — ${escapeText(item.title)}: ${escapeText(item.reason)}`) : ["No priority gap remains for the configured coverage objectives in this exact run."]),
+    ...(coverage.gaps.length
+      ? coverage.gaps.map(
+          (item) =>
+            `- ${item.priority} ${item.framework}/${item.id} — ${escapeText(item.title)}: ${escapeText(item.reason)}`
+        )
+      : ["No priority gap remains for the configured coverage objectives in this exact run."]),
     "",
     "> Standards mappings describe retained evidence for this scan. They are not a certification of full standard conformance."
   ];
@@ -271,32 +323,62 @@ function activeVulnerabilityLines(report: RouteCairnReport): string[] {
     "",
     "| Class | Planned | Proven | Secure | Inconclusive | Blocked | Not assessed |",
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ...review.coverage.map((value) => `| ${value.vulnerabilityClass} | ${value.planned} | ${value.proven} | ${value.secure} | ${value.inconclusive} | ${value.blocked} | ${value.notAssessed} |`),
+    ...review.coverage.map(
+      (value) =>
+        `| ${value.vulnerabilityClass} | ${value.planned} | ${value.proven} | ${value.secure} | ${value.inconclusive} | ${value.blocked} | ${value.notAssessed} |`
+    ),
     "",
     "| Case | Class | Outcome | Reason | Strategies | Cleanup |",
     "| --- | --- | --- | --- | ---: | --- |",
-    ...review.cases.map((value) => `| ${escapeCell(value.caseId)} | ${value.vulnerabilityClass} | ${value.outcome} | ${escapeCell(value.reasonCode)} | ${value.strategiesExecuted}/${value.strategiesPlanned} | ${value.cleanup} |`),
-    ...(review.cases.some((value) => value.oastEvidence) ? [
-      "",
-      "| OAST case | Protocol | Delay | Event fingerprint | Binding fingerprint | Replay rejected |",
-      "| --- | --- | ---: | --- | --- | --- |",
-      ...review.cases.filter((value) => value.oastEvidence).map((value) => `| ${escapeCell(value.caseId)} | ${value.oastEvidence!.protocol} | ${value.oastEvidence!.delayMs} ms | ${value.oastEvidence!.requestFingerprint.slice(0, 16)} | ${value.oastEvidence!.bindingFingerprint.slice(0, 16)} | ${value.oastEvidence!.replayRejected ? "yes" : "no"} |`),
-      "",
-      "OAST evidence contains keyed or one-way fingerprints only; callback payloads, source addresses, tenant IDs, worker IDs, job IDs, and case binding values are excluded."
-    ] : [])
+    ...review.cases.map(
+      (value) =>
+        `| ${escapeCell(value.caseId)} | ${value.vulnerabilityClass} | ${value.outcome} | ${escapeCell(value.reasonCode)} | ${value.strategiesExecuted}/${value.strategiesPlanned} | ${value.cleanup} |`
+    ),
+    ...(review.cases.some((value) => value.oastEvidence)
+      ? [
+          "",
+          "| OAST case | Protocol | Delay | Event fingerprint | Binding fingerprint | Replay rejected |",
+          "| --- | --- | ---: | --- | --- | --- |",
+          ...review.cases
+            .filter((value) => value.oastEvidence)
+            .map(
+              (value) =>
+                `| ${escapeCell(value.caseId)} | ${value.oastEvidence!.protocol} | ${value.oastEvidence!.delayMs} ms | ${value.oastEvidence!.requestFingerprint.slice(0, 16)} | ${value.oastEvidence!.bindingFingerprint.slice(0, 16)} | ${value.oastEvidence!.replayRejected ? "yes" : "no"} |`
+            ),
+          "",
+          "OAST evidence contains keyed or one-way fingerprints only; callback payloads, source addresses, tenant IDs, worker IDs, job IDs, and case binding values are excluded."
+        ]
+      : [])
   ];
 }
 
 function assistedReviewLines(report: RouteCairnReport): string[] {
   const review = report.assistedReview;
   if (!review) return ["No assisted-review manifest was supplied."];
-  return [`- Gate: ${review.completionGate.state}`, `- Pending human review: ${review.humanReviewQueue.length}`, `- Blockers: ${review.completionGate.blockers.join(", ") || "none"}`, "- This is an operator report, not a human-approved customer publication.", "", "| Lane | Proven | Inconclusive | Not assessed | Blocked | Cleanup unresolved |", "| --- | ---: | ---: | ---: | ---: | ---: |", ...Object.entries(review.coverageMatrix).filter(([, value]) => value.selected).map(([lane, value]) => `| ${lane} | ${value.outcomes.PROVEN} | ${value.outcomes.INCONCLUSIVE} | ${value.outcomes.NOT_ASSESSED} | ${value.outcomes.BLOCKED} | ${value.cleanupFailures} |`)];
+  return [
+    `- Gate: ${review.completionGate.state}`,
+    `- Pending human review: ${review.humanReviewQueue.length}`,
+    `- Blockers: ${review.completionGate.blockers.join(", ") || "none"}`,
+    "- This is an operator report, not a human-approved customer publication.",
+    "",
+    "| Lane | Proven | Inconclusive | Not assessed | Blocked | Cleanup unresolved |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ...Object.entries(review.coverageMatrix)
+      .filter(([, value]) => value.selected)
+      .map(
+        ([lane, value]) =>
+          `| ${lane} | ${value.outcomes.PROVEN} | ${value.outcomes.INCONCLUSIVE} | ${value.outcomes.NOT_ASSESSED} | ${value.outcomes.BLOCKED} | ${value.cleanupFailures} |`
+      )
+  ];
 }
 
 function billingEntitlementLines(report: RouteCairnReport): string[] {
   const review = report.billingEntitlement;
   if (!review?.enabled) return ["No explicit synthetic billing and entitlement manifest was supplied."];
-  const covered = Object.entries(review.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(review.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Provider boundary: ${review.providerKind ?? "unknown"} / ${review.providerMode ?? "unknown"}`,
     `- Real payment execution: ${review.realPaymentExecution}`,
@@ -311,7 +393,10 @@ function billingEntitlementLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Category | Actors | Endpoints | Outcome | Cleanup | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.endpointAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...review.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.endpointAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "Billing evidence contains no real payment, payment instrument, provider credential, synthetic event value, account identifier, request body, response body, or raw capture."
   ];
@@ -320,7 +405,10 @@ function billingEntitlementLines(report: RouteCairnReport): string[] {
 function secretBoundaryLines(report: RouteCairnReport): string[] {
   const review = report.secretBoundary;
   if (!review?.enabled) return ["The secret-boundary engine was not selected."];
-  const covered = Object.entries(review.coverage).filter(([, value]) => value.sourcesObserved > 0 || value.classifiedObservations > 0).map(([surface, value]) => `${surface}=${value.classifiedObservations}/${value.sourcesObserved}`).join(", ");
+  const covered = Object.entries(review.coverage)
+    .filter(([, value]) => value.sourcesObserved > 0 || value.classifiedObservations > 0)
+    .map(([surface, value]) => `${surface}=${value.classifiedObservations}/${value.sourcesObserved}`)
+    .join(", ");
   return [
     `- Responses / additional probes / source maps: ${review.observedResponsesReviewed} / ${review.additionalRequestsUsed} / ${review.sourceMapsReviewed}`,
     `- Candidates analyzed: ${review.candidatesAnalyzed}/${review.candidateLimit}`,
@@ -337,7 +425,10 @@ function secretBoundaryLines(report: RouteCairnReport): string[] {
 function operationalEndpointSecurityLines(report: RouteCairnReport): string[] {
   const review = report.operationalEndpointSecurity;
   if (!review?.enabled) return ["No explicit operational-endpoint security manifest was supplied."];
-  const covered = Object.entries(review.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(review.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Endpoints: ${review.endpointInventory.length}`,
     `- Cases executed: ${review.executedCases}/${review.plannedCases}`,
@@ -350,7 +441,10 @@ function operationalEndpointSecurityLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Category | Actors | Endpoints | Outcome | Cleanup | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.endpointAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...review.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.endpointAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "Operational evidence retains safe endpoint paths and fingerprints only; signatures, webhook bodies, event/job identifiers, captures, credentials, and response values are omitted."
   ];
@@ -359,7 +453,10 @@ function operationalEndpointSecurityLines(report: RouteCairnReport): string[] {
 function linkPortalSecurityLines(report: RouteCairnReport): string[] {
   const review = report.linkPortalSecurity;
   if (!review?.enabled) return ["No explicit link/portal/export security manifest was supplied."];
-  const covered = Object.entries(review.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(review.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Resources: ${review.resourceInventory.length}`,
     `- Cases executed: ${review.executedCases}/${review.plannedCases}`,
@@ -372,7 +469,10 @@ function linkPortalSecurityLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Category | Actors | Resources | Outcome | Cleanup | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.resourceAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...review.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.actorAliases.map(escapeCell).join(", ")} | ${item.resourceAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "Link evidence contains safe resource paths and fingerprints only; signed values, invites, emails, object identifiers, captures, request bodies, and response bodies are omitted."
   ];
@@ -395,7 +495,10 @@ function apiGraphqlLines(report: RouteCairnReport): string[] {
     "",
     "| Check | Kind | Actor | Routes | Outcome | Reason | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...review.checks.map((item) => `| ${escapeCell(item.checkId)} | ${item.kind} | ${escapeCell(item.actorAlias)} | ${item.routeAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.reasonCode} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...review.checks.map(
+      (item) =>
+        `| ${escapeCell(item.checkId)} | ${item.kind} | ${escapeCell(item.actorAlias)} | ${item.routeAliases.map(escapeCell).join(", ")} | ${item.outcome} | ${item.reasonCode} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "API/GraphQL evidence omits credentials, request bodies, variables, response values, object identities, and tenant identities."
   ];
@@ -411,7 +514,10 @@ function protocolSecurityLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Kind | Risk | Actor | Outcome | Reason | Status | Messages | Events | Structures | Protocol | Cleanup |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...review.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.kind} | ${item.riskClass} | ${escapeCell(item.actorAlias)} | ${item.outcome} | ${item.reason} | ${item.statusCode ?? "-"} | ${item.messageCount} | ${item.eventCount} | ${item.structuralCount ?? "-"} | ${item.negotiatedProtocol ?? "-"} | ${item.cleanupOutcome ?? "-"} |`),
+    ...review.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.kind} | ${item.riskClass} | ${escapeCell(item.actorAlias)} | ${item.outcome} | ${item.reason} | ${item.statusCode ?? "-"} | ${item.messageCount} | ${item.eventCount} | ${item.structuralCount ?? "-"} | ${item.negotiatedProtocol ?? "-"} | ${item.cleanupOutcome ?? "-"} |`
+    ),
     "",
     "Protocol evidence retains counts, status, negotiated protocol, outcomes, and fingerprints only; message, event, protobuf, upload, variable, credential, and response payloads are omitted."
   ];
@@ -420,7 +526,10 @@ function protocolSecurityLines(report: RouteCairnReport): string[] {
 function controlledRaceLines(report: RouteCairnReport): string[] {
   const race = report.controlledRace;
   if (!race?.enabled) return ["No explicit controlled-race manifest was supplied."];
-  const covered = Object.entries(race.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(race.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Planned cases: ${race.plannedCases}`,
     `- Executed cases: ${race.executedCases}`,
@@ -436,7 +545,10 @@ function controlledRaceLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Category | Outcome | Cleanup | Pre-state | Post-state | Groups | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...race.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.preStateVerified ? "verified" : "unverified"} | ${item.postStateVerified ? "verified" : "unverified"} | ${item.groups.filter((group) => group.synchronized).length}/${item.groups.length} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...race.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.preStateVerified ? "verified" : "unverified"} | ${item.postStateVerified ? "verified" : "unverified"} | ${item.groups.filter((group) => group.synchronized).length}/${item.groups.length} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "Race evidence contains no credentials, raw target state, request bodies, response bodies, tokens, operator identities, or change tickets."
   ];
@@ -445,7 +557,10 @@ function controlledRaceLines(report: RouteCairnReport): string[] {
 function businessInvariantLines(report: RouteCairnReport): string[] {
   const invariant = report.businessInvariant;
   if (!invariant?.enabled) return ["No explicit business-invariant manifest was supplied."];
-  const covered = Object.entries(invariant.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(invariant.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Planned cases: ${invariant.plannedCases}`,
     `- Executed cases: ${invariant.executedCases}`,
@@ -462,7 +577,10 @@ function businessInvariantLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Category | Outcome | Cleanup | Pre-state | Post-state | Actions | Fingerprint |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...invariant.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.preStateVerified ? "verified" : "unverified"} | ${item.postStateVerified ? "verified" : "unverified"} | ${item.actions.length} | ${item.comparisonFingerprint.slice(0, 16)} |`),
+    ...invariant.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.preStateVerified ? "verified" : "unverified"} | ${item.postStateVerified ? "verified" : "unverified"} | ${item.actions.length} | ${item.comparisonFingerprint.slice(0, 16)} |`
+    ),
     "",
     "Invariant evidence intentionally contains no credentials, authorization identities, raw business state, response bodies, or account identifiers."
   ];
@@ -471,7 +589,10 @@ function businessInvariantLines(report: RouteCairnReport): string[] {
 function authenticationLifecycleLines(report: RouteCairnReport): string[] {
   const lifecycle = report.authenticationLifecycle;
   if (!lifecycle?.enabled) return ["No explicit authentication lifecycle manifest was supplied."];
-  const covered = Object.entries(lifecycle.coverage).filter(([, value]) => value.planned > 0).map(([category, value]) => `${category}=${value.executed}/${value.planned}`).join(", ");
+  const covered = Object.entries(lifecycle.coverage)
+    .filter(([, value]) => value.planned > 0)
+    .map(([category, value]) => `${category}=${value.executed}/${value.planned}`)
+    .join(", ");
   return [
     `- Planned cases: ${lifecycle.plannedCases}`,
     `- Executed cases: ${lifecycle.executedCases}`,
@@ -481,18 +602,23 @@ function authenticationLifecycleLines(report: RouteCairnReport): string[] {
     `- Blocked: ${lifecycle.blockedCases}`,
     `- Cleanup required: ${lifecycle.cleanupRequired}`,
     `- Cleanup failed: ${lifecycle.cleanupFailed}`,
-    ...(lifecycle.learningAutomation ? [
-      `- Browser-learned automation: enabled`,
-      `- Automatically generated categories: ${lifecycle.learningAutomation.generatedCategories.join(", ") || "none"}`,
-      `- Automation blockers: ${lifecycle.learningAutomation.blockers.length}`,
-      `- Redacted automation artifact: ${lifecycle.learningAutomation.artifactPath}`
-    ] : []),
+    ...(lifecycle.learningAutomation
+      ? [
+          `- Browser-learned automation: enabled`,
+          `- Automatically generated categories: ${lifecycle.learningAutomation.generatedCategories.join(", ") || "none"}`,
+          `- Automation blockers: ${lifecycle.learningAutomation.blockers.length}`,
+          `- Redacted automation artifact: ${lifecycle.learningAutomation.artifactPath}`
+        ]
+      : []),
     `- Coverage: ${covered || "none"}`,
     ...lifecycle.notes.map((note) => `- ${note}`),
     "",
     "| Case | Category | Outcome | Cleanup | Fingerprint | Steps |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...lifecycle.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} | ${item.steps.length} |`),
+    ...lifecycle.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.category} | ${item.outcome} | ${item.cleanupOutcome} | ${item.comparisonFingerprint.slice(0, 16)} | ${item.steps.length} |`
+    ),
     "",
     "Lifecycle evidence intentionally contains no credentials, tokens, email addresses, recovery codes, or raw account identifiers."
   ];
@@ -501,7 +627,9 @@ function authenticationLifecycleLines(report: RouteCairnReport): string[] {
 function supabaseAuthorizationLines(report: RouteCairnReport): string[] {
   const supabase = report.supabaseAuthorization;
   if (!supabase?.enabled) return ["No explicit Supabase authorization manifest was supplied."];
-  const coverage = Object.entries(supabase.coverage).map(([name, covered]) => `${name}=${covered ? "covered" : "not-covered"}`).join(", ");
+  const coverage = Object.entries(supabase.coverage)
+    .map(([name, covered]) => `${name}=${covered ? "covered" : "not-covered"}`)
+    .join(", ");
   return [
     `- Project origin: ${supabase.projectOrigin ?? "unknown"}`,
     `- Planned cases: ${supabase.plannedCases}`,
@@ -515,11 +643,16 @@ function supabaseAuthorizationLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Surface | Resource | Actor | Operation | Expected | Observed | Identity | Sensitive columns | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...supabase.observations.map((item) => `| ${escapeCell(item.caseId)} | ${item.surface} | ${escapeCell(item.resource)} | ${item.actor} | ${item.operation} | ${item.expectedDecision} | ${item.observedDecision} | ${item.identityConfirmed ? "confirmed" : "unconfirmed"} | ${escapeCell(item.sensitiveColumnsObserved.join(", ") || "none")} | ${item.findingCategory ?? "none"} |`),
+    ...supabase.observations.map(
+      (item) =>
+        `| ${escapeCell(item.caseId)} | ${item.surface} | ${escapeCell(item.resource)} | ${item.actor} | ${item.operation} | ${item.expectedDecision} | ${item.observedDecision} | ${item.identityConfirmed ? "confirmed" : "unconfirmed"} | ${escapeCell(item.sensitiveColumnsObserved.join(", ") || "none")} | ${item.findingCategory ?? "none"} |`
+    ),
     "",
     "| Catalog risk | Severity | Resource | Summary |",
     "| --- | --- | --- | --- |",
-    ...supabase.staticRisks.map((item) => `| ${item.category} | ${item.severity} | ${escapeCell(item.resource)} | ${escapeCell(item.summary)} |`)
+    ...supabase.staticRisks.map(
+      (item) => `| ${item.category} | ${item.severity} | ${escapeCell(item.resource)} | ${escapeCell(item.summary)} |`
+    )
   ];
 }
 
@@ -541,16 +674,17 @@ function identityVerificationLines(report: RouteCairnReport): string[] {
     "",
     "| Profile | Mode | Category | Verified | Principal Match | Tenant Match | Role Match |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...rows.map(([label, result]) =>
-      `| ${[
-        label,
-        result.mode,
-        result.category,
-        String(result.verified),
-        String(result.principalMatched),
-        result.tenantMatched === undefined ? "n/a" : String(result.tenantMatched),
-        result.roleMatched === undefined ? "n/a" : String(result.roleMatched)
-      ].join(" | ")} |`
+    ...rows.map(
+      ([label, result]) =>
+        `| ${[
+          label,
+          result.mode,
+          result.category,
+          String(result.verified),
+          String(result.principalMatched),
+          result.tenantMatched === undefined ? "n/a" : String(result.tenantMatched),
+          result.roleMatched === undefined ? "n/a" : String(result.roleMatched)
+        ].join(" | ")} |`
     )
   ];
 }
@@ -569,15 +703,16 @@ function objectPairTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Object Type | A Baseline | B Baseline | A to B | B to A |",
     "| --- | --- | --- | --- | --- | --- |",
-    ...report.objectPairTesting.cases.map((testCase) =>
-      `| ${[
-        escapeCell(testCase.caseId),
-        escapeCell(testCase.objectType),
-        testCase.baselineA.category,
-        testCase.baselineB.category,
-        testCase.aToB.category,
-        testCase.bToA.category
-      ].join(" | ")} |`
+    ...report.objectPairTesting.cases.map(
+      (testCase) =>
+        `| ${[
+          escapeCell(testCase.caseId),
+          escapeCell(testCase.objectType),
+          testCase.baselineA.category,
+          testCase.baselineB.category,
+          testCase.aToB.category,
+          testCase.bToA.category
+        ].join(" | ")} |`
     )
   ];
 }
@@ -596,15 +731,16 @@ function fieldExposureTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Object Type | Object Hash | Visibility | Requests | Issues |",
     "| --- | --- | --- | --- | ---: | ---: |",
-    ...report.fieldExposureTesting.cases.map((testCase) =>
-      `| ${[
-        escapeCell(testCase.caseId),
-        escapeCell(testCase.objectType),
-        testCase.objectIdHash,
-        testCase.expectedVisibility,
-        testCase.executedRequests.toString(),
-        testCase.confirmedIssues.length.toString()
-      ].join(" | ")} |`
+    ...report.fieldExposureTesting.cases.map(
+      (testCase) =>
+        `| ${[
+          escapeCell(testCase.caseId),
+          escapeCell(testCase.objectType),
+          testCase.objectIdHash,
+          testCase.expectedVisibility,
+          testCase.executedRequests.toString(),
+          testCase.confirmedIssues.length.toString()
+        ].join(" | ")} |`
     )
   ];
 }
@@ -624,17 +760,18 @@ function authorizationMatrixTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Matrix | Case | Actor | Relationship | Object Hash | Expected | Observed | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...report.authorizationMatrix.cases.map((testCase) =>
-      `| ${[
-        escapeCell(testCase.matrixId),
-        escapeCell(testCase.caseId),
-        escapeCell(testCase.actorId),
-        escapeCell(testCase.actorRelationship),
-        testCase.objectIdHash,
-        testCase.expectedDecision,
-        testCase.observedDecision,
-        testCase.findingCategory ?? "none"
-      ].join(" | ")} |`
+    ...report.authorizationMatrix.cases.map(
+      (testCase) =>
+        `| ${[
+          escapeCell(testCase.matrixId),
+          escapeCell(testCase.caseId),
+          escapeCell(testCase.actorId),
+          escapeCell(testCase.actorRelationship),
+          testCase.objectIdHash,
+          testCase.expectedDecision,
+          testCase.observedDecision,
+          testCase.findingCategory ?? "none"
+        ].join(" | ")} |`
     )
   ];
 }
@@ -654,17 +791,18 @@ function collectionAuthorizationTestingLines(report: RouteCairnReport): string[]
     "",
     "| Collection | Case | Actor | Object Hash | Expected | Membership | Decision | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...report.collectionAuthorization.observations.map((observation) =>
-      `| ${[
-        escapeCell(observation.collectionLabel),
-        escapeCell(observation.caseId),
-        escapeCell(observation.actorId),
-        observation.objectIdHash ?? "none",
-        observation.expectedMembership,
-        observation.observedMembership,
-        observation.observedDecision,
-        observation.findingCategory ?? "none"
-      ].join(" | ")} |`
+    ...report.collectionAuthorization.observations.map(
+      (observation) =>
+        `| ${[
+          escapeCell(observation.collectionLabel),
+          escapeCell(observation.caseId),
+          escapeCell(observation.actorId),
+          observation.objectIdHash ?? "none",
+          observation.expectedMembership,
+          observation.observedMembership,
+          observation.observedDecision,
+          observation.findingCategory ?? "none"
+        ].join(" | ")} |`
     )
   ];
 }
@@ -683,16 +821,17 @@ function bulkAuthorizationTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Definition | Case | Actor | Operation | Policy | Observed | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- |",
-    ...report.bulkAuthorization.observations.map((observation) =>
-      `| ${[
-        escapeCell(observation.definitionId),
-        escapeCell(observation.caseId),
-        escapeCell(observation.actorId),
-        observation.operationType,
-        observation.expectedBatchPolicy,
-        observation.observedDecision,
-        observation.findingCategory ?? "none"
-      ].join(" | ")} |`
+    ...report.bulkAuthorization.observations.map(
+      (observation) =>
+        `| ${[
+          escapeCell(observation.definitionId),
+          escapeCell(observation.caseId),
+          escapeCell(observation.actorId),
+          observation.operationType,
+          observation.expectedBatchPolicy,
+          observation.observedDecision,
+          observation.findingCategory ?? "none"
+        ].join(" | ")} |`
     )
   ];
 }
@@ -711,8 +850,9 @@ function fileAuthorizationTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Case | Actor | File | Expected | Observed | Proof | Bytes | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...report.fileAuthorization.observations.map((observation) =>
-      `| ${observation.caseId} | ${observation.actorId} | ${observation.fileAlias} | ${observation.expectedDecision} | ${observation.observedDecision} | ${observation.contentProofMode} | ${observation.bytesObserved} | ${observation.findingCategory ?? ""} |`
+    ...report.fileAuthorization.observations.map(
+      (observation) =>
+        `| ${observation.caseId} | ${observation.actorId} | ${observation.fileAlias} | ${observation.expectedDecision} | ${observation.observedDecision} | ${observation.contentProofMode} | ${observation.bytesObserved} | ${observation.findingCategory ?? ""} |`
     )
   ];
 }
@@ -732,17 +872,18 @@ function equivalentRouteTestingLines(report: RouteCairnReport): string[] {
     "",
     "| Route Set | Actor | Route | Category | Object Hash | Expected | Observed | Finding |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ...report.equivalentRouteTesting.observations.map((observation) =>
-      `| ${[
-        escapeCell(observation.routeSetId),
-        escapeCell(observation.actorId),
-        escapeCell(observation.routeLabel),
-        escapeCell(observation.routeCategory),
-        observation.objectIdHash,
-        observation.expectedDecision,
-        observation.observedDecision,
-        observation.findingCategory ?? "none"
-      ].join(" | ")} |`
+    ...report.equivalentRouteTesting.observations.map(
+      (observation) =>
+        `| ${[
+          escapeCell(observation.routeSetId),
+          escapeCell(observation.actorId),
+          escapeCell(observation.routeLabel),
+          escapeCell(observation.routeCategory),
+          observation.objectIdHash,
+          observation.expectedDecision,
+          observation.observedDecision,
+          observation.findingCategory ?? "none"
+        ].join(" | ")} |`
     )
   ];
 }
@@ -760,17 +901,19 @@ function browserCrawlLines(report: RouteCairnReport): string[] {
     `- Console warnings/errors: ${report.browserCrawl.consoleErrors.length}`,
     `- Forms detected: ${report.browserCrawl.formsDetected}`,
     `- Forms submitted: ${report.browserCrawl.formsSubmitted}`,
-    ...(report.browserCrawl.authentication ? [
-      `- Authenticated bootstrap: ${report.browserCrawl.authentication.bootstrapSucceeded ? "succeeded" : "failed"} (${report.browserCrawl.authentication.mode})`,
-      `- Session isolated: ${report.browserCrawl.authentication.sessionIsolated}`,
-      `- Redacted HAR: ${report.browserCrawl.authentication.redactedHarPath ?? "none"}`,
-      `- Cookie/storage metadata observations: ${report.browserCrawl.authentication.storage.length}`,
-      `- Writable/read-only field observations: ${report.browserCrawl.authentication.fields.length}`,
-      `- Admin routes from legitimate navigation: ${report.browserCrawl.authentication.adminRoutes.length}`,
-      `- Learned draft test cases: ${report.browserCrawl.authentication.learnedTestCases.length}`,
-      `- Mutation authority from learned traffic: none; ${report.browserCrawl.authentication.protectedActionProof}`,
-      `- Browser restarts: ${report.browserCrawl.authentication.browserRestartCount}`
-    ] : []),
+    ...(report.browserCrawl.authentication
+      ? [
+          `- Authenticated bootstrap: ${report.browserCrawl.authentication.bootstrapSucceeded ? "succeeded" : "failed"} (${report.browserCrawl.authentication.mode})`,
+          `- Session isolated: ${report.browserCrawl.authentication.sessionIsolated}`,
+          `- Redacted HAR: ${report.browserCrawl.authentication.redactedHarPath ?? "none"}`,
+          `- Cookie/storage metadata observations: ${report.browserCrawl.authentication.storage.length}`,
+          `- Writable/read-only field observations: ${report.browserCrawl.authentication.fields.length}`,
+          `- Admin routes from legitimate navigation: ${report.browserCrawl.authentication.adminRoutes.length}`,
+          `- Learned draft test cases: ${report.browserCrawl.authentication.learnedTestCases.length}`,
+          `- Mutation authority from learned traffic: none; ${report.browserCrawl.authentication.protectedActionProof}`,
+          `- Browser restarts: ${report.browserCrawl.authentication.browserRestartCount}`
+        ]
+      : []),
     "",
     ...report.browserCrawl.notes.map((note) => `- ${note}`)
   ];
@@ -786,13 +929,14 @@ function apiManualTestingMap(report: RouteCairnReport): string[] {
     "",
     "| Endpoint | Type | Tags | Suggested Tests |",
     "| --- | --- | --- | --- |",
-    ...report.apiMapper.endpoints.map((endpoint) =>
-      `| ${[
-        escapeCell(endpoint.endpoint),
-        endpoint.routeType,
-        escapeCell(endpoint.riskTags.join(", ")),
-        escapeCell(endpoint.likelyManualTests.join("; "))
-      ].join(" | ")} |`
+    ...report.apiMapper.endpoints.map(
+      (endpoint) =>
+        `| ${[
+          escapeCell(endpoint.endpoint),
+          endpoint.routeType,
+          escapeCell(endpoint.riskTags.join(", ")),
+          escapeCell(endpoint.likelyManualTests.join("; "))
+        ].join(" | ")} |`
     )
   ];
 }
@@ -811,17 +955,22 @@ function apiProbeLines(report: RouteCairnReport): string[] {
     "",
     "| Endpoint | OPTIONS | HEAD | GET | Content Types | Allowed Methods | Schema Hints | GraphQL |",
     "| --- | ---: | ---: | ---: | --- | --- | --- | --- |",
-    ...report.apiProbe.endpointsReviewed.map((review) =>
-      `| ${[
-        escapeCell(review.endpoint),
-        String(review.statusByMethod.OPTIONS ?? "error"),
-        String(review.statusByMethod.HEAD ?? "error"),
-        String(review.statusByMethod.GET ?? "error"),
-        escapeCell(review.contentTypes.join(", ") || "none"),
-        escapeCell(review.allowedMethods.join(", ") || "none"),
-        escapeCell(review.schemaHints.join(", ") || "none"),
-        review.graphQl.attempted ? (review.graphQl.available ? "introspection-like evidence" : "checked safely") : "skipped"
-      ].join(" | ")} |`
+    ...report.apiProbe.endpointsReviewed.map(
+      (review) =>
+        `| ${[
+          escapeCell(review.endpoint),
+          String(review.statusByMethod.OPTIONS ?? "error"),
+          String(review.statusByMethod.HEAD ?? "error"),
+          String(review.statusByMethod.GET ?? "error"),
+          escapeCell(review.contentTypes.join(", ") || "none"),
+          escapeCell(review.allowedMethods.join(", ") || "none"),
+          escapeCell(review.schemaHints.join(", ") || "none"),
+          review.graphQl.attempted
+            ? review.graphQl.available
+              ? "introspection-like evidence"
+              : "checked safely"
+            : "skipped"
+        ].join(" | ")} |`
     )
   ];
 }
@@ -836,41 +985,47 @@ function authSurfaceMap(report: RouteCairnReport): string[] {
     "",
     "| Endpoint | Purpose | Abuse Categories | Suggested Tests |",
     "| --- | --- | --- | --- |",
-    ...report.authSurface.surfaces.map((surface) =>
-      `| ${[
-        escapeCell(surface.endpoint),
-        surface.purpose,
-        escapeCell(surface.abuseCategories.join(", ")),
-        escapeCell(surface.suggestedTests.join("; "))
-      ].join(" | ")} |`
+    ...report.authSurface.surfaces.map(
+      (surface) =>
+        `| ${[
+          escapeCell(surface.endpoint),
+          surface.purpose,
+          escapeCell(surface.abuseCategories.join(", ")),
+          escapeCell(surface.suggestedTests.join("; "))
+        ].join(" | ")} |`
     )
   ];
 }
 
 function authenticatedComparisonLines(report: RouteCairnReport): string[] {
   if (!report.authenticatedScan || !report.authenticatedScan.profile.enabled) {
-    return ["No auth profile supplied. Run with --auth ./examples/auth.example.json to compare public and authenticated behavior."];
+    return [
+      "No auth profile supplied. Run with --auth ./examples/auth.example.json to compare public and authenticated behavior."
+    ];
   }
 
   const rows = report.authenticatedScan.results.filter((result) => result.classification !== "same-access");
 
   return [
-    `- Profile: ${report.authenticatedScan.profile.label ?? "authenticated"}` ,
-    `- Compared URLs: ${report.authenticatedScan.comparedUrls}` ,
-    `- Auth-only surfaces: ${report.authenticatedScan.authOnlySurfaces.length}` ,
-    `- Changed surfaces: ${report.authenticatedScan.changedSurfaces.length}` ,
+    `- Profile: ${report.authenticatedScan.profile.label ?? "authenticated"}`,
+    `- Compared URLs: ${report.authenticatedScan.comparedUrls}`,
+    `- Auth-only surfaces: ${report.authenticatedScan.authOnlySurfaces.length}`,
+    `- Changed surfaces: ${report.authenticatedScan.changedSurfaces.length}`,
     ...report.authenticatedScan.notes.map((note) => `- ${note}`),
     "",
-    rows.length === 0 ? "No auth-only or changed-content surfaces recorded." : "| URL | Classification | Anonymous | Authenticated | Reason |",
+    rows.length === 0
+      ? "No auth-only or changed-content surfaces recorded."
+      : "| URL | Classification | Anonymous | Authenticated | Reason |",
     ...(rows.length === 0 ? [] : ["| --- | --- | ---: | ---: | --- |"]),
-    ...rows.map((result) =>
-      `| ${[
-        escapeCell(result.url),
-        result.classification,
-        result.anonymous.statusCode?.toString() ?? "error",
-        result.authenticated.statusCode?.toString() ?? "error",
-        escapeCell(result.reason)
-      ].join(" | ")} |`
+    ...rows.map(
+      (result) =>
+        `| ${[
+          escapeCell(result.url),
+          result.classification,
+          result.anonymous.statusCode?.toString() ?? "error",
+          result.authenticated.statusCode?.toString() ?? "error",
+          escapeCell(result.reason)
+        ].join(" | ")} |`
     )
   ];
 }
@@ -883,24 +1038,27 @@ function roleComparisonLines(report: RouteCairnReport): string[] {
   const rows = report.roleComparison.results.filter((result) => result.classification !== "same-as-anonymous");
 
   return [
-    `- Compared URLs: ${report.roleComparison.comparedUrls}` ,
-    `- Account A only: ${report.roleComparison.accountAOnly.length}` ,
-    `- Account B only: ${report.roleComparison.accountBOnly.length}` ,
-    `- Only authenticated access: ${report.roleComparison.onlyAuthenticatedAccess.length}` ,
+    `- Compared URLs: ${report.roleComparison.comparedUrls}`,
+    `- Account A only: ${report.roleComparison.accountAOnly.length}`,
+    `- Account B only: ${report.roleComparison.accountBOnly.length}`,
+    `- Only authenticated access: ${report.roleComparison.onlyAuthenticatedAccess.length}`,
     ...report.roleComparison.notes.map((note) => `- ${note}`),
     "",
-    rows.length === 0 ? "No role differences or private authenticated surfaces recorded." : "| URL | Classification | Anonymous | Account A | Account B | Manual Verification | Reason |",
+    rows.length === 0
+      ? "No role differences or private authenticated surfaces recorded."
+      : "| URL | Classification | Anonymous | Account A | Account B | Manual Verification | Reason |",
     ...(rows.length === 0 ? [] : ["| --- | --- | ---: | ---: | ---: | --- | --- |"]),
-    ...rows.map((result) =>
-      `| ${[
-        escapeCell(result.url),
-        result.classification,
-        result.anonymous.statusCode?.toString() ?? "error",
-        result.accountA.statusCode?.toString() ?? "error",
-        result.accountB.statusCode?.toString() ?? "error",
-        result.needsManualVerification ? "yes" : "no",
-        escapeCell(result.reason)
-      ].join(" | ")} |`
+    ...rows.map(
+      (result) =>
+        `| ${[
+          escapeCell(result.url),
+          result.classification,
+          result.anonymous.statusCode?.toString() ?? "error",
+          result.accountA.statusCode?.toString() ?? "error",
+          result.accountB.statusCode?.toString() ?? "error",
+          result.needsManualVerification ? "yes" : "no",
+          escapeCell(result.reason)
+        ].join(" | ")} |`
     )
   ];
 }
@@ -911,16 +1069,17 @@ function stateAwareApiLines(report: RouteCairnReport): string[] {
   }
 
   return [
-    `- Safe methods: ${report.stateAwareApi.safeMethods.join(", ")}` ,
-    `- Skipped mutating methods: ${report.stateAwareApi.skippedMethods.join(", ")}` ,
-    `- Candidate endpoints: ${report.stateAwareApi.candidateCount}` ,
-    `- BOLA/IDOR candidates: ${report.stateAwareApi.bolaIdorCandidates.length}` ,
+    `- Safe methods: ${report.stateAwareApi.safeMethods.join(", ")}`,
+    `- Skipped mutating methods: ${report.stateAwareApi.skippedMethods.join(", ")}`,
+    `- Candidate endpoints: ${report.stateAwareApi.candidateCount}`,
+    `- BOLA/IDOR candidates: ${report.stateAwareApi.bolaIdorCandidates.length}`,
     ...report.stateAwareApi.notes.map((note) => `- ${note}`),
     "",
     "| Endpoint | Priority | Reasons | Signal | GET | HEAD | OPTIONS | Manual Verification |",
     "| --- | --- | --- | --- | ---: | ---: | ---: | --- |",
     ...report.stateAwareApi.reviewedEndpoints.map((review) => {
-      const statusFor = (method: string) => review.safeMethodsTested.find((item) => item.method === method)?.statusCode?.toString() ?? "error";
+      const statusFor = (method: string) =>
+        review.safeMethodsTested.find((item) => item.method === method)?.statusCode?.toString() ?? "error";
       return `| ${[
         escapeCell(review.endpoint),
         review.priority,
@@ -966,30 +1125,40 @@ function nextJsReviewLines(report: RouteCairnReport): string[] {
     "",
     "### Security findings",
     "",
-    ...Object.entries(report.nextJsReview.securityFindingCounts ?? {}).map(([type, count]) => `- ${escapeText(type)}: ${count}`),
-    ...(Object.keys(report.nextJsReview.securityFindingCounts ?? {}).length === 0 ? ["- None from Next.js deep review."] : []),
+    ...Object.entries(report.nextJsReview.securityFindingCounts ?? {}).map(
+      ([type, count]) => `- ${escapeText(type)}: ${count}`
+    ),
+    ...(Object.keys(report.nextJsReview.securityFindingCounts ?? {}).length === 0
+      ? ["- None from Next.js deep review."]
+      : []),
     "",
     "### Review limitations",
     "",
     ...(report.nextJsReview.coverage?.limitations ?? []).map((limitation) => `- ${escapeText(limitation)}`),
     ...report.nextJsReview.notes.map((note) => `- ${note}`),
     "",
-    report.nextJsReview.dataRoutes.length === 0 ? "No _next/data routes reviewed." : "| URL | Status | Cache Risk | Indicators | Cache-Control |",
+    report.nextJsReview.dataRoutes.length === 0
+      ? "No _next/data routes reviewed."
+      : "| URL | Status | Cache Risk | Indicators | Cache-Control |",
     ...(report.nextJsReview.dataRoutes.length === 0 ? [] : ["| --- | ---: | --- | --- | --- |"]),
-    ...report.nextJsReview.dataRoutes.map((route) =>
-      `| ${[
-        escapeCell(route.url),
-        route.statusCode?.toString() ?? "error",
-        route.cacheRisk,
-        escapeCell(route.dataIndicators.join(", ") || "none"),
-        escapeCell(route.cacheControl ?? "")
-      ].join(" | ")} |`
+    ...report.nextJsReview.dataRoutes.map(
+      (route) =>
+        `| ${[
+          escapeCell(route.url),
+          route.statusCode?.toString() ?? "error",
+          route.cacheRisk,
+          escapeCell(route.dataIndicators.join(", ") || "none"),
+          escapeCell(route.cacheControl ?? "")
+        ].join(" | ")} |`
     ),
     "",
-    report.nextJsReview.sourceMaps.length === 0 ? "No source maps classified." : "| Source Map | Classification | Severity Hint | Reason |",
+    report.nextJsReview.sourceMaps.length === 0
+      ? "No source maps classified."
+      : "| Source Map | Classification | Severity Hint | Reason |",
     ...(report.nextJsReview.sourceMaps.length === 0 ? [] : ["| --- | --- | --- | --- |"]),
-    ...report.nextJsReview.sourceMaps.map((sourceMap) =>
-      `| ${[escapeCell(sourceMap.url), sourceMap.classification, sourceMap.severityHint, escapeCell(sourceMap.reason)].join(" | ")} |`
+    ...report.nextJsReview.sourceMaps.map(
+      (sourceMap) =>
+        `| ${[escapeCell(sourceMap.url), sourceMap.classification, sourceMap.severityHint, escapeCell(sourceMap.reason)].join(" | ")} |`
     )
   ];
 }
@@ -1001,29 +1170,35 @@ function parameterAnalysisLines(report: RouteCairnReport): string[] {
 
   const highRiskRows = report.parameterAnalysis.analyzedUrls.flatMap((analysis) =>
     analysis.parameters
-      .filter((parameter) => parameter.riskTags.includes("authorization-sensitive") || parameter.riskTags.includes("business-logic"))
+      .filter(
+        (parameter) =>
+          parameter.riskTags.includes("authorization-sensitive") || parameter.riskTags.includes("business-logic")
+      )
       .map((parameter) => ({ url: analysis.url, parameter }))
   );
 
   return [
-    `- Total parameters: ${report.parameterAnalysis.totalParameters}` ,
-    `- High-risk parameters: ${report.parameterAnalysis.highRiskParameters.length}` ,
-    `- Object ID tags: ${report.parameterAnalysis.riskSummary.objectId}` ,
-    `- Authorization-sensitive tags: ${report.parameterAnalysis.riskSummary.authorizationSensitive}` ,
-    `- Business-logic tags: ${report.parameterAnalysis.riskSummary.businessLogic}` ,
+    `- Total parameters: ${report.parameterAnalysis.totalParameters}`,
+    `- High-risk parameters: ${report.parameterAnalysis.highRiskParameters.length}`,
+    `- Object ID tags: ${report.parameterAnalysis.riskSummary.objectId}`,
+    `- Authorization-sensitive tags: ${report.parameterAnalysis.riskSummary.authorizationSensitive}`,
+    `- Business-logic tags: ${report.parameterAnalysis.riskSummary.businessLogic}`,
     ...report.parameterAnalysis.notes.map((note) => `- ${note}`),
     "",
-    highRiskRows.length === 0 ? "No high-risk parameters identified." : "| URL | Name | Location | Kind | Tags | Confidence |",
+    highRiskRows.length === 0
+      ? "No high-risk parameters identified."
+      : "| URL | Name | Location | Kind | Tags | Confidence |",
     ...(highRiskRows.length === 0 ? [] : ["| --- | --- | --- | --- | --- | --- |"]),
-    ...highRiskRows.map(({ url, parameter }) =>
-      `| ${[
-        escapeCell(url),
-        escapeCell(parameter.name),
-        parameter.location,
-        parameter.kind,
-        escapeCell(parameter.riskTags.join(", ")),
-        parameter.confidence
-      ].join(" | ")} |`
+    ...highRiskRows.map(
+      ({ url, parameter }) =>
+        `| ${[
+          escapeCell(url),
+          escapeCell(parameter.name),
+          parameter.location,
+          parameter.kind,
+          escapeCell(parameter.riskTags.join(", ")),
+          parameter.confidence
+        ].join(" | ")} |`
     )
   ];
 }
@@ -1052,13 +1227,14 @@ function technologyTable(report: RouteCairnReport): string[] {
   return [
     "| Technology | Category | Confidence | Signals |",
     "| --- | --- | --- | --- |",
-    ...report.technologies.map((technology) =>
-      `| ${[
-        escapeCell(technology.name),
-        technology.category,
-        technology.confidence,
-        escapeCell(technology.signals.join(", "))
-      ].join(" | ")} |`
+    ...report.technologies.map(
+      (technology) =>
+        `| ${[
+          escapeCell(technology.name),
+          technology.category,
+          technology.confidence,
+          escapeCell(technology.signals.join(", "))
+        ].join(" | ")} |`
     )
   ];
 }
@@ -1071,15 +1247,16 @@ function findingTable(report: RouteCairnReport): string[] {
   return [
     "| Title | Severity | Confidence | Risk | URL | Source |",
     "| --- | --- | --- | ---: | --- | --- |",
-    ...report.findings.map((finding) =>
-      `| ${[
-        escapeCell(finding.title),
-        finding.severity,
-        finding.confidence,
-        finding.riskScore.toString(),
-        escapeCell(finding.url),
-        finding.sourceModule
-      ].join(" | ")} |`
+    ...report.findings.map(
+      (finding) =>
+        `| ${[
+          escapeCell(finding.title),
+          finding.severity,
+          finding.confidence,
+          finding.riskScore.toString(),
+          escapeCell(finding.url),
+          finding.sourceModule
+        ].join(" | ")} |`
     )
   ];
 }
@@ -1177,10 +1354,12 @@ function proofDetails(report: RouteCairnReport): string[] {
     `- Severity reason: ${escapeText(finding.evidence.severityReason ?? "not recorded")}`,
     "",
     "```bash",
-    finding.evidence.curlCommand ?? `curl -i \"${finding.url.replace(/\"/g, "\\\\\"")}\"`,
+    finding.evidence.curlCommand ?? `curl -i \"${finding.url.replace(/\"/g, '\\\\"')}\"`,
     "```",
     "",
-    ...(finding.evidence.bodyPreview ? ["Body preview:", "", "```text", trimForMarkdown(finding.evidence.bodyPreview), "```", ""] : [])
+    ...(finding.evidence.bodyPreview
+      ? ["Body preview:", "", "```text", trimForMarkdown(finding.evidence.bodyPreview), "```", ""]
+      : [])
   ]);
 }
 function baselineLines(report: RouteCairnReport): string[] {
@@ -1205,14 +1384,15 @@ function observationTable(observations: ResponseObservation[]): string[] {
   return [
     "| URL | Status | Title | FP Status | Reason |",
     "| --- | ---: | --- | --- | --- |",
-    ...observations.map((item) =>
-      `| ${[
-        escapeCell(item.url),
-        item.statusCode?.toString() ?? "error",
-        escapeCell(item.title ?? ""),
-        item.falsePositiveStatus,
-        escapeCell(item.classificationReason)
-      ].join(" | ")} |`
+    ...observations.map(
+      (item) =>
+        `| ${[
+          escapeCell(item.url),
+          item.statusCode?.toString() ?? "error",
+          escapeCell(item.title ?? ""),
+          item.falsePositiveStatus,
+          escapeCell(item.classificationReason)
+        ].join(" | ")} |`
     )
   ];
 }
@@ -1243,7 +1423,10 @@ function privilegeMutationLines(report: RouteCairnReport): string[] {
     `- Cleanup required: ${mutation.cleanupRequired}`,
     ...mutation.notes.map((note) => `- ${escapeText(note)}`),
     "",
-    ...mutation.observations.map((item) => `- ${escapeText(item.caseId)}: intent=${item.intent}; ${item.securityOutcome}; cleanup=${item.cleanupOutcome}; transmitted=${item.requestTransmitted ? "yes" : "no"}; authority-change-verified=${item.authorityChangeVerified ? "yes" : "no"}; browser-protected-action=${item.result.browserProtectedActionVerified === undefined ? "not-configured" : item.result.browserProtectedActionVerified ? "verified" : "failed"}; browser-rollback=${item.result.browserRollbackVerified === undefined ? "not-configured" : item.result.browserRollbackVerified ? "verified" : "failed"}`)
+    ...mutation.observations.map(
+      (item) =>
+        `- ${escapeText(item.caseId)}: intent=${item.intent}; ${item.securityOutcome}; cleanup=${item.cleanupOutcome}; transmitted=${item.requestTransmitted ? "yes" : "no"}; authority-change-verified=${item.authorityChangeVerified ? "yes" : "no"}; browser-protected-action=${item.result.browserProtectedActionVerified === undefined ? "not-configured" : item.result.browserProtectedActionVerified ? "verified" : "failed"}; browser-rollback=${item.result.browserRollbackVerified === undefined ? "not-configured" : item.result.browserRollbackVerified ? "verified" : "failed"}`
+    )
   ];
 }
 
@@ -1270,7 +1453,10 @@ function proofModeLines(report: RouteCairnReport): string[] {
       "",
       "Requests:",
       "",
-      ...block.comparisons.map((comparison) => `- ${comparison.label}: ${escapeText(comparison.request.curlCommand)} => ${comparison.response.statusCode ?? "error"}, ${comparison.response.contentType ?? "unknown"}, ${comparison.response.contentLength ?? "unknown"} bytes`),
+      ...block.comparisons.map(
+        (comparison) =>
+          `- ${comparison.label}: ${escapeText(comparison.request.curlCommand)} => ${comparison.response.statusCode ?? "error"}, ${comparison.response.contentType ?? "unknown"}, ${comparison.response.contentLength ?? "unknown"} bytes`
+      ),
       "",
       "Bounty summary:",
       "",

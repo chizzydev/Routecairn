@@ -1,7 +1,15 @@
+import { readCapabilityCoverage } from "../execution/AssessmentCapabilityCoverage.js";
 import { randomUUID } from "node:crypto";
 import type { DashboardDatabase } from "./DashboardDatabase.js";
 import { clamp, nowIso } from "./DashboardDatabase.js";
-import type { DashboardFindingSummary, DashboardScanSource, DashboardScanStatus, DashboardScanSummary, ModuleExecutionStatus, ReviewStatus } from "../types/DashboardTypes.js";
+import type {
+  DashboardFindingSummary,
+  DashboardScanSource,
+  DashboardScanStatus,
+  DashboardScanSummary,
+  ModuleExecutionStatus,
+  ReviewStatus
+} from "../types/DashboardTypes.js";
 import { FindingCommandCenterService } from "../findings/FindingCommandCenterService.js";
 
 export interface ScanListFilters {
@@ -78,47 +86,114 @@ export class ProjectRepository {
     const archived = includeArchived ? "1 = 1" : "archived_at IS NULL";
     const organization = organizationId ?? defaultOrganizationId(this.database);
     const rows = search
-      ? this.database.db.prepare(`SELECT * FROM projects WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`).all(organization, `%${search}%`, `%${search}%`)
-      : this.database.db.prepare(`SELECT * FROM projects WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`).all(organization);
+      ? this.database.db
+          .prepare(
+            `SELECT * FROM projects WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`
+          )
+          .all(organization, `%${search}%`, `%${search}%`)
+      : this.database.db
+          .prepare(`SELECT * FROM projects WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`)
+          .all(organization);
     return (rows as DbProjectRow[]).map((row) => projectFromRow(this.database, row));
   }
 
   public get(id: string, includeArchived = false, organizationId?: string): ProjectSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM projects WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id, ...(organizationId ? [organizationId] : [])) as DbProjectRow | undefined;
+    const row = this.database.db
+      .prepare(
+        `SELECT * FROM projects WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`
+      )
+      .get(id, ...(organizationId ? [organizationId] : [])) as DbProjectRow | undefined;
     return row ? projectFromRow(this.database, row) : undefined;
   }
 
-  public create(input: { organizationId?: string | undefined; name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; createdBy?: string | undefined }): string {
+  public create(input: {
+    organizationId?: string | undefined;
+    name: string;
+    description?: string | undefined;
+    tags: string[];
+    defaultProfile?: string | undefined;
+    defaultScope: Record<string, unknown>;
+    createdBy?: string | undefined;
+  }): string {
     const id = randomUUID();
     const now = nowIso();
     this.database.db
       .prepare(
         "INSERT INTO projects (id, organization_id, name, description, tags_json, default_profile, default_scope_json, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(id, input.organizationId ?? defaultOrganizationId(this.database), clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), input.createdBy ?? null, now, now);
+      .run(
+        id,
+        input.organizationId ?? defaultOrganizationId(this.database),
+        clamp(input.name, 160),
+        input.description ? clamp(input.description, 2000) : null,
+        JSON.stringify(input.tags),
+        input.defaultProfile ?? null,
+        JSON.stringify(input.defaultScope),
+        input.createdBy ?? null,
+        now,
+        now
+      );
     return id;
   }
 
-  public update(id: string, input: { organizationId?: string | undefined; name: string; description?: string | undefined; tags: string[]; defaultProfile?: string | undefined; defaultScope: Record<string, unknown>; expectedVersion?: number | undefined }): void {
+  public update(
+    id: string,
+    input: {
+      organizationId?: string | undefined;
+      name: string;
+      description?: string | undefined;
+      tags: string[];
+      defaultProfile?: string | undefined;
+      defaultScope: Record<string, unknown>;
+      expectedVersion?: number | undefined;
+    }
+  ): void {
     const result = this.database.db
-      .prepare(`UPDATE projects SET name = ?, description = ?, tags_json = ?, default_profile = ?, default_scope_json = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`)
-      .run(clamp(input.name, 160), input.description ? clamp(input.description, 2000) : null, JSON.stringify(input.tags), input.defaultProfile ?? null, JSON.stringify(input.defaultScope), nowIso(), id, input.organizationId ?? defaultOrganizationId(this.database), ...(input.expectedVersion === undefined ? [] : [input.expectedVersion]));
+      .prepare(
+        `UPDATE projects SET name = ?, description = ?, tags_json = ?, default_profile = ?, default_scope_json = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL ${input.expectedVersion === undefined ? "" : "AND row_version = ?"}`
+      )
+      .run(
+        clamp(input.name, 160),
+        input.description ? clamp(input.description, 2000) : null,
+        JSON.stringify(input.tags),
+        input.defaultProfile ?? null,
+        JSON.stringify(input.defaultScope),
+        nowIso(),
+        id,
+        input.organizationId ?? defaultOrganizationId(this.database),
+        ...(input.expectedVersion === undefined ? [] : [input.expectedVersion])
+      );
     if (result.changes !== 1) throw new Error("PROJECT_CONFLICT: Project changed or is unavailable.");
   }
 
   public archive(id: string, organizationId?: string): void {
-    this.database.db.prepare("UPDATE projects SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
+    this.database.db
+      .prepare(
+        "UPDATE projects SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL"
+      )
+      .run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 
   public restore(id: string, organizationId?: string): void {
-    this.database.db.prepare("UPDATE projects SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
+    this.database.db
+      .prepare(
+        "UPDATE projects SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL"
+      )
+      .run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 }
 
 export class TargetRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public list(filters: { organizationId?: string | undefined; projectId?: string | undefined; search?: string | undefined; includeArchived?: boolean | undefined } = {}): TargetSummary[] {
+  public list(
+    filters: {
+      organizationId?: string | undefined;
+      projectId?: string | undefined;
+      search?: string | undefined;
+      includeArchived?: boolean | undefined;
+    } = {}
+  ): TargetSummary[] {
     const clauses = ["organization_id=?", filters.includeArchived ? "1 = 1" : "archived_at IS NULL"];
     const values: string[] = [filters.organizationId ?? defaultOrganizationId(this.database)];
     if (filters.projectId) {
@@ -129,12 +204,18 @@ export class TargetRepository {
       clauses.push("(display_name LIKE ? OR base_origin LIKE ? OR authorization_summary LIKE ?)");
       values.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
-    const rows = this.database.db.prepare(`SELECT * FROM targets WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC LIMIT 100`).all(...values) as DbTargetRow[];
+    const rows = this.database.db
+      .prepare(`SELECT * FROM targets WHERE ${clauses.join(" AND ")} ORDER BY updated_at DESC LIMIT 100`)
+      .all(...values) as DbTargetRow[];
     return rows.map((row) => targetFromRow(this.database, row));
   }
 
   public get(id: string, includeArchived = false, organizationId?: string): TargetSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM targets WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id, ...(organizationId ? [organizationId] : [])) as DbTargetRow | undefined;
+    const row = this.database.db
+      .prepare(
+        `SELECT * FROM targets WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} ${includeArchived ? "" : "AND archived_at IS NULL"}`
+      )
+      .get(id, ...(organizationId ? [organizationId] : [])) as DbTargetRow | undefined;
     return row ? targetFromRow(this.database, row) : undefined;
   }
 
@@ -185,11 +266,18 @@ export class TargetRepository {
         now,
         now
       );
-    this.database.db.prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?").run(input.productionEnabled ? 1 : 0, id);
+    this.database.db
+      .prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?")
+      .run(input.productionEnabled ? 1 : 0, id);
     return id;
   }
 
-  public update(id: string, input: Omit<Parameters<TargetRepository["create"]>[0], "createdBy" | "baseOrigin"> & { expectedVersion?: number | undefined }): void {
+  public update(
+    id: string,
+    input: Omit<Parameters<TargetRepository["create"]>[0], "createdBy" | "baseOrigin"> & {
+      expectedVersion?: number | undefined;
+    }
+  ): void {
     const result = this.database.db
       .prepare(
         `UPDATE targets
@@ -216,30 +304,66 @@ export class TargetRepository {
         ...(input.expectedVersion === undefined ? [] : [input.expectedVersion])
       );
     if (result.changes !== 1) throw new Error("TARGET_CONFLICT: Target changed or is unavailable.");
-    if (input.productionEnabled !== undefined) this.database.db.prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?").run(input.productionEnabled ? 1 : 0, id);
+    if (input.productionEnabled !== undefined)
+      this.database.db
+        .prepare("UPDATE targets SET production_mutation_enabled = ? WHERE id = ?")
+        .run(input.productionEnabled ? 1 : 0, id);
   }
 
   public archive(id: string, organizationId?: string): void {
-    this.database.db.prepare("UPDATE targets SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
+    this.database.db
+      .prepare(
+        "UPDATE targets SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL"
+      )
+      .run(nowIso(), nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 
   public restore(id: string, organizationId?: string): void {
-    this.database.db.prepare("UPDATE targets SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
+    this.database.db
+      .prepare(
+        "UPDATE targets SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL"
+      )
+      .run(nowIso(), id, organizationId ?? defaultOrganizationId(this.database));
   }
 }
 
 export class AuditRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public append(input: { actorLabel?: string | undefined; action: string; resourceType: string; resourceId?: string | undefined; summary: string; metadata?: Record<string, unknown> | undefined; requestCorrelationId?: string | undefined }): void {
+  public append(input: {
+    actorLabel?: string | undefined;
+    action: string;
+    resourceType: string;
+    resourceId?: string | undefined;
+    summary: string;
+    metadata?: Record<string, unknown> | undefined;
+    requestCorrelationId?: string | undefined;
+  }): void {
     this.database.db
       .prepare(
         "INSERT INTO audit_events (id, actor_label, action, resource_type, resource_id, safe_summary, safe_metadata_json, request_correlation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(randomUUID(), clamp(input.actorLabel ?? "local-operator", 120), clamp(input.action, 120), clamp(input.resourceType, 120), input.resourceId ?? null, clamp(input.summary, 800), clamp(JSON.stringify(input.metadata ?? {}), 4000), input.requestCorrelationId ?? null, nowIso());
+      .run(
+        randomUUID(),
+        clamp(input.actorLabel ?? "local-operator", 120),
+        clamp(input.action, 120),
+        clamp(input.resourceType, 120),
+        input.resourceId ?? null,
+        clamp(input.summary, 800),
+        clamp(JSON.stringify(input.metadata ?? {}), 4000),
+        input.requestCorrelationId ?? null,
+        nowIso()
+      );
   }
 
-  public list(filters: { search?: string | undefined; action?: string | undefined; resourceType?: string | undefined; limit?: number | undefined } = {}): unknown[] {
+  public list(
+    filters: {
+      search?: string | undefined;
+      action?: string | undefined;
+      resourceType?: string | undefined;
+      limit?: number | undefined;
+    } = {}
+  ): unknown[] {
     const clauses = ["1 = 1"];
     const values: Array<string | number> = [];
     if (filters.search) {
@@ -256,7 +380,9 @@ export class AuditRepository {
     }
     values.push(Math.min(Math.max(filters.limit ?? 100, 1), 500));
     return this.database.db
-      .prepare(`SELECT id, actor_label, action, resource_type, resource_id, safe_summary, safe_metadata_json, created_at FROM audit_events WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ?`)
+      .prepare(
+        `SELECT id, actor_label, action, resource_type, resource_id, safe_summary, safe_metadata_json, created_at FROM audit_events WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT ?`
+      )
       .all(...values);
   }
 }
@@ -303,8 +429,19 @@ export class ScanRepository {
       );
   }
 
-  public updateStatus(id: string, status: DashboardScanStatus, extra: Partial<{ errorSummary: string; currentModule: string; completedAt: string; cancelledAt: string }> = {}): void {
-    const completedAt = status === "COMPLETED" || status === "FAILED" || status === "CANCELLED" || status === "INTERRUPTED" || status === "IMPORTED" ? extra.completedAt ?? nowIso() : undefined;
+  public updateStatus(
+    id: string,
+    status: DashboardScanStatus,
+    extra: Partial<{ errorSummary: string; currentModule: string; completedAt: string; cancelledAt: string }> = {}
+  ): void {
+    const completedAt =
+      status === "COMPLETED" ||
+      status === "FAILED" ||
+      status === "CANCELLED" ||
+      status === "INTERRUPTED" ||
+      status === "IMPORTED"
+        ? (extra.completedAt ?? nowIso())
+        : undefined;
     this.database.db
       .prepare(
         `UPDATE scans
@@ -316,25 +453,46 @@ export class ScanRepository {
              error_summary = COALESCE(?, error_summary)
          WHERE id = ?`
       )
-      .run(status, status, nowIso(), completedAt ?? null, extra.cancelledAt ?? null, extra.currentModule ?? null, extra.errorSummary ? clamp(extra.errorSummary, 800) : null, id);
+      .run(
+        status,
+        status,
+        nowIso(),
+        completedAt ?? null,
+        extra.cancelledAt ?? null,
+        extra.currentModule ?? null,
+        extra.errorSummary ? clamp(extra.errorSummary, 800) : null,
+        id
+      );
   }
 
   public attachArtifacts(scanId: string, artifacts: { json?: string; markdown?: string; html?: string }): void {
     this.database.db
-      .prepare("UPDATE scans SET json_report_artifact_id = ?, markdown_report_artifact_id = ?, html_report_artifact_id = ? WHERE id = ?")
+      .prepare(
+        "UPDATE scans SET json_report_artifact_id = ?, markdown_report_artifact_id = ?, html_report_artifact_id = ? WHERE id = ?"
+      )
       .run(artifacts.json ?? null, artifacts.markdown ?? null, artifacts.html ?? null, scanId);
   }
 
   public markArchived(scanId: string): void {
-    this.database.db.prepare("UPDATE scans SET archived_at = ? WHERE id = ? AND status NOT IN ('RUNNING','PLANNING','CANCEL_REQUESTED')").run(nowIso(), scanId);
+    this.database.db
+      .prepare(
+        "UPDATE scans SET archived_at = ? WHERE id = ? AND status NOT IN ('RUNNING','PLANNING','CANCEL_REQUESTED')"
+      )
+      .run(nowIso(), scanId);
   }
 
   public markDeleted(scanId: string): void {
-    this.database.db.prepare("UPDATE scans SET deleted_at = ? WHERE id = ? AND status NOT IN ('RUNNING','PLANNING','CANCEL_REQUESTED')").run(nowIso(), scanId);
+    this.database.db
+      .prepare(
+        "UPDATE scans SET deleted_at = ? WHERE id = ? AND status NOT IN ('RUNNING','PLANNING','CANCEL_REQUESTED')"
+      )
+      .run(nowIso(), scanId);
   }
 
   public updatePlanSummary(scanId: string, evidenceLevel: string, plannedModuleCount: number): void {
-    this.database.db.prepare("UPDATE scans SET evidence_level = ?, planned_module_count = ? WHERE id = ?").run(evidenceLevel, plannedModuleCount, scanId);
+    this.database.db
+      .prepare("UPDATE scans SET evidence_level = ?, planned_module_count = ? WHERE id = ?")
+      .run(evidenceLevel, plannedModuleCount, scanId);
   }
 
   public updateCounters(scanId: string): void {
@@ -380,12 +538,18 @@ export class ScanRepository {
       values.push(filters.targetId);
     }
     values.push(boundedLimit, Math.max(filters.offset ?? 0, 0));
-    const rows = this.database.db.prepare(`SELECT * FROM scans WHERE ${clauses.join(" AND ")} ORDER BY ${scanSort(filters.sort)} LIMIT ? OFFSET ?`).all(...values);
+    const rows = this.database.db
+      .prepare(`SELECT * FROM scans WHERE ${clauses.join(" AND ")} ORDER BY ${scanSort(filters.sort)} LIMIT ? OFFSET ?`)
+      .all(...values);
     return (rows as DbScanRow[]).map(scanSummaryFromRow);
   }
 
   public get(id: string, organizationId?: string): DashboardScanSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`).get(id, ...(organizationId ? [organizationId] : [])) as DbScanRow | undefined;
+    const row = this.database.db
+      .prepare(
+        `SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`
+      )
+      .get(id, ...(organizationId ? [organizationId] : [])) as DbScanRow | undefined;
     return row ? scanSummaryFromRow(row) : undefined;
   }
 
@@ -399,16 +563,31 @@ export class ScanRepository {
   }
 
   public detail(id: string, organizationId?: string): unknown {
-    const scan = this.database.db.prepare(`SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`).get(id, ...(organizationId ? [organizationId] : []));
+    const scan = this.database.db
+      .prepare(
+        `SELECT * FROM scans WHERE id = ? ${organizationId ? "AND organization_id=?" : ""} AND deleted_at IS NULL`
+      )
+      .get(id, ...(organizationId ? [organizationId] : []));
     if (!scan) return undefined;
     return {
       scan: scanSummaryFromRow(scan as DbScanRow),
       raw: scan,
-      modules: this.database.db.prepare("SELECT * FROM scan_module_executions WHERE scan_id = ? ORDER BY planned_order ASC").all(id),
+      modules: this.database.db
+        .prepare("SELECT * FROM scan_module_executions WHERE scan_id = ? ORDER BY planned_order ASC")
+        .all(id),
       events: new EventRepository(this.database).list(id, 0, 200),
+      capabilityCoverage: readCapabilityCoverage(this.database, id),
       planSnapshot: this.database.db.prepare("SELECT * FROM scan_plan_snapshots WHERE scan_id = ?").get(id),
-      executablePlan: this.database.db.prepare("SELECT schema_version, target_origin, plan_binding, created_at, worker_verified_at, worker_verified_binding FROM scan_executable_plans WHERE scan_id = ?").get(id),
-      artifacts: this.database.db.prepare("SELECT id, artifact_type, safe_display_name, size, content_type, retention_state, missing_file_flag FROM artifacts WHERE scan_id = ?").all(id),
+      executablePlan: this.database.db
+        .prepare(
+          "SELECT schema_version, target_origin, plan_binding, created_at, worker_verified_at, worker_verified_binding FROM scan_executable_plans WHERE scan_id = ?"
+        )
+        .get(id),
+      artifacts: this.database.db
+        .prepare(
+          "SELECT id, artifact_type, safe_display_name, size, content_type, retention_state, missing_file_flag FROM artifacts WHERE scan_id = ?"
+        )
+        .all(id),
       findings: this.database.db
         .prepare(
           `SELECT findings.* FROM findings
@@ -424,19 +603,36 @@ export class ScanRepository {
 
   public overview(organizationId?: string): unknown {
     const organization = organizationId ?? defaultOrganizationId(this.database);
-    const scanCounts = this.database.db.prepare("SELECT status, COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL GROUP BY status").all(organization) as Array<{ status: string; count: number }>;
-    const findingCounts = this.database.db.prepare("SELECT human_review_status AS status, COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL GROUP BY human_review_status").all(organization) as Array<{ status: string; count: number }>;
+    const scanCounts = this.database.db
+      .prepare(
+        "SELECT status, COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL GROUP BY status"
+      )
+      .all(organization) as Array<{ status: string; count: number }>;
+    const findingCounts = this.database.db
+      .prepare(
+        "SELECT human_review_status AS status, COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL GROUP BY human_review_status"
+      )
+      .all(organization) as Array<{ status: string; count: number }>;
     return {
       scans: {
-        total: scalarCount(this.database, "SELECT COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL", organization),
+        total: scalarCount(
+          this.database,
+          "SELECT COUNT(*) AS count FROM scans WHERE organization_id=? AND deleted_at IS NULL",
+          organization
+        ),
         queued: countBy(scanCounts, "QUEUED"),
-        running: countBy(scanCounts, "RUNNING") + countBy(scanCounts, "PLANNING") + countBy(scanCounts, "CANCEL_REQUESTED"),
+        running:
+          countBy(scanCounts, "RUNNING") + countBy(scanCounts, "PLANNING") + countBy(scanCounts, "CANCEL_REQUESTED"),
         completed: countBy(scanCounts, "COMPLETED"),
         failed: countBy(scanCounts, "FAILED"),
         interrupted: countBy(scanCounts, "INTERRUPTED")
       },
       findings: {
-        open: scalarCount(this.database, "SELECT COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL AND remediation_status != 'FIXED_VERIFIED'", organization),
+        open: scalarCount(
+          this.database,
+          "SELECT COUNT(*) AS count FROM findings WHERE organization_id=? AND archived_at IS NULL AND remediation_status != 'FIXED_VERIFIED'",
+          organization
+        ),
         unreviewed: countBy(findingCounts, "UNREVIEWED"),
         confirmed: countBy(findingCounts, "CONFIRMED"),
         falsePositive: countBy(findingCounts, "FALSE_POSITIVE"),
@@ -446,7 +642,9 @@ export class ScanRepository {
       },
       recentScans: this.list(5),
       recentReviews: this.database.db
-        .prepare("SELECT finding_reviews.*, findings.canonical_title FROM finding_reviews JOIN findings ON findings.id = finding_reviews.finding_id ORDER BY finding_reviews.created_at DESC LIMIT 10")
+        .prepare(
+          "SELECT finding_reviews.*, findings.canonical_title FROM finding_reviews JOIN findings ON findings.id = finding_reviews.finding_id ORDER BY finding_reviews.created_at DESC LIMIT 10"
+        )
         .all()
     };
   }
@@ -455,18 +653,21 @@ export class ScanRepository {
 export class PlanRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public create(scanId: string, snapshot: {
-    plannerVersion: string;
-    profile: string;
-    modules: unknown;
-    limits: unknown;
-    evidencePolicy: unknown;
-    browserPolicySummary: unknown;
-    scopeSummary: unknown;
-    authenticationSummary: unknown;
-    controlledWorkflowSummary: unknown;
-    redactedPlan: unknown;
-  }): void {
+  public create(
+    scanId: string,
+    snapshot: {
+      plannerVersion: string;
+      profile: string;
+      modules: unknown;
+      limits: unknown;
+      evidencePolicy: unknown;
+      browserPolicySummary: unknown;
+      scopeSummary: unknown;
+      authenticationSummary: unknown;
+      controlledWorkflowSummary: unknown;
+      redactedPlan: unknown;
+    }
+  ): void {
     this.database.db
       .prepare(
         `INSERT INTO scan_plan_snapshots (id, scan_id, planner_version, profile, modules_json, limits_json, evidence_policy_json, browser_policy_summary_json, scope_summary_json, authentication_summary_json, controlled_workflow_summary_json, redacted_plan_json, created_at)
@@ -502,7 +703,13 @@ export class ModuleExecutionRepository {
     }
   }
 
-  public mark(scanId: string, moduleId: string, status: ModuleExecutionStatus, summary?: string, findings?: number): void {
+  public mark(
+    scanId: string,
+    moduleId: string,
+    status: ModuleExecutionStatus,
+    summary?: string,
+    findings?: number
+  ): void {
     this.database.db
       .prepare(
         `UPDATE scan_module_executions
@@ -513,20 +720,49 @@ export class ModuleExecutionRepository {
              safe_failure_summary = COALESCE(?, safe_failure_summary)
          WHERE scan_id = ? AND module_id = ?`
       )
-      .run(status, status, nowIso(), status, nowIso(), findings ?? null, summary ? clamp(summary, 800) : null, scanId, moduleId);
+      .run(
+        status,
+        status,
+        nowIso(),
+        status,
+        nowIso(),
+        findings ?? null,
+        summary ? clamp(summary, 800) : null,
+        scanId,
+        moduleId
+      );
   }
 }
 
 export class EventRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public append(scanId: string, eventType: string, message: string, metadata: Record<string, unknown>, moduleId?: string): void {
+  public append(
+    scanId: string,
+    eventType: string,
+    message: string,
+    metadata: Record<string, unknown>,
+    moduleId?: string
+  ): void {
     this.database.appendEvent(scanId, eventType, message, metadata, moduleId);
   }
 
-  public list(scanId: string, afterSeq = 0, limit = 200): Array<{ seq: number; eventType: string; moduleId?: string; message: string; metadata: unknown; createdAt: string }> {
+  public list(
+    scanId: string,
+    afterSeq = 0,
+    limit = 200
+  ): Array<{
+    seq: number;
+    eventType: string;
+    moduleId?: string;
+    message: string;
+    metadata: unknown;
+    createdAt: string;
+  }> {
     const rows = this.database.db
-      .prepare("SELECT seq, event_type, module_id, safe_message, safe_metadata_json, created_at FROM scan_events WHERE scan_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?")
+      .prepare(
+        "SELECT seq, event_type, module_id, safe_message, safe_metadata_json, created_at FROM scan_events WHERE scan_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?"
+      )
       .all(scanId, afterSeq, Math.min(Math.max(limit, 1), 500)) as Array<{
       seq: number;
       event_type: string;
@@ -549,23 +785,91 @@ export class EventRepository {
 export class ArtifactRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public create(input: { organizationId?: string; scanId?: string; proofPackId?: string; type: string; name: string; path: string; size: number; contentType: string; hash: string; retentionState?: string }): string {
+  public create(input: {
+    organizationId?: string;
+    scanId?: string;
+    proofPackId?: string;
+    type: string;
+    name: string;
+    path: string;
+    size: number;
+    contentType: string;
+    hash: string;
+    retentionState?: string;
+  }): string {
     const id = randomUUID();
     this.database.db
       .prepare(
         "INSERT INTO artifacts (id, organization_id, scan_id, proof_pack_id, artifact_type, safe_display_name, canonical_path, size, content_type, scoped_or_full_safe_hash, created_at, retention_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
-      .run(id, input.organizationId ?? null,input.scanId ?? null, input.proofPackId ?? null, input.type, clamp(input.name, 200), input.path, input.size, input.contentType, input.hash, nowIso(), input.retentionState ?? "RETAIN");
-    const stored = this.database.db.prepare("SELECT organization_id FROM artifacts WHERE id=?").get(id) as { organization_id: string } | undefined;
-    if (stored?.organization_id) this.database.notifyArtifact({ artifactId: id, organizationId: stored.organization_id, path: input.path, sha256: input.hash, size: input.size, contentType: input.contentType });
+      .run(
+        id,
+        input.organizationId ?? null,
+        input.scanId ?? null,
+        input.proofPackId ?? null,
+        input.type,
+        clamp(input.name, 200),
+        input.path,
+        input.size,
+        input.contentType,
+        input.hash,
+        nowIso(),
+        input.retentionState ?? "RETAIN"
+      );
+    const stored = this.database.db.prepare("SELECT organization_id FROM artifacts WHERE id=?").get(id) as
+      { organization_id: string } | undefined;
+    if (stored?.organization_id)
+      this.database.notifyArtifact({
+        artifactId: id,
+        organizationId: stored.organization_id,
+        path: input.path,
+        sha256: input.hash,
+        size: input.size,
+        contentType: input.contentType
+      });
     return id;
   }
 
-  public get(id: string,organizationId?:string): { id: string; organizationId: string; path: string; contentType: string; name: string; size: number; sha256: string } | undefined {
-    const row = this.database.db.prepare(`SELECT id, organization_id, canonical_path, content_type, safe_display_name, size, scoped_or_full_safe_hash FROM artifacts WHERE id = ? ${organizationId?"AND organization_id=?":""}`).get(id,...(organizationId?[organizationId]:[])) as
-      | { id: string; organization_id: string; canonical_path: string; content_type: string; safe_display_name: string; size: number; scoped_or_full_safe_hash: string }
+  public get(
+    id: string,
+    organizationId?: string
+  ):
+    | {
+        id: string;
+        organizationId: string;
+        path: string;
+        contentType: string;
+        name: string;
+        size: number;
+        sha256: string;
+      }
+    | undefined {
+    const row = this.database.db
+      .prepare(
+        `SELECT id, organization_id, canonical_path, content_type, safe_display_name, size, scoped_or_full_safe_hash FROM artifacts WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`
+      )
+      .get(id, ...(organizationId ? [organizationId] : [])) as
+      | {
+          id: string;
+          organization_id: string;
+          canonical_path: string;
+          content_type: string;
+          safe_display_name: string;
+          size: number;
+          scoped_or_full_safe_hash: string;
+        }
       | undefined;
-    return row ? { id: row.id, organizationId: row.organization_id, path: row.canonical_path, contentType: row.content_type, name: row.safe_display_name, size: row.size, sha256: row.scoped_or_full_safe_hash } : undefined;
+    return row
+      ? {
+          id: row.id,
+          organizationId: row.organization_id,
+          path: row.canonical_path,
+          contentType: row.content_type,
+          name: row.safe_display_name,
+          size: row.size,
+          sha256: row.scoped_or_full_safe_hash
+        }
+      : undefined;
   }
 }
 
@@ -601,29 +905,45 @@ export class FindingRepository {
       values.push(filters.category);
     }
     values.push(boundedLimit, Math.max(filters.offset ?? 0, 0));
-    const rows = this.database.db.prepare(`SELECT * FROM findings WHERE ${clauses.join(" AND ")} ORDER BY ${findingSort(filters.sort)} LIMIT ? OFFSET ?`).all(...values) as DbFindingRow[];
+    const rows = this.database.db
+      .prepare(
+        `SELECT * FROM findings WHERE ${clauses.join(" AND ")} ORDER BY ${findingSort(filters.sort)} LIMIT ? OFFSET ?`
+      )
+      .all(...values) as DbFindingRow[];
     return rows.map(findingSummaryFromRow);
   }
 
   public get(id: string, organizationId?: string): DashboardFindingSummary | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`).get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
+    const row = this.database.db
+      .prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`)
+      .get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
     return row ? findingSummaryFromRow(row) : undefined;
   }
 
   public detail(id: string, organizationId?: string): unknown {
-    const row = this.database.db.prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`).get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
+    const row = this.database.db
+      .prepare(`SELECT * FROM findings WHERE id = ? ${organizationId ? "AND organization_id=?" : ""}`)
+      .get(id, ...(organizationId ? [organizationId] : [])) as DbFindingRow | undefined;
     if (!row) return undefined;
     return {
       finding: findingSummaryFromRow(row),
       raw: this.database.db.prepare("SELECT * FROM findings WHERE id = ?").get(id),
-      occurrences: this.database.db.prepare("SELECT * FROM finding_occurrences WHERE finding_id = ? ORDER BY created_at DESC").all(id),
+      occurrences: this.database.db
+        .prepare("SELECT * FROM finding_occurrences WHERE finding_id = ? ORDER BY created_at DESC")
+        .all(id),
       evidence: this.database.db
         .prepare(
           "SELECT evidence_records.* FROM evidence_records JOIN finding_occurrences ON finding_occurrences.id = evidence_records.finding_occurrence_id WHERE finding_occurrences.finding_id = ? ORDER BY evidence_records.created_at DESC"
         )
         .all(id),
-      reviews: this.database.db.prepare("SELECT * FROM finding_reviews WHERE finding_id = ? ORDER BY created_at DESC").all(id),
-      proofPacks: this.database.db.prepare("SELECT proof_pack_id, selected_occurrence_id, sort_order, created_at FROM proof_pack_findings WHERE finding_id = ? ORDER BY created_at DESC").all(id)
+      reviews: this.database.db
+        .prepare("SELECT * FROM finding_reviews WHERE finding_id = ? ORDER BY created_at DESC")
+        .all(id),
+      proofPacks: this.database.db
+        .prepare(
+          "SELECT proof_pack_id, selected_occurrence_id, sort_order, created_at FROM proof_pack_findings WHERE finding_id = ? ORDER BY created_at DESC"
+        )
+        .all(id)
     };
   }
 
@@ -636,7 +956,8 @@ export class FindingRepository {
     reviewerLabel?: string | undefined;
     source?: "HUMAN" | "SYSTEM_REOPEN" | "IMPORT" | undefined;
   }): void {
-    const current = this.database.db.prepare("SELECT row_version FROM findings WHERE id = ?").get(input.findingId) as { row_version: number } | undefined;
+    const current = this.database.db.prepare("SELECT row_version FROM findings WHERE id = ?").get(input.findingId) as
+      { row_version: number } | undefined;
     if (!current) throw new Error("Finding not found.");
     new FindingCommandCenterService(this.database).review({
       findingId: input.findingId,
@@ -660,18 +981,36 @@ export class FindingRepository {
 export class SavedConfigurationRepository {
   public constructor(private readonly database: DashboardDatabase) {}
 
-  public list(search?: string, includeArchived = false, organizationId = defaultOrganizationId(this.database)): unknown[] {
+  public list(
+    search?: string,
+    includeArchived = false,
+    organizationId = defaultOrganizationId(this.database)
+  ): unknown[] {
     const archived = includeArchived ? "1 = 1" : "archived_at IS NULL";
     const rows = search
       ? this.database.db
-          .prepare(`SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`)
-          .all(organizationId,`%${search}%`, `%${search}%`)
-      : this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`).all(organizationId);
+          .prepare(
+            `SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} AND (name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC LIMIT 100`
+          )
+          .all(organizationId, `%${search}%`, `%${search}%`)
+      : this.database.db
+          .prepare(
+            `SELECT * FROM saved_scan_configurations WHERE organization_id=? AND ${archived} ORDER BY updated_at DESC LIMIT 100`
+          )
+          .all(organizationId);
     return (rows as SavedConfigurationRow[]).map(configurationFromRow);
   }
 
-  public get(id: string, includeArchived = false, organizationId = defaultOrganizationId(this.database)): Record<string, unknown> | undefined {
-    const row = this.database.db.prepare(`SELECT * FROM saved_scan_configurations WHERE id = ? AND organization_id=? ${includeArchived ? "" : "AND archived_at IS NULL"}`).get(id,organizationId) as SavedConfigurationRow | undefined;
+  public get(
+    id: string,
+    includeArchived = false,
+    organizationId = defaultOrganizationId(this.database)
+  ): Record<string, unknown> | undefined {
+    const row = this.database.db
+      .prepare(
+        `SELECT * FROM saved_scan_configurations WHERE id = ? AND organization_id=? ${includeArchived ? "" : "AND archived_at IS NULL"}`
+      )
+      .get(id, organizationId) as SavedConfigurationRow | undefined;
     return row ? configurationFromRow(row) : undefined;
   }
 
@@ -715,9 +1054,21 @@ export class SavedConfigurationRepository {
     return id;
   }
 
-  public update(id: string, input: Parameters<SavedConfigurationRepository["create"]>[0] & { expectedVersion?: number | undefined; changeSummary?: string | undefined }, organizationId = defaultOrganizationId(this.database)): number {
-    const current = this.database.db.prepare("SELECT current_version, row_version FROM saved_scan_configurations WHERE id = ? AND organization_id=? AND archived_at IS NULL").get(id,organizationId) as { current_version: number; row_version: number } | undefined;
-    if (!current || (input.expectedVersion !== undefined && input.expectedVersion !== current.row_version)) throw new Error("CONFIGURATION_CONFLICT: Configuration changed or is unavailable.");
+  public update(
+    id: string,
+    input: Parameters<SavedConfigurationRepository["create"]>[0] & {
+      expectedVersion?: number | undefined;
+      changeSummary?: string | undefined;
+    },
+    organizationId = defaultOrganizationId(this.database)
+  ): number {
+    const current = this.database.db
+      .prepare(
+        "SELECT current_version, row_version FROM saved_scan_configurations WHERE id = ? AND organization_id=? AND archived_at IS NULL"
+      )
+      .get(id, organizationId) as { current_version: number; row_version: number } | undefined;
+    if (!current || (input.expectedVersion !== undefined && input.expectedVersion !== current.row_version))
+      throw new Error("CONFIGURATION_CONFLICT: Configuration changed or is unavailable.");
     const nextVersion = current.current_version + 1;
     const result = this.database.db
       .prepare(
@@ -748,59 +1099,139 @@ export class SavedConfigurationRepository {
   }
 
   public archive(id: string, organizationId = defaultOrganizationId(this.database)): void {
-    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL").run(nowIso(), nowIso(), id, organizationId);
+    this.database.db
+      .prepare(
+        "UPDATE saved_scan_configurations SET archived_at = ?, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NULL"
+      )
+      .run(nowIso(), nowIso(), id, organizationId);
   }
 
   public restore(id: string, organizationId = defaultOrganizationId(this.database)): void {
-    this.database.db.prepare("UPDATE saved_scan_configurations SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL").run(nowIso(), id, organizationId);
+    this.database.db
+      .prepare(
+        "UPDATE saved_scan_configurations SET archived_at = NULL, updated_at = ?, row_version = row_version + 1 WHERE id = ? AND organization_id=? AND archived_at IS NOT NULL"
+      )
+      .run(nowIso(), id, organizationId);
   }
 
   public clone(id: string, name: string, organizationId = defaultOrganizationId(this.database)): string {
     const item = this.get(id, true, organizationId);
     if (!item) throw new Error("Configuration not found.");
     return this.create({
-      organizationId, name, description: typeof item.description === "string" ? item.description : undefined,
+      organizationId,
+      name,
+      description: typeof item.description === "string" ? item.description : undefined,
       targetTemplate: typeof item.targetTemplate === "string" ? item.targetTemplate : undefined,
-      profile: String(item.profile), modules: item.modules, limits: item.limits, scopeSettings: item.scopeSettings,
-      browserPolicySettings: item.browserPolicySettings, evidenceLevel: String(item.evidenceLevel), workflowRefs: item.workflowRefs
+      profile: String(item.profile),
+      modules: item.modules,
+      limits: item.limits,
+      scopeSettings: item.scopeSettings,
+      browserPolicySettings: item.browserPolicySettings,
+      evidenceLevel: String(item.evidenceLevel),
+      workflowRefs: item.workflowRefs
     });
   }
 
   public history(id: string, organizationId = defaultOrganizationId(this.database)): unknown[] {
-    if (!this.get(id,true,organizationId)) return [];
-    return this.database.db.prepare("SELECT id, configuration_id AS configurationId, version, snapshot_json AS snapshotJson, change_summary AS changeSummary, created_by AS createdBy, created_at AS createdAt FROM saved_scan_configuration_versions WHERE configuration_id = ? ORDER BY version DESC").all(id);
+    if (!this.get(id, true, organizationId)) return [];
+    return this.database.db
+      .prepare(
+        "SELECT id, configuration_id AS configurationId, version, snapshot_json AS snapshotJson, change_summary AS changeSummary, created_by AS createdBy, created_at AS createdAt FROM saved_scan_configuration_versions WHERE configuration_id = ? ORDER BY version DESC"
+      )
+      .all(id);
   }
 
-  public diff(id: string, olderVersion: number, newerVersion: number, organizationId = defaultOrganizationId(this.database)): Record<string, unknown> {
-    if (!this.get(id,true,organizationId)) throw new Error("Configuration not found.");
-    const rows = this.database.db.prepare("SELECT version, snapshot_json FROM saved_scan_configuration_versions WHERE configuration_id = ? AND version IN (?, ?)").all(id, olderVersion, newerVersion) as Array<{ version: number; snapshot_json: string }>;
+  public diff(
+    id: string,
+    olderVersion: number,
+    newerVersion: number,
+    organizationId = defaultOrganizationId(this.database)
+  ): Record<string, unknown> {
+    if (!this.get(id, true, organizationId)) throw new Error("Configuration not found.");
+    const rows = this.database.db
+      .prepare(
+        "SELECT version, snapshot_json FROM saved_scan_configuration_versions WHERE configuration_id = ? AND version IN (?, ?)"
+      )
+      .all(id, olderVersion, newerVersion) as Array<{ version: number; snapshot_json: string }>;
     if (rows.length !== 2) throw new Error("Both configuration versions are required for diff.");
-    const older = JSON.parse(rows.find((row) => row.version === olderVersion)!.snapshot_json) as Record<string, unknown>;
-    const newer = JSON.parse(rows.find((row) => row.version === newerVersion)!.snapshot_json) as Record<string, unknown>;
-    const changes = [...new Set([...Object.keys(older), ...Object.keys(newer)])].filter((key) => JSON.stringify(older[key]) !== JSON.stringify(newer[key])).map((key) => ({ field: key, older: older[key], newer: newer[key] }));
+    const older = JSON.parse(rows.find((row) => row.version === olderVersion)!.snapshot_json) as Record<
+      string,
+      unknown
+    >;
+    const newer = JSON.parse(rows.find((row) => row.version === newerVersion)!.snapshot_json) as Record<
+      string,
+      unknown
+    >;
+    const changes = [...new Set([...Object.keys(older), ...Object.keys(newer)])]
+      .filter((key) => JSON.stringify(older[key]) !== JSON.stringify(newer[key]))
+      .map((key) => ({ field: key, older: older[key], newer: newer[key] }));
     return { olderVersion, newerVersion, changes };
   }
 
-  private addVersion(id: string, version: number, input: Parameters<SavedConfigurationRepository["create"]>[0], summary: string): void {
-    const snapshot = { name: input.name, ...(input.description ? { description: input.description } : {}), ...(input.targetTemplate ? { targetTemplate: input.targetTemplate } : {}), profile: input.profile,
-      modules: input.modules, limits: input.limits, scopeSettings: input.scopeSettings, browserPolicySettings: input.browserPolicySettings, evidenceLevel: input.evidenceLevel, workflowRefs: input.workflowRefs };
-    this.database.db.prepare("INSERT INTO saved_scan_configuration_versions (id, configuration_id, version, snapshot_json, change_summary, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+  private addVersion(
+    id: string,
+    version: number,
+    input: Parameters<SavedConfigurationRepository["create"]>[0],
+    summary: string
+  ): void {
+    const snapshot = {
+      name: input.name,
+      ...(input.description ? { description: input.description } : {}),
+      ...(input.targetTemplate ? { targetTemplate: input.targetTemplate } : {}),
+      profile: input.profile,
+      modules: input.modules,
+      limits: input.limits,
+      scopeSettings: input.scopeSettings,
+      browserPolicySettings: input.browserPolicySettings,
+      evidenceLevel: input.evidenceLevel,
+      workflowRefs: input.workflowRefs
+    };
+    this.database.db
+      .prepare(
+        "INSERT INTO saved_scan_configuration_versions (id, configuration_id, version, snapshot_json, change_summary, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      )
       .run(randomUUID(), id, version, JSON.stringify(snapshot), clamp(summary, 500), nowIso());
   }
 }
 
 interface SavedConfigurationRow {
-  id: string; name: string; description: string | null; target_template: string | null; profile: string;
-  modules_json: string; limits_json: string; scope_settings_json: string; browser_policy_settings_json: string;
-  evidence_level: string; non_secret_controlled_workflow_refs_json: string; created_at: string; updated_at: string;
-  archived_at: string | null; row_version: number; current_version: number;
+  id: string;
+  name: string;
+  description: string | null;
+  target_template: string | null;
+  profile: string;
+  modules_json: string;
+  limits_json: string;
+  scope_settings_json: string;
+  browser_policy_settings_json: string;
+  evidence_level: string;
+  non_secret_controlled_workflow_refs_json: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
+  row_version: number;
+  current_version: number;
 }
 
 function configurationFromRow(row: SavedConfigurationRow): Record<string, unknown> {
-  return { id: row.id, name: row.name, ...(row.description ? { description: row.description } : {}), ...(row.target_template ? { targetTemplate: row.target_template } : {}), profile: row.profile,
-    modules: JSON.parse(row.modules_json), limits: JSON.parse(row.limits_json), scopeSettings: JSON.parse(row.scope_settings_json), browserPolicySettings: JSON.parse(row.browser_policy_settings_json),
-    evidenceLevel: row.evidence_level, workflowRefs: JSON.parse(row.non_secret_controlled_workflow_refs_json), createdAt: row.created_at, updatedAt: row.updated_at,
-    archived: Boolean(row.archived_at), rowVersion: row.row_version, currentVersion: row.current_version };
+  return {
+    id: row.id,
+    name: row.name,
+    ...(row.description ? { description: row.description } : {}),
+    ...(row.target_template ? { targetTemplate: row.target_template } : {}),
+    profile: row.profile,
+    modules: JSON.parse(row.modules_json),
+    limits: JSON.parse(row.limits_json),
+    scopeSettings: JSON.parse(row.scope_settings_json),
+    browserPolicySettings: JSON.parse(row.browser_policy_settings_json),
+    evidenceLevel: row.evidence_level,
+    workflowRefs: JSON.parse(row.non_secret_controlled_workflow_refs_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archived: Boolean(row.archived_at),
+    rowVersion: row.row_version,
+    currentVersion: row.current_version
+  };
 }
 
 function scanSort(sort: ScanListFilters["sort"]): string {
@@ -844,18 +1275,21 @@ function countBy(rows: readonly { status: string; count: number }[], status: str
 }
 
 function defaultOrganizationId(database: DashboardDatabase): string {
-  const row = database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as { value: string } | undefined;
+  const row = database.db.prepare("SELECT value FROM dashboard_meta WHERE key='default_organization_id'").get() as
+    { value: string } | undefined;
   if (!row) throw new Error("DEFAULT_ORGANIZATION_MISSING");
   return row.value;
 }
 
 function organizationForReferences(database: DashboardDatabase, projectId?: string, targetId?: string): string {
   if (targetId) {
-    const target = database.db.prepare("SELECT organization_id FROM targets WHERE id=?").get(targetId) as { organization_id: string } | undefined;
+    const target = database.db.prepare("SELECT organization_id FROM targets WHERE id=?").get(targetId) as
+      { organization_id: string } | undefined;
     if (target?.organization_id) return target.organization_id;
   }
   if (projectId) {
-    const project = database.db.prepare("SELECT organization_id FROM projects WHERE id=?").get(projectId) as { organization_id: string } | undefined;
+    const project = database.db.prepare("SELECT organization_id FROM projects WHERE id=?").get(projectId) as
+      { organization_id: string } | undefined;
     if (project?.organization_id) return project.organization_id;
   }
   return defaultOrganizationId(database);
@@ -951,10 +1385,22 @@ function projectFromRow(database: DashboardDatabase, row: DbProjectRow): Project
     defaultScope: safeJsonObject(row.default_scope_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    openFindingCount: scalarCountPrepared(database, "SELECT COUNT(*) AS count FROM findings WHERE project_id = ? AND archived_at IS NULL AND remediation_state_v2 != 'FIXED_VERIFIED'", row.id),
-    targetCount: scalarCountPrepared(database, "SELECT COUNT(*) AS count FROM targets WHERE project_id = ? AND archived_at IS NULL", row.id),
-    scanCount: scalarCountPrepared(database, "SELECT COUNT(*) AS count FROM scans WHERE project_id = ? AND deleted_at IS NULL", row.id)
-    ,archived: Boolean(row.archived_at),
+    openFindingCount: scalarCountPrepared(
+      database,
+      "SELECT COUNT(*) AS count FROM findings WHERE project_id = ? AND archived_at IS NULL AND remediation_state_v2 != 'FIXED_VERIFIED'",
+      row.id
+    ),
+    targetCount: scalarCountPrepared(
+      database,
+      "SELECT COUNT(*) AS count FROM targets WHERE project_id = ? AND archived_at IS NULL",
+      row.id
+    ),
+    scanCount: scalarCountPrepared(
+      database,
+      "SELECT COUNT(*) AS count FROM scans WHERE project_id = ? AND deleted_at IS NULL",
+      row.id
+    ),
+    archived: Boolean(row.archived_at),
     rowVersion: row.row_version
   };
 }
@@ -980,8 +1426,16 @@ function targetFromRow(database: DashboardDatabase, row: DbTargetRow): TargetSum
     defaultAuthTemplate: safeJsonObject(row.default_auth_template_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    openFindingCount: scalarCountPrepared(database, "SELECT COUNT(*) AS count FROM findings WHERE target_id = ? AND archived_at IS NULL AND remediation_state_v2 != 'FIXED_VERIFIED'", row.id),
-    scanCount: scalarCountPrepared(database, "SELECT COUNT(*) AS count FROM scans WHERE target_id = ? AND deleted_at IS NULL", row.id),
+    openFindingCount: scalarCountPrepared(
+      database,
+      "SELECT COUNT(*) AS count FROM findings WHERE target_id = ? AND archived_at IS NULL AND remediation_state_v2 != 'FIXED_VERIFIED'",
+      row.id
+    ),
+    scanCount: scalarCountPrepared(
+      database,
+      "SELECT COUNT(*) AS count FROM scans WHERE target_id = ? AND deleted_at IS NULL",
+      row.id
+    ),
     archived: Boolean(row.archived_at),
     rowVersion: row.row_version
   };
@@ -989,7 +1443,8 @@ function targetFromRow(database: DashboardDatabase, row: DbTargetRow): TargetSum
 
 function scanSummaryFromRow(row: DbScanRow): DashboardScanSummary {
   const terminalSuccess = row.status === "COMPLETED" || row.status === "IMPORTED";
-  const moduleProgress = row.planned_module_count > 0 ? Math.round((row.completed_module_count / row.planned_module_count) * 95) : 0;
+  const moduleProgress =
+    row.planned_module_count > 0 ? Math.round((row.completed_module_count / row.planned_module_count) * 95) : 0;
   return {
     id: row.id,
     shortId: row.id.slice(0, 8),

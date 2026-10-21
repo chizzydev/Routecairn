@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {createOwnedTestDirectory,retainOwnedTestDirectory} from "../helpers/owned-test-directory.js";
+import { writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DashboardDatabase } from "../../src/dashboard/db/DashboardDatabase.js";
@@ -35,6 +35,7 @@ describe("dashboard credential vault", () => {
       const vault = new CredentialVault(database, parseVaultKey(keyA, "1"));
       const first = vault.create(profileInput("first"));
       const second = vault.create(profileInput("second"));
+      expect(second).not.toBe(first);
       const rows = database.db.prepare("SELECT id, nonce, ciphertext, auth_tag FROM credential_profiles ORDER BY created_at ASC").all() as Array<{ id: string; nonce: string; ciphertext: string; auth_tag: string }>;
       expect(rows).toHaveLength(2);
       expect(rows[0]!.nonce).not.toBe(rows[1]!.nonce);
@@ -364,11 +365,11 @@ function openDatabase(dir: string): DashboardDatabase {
 }
 
 function tempDir(prefix: string): string {
-  return mkdtempSync(resolve(tmpdir(), prefix));
+  return createOwnedTestDirectory(prefix);
 }
 
 function cleanup(path: string): void {
-  rmSync(path, { recursive: true, force: true, maxRetries: 8, retryDelay: 125 });
+  retainOwnedTestDirectory(path);
 }
 
 async function login(baseUrl: string, loginName: string, password: string): Promise<{ cookie: string; csrf: string }> {
