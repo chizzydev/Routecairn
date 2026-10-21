@@ -7,7 +7,8 @@ import { PlaywrightCrawler } from "./PlaywrightCrawler.js";
 
 export class BrowserCrawlerModule implements RouteCairnPlugin {
   public readonly name = "browser-crawler";
-  public readonly description = "Renders the target with Playwright, supports isolated authenticated bootstrap, and captures redacted traffic without submitting application forms.";
+  public readonly description =
+    "Renders the target with Playwright, supports isolated authenticated bootstrap, and captures redacted traffic without submitting application forms.";
   public readonly phase = "intelligence";
   public constructor(private readonly crawler: Pick<PlaywrightCrawler, "crawl"> = new PlaywrightCrawler()) {}
 
@@ -37,27 +38,44 @@ export class BrowserCrawlerModule implements RouteCairnPlugin {
       const settings = context.moduleSettings("browser-crawler");
       const policy = browserPolicyFromSettings(settings, context.options.plan.limits, context.options.plan.evidence);
       const crawlerOptions = {
-          targetUrl: decision.normalizedUrl,
-          outputDir: context.options.outputDir,
-          userAgent: context.options.scope.userAgent,
-          timeoutMs: context.options.plan.limits.requestTimeoutMs,
-          sameOriginOnly: context.options.scope.sameOriginOnly,
-          policy,
-          requestBroker: context.httpClient,
-          onNetworkBoundaryStatus: (diagnostics: import("./BrowserNetworkBoundary.js").BrowserNetworkBoundaryDiagnostics) => {
-            void context.eventSink.emit({ type: "OBSERVATION_RECORDED", moduleId: this.name, message: `Browser network boundary ${diagnostics.state.toLowerCase()}.`, metadata: { kind: "BROWSER_NETWORK_BOUNDARY", ...diagnostics } });
-          },
-          ...(context.options.authProfile ? { authProfile: context.options.authProfile } : {}),
-          ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
-        };
+        targetUrl: decision.normalizedUrl,
+        ...(context.options.plan.targetAuthorization?.productionCampaign && process.platform === "win32"
+          ? { browserChannel: "msedge" as const }
+          : {}),
+        outputDir: context.options.outputDir,
+        userAgent: context.options.scope.userAgent,
+        timeoutMs: context.options.plan.limits.requestTimeoutMs,
+        sameOriginOnly: context.options.scope.sameOriginOnly,
+        policy,
+        requestBroker: context.httpClient,
+        onNetworkBoundaryStatus: (
+          diagnostics: import("./BrowserNetworkBoundary.js").BrowserNetworkBoundaryDiagnostics
+        ) => {
+          void context.eventSink.emit({
+            type: "OBSERVATION_RECORDED",
+            moduleId: this.name,
+            message: `Browser network boundary ${diagnostics.state.toLowerCase()}.`,
+            metadata: { kind: "BROWSER_NETWORK_BOUNDARY", ...diagnostics }
+          });
+        },
+        ...(context.options.authProfile ? { authProfile: context.options.authProfile } : {}),
+        ...(context.options.abortSignal ? { abortSignal: context.options.abortSignal } : {})
+      };
       let browserCrawl;
       try {
         browserCrawl = await this.crawler.crawl({ ...crawlerOptions, browserRestartCount: 0 });
       } catch (firstError) {
         if (context.options.abortSignal?.aborted) throw firstError;
-        await context.eventSink.emit({ type: "OBSERVATION_RECORDED", moduleId: this.name, message: "Browser process failed; restarting one isolated Chromium context.", metadata: { restartAttempt: 1 } });
+        await context.eventSink.emit({
+          type: "OBSERVATION_RECORDED",
+          moduleId: this.name,
+          message: "Browser process failed; restarting one isolated Chromium context.",
+          metadata: { restartAttempt: 1 }
+        });
         browserCrawl = await this.crawler.crawl({ ...crawlerOptions, browserRestartCount: 1 });
-        browserCrawl.notes.push("Chromium/browser context was restarted once and authenticated bootstrap was replayed from the in-memory profile.");
+        browserCrawl.notes.push(
+          "Chromium/browser context was restarted once and authenticated bootstrap was replayed from the in-memory profile."
+        );
       }
 
       return {

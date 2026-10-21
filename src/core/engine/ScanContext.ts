@@ -1,3 +1,4 @@
+import { assertProductionCampaignProfiles } from "../authorization/ProductionCampaign.js";
 import type { RouteCairnConfig, RouteCairnScope } from "../../config/ConfigSchema.js";
 import type { AuthProfile } from "../auth/AuthProfile.js";
 import type { AuthProfileSet } from "../auth/AuthProfileSet.js";
@@ -54,9 +55,32 @@ export class ScanContext {
     this.cancellationCleanup = new CleanupExecution(undefined, options.abortSignal);
     this.connectionPool = new PinnedOriginPool(options.config.transport);
     this.mutations = new WorkflowMutationCoordinator(options);
-    const authorization = options.plan.targetAuthorization ? new TargetAuthorizationGuard(options.plan.targetAuthorization) : undefined;
-    if (authorization && authorization.plan.targetOrigin !== new URL(options.target).origin) throw new Error("TARGET_AUTHORIZATION_ORIGIN_MISMATCH");
-    if (authorization?.plan.bugBounty && !authorization.plan.bugBounty.authenticationPermitted && (options.authProfile || options.authProfileSet)) throw new Error("TARGET_AUTHENTICATION_PROHIBITED");
+    const authorization = options.plan.targetAuthorization
+      ? new TargetAuthorizationGuard(options.plan.targetAuthorization)
+      : undefined;
+    if (authorization && authorization.plan.targetOrigin !== new URL(options.target).origin)
+      throw new Error("TARGET_AUTHORIZATION_ORIGIN_MISMATCH");
+    if (
+      authorization?.requestPolicy &&
+      !authorization.requestPolicy.authenticationPermitted &&
+      (options.authProfile || options.authProfileSet)
+    )
+      throw new Error("TARGET_AUTHENTICATION_PROHIBITED");
+    if (authorization?.plan.productionCampaign) {
+      const c = authorization.plan.productionCampaign,
+        l = options.plan.limits;
+      if (
+        l.maxRequests > c.maxRequests ||
+        l.rateLimitPerSecond > c.rateLimitPerSecond ||
+        l.concurrency > c.concurrency ||
+        l.requestTimeoutMs > c.requestTimeoutMs ||
+        l.maxResponseBytes > c.maxResponseBytes ||
+        l.bodyPreviewBytes > c.maxResponseBytes ||
+        l.maxScanDurationMs > c.maxDurationMs
+      )
+        throw Error("PRODUCTION_CAMPAIGN_LIMIT_MISMATCH");
+      assertProductionCampaignProfiles(c, options.authProfile, options.authProfileSet);
+    }
     this.scopeMatcher = new ScopeMatcher(options.target, options.scope, authorization);
     if (options.recoveryScope) {
       const currentScope = new ScopeMatcher(options.target, options.recoveryScope);
@@ -115,50 +139,92 @@ export class ScanContext {
   }
 
   public async runControlledMutation(contract: ControlledMutationContract): Promise<ControlledMutationResult> {
-    const attackBudget = (contract.identity?.attempts ?? 0) + 1 + contract.precondition.attempts + contract.impact.attempts + (contract.protectedAction?.attempts ?? 0);
+    const attackBudget =
+      (contract.identity?.attempts ?? 0) +
+      1 +
+      contract.precondition.attempts +
+      contract.impact.attempts +
+      (contract.protectedAction?.attempts ?? 0);
     const cleanupBudget = 1 + contract.rollback.verification.attempts;
-    const proofConfigured = this.options.authProfile?.browserBootstrap?.proofCases.some((item) => item.caseId === contract.caseId) === true;
+    const proofConfigured =
+      this.options.authProfile?.browserBootstrap?.proofCases.some((item) => item.caseId === contract.caseId) === true;
     const browserProofBudget = proofConfigured ? 20 : 0;
-    this.scopeMatcher.authorization?.requireRemainingBudget(attackBudget + cleanupBudget + (browserProofBudget * 2));
-    const attackTransport = new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: 1,
-      bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes,
-      maxResponseBytes: this.options.plan.limits.maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests: attackBudget,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
-    const cleanupTransport = this.createWorkflowCleanupHttpClient(cleanupBudget, this.options.plan.limits.maxResponseBytes);
-    const proofPolicy = browserPolicyFromSettings(this.moduleSettings("browser-crawler"), this.options.plan.limits, this.options.plan.evidence);
-    const protectedProofTransport = proofConfigured ? new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent, timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond, concurrency: 1,
-      bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes, maxResponseBytes: this.options.plan.limits.maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 }, maxRequests: browserProofBudget,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true, ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN")) : undefined;
-    const cleanupProofTransport = proofConfigured ? this.createWorkflowCleanupHttpClient(browserProofBudget, this.options.plan.limits.maxResponseBytes) : undefined;
+    this.scopeMatcher.authorization?.requireRemainingBudget(attackBudget + cleanupBudget + browserProofBudget * 2);
+    const attackTransport = new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: 1,
+        bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes,
+        maxResponseBytes: this.options.plan.limits.maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests: attackBudget,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) => this.state.recordRequestAudit(entry),
+      this.coordination("SCAN")
+    );
+    const cleanupTransport = this.createWorkflowCleanupHttpClient(
+      cleanupBudget,
+      this.options.plan.limits.maxResponseBytes
+    );
+    const proofPolicy = browserPolicyFromSettings(
+      this.moduleSettings("browser-crawler"),
+      this.options.plan.limits,
+      this.options.plan.evidence
+    );
+    const protectedProofTransport = proofConfigured
+      ? new RequestSafetyBroker(
+          {
+            userAgent: this.options.scope.userAgent,
+            timeoutMs: this.options.plan.limits.requestTimeoutMs,
+            rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+            concurrency: 1,
+            bodyPreviewBytes: this.options.plan.limits.bodyPreviewBytes,
+            maxResponseBytes: this.options.plan.limits.maxResponseBytes,
+            retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+            maxRequests: browserProofBudget,
+            connectionPool: this.connectionPool,
+            controlledMutationEnabled: true,
+            ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+          },
+          this.scopeMatcher,
+          (entry) => this.state.recordRequestAudit(entry),
+          this.coordination("SCAN")
+        )
+      : undefined;
+    const cleanupProofTransport = proofConfigured
+      ? this.createWorkflowCleanupHttpClient(browserProofBudget, this.options.plan.limits.maxResponseBytes)
+      : undefined;
     protectedProofTransport?.setBrowserPolicyEventLimit(proofPolicy.maxPolicyEvents);
     cleanupProofTransport?.setBrowserPolicyEventLimit(proofPolicy.maxPolicyEvents);
-    const browserObserver = proofConfigured && this.options.authProfile ? new BrowserProofVerifier({
-      authProfile: this.options.authProfile,
-      policy: proofPolicy,
-      requestBroker: protectedProofTransport!,
-      cleanupRequestBroker: cleanupProofTransport!,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {}),
-      cleanupSignal: () => this.cleanupSignal(cleanupProofTransport!),
-      targetUrl: this.options.target,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      userAgent: this.options.scope.userAgent
-    }) : undefined;
+    const browserObserver =
+      proofConfigured && this.options.authProfile
+        ? new BrowserProofVerifier({
+            authProfile: this.options.authProfile,
+            policy: proofPolicy,
+            requestBroker: protectedProofTransport!,
+            cleanupRequestBroker: cleanupProofTransport!,
+            ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {}),
+            cleanupSignal: () => this.cleanupSignal(cleanupProofTransport!),
+            targetUrl: this.options.target,
+            timeoutMs: this.options.plan.limits.requestTimeoutMs,
+            userAgent: this.options.scope.userAgent
+          })
+        : undefined;
     try {
-      return await new ControlledMutationExecutor(attackTransport, { journalDirectory: this.mutations.directory, ...(this.options.checkpointReport ? { checkpointReport: this.options.checkpointReport } : {}), cleanupTransport, cleanupSleep: (ms) => this.cleanupWait(cleanupTransport, ms), ...(browserObserver ? { browserObserver } : {}), ...(this.options.plan.targetAuthorization ? { targetAuthorization: this.options.plan.targetAuthorization } : {}) }).execute(contract);
+      return await new ControlledMutationExecutor(attackTransport, {
+        journalDirectory: this.mutations.directory,
+        ...(this.options.checkpointReport ? { checkpointReport: this.options.checkpointReport } : {}),
+        cleanupTransport,
+        cleanupSleep: (ms) => this.cleanupWait(cleanupTransport, ms),
+        ...(browserObserver ? { browserObserver } : {}),
+        ...(this.options.plan.targetAuthorization ? { targetAuthorization: this.options.plan.targetAuthorization } : {})
+      }).execute(contract);
     } finally {
       this.finishCleanup(cleanupTransport);
       if (cleanupProofTransport) this.finishCleanup(cleanupProofTransport);
@@ -172,22 +238,46 @@ export class ScanContext {
    */
   public createAuthenticationLifecycleHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    const fixtureOrigins = [...(this.options.plan.authenticationLifecycle?.fixtures?.providers.flatMap((provider) => [new URL(provider.baseUrl).origin, ...(provider.tokenBaseUrl ? [new URL(provider.tokenBaseUrl).origin] : provider.provider === "FIREBASE" && new URL(provider.baseUrl).hostname === "identitytoolkit.googleapis.com" ? ["https://securetoken.googleapis.com"] : [])]) ?? []), ...(this.options.plan.authenticationLifecycle?.fixtures?.inboxes.flatMap((inbox) => inbox.kind === "LOCAL_HTTP" ? [] : [new URL(inbox.baseUrl).origin]) ?? [])];
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: 1,
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      allowedPrivateOrigins: fixtureOrigins,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({ ...entry, requestedUrl: "redacted://authentication-lifecycle-request", ...(entry.finalUrl ? { finalUrl: "redacted://authentication-lifecycle-response" } : {}), requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])), redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" })) }), this.coordination("SCAN"));
+    const fixtureOrigins = [
+      ...(this.options.plan.authenticationLifecycle?.fixtures?.providers.flatMap((provider) => [
+        new URL(provider.baseUrl).origin,
+        ...(provider.tokenBaseUrl
+          ? [new URL(provider.tokenBaseUrl).origin]
+          : provider.provider === "FIREBASE" && new URL(provider.baseUrl).hostname === "identitytoolkit.googleapis.com"
+            ? ["https://securetoken.googleapis.com"]
+            : [])
+      ]) ?? []),
+      ...(this.options.plan.authenticationLifecycle?.fixtures?.inboxes.flatMap((inbox) =>
+        inbox.kind === "LOCAL_HTTP" ? [] : [new URL(inbox.baseUrl).origin]
+      ) ?? [])
+    ];
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: 1,
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        allowedPrivateOrigins: fixtureOrigins,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://authentication-lifecycle-request",
+          ...(entry.finalUrl ? { finalUrl: "redacted://authentication-lifecycle-response" } : {}),
+          requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("SCAN")
+    );
   }
 
   /**
@@ -195,88 +285,126 @@ export class ScanContext {
    * invariant cases. Concurrency is capped by the validated plan; mutations
    * are never retried or redirected by their executor.
    */
-  public createBusinessInvariantHttpClient(maxRequests: number, maxResponseBytes: number, maxConcurrency: number): RequestSafetyBroker {
+  public createBusinessInvariantHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number,
+    maxConcurrency: number
+  ): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: Math.max(1, Math.min(4, maxConcurrency)),
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: Math.max(1, Math.min(4, maxConcurrency)),
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) => this.state.recordRequestAudit(entry),
+      this.coordination("SCAN")
+    );
   }
 
   /** Creates a race-only broker whose explicit 2-5 member synchronized groups
    * bypass ordinary pacing as one bounded burst while retaining every other
    * request-safety boundary. */
-  public createControlledRaceHttpClient(maxRequests: number, maxResponseBytes: number, maxConcurrency: number): RequestSafetyBroker {
+  public createControlledRaceHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number,
+    maxConcurrency: number
+  ): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: Math.max(2, Math.min(5, maxConcurrency)),
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      controlledRaceEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: Math.max(2, Math.min(5, maxConcurrency)),
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        controlledRaceEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) => this.state.recordRequestAudit(entry),
+      this.coordination("SCAN")
+    );
   }
 
   /** Dedicated read/query transport for explicit API and GraphQL matrices. */
   public createApiGraphqlHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: Math.max(1, Math.min(4, this.options.plan.limits.concurrency)),
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit(entry), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: Math.max(1, Math.min(4, this.options.plan.limits.concurrency)),
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) => this.state.recordRequestAudit(entry),
+      this.coordination("SCAN")
+    );
   }
 
   /** Bounded active-validation transport. All probe families share the
    * scan-wide ledger, disable mutation escalation, redirects, and retries at
    * call sites, and retain raw bodies only through the transient analysis
    * channel. */
-  public createActiveVulnerabilityHttpClient(maxRequests: number, maxResponseBytes: number, controlledMutationEnabled = false): RequestSafetyBroker {
+  public createActiveVulnerabilityHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number,
+    controlledMutationEnabled = false
+  ): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: Math.max(1, Math.min(3, this.options.plan.limits.concurrency)),
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled,
-      allowedPrivateOrigins: this.options.plan.activeVulnerability?.cases.flatMap((item) => item.environment === "LOCAL_FIXTURE" && item.proof.oauthJourney ? [new URL(item.proof.oauthJourney.discoveryUrl).origin] : []) ?? [],
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
-      ...entry,
-      requestedUrl: "redacted://active-vulnerability-request",
-      ...(entry.finalUrl ? { finalUrl: "redacted://active-vulnerability-response" } : {}),
-      requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
-    }), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: Math.max(1, Math.min(3, this.options.plan.limits.concurrency)),
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled,
+        allowedPrivateOrigins:
+          this.options.plan.activeVulnerability?.cases.flatMap((item) =>
+            item.environment === "LOCAL_FIXTURE" && item.proof.oauthJourney
+              ? [new URL(item.proof.oauthJourney.discoveryUrl).origin]
+              : []
+          ) ?? [],
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://active-vulnerability-request",
+          ...(entry.finalUrl ? { finalUrl: "redacted://active-vulnerability-response" } : {}),
+          requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("SCAN")
+    );
   }
 
   /** Dedicated bounded transport for signed capabilities and protected artifacts.
@@ -284,106 +412,159 @@ export class ScanContext {
    * as query values may be capability or object secrets. */
   public createLinkPortalSecurityHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: 1,
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
-      ...entry,
-      requestedUrl: "redacted://link-portal-request",
-      ...(entry.finalUrl ? { finalUrl: "redacted://link-portal-response" } : {}),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
-    }), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: 1,
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://link-portal-request",
+          ...(entry.finalUrl ? { finalUrl: "redacted://link-portal-response" } : {}),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("SCAN")
+    );
   }
 
   /** Sequential controlled transport for webhook, scheduler, and operational
    * endpoints. Audit URLs are replaced because job/event identifiers may be
    * sensitive even when they appear in path segments. */
-  public createOperationalEndpointSecurityHttpClient(maxRequests: number, maxResponseBytes: number): RequestSafetyBroker {
+  public createOperationalEndpointSecurityHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number
+  ): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: 1,
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
-      ...entry,
-      requestedUrl: "redacted://operational-endpoint-request",
-      ...(entry.finalUrl ? { finalUrl: "redacted://operational-endpoint-response" } : {}),
-      requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
-    }), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: 1,
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://operational-endpoint-request",
+          ...(entry.finalUrl ? { finalUrl: "redacted://operational-endpoint-response" } : {}),
+          requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("SCAN")
+    );
   }
 
   /** Dedicated synthetic billing transport. It permits only the planner's
    * bounded fixture mutations/races; audit locations and every request-header
    * value are erased because event, subscription, and provider-test material
    * may use application-specific names. */
-  public createBillingEntitlementHttpClient(maxRequests: number, maxResponseBytes: number, maxConcurrency: number): RequestSafetyBroker {
+  public createBillingEntitlementHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number,
+    maxConcurrency: number
+  ): RequestSafetyBroker {
     this.scopeMatcher.authorization?.requireRemainingBudget(maxRequests);
-    return new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent,
-      timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
-      concurrency: Math.max(2, Math.min(5, maxConcurrency)),
-      bodyPreviewBytes: maxResponseBytes,
-      maxResponseBytes,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      maxRequests,
-      connectionPool: this.connectionPool,
-      controlledMutationEnabled: true,
-      controlledDeletionEnabled: true,
-      controlledRaceEnabled: true,
-      ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({
-      ...entry,
-      requestedUrl: "redacted://billing-entitlement-request",
-      ...(entry.finalUrl ? { finalUrl: "redacted://billing-entitlement-response" } : {}),
-      requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
-      redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
-    }), this.coordination("SCAN"));
+    return new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: this.options.plan.limits.rateLimitPerSecond,
+        concurrency: Math.max(2, Math.min(5, maxConcurrency)),
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        maxRequests,
+        connectionPool: this.connectionPool,
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        controlledRaceEnabled: true,
+        ...(this.options.abortSignal ? { abortSignal: this.options.abortSignal } : {})
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://billing-entitlement-request",
+          ...(entry.finalUrl ? { finalUrl: "redacted://billing-entitlement-response" } : {}),
+          requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((name) => [name, "<redacted>"])),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("SCAN")
+    );
   }
 
   public moduleSettings(moduleId: ModuleId): Readonly<ModuleSettings> {
     return this.options.plan.modules.find((modulePlan) => modulePlan.id === moduleId)?.settings ?? {};
   }
 
-  public createWorkflowCleanupHttpClient(maxRequests: number, maxResponseBytes: number, allowedPrivateOrigins: readonly string[] = []): RequestSafetyBroker {
+  public createWorkflowCleanupHttpClient(
+    maxRequests: number,
+    maxResponseBytes: number,
+    allowedPrivateOrigins: readonly string[] = []
+  ): RequestSafetyBroker {
     const window = new CleanupExecution();
-    const broker = new RequestSafetyBroker({
-      userAgent: this.options.scope.userAgent, timeoutMs: this.options.plan.limits.requestTimeoutMs,
-      rateLimitPerSecond: Math.min(this.options.plan.limits.rateLimitPerSecond, this.options.recoveryScope?.rateLimitPerSecond ?? this.options.scope.rateLimitPerSecond), concurrency: 1,
-      bodyPreviewBytes: maxResponseBytes, maxResponseBytes, maxRequests,
-      connectionPool: this.connectionPool,
-      retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
-      controlledMutationEnabled: true, controlledDeletionEnabled: true,
-      allowedPrivateOrigins,
-      abortSignal: AbortSignal.any([window.signal, this.cancellationCleanup.signal])
-    }, this.scopeMatcher, (entry) => this.state.recordRequestAudit({ ...entry, requestedUrl: "redacted://workflow-cleanup", ...(entry.finalUrl ? { finalUrl: "redacted://workflow-cleanup" } : {}), requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((key) => [key, "<redacted>"])), redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" })) }), this.coordination("CLEANUP"));
+    const broker = new RequestSafetyBroker(
+      {
+        userAgent: this.options.scope.userAgent,
+        timeoutMs: this.options.plan.limits.requestTimeoutMs,
+        rateLimitPerSecond: Math.min(
+          this.options.plan.limits.rateLimitPerSecond,
+          this.options.recoveryScope?.rateLimitPerSecond ?? this.options.scope.rateLimitPerSecond
+        ),
+        concurrency: 1,
+        bodyPreviewBytes: maxResponseBytes,
+        maxResponseBytes,
+        maxRequests,
+        connectionPool: this.connectionPool,
+        retry: { ...this.options.plan.limits.retry, maxAttempts: 1 },
+        controlledMutationEnabled: true,
+        controlledDeletionEnabled: true,
+        allowedPrivateOrigins,
+        abortSignal: AbortSignal.any([window.signal, this.cancellationCleanup.signal])
+      },
+      this.scopeMatcher,
+      (entry) =>
+        this.state.recordRequestAudit({
+          ...entry,
+          requestedUrl: "redacted://workflow-cleanup",
+          ...(entry.finalUrl ? { finalUrl: "redacted://workflow-cleanup" } : {}),
+          requestHeaders: Object.fromEntries(Object.keys(entry.requestHeaders).map((key) => [key, "<redacted>"])),
+          redirectChain: entry.redirectChain.map((hop) => ({ ...hop, location: "<redacted>" }))
+        }),
+      this.coordination("CLEANUP")
+    );
     this.cleanupWindows.set(broker, window);
     const send = broker.send.bind(broker);
     broker.send = async (request) => {
       window.start();
       if (!this.cleanupAnnounced.has(broker)) {
         this.cleanupAnnounced.add(broker);
-        await this.eventSink.emit({ type: "CLEANUP_STARTED", message: "Cancellation-safe cleanup or restoration verification started.", metadata: { timeoutMs: 120_000 } });
+        await this.eventSink.emit({
+          type: "CLEANUP_STARTED",
+          message: "Cancellation-safe cleanup or restoration verification started.",
+          metadata: { timeoutMs: 120_000 }
+        });
       }
       await this.options.checkpointReport?.();
       await this.options.beforeRecoveryRequest?.();
@@ -418,7 +599,9 @@ export class ScanContext {
     await this.connectionPool.close();
   }
 
-  public transportDiagnostics() { return this.connectionPool.diagnostics(); }
+  public transportDiagnostics() {
+    return this.connectionPool.diagnostics();
+  }
 
   public finishCaseCleanup(): void {
     for (const window of this.cleanupWindows.values()) window.dispose();

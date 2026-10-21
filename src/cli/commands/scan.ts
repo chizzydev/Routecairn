@@ -13,34 +13,85 @@ import { AppError } from "../../core/errors/AppError.js";
 import { createLogger } from "../../core/logging/Logger.js";
 import { ScanPlanner } from "../../core/planning/ScanPlanner.js";
 import type { ModuleId, ModuleSettings } from "../../core/planning/ScanPlan.js";
-import { loadFieldExposureInput, planFieldExposureTesting } from "../../modules/fieldExposureTesting/FieldExposurePlanner.js";
+import {
+  loadFieldExposureInput,
+  planFieldExposureTesting
+} from "../../modules/fieldExposureTesting/FieldExposurePlanner.js";
 import { loadObjectPairInput, planObjectPairTesting } from "../../modules/objectPairTesting/ObjectPairPlanner.js";
-import { loadAuthorizationMatrixInput, planAuthorizationMatrixTesting } from "../../modules/authorizationMatrix/AuthorizationMatrixPlanner.js";
-import { loadCollectionAuthorizationInput, planCollectionAuthorizationTesting } from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
-import { loadBulkAuthorizationInput, planBulkAuthorizationTesting } from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
-import { loadFileAuthorizationInput, planFileAuthorizationTesting } from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
-import { loadEquivalentRouteInput, planEquivalentRouteTesting } from "../../modules/equivalentRouteTesting/EquivalentRoutePlanner.js";
-import { loadSupabaseAuthorizationInput, planSupabaseAuthorization } from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
-import { loadAuthenticationLifecycleInput, planAuthenticationLifecycle } from "../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js";
-import { loadBrowserLearnedLifecycleAutomationInput, planBrowserLearnedLifecycleAutomation } from "../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js";
-import { loadBusinessInvariantInput, planBusinessInvariant } from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
+import {
+  loadAuthorizationMatrixInput,
+  planAuthorizationMatrixTesting
+} from "../../modules/authorizationMatrix/AuthorizationMatrixPlanner.js";
+import {
+  loadCollectionAuthorizationInput,
+  planCollectionAuthorizationTesting
+} from "../../modules/collectionAuthorization/CollectionAuthorizationPlanner.js";
+import {
+  loadBulkAuthorizationInput,
+  planBulkAuthorizationTesting
+} from "../../modules/bulkAuthorization/BulkAuthorizationPlanner.js";
+import {
+  loadFileAuthorizationInput,
+  planFileAuthorizationTesting
+} from "../../modules/fileAuthorization/FileAuthorizationPlanner.js";
+import {
+  loadEquivalentRouteInput,
+  planEquivalentRouteTesting
+} from "../../modules/equivalentRouteTesting/EquivalentRoutePlanner.js";
+import {
+  loadSupabaseAuthorizationInput,
+  planSupabaseAuthorization
+} from "../../modules/supabaseAuthorization/SupabaseAuthorizationPlanner.js";
+import {
+  loadAuthenticationLifecycleInput,
+  planAuthenticationLifecycle
+} from "../../modules/authenticationLifecycle/AuthenticationLifecyclePlanner.js";
+import {
+  loadBrowserLearnedLifecycleAutomationInput,
+  planBrowserLearnedLifecycleAutomation
+} from "../../modules/authenticationLifecycle/BrowserLearnedLifecycleCompiler.js";
+import {
+  loadBusinessInvariantInput,
+  planBusinessInvariant
+} from "../../modules/businessInvariant/BusinessInvariantPlanner.js";
 import { loadControlledRaceInput, planControlledRace } from "../../modules/controlledRace/ControlledRacePlanner.js";
 import { loadApiGraphqlInput, planApiGraphqlReview } from "../../modules/apiGraphql/ApiGraphqlPlanner.js";
-import { loadProtocolSecurityInput, planProtocolSecurity } from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
-import { loadLinkPortalSecurityInput, planLinkPortalSecurity } from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
-import { loadOperationalEndpointSecurityInput, planOperationalEndpointSecurity } from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
-import { loadBillingEntitlementInput, planBillingEntitlement } from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
+import {
+  loadProtocolSecurityInput,
+  planProtocolSecurity
+} from "../../modules/protocolSecurity/ProtocolSecurityPlanner.js";
+import {
+  loadLinkPortalSecurityInput,
+  planLinkPortalSecurity
+} from "../../modules/linkPortalSecurity/LinkPortalSecurityPlanner.js";
+import {
+  loadOperationalEndpointSecurityInput,
+  planOperationalEndpointSecurity
+} from "../../modules/operationalEndpointSecurity/OperationalEndpointSecurityPlanner.js";
+import {
+  loadBillingEntitlementInput,
+  planBillingEntitlement
+} from "../../modules/billingEntitlement/BillingEntitlementPlanner.js";
 import { loadAssistedReviewInput, planAssistedReview } from "../../modules/assistedReview/AssistedReviewPlanner.js";
 import { planPreHandover } from "../../modules/preHandover/PreHandoverPlanner.js";
 import { targetAuthorizationSchema } from "../../core/authorization/TargetAuthorization.js";
-import { privilegeMutationInputSchema, planPrivilegeMutationTesting } from "../../modules/privilegeMutation/PrivilegeMutationPlanner.js";
+import {
+  privilegeMutationInputSchema,
+  planPrivilegeMutationTesting
+} from "../../modules/privilegeMutation/PrivilegeMutationPlanner.js";
 import { readFile } from "node:fs/promises";
 import { controlledMutationContractSchema } from "../../core/offensive/ControlledMutationTypes.js";
 import { loadReport } from "../../reports/ReportSummary.js";
 import { entryFromReport, recordScan, scanIndexPath, timestampedOutputDir } from "../../storage/ScanIndex.js";
-import { loadActiveVulnerabilityInput, planActiveVulnerabilityValidation } from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
+import {
+  loadActiveVulnerabilityInput,
+  planActiveVulnerabilityValidation
+} from "../../modules/activeVulnerability/ActiveVulnerabilityPlanner.js";
 import { loadSafeInventoryImport } from "../../intelligence/inventory/SafeInventoryImporter.js";
-import { reserveInventoryAcquisitionBudget, resolveSafeInventoryImport } from "../../intelligence/inventory/LiveInventoryResolver.js";
+import {
+  reserveInventoryAcquisitionBudget,
+  resolveSafeInventoryImport
+} from "../../intelligence/inventory/LiveInventoryResolver.js";
 
 const logger = createLogger();
 
@@ -103,7 +154,10 @@ export function registerScanCommand(program: Command): void {
     .option("--rate <number>", "Override requests per second from the scope file.")
     .option("--concurrency <number>", "Override concurrency from the scope file.")
     .option("--max-requests <number>", "Set the authoritative scan-wide physical request budget.")
-    .option("--cleanup-reserved-requests <number>", "Reserve part of the total request budget exclusively for cleanup/restoration.")
+    .option(
+      "--cleanup-reserved-requests <number>",
+      "Reserve part of the total request budget exclusively for cleanup/restoration."
+    )
     .option("--output <dir>", "Directory where report.json should be written.")
     .option("--config <file>", "Path to routecairn.config.json.", "./routecairn.config.json")
     .option("--auth <file>", "Path to a RouteCairn auth profile JSON for authenticated comparison.")
@@ -112,7 +166,10 @@ export function registerScanCommand(program: Command): void {
     .option("--object-pairs <file>", "Path to an explicit object-pair testing JSON file.")
     .option("--field-exposure <file>", "Path to an explicit controlled field-exposure testing JSON file.")
     .option("--authorization-matrix <file>", "Path to an explicit controlled authorization matrix testing JSON file.")
-    .option("--collection-authorization <file>", "Path to an explicit controlled collection authorization testing JSON file.")
+    .option(
+      "--collection-authorization <file>",
+      "Path to an explicit controlled collection authorization testing JSON file."
+    )
     .option("--bulk-authorization <file>", "Path to an explicit controlled bulk authorization testing JSON file.")
     .option("--file-authorization <file>", "Path to an explicit controlled file authorization testing JSON file.")
     .option("--equivalent-routes <file>", "Path to an explicit controlled equivalent-route testing JSON file.")
@@ -120,20 +177,47 @@ export function registerScanCommand(program: Command): void {
     .option("--mutation-contracts <file>", "Path to exact expiring controlled-mutation contracts.")
     .option("--supabase-authorization <file>", "Path to an explicit Supabase/PostgREST/RLS authorization manifest.")
     .option("--authentication-lifecycle <file>", "Path to an explicit authorized authentication lifecycle manifest.")
-    .option("--authentication-lifecycle-auto <file>", "Learn login traffic and automatically compile and execute approved lifecycle cases from an automation policy.")
+    .option(
+      "--authentication-lifecycle-auto <file>",
+      "Learn login traffic and automatically compile and execute approved lifecycle cases from an automation policy."
+    )
     .option("--business-invariants <file>", "Path to an explicit authorized business-invariant manifest.")
     .option("--controlled-races <file>", "Path to an explicit authorized synchronized race-testing manifest.")
     .option("--api-graphql <file>", "Path to an explicit API and GraphQL authorization review manifest.")
     .option("--protocol-security <file>", "Path to a bounded protocol-level security manifest.")
-    .option("--link-portal-security <file>", "Path to an explicit signed-link, invite, portal, export, and artifact security manifest.")
-    .option("--operational-endpoints <file>", "Path to an explicit webhook, cron, job, incident, health, admin, and worker endpoint security manifest.")
-    .option("--billing-entitlement <file>", "Path to an explicit synthetic checkout, billing, entitlement, subscription, and premium-flow security manifest.")
+    .option(
+      "--link-portal-security <file>",
+      "Path to an explicit signed-link, invite, portal, export, and artifact security manifest."
+    )
+    .option(
+      "--operational-endpoints <file>",
+      "Path to an explicit webhook, cron, job, incident, health, admin, and worker endpoint security manifest."
+    )
+    .option(
+      "--billing-entitlement <file>",
+      "Path to an explicit synthetic checkout, billing, entitlement, subscription, and premium-flow security manifest."
+    )
     .option("--secret-boundary", "Enable automated client/server secret-boundary and sensitive-exposure correlation.")
-    .option("--assisted-review <file>", "Append an explicit Assisted Trust & Security Review case inventory and completion gate.")
-    .option("--pre-handover <file>", "Run an explicit disposable pre-handover registry and sequence; requires the pre-handover profile.")
-    .option("--target-authorization <file>", "Exact target authorization mode and, for bug bounty, enforceable program permissions.")
-    .option("--active-vulnerability <file>", "Path to a bounded active-vulnerability validation manifest (dashboard builder is preferred).")
-    .option("--inventory-import <file>", "Import or safely acquire bounded OpenAPI, Postman, HAR, GraphQL, Supabase, and live service inventory.")
+    .option(
+      "--assisted-review <file>",
+      "Append an explicit Assisted Trust & Security Review case inventory and completion gate."
+    )
+    .option(
+      "--pre-handover <file>",
+      "Run an explicit disposable pre-handover registry and sequence; requires the pre-handover profile."
+    )
+    .option(
+      "--target-authorization <file>",
+      "Exact target authorization mode and, for bug bounty, enforceable program permissions."
+    )
+    .option(
+      "--active-vulnerability <file>",
+      "Path to a bounded active-vulnerability validation manifest (dashboard builder is preferred)."
+    )
+    .option(
+      "--inventory-import <file>",
+      "Import or safely acquire bounded OpenAPI, Postman, HAR, GraphQL, Supabase, and live service inventory."
+    )
     .action(async (target: string, options: ScanCommandOptions) => {
       const controller = new AbortController();
       let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -147,7 +231,9 @@ export function registerScanCommand(program: Command): void {
       process.on("SIGTERM", cancel);
       try {
         const result = await runScanCommand(target, options, controller.signal);
-        logger.success(`${result.status === "COMPLETED" ? "Scan complete" : "Partial scan retained"}. Report written to ${result.reportPath}`);
+        logger.success(
+          `${result.status === "COMPLETED" ? "Scan complete" : "Partial scan retained"}. Report written to ${result.reportPath}`
+        );
       } finally {
         if (deadline) clearTimeout(deadline);
         process.removeListener("SIGINT", cancel);
@@ -156,11 +242,19 @@ export function registerScanCommand(program: Command): void {
     });
 }
 
-export async function runScanCommand(target: string, options: ScanCommandOptions, abortSignal?: AbortSignal): Promise<ScanResult> {
+export async function runScanCommand(
+  target: string,
+  options: ScanCommandOptions,
+  abortSignal?: AbortSignal
+): Promise<ScanResult> {
   const config = await loadConfigOrDefault(options.config ?? "./routecairn.config.json");
   const legacyMode = options.mode ? parseMode(options.mode) : undefined;
   const profile = options.profile ? parseProfile(options.profile) : undefined;
-  const translated = resolveRequestedProfile(profile, legacyMode ?? config.defaultMode ?? defaultConfig.defaultMode, Boolean(options.profile));
+  const translated = resolveRequestedProfile(
+    profile,
+    legacyMode ?? config.defaultMode ?? defaultConfig.defaultMode,
+    Boolean(options.profile)
+  );
   const scopeFile = options.scope;
 
   if (!scopeFile) {
@@ -174,15 +268,30 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   const engine = new RouteCairnEngine();
   const outputDir = resolveOutputDir(options.output, config.reportsDir, target, profile);
   const authProfile = options.auth ? await loadAuthProfile(resolve(options.auth)) : undefined;
-  const targetAuthorization = options.targetAuthorization ? targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8"))) : undefined;
-  if (options.authenticationLifecycle && options.authenticationLifecycleAuto) throw new AppError("Use either --authentication-lifecycle or --authentication-lifecycle-auto, not both.", "AUTH_LIFECYCLE_INPUT_CONFLICT");
-  if (options.authenticationLifecycleAuto && !authProfile) throw new AppError("Browser-learned lifecycle automation requires --auth with an authenticated browser bootstrap.", "AUTH_LIFECYCLE_AUTOMATION_AUTH_REQUIRED");
+  const targetAuthorization = options.targetAuthorization
+    ? targetAuthorizationSchema.parse(JSON.parse(await readFile(resolve(options.targetAuthorization), "utf8")))
+    : undefined;
+  if (targetAuthorization?.productionCampaign && options.inventoryImport)
+    throw Error("PRODUCTION_CAMPAIGN_LIVE_IMPORT_REQUIRES_SEPARATE_REVIEWED_RUN");
+  if (options.authenticationLifecycle && options.authenticationLifecycleAuto)
+    throw new AppError(
+      "Use either --authentication-lifecycle or --authentication-lifecycle-auto, not both.",
+      "AUTH_LIFECYCLE_INPUT_CONFLICT"
+    );
+  if (options.authenticationLifecycleAuto && !authProfile)
+    throw new AppError(
+      "Browser-learned lifecycle automation requires --auth with an authenticated browser bootstrap.",
+      "AUTH_LIFECYCLE_AUTOMATION_AUTH_REQUIRED"
+    );
 
   if ((options.authA && !options.authB) || (!options.authA && options.authB)) {
     throw new AppError("Role comparison requires both --auth-a and --auth-b.", "AUTH_PROFILE_SET_REQUIRED");
   }
 
-  const authProfileSet = options.authA && options.authB ? await loadAuthProfileSet(resolve(options.authA), resolve(options.authB)) : undefined;
+  const authProfileSet =
+    options.authA && options.authB
+      ? await loadAuthProfileSet(resolve(options.authA), resolve(options.authB))
+      : undefined;
   const importedInventory = options.inventoryImport
     ? await resolveSafeInventoryImport(await loadSafeInventoryImport(resolve(options.inventoryImport)), target, {
         scope: finalScope,
@@ -194,72 +303,217 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
       })
     : undefined;
   const executionTargetAuthorization = reserveInventoryAcquisitionBudget(targetAuthorization, importedInventory);
-  if (importedInventory?.objectPairTesting && options.objectPairs) throw new AppError("Use either --inventory-import discovered object pairs or --object-pairs, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
-  const objectPairTesting = options.objectPairs || importedInventory?.objectPairTesting
-    ? planObjectPairTesting(options.objectPairs ? await loadObjectPairInput(resolve(options.objectPairs)) : importedInventory!.objectPairTesting!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
-    : undefined;
+  if (importedInventory?.objectPairTesting && options.objectPairs)
+    throw new AppError(
+      "Use either --inventory-import discovered object pairs or --object-pairs, not both.",
+      "INVENTORY_IMPORT_INPUT_CONFLICT"
+    );
+  const objectPairTesting =
+    options.objectPairs || importedInventory?.objectPairTesting
+      ? planObjectPairTesting(
+          options.objectPairs
+            ? await loadObjectPairInput(resolve(options.objectPairs))
+            : importedInventory!.objectPairTesting!,
+          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+        )
+      : undefined;
   const fieldExposureTesting = options.fieldExposure
-    ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planFieldExposureTesting(await loadFieldExposureInput(resolve(options.fieldExposure)), {
+        target,
+        scope: finalScope,
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
   const authorizationMatrixTesting = options.authorizationMatrix
-    ? planAuthorizationMatrixTesting(await loadAuthorizationMatrixInput(resolve(options.authorizationMatrix)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planAuthorizationMatrixTesting(await loadAuthorizationMatrixInput(resolve(options.authorizationMatrix)), {
+        target,
+        scope: finalScope,
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
-  if (importedInventory?.collectionAuthorization && options.collectionAuthorization) throw new AppError("Use either --inventory-import collection inventory or --collection-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
-  if (importedInventory?.fileAuthorization && options.fileAuthorization) throw new AppError("Use either --inventory-import file inventory or --file-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
-  if (importedInventory?.supabaseAuthorization && options.supabaseAuthorization) throw new AppError("Use either --inventory-import Supabase inventory or --supabase-authorization, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
-  if (importedInventory?.apiGraphql && options.apiGraphql) throw new AppError("Use either --inventory-import API inventory or --api-graphql, not both.", "INVENTORY_IMPORT_INPUT_CONFLICT");
-  const collectionAuthorizationTesting = options.collectionAuthorization || importedInventory?.collectionAuthorization
-    ? planCollectionAuthorizationTesting(options.collectionAuthorization ? await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization)) : importedInventory!.collectionAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
-    : undefined;
+  if (importedInventory?.collectionAuthorization && options.collectionAuthorization)
+    throw new AppError(
+      "Use either --inventory-import collection inventory or --collection-authorization, not both.",
+      "INVENTORY_IMPORT_INPUT_CONFLICT"
+    );
+  if (importedInventory?.fileAuthorization && options.fileAuthorization)
+    throw new AppError(
+      "Use either --inventory-import file inventory or --file-authorization, not both.",
+      "INVENTORY_IMPORT_INPUT_CONFLICT"
+    );
+  if (importedInventory?.supabaseAuthorization && options.supabaseAuthorization)
+    throw new AppError(
+      "Use either --inventory-import Supabase inventory or --supabase-authorization, not both.",
+      "INVENTORY_IMPORT_INPUT_CONFLICT"
+    );
+  if (importedInventory?.apiGraphql && options.apiGraphql)
+    throw new AppError(
+      "Use either --inventory-import API inventory or --api-graphql, not both.",
+      "INVENTORY_IMPORT_INPUT_CONFLICT"
+    );
+  const collectionAuthorizationTesting =
+    options.collectionAuthorization || importedInventory?.collectionAuthorization
+      ? planCollectionAuthorizationTesting(
+          options.collectionAuthorization
+            ? await loadCollectionAuthorizationInput(resolve(options.collectionAuthorization))
+            : importedInventory!.collectionAuthorization!,
+          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+        )
+      : undefined;
   const bulkAuthorizationTesting = options.bulkAuthorization
-    ? planBulkAuthorizationTesting(await loadBulkAuthorizationInput(resolve(options.bulkAuthorization)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planBulkAuthorizationTesting(await loadBulkAuthorizationInput(resolve(options.bulkAuthorization)), {
+        target,
+        scope: finalScope,
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
-  const fileAuthorizationTesting = options.fileAuthorization || importedInventory?.fileAuthorization
-    ? planFileAuthorizationTesting(options.fileAuthorization ? await loadFileAuthorizationInput(resolve(options.fileAuthorization)) : importedInventory!.fileAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
-    : undefined;
+  const fileAuthorizationTesting =
+    options.fileAuthorization || importedInventory?.fileAuthorization
+      ? planFileAuthorizationTesting(
+          options.fileAuthorization
+            ? await loadFileAuthorizationInput(resolve(options.fileAuthorization))
+            : importedInventory!.fileAuthorization!,
+          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+        )
+      : undefined;
   const equivalentRouteTesting = options.equivalentRoutes
-    ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planEquivalentRouteTesting(await loadEquivalentRouteInput(resolve(options.equivalentRoutes)), {
+        target,
+        scope: finalScope,
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
-  const supabaseAuthorization = options.supabaseAuthorization || importedInventory?.supabaseAuthorization
-    ? planSupabaseAuthorization(options.supabaseAuthorization ? await loadSupabaseAuthorizationInput(resolve(options.supabaseAuthorization)) : importedInventory!.supabaseAuthorization!, { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) })
-    : undefined;
+  const supabaseAuthorization =
+    options.supabaseAuthorization || importedInventory?.supabaseAuthorization
+      ? planSupabaseAuthorization(
+          options.supabaseAuthorization
+            ? await loadSupabaseAuthorizationInput(resolve(options.supabaseAuthorization))
+            : importedInventory!.supabaseAuthorization!,
+          { target, scope: finalScope, ...(authProfileSet ? { authProfileSet } : {}) }
+        )
+      : undefined;
   const authenticationLifecycle = options.authenticationLifecycle
-    ? planAuthenticationLifecycle(await loadAuthenticationLifecycleInput(resolve(options.authenticationLifecycle)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planAuthenticationLifecycle(await loadAuthenticationLifecycleInput(resolve(options.authenticationLifecycle)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : options.authenticationLifecycleAuto
-      ? planBrowserLearnedLifecycleAutomation(await loadBrowserLearnedLifecycleAutomationInput(resolve(options.authenticationLifecycleAuto)), target)
+      ? planBrowserLearnedLifecycleAutomation(
+          await loadBrowserLearnedLifecycleAutomationInput(resolve(options.authenticationLifecycleAuto)),
+          target
+        )
       : undefined;
   const businessInvariant = options.businessInvariants
-    ? planBusinessInvariant(await loadBusinessInvariantInput(resolve(options.businessInvariants)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planBusinessInvariant(await loadBusinessInvariantInput(resolve(options.businessInvariants)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
   const controlledRace = options.controlledRaces
-    ? planControlledRace(await loadControlledRaceInput(resolve(options.controlledRaces)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planControlledRace(await loadControlledRaceInput(resolve(options.controlledRaces)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
-  const apiGraphql = options.apiGraphql || importedInventory?.apiGraphql
-    ? planApiGraphqlReview(options.apiGraphql ? await loadApiGraphqlInput(resolve(options.apiGraphql)) : importedInventory!.apiGraphql!, { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
-    : undefined;
+  const apiGraphql =
+    options.apiGraphql || importedInventory?.apiGraphql
+      ? planApiGraphqlReview(
+          options.apiGraphql ? await loadApiGraphqlInput(resolve(options.apiGraphql)) : importedInventory!.apiGraphql!,
+          {
+            target,
+            scope: finalScope,
+            ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
+            ...(authProfile ? { authProfile } : {}),
+            ...(authProfileSet ? { authProfileSet } : {})
+          }
+        )
+      : undefined;
   const protocolSecurity = options.protocolSecurity
-    ? planProtocolSecurity(await loadProtocolSecurityInput(resolve(options.protocolSecurity)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planProtocolSecurity(await loadProtocolSecurityInput(resolve(options.protocolSecurity)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
   const linkPortalSecurity = options.linkPortalSecurity
-    ? planLinkPortalSecurity(await loadLinkPortalSecurityInput(resolve(options.linkPortalSecurity)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planLinkPortalSecurity(await loadLinkPortalSecurityInput(resolve(options.linkPortalSecurity)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
   const operationalEndpointSecurity = options.operationalEndpoints
-    ? planOperationalEndpointSecurity(await loadOperationalEndpointSecurityInput(resolve(options.operationalEndpoints)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planOperationalEndpointSecurity(
+        await loadOperationalEndpointSecurityInput(resolve(options.operationalEndpoints)),
+        {
+          target,
+          scope: finalScope,
+          ...(authProfile ? { authProfile } : {}),
+          ...(authProfileSet ? { authProfileSet } : {})
+        }
+      )
     : undefined;
   const billingEntitlement = options.billingEntitlement
-    ? planBillingEntitlement(await loadBillingEntitlementInput(resolve(options.billingEntitlement)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}) })
+    ? planBillingEntitlement(await loadBillingEntitlementInput(resolve(options.billingEntitlement)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {})
+      })
     : undefined;
   const activeVulnerability = options.activeVulnerability
-    ? planActiveVulnerabilityValidation(await loadActiveVulnerabilityInput(resolve(options.activeVulnerability)), { target, scope: finalScope, ...(authProfile ? { authProfile } : {}), ...(authProfileSet ? { authProfileSet } : {}), ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}) })
+    ? planActiveVulnerabilityValidation(await loadActiveVulnerabilityInput(resolve(options.activeVulnerability)), {
+        target,
+        scope: finalScope,
+        ...(authProfile ? { authProfile } : {}),
+        ...(authProfileSet ? { authProfileSet } : {}),
+        ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {})
+      })
     : undefined;
   const privilegeMutationTesting = options.privilegeMutation
-    ? planPrivilegeMutationTesting(privilegeMutationInputSchema.parse(JSON.parse(await readFile(resolve(options.privilegeMutation), "utf8"))), { target, maxCases: 10 })
+    ? planPrivilegeMutationTesting(
+        privilegeMutationInputSchema.parse(JSON.parse(await readFile(resolve(options.privilegeMutation), "utf8"))),
+        { target, maxCases: 10 }
+      )
     : undefined;
-  const mutationContractSource = options.mutationContracts ? JSON.parse(await readFile(resolve(options.mutationContracts), "utf8")) : undefined;
-  const parsedMutationContracts = mutationContractSource ? (Array.isArray(mutationContractSource) ? mutationContractSource : [mutationContractSource]).map((value) => controlledMutationContractSchema.parse(value)) : undefined;
+  const mutationContractSource = options.mutationContracts
+    ? JSON.parse(await readFile(resolve(options.mutationContracts), "utf8"))
+    : undefined;
+  const parsedMutationContracts = mutationContractSource
+    ? (Array.isArray(mutationContractSource) ? mutationContractSource : [mutationContractSource]).map((value) =>
+        controlledMutationContractSchema.parse(value)
+      )
+    : undefined;
   const planner = new ScanPlanner(createDefaultPluginRegistry());
   let includeModules =
-    objectPairTesting || fieldExposureTesting || authorizationMatrixTesting || collectionAuthorizationTesting || bulkAuthorizationTesting || fileAuthorizationTesting || equivalentRouteTesting || privilegeMutationTesting || supabaseAuthorization || authenticationLifecycle || businessInvariant || controlledRace || apiGraphql || protocolSecurity || linkPortalSecurity || operationalEndpointSecurity || billingEntitlement || activeVulnerability || options.secretBoundary || options.includeModules?.length
+    objectPairTesting ||
+    fieldExposureTesting ||
+    authorizationMatrixTesting ||
+    collectionAuthorizationTesting ||
+    bulkAuthorizationTesting ||
+    fileAuthorizationTesting ||
+    equivalentRouteTesting ||
+    privilegeMutationTesting ||
+    supabaseAuthorization ||
+    authenticationLifecycle ||
+    businessInvariant ||
+    controlledRace ||
+    apiGraphql ||
+    protocolSecurity ||
+    linkPortalSecurity ||
+    operationalEndpointSecurity ||
+    billingEntitlement ||
+    activeVulnerability ||
+    options.secretBoundary ||
+    options.includeModules?.length
       ? [
           ...new Set([
             ...(options.replaceProfileModules ? [] : (translated.includeModules ?? [])),
@@ -281,16 +535,31 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
             ...(linkPortalSecurity ? (["link-portal-export-security"] as ModuleId[]) : []),
             ...(operationalEndpointSecurity ? (["operational-endpoint-security"] as ModuleId[]) : []),
             ...(billingEntitlement ? (["billing-entitlement-security"] as ModuleId[]) : []),
-            ...(activeVulnerability ? (["active-vulnerability-validation", "api-mapper", "parameter-analysis"] as ModuleId[]) : []),
-            ...(options.secretBoundary ? (["baseline", "js-intelligence", "exposure-review", "secret-boundary"] as ModuleId[]) : []),
+            ...(activeVulnerability
+              ? (["active-vulnerability-validation", "api-mapper", "parameter-analysis"] as ModuleId[])
+              : []),
+            ...(options.secretBoundary
+              ? (["baseline", "js-intelligence", "exposure-review", "secret-boundary"] as ModuleId[])
+              : []),
             ...(options.authenticationLifecycleAuto ? (["baseline", "browser-crawler"] as ModuleId[]) : [])
           ])
         ]
       : translated.includeModules;
-  const assistedReview = options.assistedReview ? planAssistedReview(await loadAssistedReviewInput(resolve(options.assistedReview))) : undefined;
-  if (assistedReview) includeModules = [...new Set([...(includeModules ?? resolveScanProfile(translated.profileName).enabledModules), "assisted-review" as ModuleId])];
+  const assistedReview = options.assistedReview
+    ? planAssistedReview(await loadAssistedReviewInput(resolve(options.assistedReview)))
+    : undefined;
+  if (assistedReview)
+    includeModules = [
+      ...new Set([
+        ...(includeModules ?? resolveScanProfile(translated.profileName).enabledModules),
+        "assisted-review" as ModuleId
+      ])
+    ];
+  const production = executionTargetAuthorization?.productionCampaign;
   const plan = planner.resolve({
-    ...(options.preHandover ? { preHandover: planPreHandover(JSON.parse(await readFile(resolve(options.preHandover), "utf8"))) } : {}),
+    ...(options.preHandover
+      ? { preHandover: planPreHandover(JSON.parse(await readFile(resolve(options.preHandover), "utf8"))) }
+      : {}),
     ...(executionTargetAuthorization ? { targetAuthorization: executionTargetAuthorization } : {}),
     ...(assistedReview ? { assistedReview } : {}),
     requestedProfile: translated.profileName,
@@ -299,16 +568,64 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
     ...(authProfile ? { authProfile } : {}),
     ...(authProfileSet ? { authProfileSet } : {}),
     overrides: {
+      ...(production
+        ? {
+            maxRequests: production.maxRequests,
+            rateLimitPerSecond: production.rateLimitPerSecond,
+            concurrency: production.concurrency,
+            requestTimeoutMs: production.requestTimeoutMs,
+            maxResponseBytes: production.maxResponseBytes,
+            bodyPreviewBytes: production.maxResponseBytes,
+            maxScanDurationMs: production.maxDurationMs
+          }
+        : {}),
       ...(options.rate ? { rateLimitPerSecond: parsePositiveNumber(options.rate, "--rate") } : {}),
       ...(options.concurrency ? { concurrency: parsePositiveInteger(options.concurrency, "--concurrency") } : {}),
       ...(options.maxRequests ? { maxRequests: parsePositiveInteger(options.maxRequests, "--max-requests") } : {}),
-      ...(options.cleanupReservedRequests !== undefined ? { cleanupReservedRequests: parseNonNegativeInteger(options.cleanupReservedRequests, "--cleanup-reserved-requests") } : {}),
+      ...(options.cleanupReservedRequests !== undefined
+        ? {
+            cleanupReservedRequests: parseNonNegativeInteger(
+              options.cleanupReservedRequests,
+              "--cleanup-reserved-requests"
+            )
+          }
+        : {}),
       ...(includeModules ? { includeModules } : {}),
-      ...(!options.replaceProfileModules && translated.excludeModules ? { excludeModules: translated.excludeModules } : {}),
-      ...((translated.moduleSettings || finalConfig.nextJsReview) ? { moduleSettings: {
-        ...(translated.moduleSettings ?? {}),
-        ...(finalConfig.nextJsReview ? { "nextjs-review": { ...(translated.moduleSettings?.["nextjs-review"] ?? {}), ...Object.fromEntries(Object.entries(finalConfig.nextJsReview).filter(([, value]) => value !== undefined)) } as ModuleSettings } : {})
-      } } : {})
+      ...(!options.replaceProfileModules && translated.excludeModules
+        ? { excludeModules: translated.excludeModules }
+        : {}),
+      ...(translated.moduleSettings || finalConfig.nextJsReview
+        ? {
+            moduleSettings: {
+              ...(translated.moduleSettings ?? {}),
+              ...(production
+                ? {
+                    "browser-crawler": {
+                      browserMaxPages: 1,
+                      browserMaxLinksPerPage: 24,
+                      browserMaxPolicyEvents: 200,
+                      browserMaxRequestsPerPage: Math.min(200, production.maxRequests),
+                      browserCaptureScreenshot: false,
+                      browserBlockThirdParty: true,
+                      browserAllowedThirdPartyOrigins: [...new Set(production.inScope.map((a) => a.origin))].filter(
+                        (o) => o !== new URL(target).origin
+                      )
+                    }
+                  }
+                : {}),
+              ...(finalConfig.nextJsReview
+                ? {
+                    "nextjs-review": {
+                      ...(translated.moduleSettings?.["nextjs-review"] ?? {}),
+                      ...Object.fromEntries(
+                        Object.entries(finalConfig.nextJsReview).filter(([, value]) => value !== undefined)
+                      )
+                    } as ModuleSettings
+                  }
+                : {})
+            }
+          }
+        : {})
     },
     ...(objectPairTesting ? { objectPairTesting } : {}),
     ...(fieldExposureTesting ? { fieldExposureTesting } : {}),
@@ -345,7 +662,8 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   });
 
   const report = await loadReport(result.reportPath);
-  if (result.status !== "COMPLETED" && !options.suppressProcessExitCode) process.exitCode = result.status === "CANCELLED" ? 130 : 1;
+  if (result.status !== "COMPLETED" && !options.suppressProcessExitCode)
+    process.exitCode = result.status === "CANCELLED" ? 130 : 1;
   await recordScan(
     scanIndexPath(options.historyDirectory ?? config.reportsDir),
     entryFromReport(report, {
@@ -359,7 +677,12 @@ export async function runScanCommand(target: string, options: ScanCommandOptions
   return result;
 }
 
-function resolveOutputDir(output: string | undefined, reportsDir: string, target: string, profile: ScanProfile | undefined): string {
+function resolveOutputDir(
+  output: string | undefined,
+  reportsDir: string,
+  target: string,
+  profile: ScanProfile | undefined
+): string {
   if (output) return resolve(output);
   if (profile?.name === "monitor") return timestampedOutputDir(reportsDir, target, profile.name);
   return resolve(reportsDir);
@@ -369,7 +692,10 @@ function parseProfile(value: string): ScanProfile {
   try {
     return resolveScanProfile(value);
   } catch {
-    throw new AppError(`Unsupported scan profile "${value}". Supported profiles: ${profileNames().join(", ")}.`, "SCAN_PROFILE_INVALID");
+    throw new AppError(
+      `Unsupported scan profile "${value}". Supported profiles: ${profileNames().join(", ")}.`,
+      "SCAN_PROFILE_INVALID"
+    );
   }
 }
 
@@ -435,17 +761,36 @@ export function legacyModeCompatibility(mode: ScanMode): {
     case "api":
       return {
         profileName: "full",
-        includeModules: [...base, "path-discovery", "api-mapper", "api-probe", "auth-surface", "parameter-analysis", "vulnerability-workflows"],
+        includeModules: [
+          ...base,
+          "path-discovery",
+          "api-mapper",
+          "api-probe",
+          "auth-surface",
+          "parameter-analysis",
+          "vulnerability-workflows"
+        ],
         moduleSettings: { "path-discovery": { pathSources: ["wordlist:api"] } }
       };
     case "admin":
       return {
         profileName: "full",
-        includeModules: [...base, "path-discovery", "api-mapper", "auth-surface", "parameter-analysis", "vulnerability-workflows"],
+        includeModules: [
+          ...base,
+          "path-discovery",
+          "api-mapper",
+          "auth-surface",
+          "parameter-analysis",
+          "vulnerability-workflows"
+        ],
         moduleSettings: { "path-discovery": { pathSources: ["wordlist:admin"] } }
       };
     case "backup":
-      return { profileName: "full", includeModules: [...base, "path-discovery", "exposure-review"], moduleSettings: { "path-discovery": { pathSources: ["wordlist:common"] } } };
+      return {
+        profileName: "full",
+        includeModules: [...base, "path-discovery", "exposure-review"],
+        moduleSettings: { "path-discovery": { pathSources: ["wordlist:common"] } }
+      };
     case "headers":
       return { profileName: "full", includeModules: [...base, "header-review"] };
     case "cookies":
@@ -455,7 +800,11 @@ export function legacyModeCompatibility(mode: ScanMode): {
     case "methods":
       return { profileName: "full", includeModules: [...base, "method-review"] };
     case "js":
-      return { profileName: "full", includeModules: [...base, "js-intelligence", "path-discovery", "api-mapper", "api-probe"], moduleSettings: { "path-discovery": { pathSources: ["wordlist:common", "wordlist:api"] } } };
+      return {
+        profileName: "full",
+        includeModules: [...base, "js-intelligence", "path-discovery", "api-mapper", "api-probe"],
+        moduleSettings: { "path-discovery": { pathSources: ["wordlist:common", "wordlist:api"] } }
+      };
     case "browser":
       return {
         profileName: "full",

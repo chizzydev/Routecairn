@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerWebAssessmentCommand } from "./commands/webAssessment.js";
 import { registerStandardsCommand } from "./commands/standards.js";
 import { Command } from "commander";
 import { registerDiffCommand } from "./commands/diff.js";
@@ -34,6 +35,7 @@ export function createCli(): Command {
     .description("Web attack surface intelligence for serious security testing.")
     .version("0.1.0");
 
+  registerWebAssessmentCommand(program);
   registerInitCommand(program);
   registerScanCommand(program);
   registerDashboardCommand(program);

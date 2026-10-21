@@ -1,3 +1,5 @@
+import { observePublicDocument } from "../../intelligence/inventory/ProductionApplicationDiscovery.js";
+import { headersForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import type { HttpMethod } from "../../core/http/HttpTypes.js";
 import { bodyPreviewForAnalysis } from "../../core/http/TransientResponseAnalysis.js";
 import { ScanContext } from "../../core/engine/ScanContext.js";
@@ -11,7 +13,8 @@ import { SourceMapDetector } from "./SourceMapDetector.js";
 
 export class JsDiscoveryModule implements RouteCairnPlugin {
   public readonly name = "js-intelligence";
-  public readonly description = "Extracts script URLs, downloads same-origin JavaScript, mines endpoints and config-looking values, and detects source maps.";
+  public readonly description =
+    "Extracts script URLs, downloads same-origin JavaScript, mines endpoints and config-looking values, and detects source maps.";
   public readonly phase = "intelligence";
   private readonly scriptExtractor = new ScriptExtractor();
   private readonly endpointExtractor = new JsEndpointExtractor();
@@ -36,7 +39,9 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
     const sourceMaps = new Set<string>();
 
     for (const scriptUrl of scriptUrls) {
-      const sameOrigin = new URL(scriptUrl).origin === targetOrigin;
+      const scriptOrigin = new URL(scriptUrl).origin;
+      const sameOrigin =
+        scriptOrigin === targetOrigin || htmlResponses.some((r) => new URL(r.finalUrl).origin === scriptOrigin);
 
       if (!sameOrigin) {
         scripts.push({
@@ -115,6 +120,8 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
         scriptUrl,
         sameOrigin,
         downloaded: true,
+        complete: response.streamTruncated === false && response.bytesRead === Buffer.byteLength(analysisBody),
+        responseFingerprint: response.bodyHash,
         endpoints: extraction.endpoints,
         absoluteUrls: extraction.absoluteUrls,
         websocketUrls: extraction.websocketUrls,
@@ -125,6 +132,16 @@ export class JsDiscoveryModule implements RouteCairnPlugin {
     }
 
     const report: JsIntelligenceReport = {
+      applicationDocuments: htmlResponses
+        .slice(0, 16)
+        .map((r) =>
+          observePublicDocument(
+            bodyPreviewForAnalysis(r) ?? "",
+            r.finalUrl,
+            headersForAnalysis(r),
+            r.streamTruncated === false && r.bytesRead === Buffer.byteLength(bodyPreviewForAnalysis(r) ?? "")
+          )
+        ),
       scripts,
       queuedEndpoints: [...queuedEndpoints.values()],
       sourceMaps: [...sourceMaps],
@@ -172,7 +189,8 @@ function notesForScripts(scripts: JsScriptAnalysis[]): string[] {
   const downloaded = scripts.filter((script) => script.downloaded).length;
   const sourceMapCount = scripts.reduce((total, script) => total + script.sourceMapUrls.length, 0);
   const publicConfigCount = scripts.reduce(
-    (total, script) => total + script.configValues.filter((value) => value.classification === "public-frontend-config").length,
+    (total, script) =>
+      total + script.configValues.filter((value) => value.classification === "public-frontend-config").length,
     0
   );
 
@@ -184,7 +202,9 @@ function notesForScripts(scripts: JsScriptAnalysis[]): string[] {
   }
 
   if (publicConfigCount > 0) {
-    notes.push(`Public frontend config values detected: ${publicConfigCount}; these are not treated as secrets by default.`);
+    notes.push(
+      `Public frontend config values detected: ${publicConfigCount}; these are not treated as secrets by default.`
+    );
   }
 
   return notes;

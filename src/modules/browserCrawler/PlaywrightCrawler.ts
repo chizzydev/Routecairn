@@ -25,6 +25,7 @@ import type { DnsResolver } from "../../core/http/HttpTypes.js";
 import { BrowserNetworkBoundary, type BrowserNetworkBoundaryDiagnostics } from "./BrowserNetworkBoundary.js";
 
 export interface PlaywrightCrawlerOptions {
+  browserChannel?: "msedge";
   targetUrl: string;
   outputDir: string;
   userAgent: string;
@@ -55,7 +56,16 @@ export class PlaywrightCrawler {
     const renderedLinks = new Map<string, PathCandidate>();
     const requestsByPage = new Map<string, number>();
     const visitedPages: Array<{ url: string; depth: number }> = [];
-    const policyEngine = new BrowserPolicyEngine(options.targetUrl, options.policy, options.dnsResolver ? async (hostname) => (await options.dnsResolver!(hostname)).map((answer) => typeof answer === "string" ? answer : answer.address) : undefined);
+    const policyEngine = new BrowserPolicyEngine(
+      options.targetUrl,
+      options.policy,
+      options.dnsResolver
+        ? async (hostname) =>
+            (await options.dnsResolver!(hostname)).map((answer) =>
+              typeof answer === "string" ? answer : answer.address
+            )
+        : undefined
+    );
     const targetOrigin = new URL(options.targetUrl).origin;
     const bootstrap = options.authProfile?.browserBootstrap;
     const writeGate: BrowserLoginWriteGate = {
@@ -65,7 +75,15 @@ export class PlaywrightCrawler {
       blocked: 0
     };
     const learning = options.authProfile ? new BrowserLearningCollector(options.authProfile, targetOrigin) : undefined;
-    const boundary = new BrowserNetworkBoundary({ targetUrl: options.targetUrl, requestBroker: options.requestBroker, policy: options.policy, timeoutMs: options.timeoutMs, generation: options.browserRestartCount ?? 0, ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}), ...(options.onNetworkBoundaryStatus ? { onStatus: options.onNetworkBoundaryStatus } : {}) });
+    const boundary = new BrowserNetworkBoundary({
+      targetUrl: options.targetUrl,
+      requestBroker: options.requestBroker,
+      policy: options.policy,
+      timeoutMs: options.timeoutMs,
+      generation: options.browserRestartCount ?? 0,
+      ...(options.dnsResolver ? { dnsResolver: options.dnsResolver } : {}),
+      ...(options.onNetworkBoundaryStatus ? { onStatus: options.onNetworkBoundaryStatus } : {})
+    });
     await boundary.start();
     let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
     const openWebSockets: WebSocketRoute[] = [];
@@ -74,6 +92,7 @@ export class PlaywrightCrawler {
 
     try {
       browser = await chromium.launch({
+        ...(options.browserChannel ? { channel: options.browserChannel } : {}),
         headless: true,
         proxy: boundary.playwrightProxy(),
         args: [
@@ -93,7 +112,9 @@ export class PlaywrightCrawler {
       options.abortSignal?.addEventListener("abort", abortBrowser, { once: true });
       const context = await browser.newContext({
         userAgent: options.userAgent,
-        ...(options.authProfile && Object.keys(browserExtraHeaders(options.authProfile)).length > 0 ? { extraHTTPHeaders: browserExtraHeaders(options.authProfile) } : {}),
+        ...(options.authProfile && Object.keys(browserExtraHeaders(options.authProfile)).length > 0
+          ? { extraHTTPHeaders: browserExtraHeaders(options.authProfile) }
+          : {}),
         ignoreHTTPSErrors: true,
         acceptDownloads: false,
         serviceWorkers: options.policy.allowServiceWorkers ? "allow" : "block"
@@ -101,11 +122,14 @@ export class PlaywrightCrawler {
       if (options.authProfile) await applyBrowserCredentials(context, options.authProfile, options.targetUrl);
       context.on("response", (response) => learning?.recordResponse(response));
       await context.exposeBinding("__routeCairnPolicyEvent", (_source, event: { url?: string; reason?: string }) => {
-        const decision = options.requestBroker.recordBrowserPolicyBlock({
-          url: event.url ?? "about:blank",
-          method: "GET",
-          resourceType: "other"
-        }, event.reason ?? "browser-policy-blocked");
+        const decision = options.requestBroker.recordBrowserPolicyBlock(
+          {
+            url: event.url ?? "about:blank",
+            method: "GET",
+            resourceType: "other"
+          },
+          event.reason ?? "browser-policy-blocked"
+        );
         attemptBudgetExceeded = attemptBudgetExceeded || decision.reason === "browser-attempt-budget-exceeded";
         addPolicyEvent(policyEvents, options.policy, {
           url: redactSensitiveUrl(event.url ?? "about:blank"),
@@ -175,7 +199,17 @@ export class PlaywrightCrawler {
           await route.abort("blockedbyclient").catch(() => undefined);
           return;
         }
-        const decision = await this.handleRoute(route, options, policyEngine, networkRequests, policyEvents, requestsByPage, writeGate, learning, boundary);
+        const decision = await this.handleRoute(
+          route,
+          options,
+          policyEngine,
+          networkRequests,
+          policyEvents,
+          requestsByPage,
+          writeGate,
+          learning,
+          boundary
+        );
         attemptBudgetExceeded = attemptBudgetExceeded || decision === "browser-attempt-budget-exceeded";
       });
       // Playwright's WebSocketRoute.connectToServer() opens a Playwright-side
@@ -194,11 +228,14 @@ export class PlaywrightCrawler {
           return;
         }
 
-        const decision = options.requestBroker.recordBrowserPolicyBlock({
-          url: page.url() || "about:blank",
-          method: "GET",
-          resourceType: "document"
-        }, "popup-blocked");
+        const decision = options.requestBroker.recordBrowserPolicyBlock(
+          {
+            url: page.url() || "about:blank",
+            method: "GET",
+            resourceType: "document"
+          },
+          "popup-blocked"
+        );
         attemptBudgetExceeded = attemptBudgetExceeded || decision.reason === "browser-attempt-budget-exceeded";
         addPolicyEvent(policyEvents, options.policy, {
           url: redactSensitiveUrl(page.url() || "about:blank"),
@@ -228,7 +265,10 @@ export class PlaywrightCrawler {
         const canonical = canonicalBrowserUrl(next.url, options.targetUrl);
         if (visited.has(canonical)) continue;
         visited.add(canonical);
-        visitedPages.push({ url: options.authProfile ? redactAllQueryValues(canonical) : canonical, depth: next.depth });
+        visitedPages.push({
+          url: options.authProfile ? redactAllQueryValues(canonical) : canonical,
+          depth: next.depth
+        });
 
         creatingManagedPage = true;
         const page = await context.newPage().finally(() => {
@@ -242,7 +282,9 @@ export class PlaywrightCrawler {
             break;
           }
           if (options.authProfile && bootstrap?.login && !bootstrapSucceeded) {
-            const loginResult = await executeLogin(page, options.authProfile, writeGate, (url) => assertSameOrigin(url, targetOrigin));
+            const loginResult = await executeLogin(page, options.authProfile, writeGate, (url) =>
+              assertSameOrigin(url, targetOrigin)
+            );
             loginStepsExecuted = loginResult.steps;
             formsSubmitted += loginResult.formsSubmitted;
             bootstrapSucceeded = true;
@@ -255,17 +297,30 @@ export class PlaywrightCrawler {
           await learning?.inspectPage(page);
           if (options.authProfile && !journeysExecuted) {
             journeysExecuted = true;
-            await executeJourneys(page, options.authProfile, (url) => assertSameOrigin(url, targetOrigin), async (journeyPage) => learning?.inspectPage(journeyPage));
+            await executeJourneys(
+              page,
+              options.authProfile,
+              (url) => assertSameOrigin(url, targetOrigin),
+              async (journeyPage) => learning?.inspectPage(journeyPage)
+            );
           }
 
           const hrefs = await page.$$eval("a[href]", (anchors) =>
-            anchors.map((anchor) => anchor.getAttribute("href")).filter((href): href is string => typeof href === "string" && href.length > 0)
+            anchors
+              .map((anchor) => anchor.getAttribute("href"))
+              .filter((href): href is string => typeof href === "string" && href.length > 0)
           );
           formsDetected += await page.$$eval("form", (forms) => forms.length);
           await learning?.inspectStorage(context, page);
 
-          for (const candidate of toPathCandidates(hrefs.slice(0, options.policy.maxLinksPerPage), canonical, options.sameOriginOnly)) {
-            const safeCandidate = options.authProfile ? { ...candidate, path: candidate.path.split("?", 1)[0] || "/" } : candidate;
+          for (const candidate of toPathCandidates(
+            hrefs.slice(0, options.policy.maxLinksPerPage),
+            canonical,
+            options.sameOriginOnly
+          )) {
+            const safeCandidate = options.authProfile
+              ? { ...candidate, path: candidate.path.split("?", 1)[0] || "/" }
+              : candidate;
             renderedLinks.set(`${safeCandidate.source}:${safeCandidate.path}`, safeCandidate);
           }
 
@@ -273,12 +328,15 @@ export class PlaywrightCrawler {
             const childDepth = next.depth + 1;
             const queueDecision = await policyEngine.shouldQueueUrl(href, childDepth);
             if (!queueDecision.allowed || !queueDecision.normalizedUrl) {
-              const decision = options.requestBroker.recordBrowserPolicyBlock({
-                url: resolveUrlForEvent(href, canonical),
-                method: "GET",
-                resourceType: "document",
-                pageUrl: canonical
-              }, queueDecision.reason ?? "link-not-queued");
+              const decision = options.requestBroker.recordBrowserPolicyBlock(
+                {
+                  url: resolveUrlForEvent(href, canonical),
+                  method: "GET",
+                  resourceType: "document",
+                  pageUrl: canonical
+                },
+                queueDecision.reason ?? "link-not-queued"
+              );
               attemptBudgetExceeded = attemptBudgetExceeded || decision.reason === "browser-attempt-budget-exceeded";
               addPolicyEvent(policyEvents, options.policy, {
                 url: redactSensitiveUrl(resolveUrlForEvent(href, canonical)),
@@ -290,7 +348,11 @@ export class PlaywrightCrawler {
               continue;
             }
 
-            if (!queued.has(queueDecision.normalizedUrl) && !visited.has(queueDecision.normalizedUrl) && queued.size < options.policy.maxPages) {
+            if (
+              !queued.has(queueDecision.normalizedUrl) &&
+              !visited.has(queueDecision.normalizedUrl) &&
+              queued.size < options.policy.maxPages
+            ) {
               queued.add(queueDecision.normalizedUrl);
               frontier.push({ url: queueDecision.normalizedUrl, depth: childDepth, parentUrl: canonical });
             }
@@ -315,7 +377,11 @@ export class PlaywrightCrawler {
       const redactedHarPath = learning ? await learning.writeRedactedHar(options.outputDir) : undefined;
       const lifecycleLearning = learning ? await learning.writeLifecycleLearningBundle(options.outputDir) : undefined;
 
-      await Promise.all(openWebSockets.map((webSocket) => webSocket.close({ code: 1000, reason: "routecairn-scan-complete" }).catch(() => undefined)));
+      await Promise.all(
+        openWebSockets.map((webSocket) =>
+          webSocket.close({ code: 1000, reason: "routecairn-scan-complete" }).catch(() => undefined)
+        )
+      );
       await context.close();
       options.abortSignal?.removeEventListener("abort", abortBrowser);
 
@@ -334,19 +400,21 @@ export class PlaywrightCrawler {
         ...(screenshotPath ? { screenshotPath } : {}),
         formsDetected,
         formsSubmitted,
-        ...(learning && options.authProfile ? {
-          authentication: learning.report({
-            mode: bootstrap?.login ? "learned-login-flow" : "header-cookie-bootstrap",
-            bootstrapSucceeded,
-            loginStepsExecuted,
-            formsSubmitted,
-            gate: writeGate,
-            restartCount: options.browserRestartCount ?? 0,
-            ...(redactedHarPath ? { harPath: redactedHarPath } : {}),
-            learningBundlePath: lifecycleLearning!.path,
-            learnedCases: lifecycleLearning!.cases
-          })
-        } : {}),
+        ...(learning && options.authProfile
+          ? {
+              authentication: learning.report({
+                mode: bootstrap?.login ? "learned-login-flow" : "header-cookie-bootstrap",
+                bootstrapSucceeded,
+                loginStepsExecuted,
+                formsSubmitted,
+                gate: writeGate,
+                restartCount: options.browserRestartCount ?? 0,
+                ...(redactedHarPath ? { harPath: redactedHarPath } : {}),
+                learningBundlePath: lifecycleLearning!.path,
+                learnedCases: lifecycleLearning!.cases
+              })
+            }
+          : {}),
         notes: [
           `Rendered links discovered: ${renderedLinks.size}.`,
           `Browser policy events: ${brokerSnapshot.browserPolicyEvents}.`,
@@ -355,8 +423,17 @@ export class PlaywrightCrawler {
           `Pinned browser proxy connections: ${boundary.diagnostics().connectionsAllowed} allowed, ${boundary.diagnostics().connectionsBlocked} blocked.`,
           "Blocked browser requests consume policy-event budget, not network request budget.",
           ...(attemptBudgetExceeded ? ["Browser crawl stopped because the browser attempt budget was exhausted."] : []),
-          ...(formsSubmitted > 0 ? [`Submitted ${formsSubmitted} explicitly configured authentication form(s); no learned application form was submitted.`] : ["Forms were detected but not submitted."]),
-          ...(learning ? ["Browser traffic was stored as redacted metadata; request bodies, response bodies, cookies, storage values, and identity values were not persisted.", "Learned mutation hypotheses are non-executable drafts and require a separate explicit operator case and approval."] : [])
+          ...(formsSubmitted > 0
+            ? [
+                `Submitted ${formsSubmitted} explicitly configured authentication form(s); no learned application form was submitted.`
+              ]
+            : ["Forms were detected but not submitted."]),
+          ...(learning
+            ? [
+                "Browser traffic was stored as redacted metadata; request bodies, response bodies, cookies, storage values, and identity values were not persisted.",
+                "Learned mutation hypotheses are non-executable drafts and require a separate explicit operator case and approval."
+              ]
+            : [])
         ],
         networkIsolation: boundary.diagnostics()
       };
@@ -381,12 +458,23 @@ export class PlaywrightCrawler {
     const pageUrl = pageUrlForRequest(request, options.targetUrl);
     const requestsSeenForPage = (requestsByPage.get(pageUrl) ?? 0) + 1;
     requestsByPage.set(pageUrl, requestsSeenForPage);
-    if (options.authProfile && isWriteMethod(request.method()) && !isExplicitLoginWriteAllowed(request.url(), writeGate)) {
+    if (
+      options.authProfile &&
+      isWriteMethod(request.method()) &&
+      !isExplicitLoginWriteAllowed(request.url(), writeGate)
+    ) {
       writeGate.blocked += 1;
-      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({ url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl }, "browser-write-requires-explicit-operator-case");
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock(
+        { url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl },
+        "browser-write-requires-explicit-operator-case"
+      );
       addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, brokerDecision.reason, false));
       networkRequests.push(networkRequest(request, "blocked", brokerDecision.reason, false));
-      learning?.recordRequest(request, pageUrl, { transmitted: false, authorizationContext: "BLOCKED_MUTATION_HYPOTHESIS", blockedReason: brokerDecision.reason });
+      learning?.recordRequest(request, pageUrl, {
+        transmitted: false,
+        authorizationContext: "BLOCKED_MUTATION_HYPOTHESIS",
+        blockedReason: brokerDecision.reason
+      });
       await route.abort("blockedbyclient").catch(() => undefined);
       return brokerDecision.reason;
     }
@@ -399,12 +487,15 @@ export class PlaywrightCrawler {
     });
 
     if (!policyDecision.allowed) {
-      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({
-        url: request.url(),
-        method: request.method(),
-        resourceType: request.resourceType(),
-        pageUrl
-      }, policyDecision.reason);
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock(
+        {
+          url: request.url(),
+          method: request.method(),
+          resourceType: request.resourceType(),
+          pageUrl
+        },
+        policyDecision.reason
+      );
       const event = policyEvent(request, pageUrl, brokerDecision.reason, false);
       addPolicyEvent(policyEvents, options.policy, event);
       networkRequests.push(networkRequest(request, "blocked", brokerDecision.reason, false));
@@ -422,11 +513,26 @@ export class PlaywrightCrawler {
     const explicitLoginWrite = isWriteMethod(request.method()) && isExplicitLoginWriteAllowed(request.url(), writeGate);
     const entry = networkRequest(request, "allowed", "allowed", false);
     const headers = await browserContinuationHeaders(request, options.authProfile, new URL(options.targetUrl).origin);
-    const source = { route, session: boundary!, headers,
-      onInitiated: () => { entry.transmitted = true; if (explicitLoginWrite) writeGate.allowed += 1; learning?.recordRequest(request, pageUrl, { transmitted: true, authorizationContext: explicitLoginWrite ? "EXPLICIT_LOGIN" : "READ_ONLY" }); },
-      onDenied: () => { entry.decision = "blocked"; entry.reason = "REQUEST_DISPATCH_POLICY_DENIED"; }
+    const source = {
+      route,
+      session: boundary!,
+      headers,
+      onInitiated: () => {
+        entry.transmitted = true;
+        if (explicitLoginWrite) writeGate.allowed += 1;
+        learning?.recordRequest(request, pageUrl, {
+          transmitted: true,
+          authorizationContext: explicitLoginWrite ? "EXPLICIT_LOGIN" : "READ_ONLY"
+        });
+      },
+      onDenied: () => {
+        entry.decision = "blocked";
+        entry.reason = "REQUEST_DISPATCH_POLICY_DENIED";
+      }
     };
-    const brokerDecision = explicitLoginWrite ? options.requestBroker.evaluateBrowserLoginRequest(brokerInput, source) : options.requestBroker.evaluateBrowserRequest(brokerInput, source);
+    const brokerDecision = explicitLoginWrite
+      ? options.requestBroker.evaluateBrowserLoginRequest(brokerInput, source)
+      : options.requestBroker.evaluateBrowserRequest(brokerInput, source);
 
     if (!brokerDecision.allowed) {
       addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, brokerDecision.reason, false));
@@ -436,9 +542,18 @@ export class PlaywrightCrawler {
     }
 
     networkRequests.push(entry);
-    if (!boundary) { await route.abort("blockedbyclient"); return "REQUEST_DISPATCH_POLICY_DENIED"; }
-    try { boundary.bindDecision(brokerDecision, route); }
-    catch { await route.abort("blockedbyclient").catch(() => undefined); entry.decision = "blocked"; entry.reason = "REQUEST_DISPATCH_POLICY_DENIED"; return entry.reason; }
+    if (!boundary) {
+      await route.abort("blockedbyclient");
+      return "REQUEST_DISPATCH_POLICY_DENIED";
+    }
+    try {
+      boundary.bindDecision(brokerDecision, route);
+    } catch {
+      await route.abort("blockedbyclient").catch(() => undefined);
+      entry.decision = "blocked";
+      entry.reason = "REQUEST_DISPATCH_POLICY_DENIED";
+      return entry.reason;
+    }
     const continued = await options.requestBroker.dispatchBrowserRoute(brokerDecision, route, boundary);
     return continued ? "allowed" : "REQUEST_DISPATCH_POLICY_DENIED";
   }
@@ -451,8 +566,18 @@ export class PlaywrightCrawler {
     openWebSockets: WebSocketRoute[]
   ): Promise<string> {
     if (options.authProfile && browserNetworkOrigin(webSocket.url()) !== browserNetworkOrigin(options.targetUrl)) {
-      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({ url: webSocket.url(), method: "GET", resourceType: "websocket", pageUrl: options.targetUrl }, "authenticated-third-party-websocket-blocked");
-      addPolicyEvent(policyEvents, options.policy, { url: redactSensitiveUrl(webSocket.url()), method: "GET", resourceType: "websocket", pageUrl: redactSensitiveUrl(options.targetUrl), reason: brokerDecision.reason, transmitted: false });
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock(
+        { url: webSocket.url(), method: "GET", resourceType: "websocket", pageUrl: options.targetUrl },
+        "authenticated-third-party-websocket-blocked"
+      );
+      addPolicyEvent(policyEvents, options.policy, {
+        url: redactSensitiveUrl(webSocket.url()),
+        method: "GET",
+        resourceType: "websocket",
+        pageUrl: redactSensitiveUrl(options.targetUrl),
+        reason: brokerDecision.reason,
+        transmitted: false
+      });
       await webSocket.close({ code: 1008, reason: "routecairn-auth-boundary" }).catch(() => undefined);
       return brokerDecision.reason;
     }
@@ -464,12 +589,15 @@ export class PlaywrightCrawler {
     });
 
     if (!policyDecision.allowed) {
-      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock({
-        url: webSocket.url(),
-        method: "GET",
-        resourceType: "websocket",
-        pageUrl: options.targetUrl
-      }, policyDecision.reason);
+      const brokerDecision = options.requestBroker.recordBrowserPolicyBlock(
+        {
+          url: webSocket.url(),
+          method: "GET",
+          resourceType: "websocket",
+          pageUrl: options.targetUrl
+        },
+        policyDecision.reason
+      );
       addPolicyEvent(policyEvents, options.policy, {
         url: redactSensitiveUrl(webSocket.url()),
         method: "GET",
@@ -539,7 +667,13 @@ export function toPathCandidates(hrefs: string[], baseUrl: string, sameOriginOnl
   return [...candidates.values()];
 }
 
-function attachDiagnostics(page: Page, consoleErrors: BrowserConsoleError[], policyEvents: BrowserPolicyEvent[], depth: number, options: PlaywrightCrawlerOptions): void {
+function attachDiagnostics(
+  page: Page,
+  consoleErrors: BrowserConsoleError[],
+  policyEvents: BrowserPolicyEvent[],
+  depth: number,
+  options: PlaywrightCrawlerOptions
+): void {
   page.on("console", (message) => {
     if (message.type() === "error" || message.type() === "warning") {
       consoleErrors.push(consoleError(message));
@@ -552,12 +686,15 @@ function attachDiagnostics(page: Page, consoleErrors: BrowserConsoleError[], pol
     });
   });
   page.on("download", async (download) => {
-    const decision = options.requestBroker.recordBrowserPolicyBlock({
-      url: download.url(),
-      method: "GET",
-      resourceType: "document",
-      pageUrl: page.url()
-    }, "download-blocked");
+    const decision = options.requestBroker.recordBrowserPolicyBlock(
+      {
+        url: download.url(),
+        method: "GET",
+        resourceType: "document",
+        pageUrl: page.url()
+      },
+      "download-blocked"
+    );
     addPolicyEvent(policyEvents, options.policy, {
       url: redactSensitiveUrl(download.url()),
       depth,
@@ -567,12 +704,15 @@ function attachDiagnostics(page: Page, consoleErrors: BrowserConsoleError[], pol
     await download.cancel().catch(() => undefined);
   });
   page.on("filechooser", (fileChooser) => {
-    const decision = options.requestBroker.recordBrowserPolicyBlock({
-      url: fileChooser.page().url(),
-      method: "GET",
-      resourceType: "other",
-      pageUrl: fileChooser.page().url()
-    }, "upload-blocked");
+    const decision = options.requestBroker.recordBrowserPolicyBlock(
+      {
+        url: fileChooser.page().url(),
+        method: "GET",
+        resourceType: "other",
+        pageUrl: fileChooser.page().url()
+      },
+      "upload-blocked"
+    );
     addPolicyEvent(policyEvents, options.policy, {
       url: redactSensitiveUrl(fileChooser.page().url()),
       depth,
@@ -582,12 +722,15 @@ function attachDiagnostics(page: Page, consoleErrors: BrowserConsoleError[], pol
   });
   page.on("popup", (popup) => {
     if (!options.policy.allowPopups) {
-      const decision = options.requestBroker.recordBrowserPolicyBlock({
-        url: popup.url() || "about:blank",
-        method: "GET",
-        resourceType: "document",
-        pageUrl: page.url()
-      }, "popup-blocked");
+      const decision = options.requestBroker.recordBrowserPolicyBlock(
+        {
+          url: popup.url() || "about:blank",
+          method: "GET",
+          resourceType: "document",
+          pageUrl: page.url()
+        },
+        "popup-blocked"
+      );
       addPolicyEvent(policyEvents, options.policy, {
         url: popup.url() || "about:blank",
         depth,
@@ -599,7 +742,12 @@ function attachDiagnostics(page: Page, consoleErrors: BrowserConsoleError[], pol
   });
 }
 
-function networkRequest(request: Request, decision: "allowed" | "blocked", reason: string, transmitted: boolean): BrowserNetworkRequest {
+function networkRequest(
+  request: Request,
+  decision: "allowed" | "blocked",
+  reason: string,
+  transmitted: boolean
+): BrowserNetworkRequest {
   return {
     url: redactSensitiveUrl(request.url()),
     method: request.method(),
@@ -633,7 +781,9 @@ function consoleError(message: ConsoleMessage): BrowserConsoleError {
   return {
     type: message.type(),
     text: message.text(),
-    ...(location.url ? { location: `${redactSensitiveUrl(location.url)}:${location.lineNumber}:${location.columnNumber}` } : {})
+    ...(location.url
+      ? { location: `${redactSensitiveUrl(location.url)}:${location.lineNumber}:${location.columnNumber}` }
+      : {})
   };
 }
 
@@ -648,7 +798,9 @@ function pageUrlForRequest(request: Request, fallbackUrl: string): string {
 
 function routeIsDownloadLike(request: Request): boolean {
   try {
-    return /\.(?:zip|tar|gz|tgz|7z|rar|pdf|docx?|xlsx?|pptx?|exe|dmg|pkg|iso|apk|bin)$/i.test(new URL(request.url()).pathname);
+    return /\.(?:zip|tar|gz|tgz|7z|rar|pdf|docx?|xlsx?|pptx?|exe|dmg|pkg|iso|apk|bin)$/i.test(
+      new URL(request.url()).pathname
+    );
   } catch {
     return true;
   }
@@ -673,7 +825,10 @@ function redactSensitiveUrl(url: string): string {
     parsed.password = "";
     return parsed.toString();
   } catch {
-    return url.replace(/([?&][^=]*(?:token|secret|session|cookie|auth|password|pass|key|jwt)[^=]*=)[^&\s]+/gi, "$1<redacted>");
+    return url.replace(
+      /([?&][^=]*(?:token|secret|session|cookie|auth|password|pass|key|jwt)[^=]*=)[^&\s]+/gi,
+      "$1<redacted>"
+    );
   }
 }
 
@@ -685,20 +840,36 @@ function redactAllQueryValues(value: string): string {
     url.username = "";
     url.password = "";
     return url.toString();
-  } catch { return "about:invalid"; }
+  } catch {
+    return "about:invalid";
+  }
 }
 
 function assertSameOrigin(url: string, targetOrigin: string): void {
   const parsed = new URL(url);
-  if (parsed.origin !== targetOrigin) throw new Error(`Authenticated browser workflow URL is outside the target origin: ${parsed.origin}.`);
+  if (parsed.origin !== targetOrigin)
+    throw new Error(`Authenticated browser workflow URL is outside the target origin: ${parsed.origin}.`);
 }
 
-async function browserContinuationHeaders(request: Request, profile: AuthProfile | undefined, targetOrigin: string): Promise<Record<string, string>> {
-  const headers = { ...await request.allHeaders() };
+async function browserContinuationHeaders(
+  request: Request,
+  profile: AuthProfile | undefined,
+  targetOrigin: string
+): Promise<Record<string, string>> {
+  const headers = { ...(await request.allHeaders()) };
   if (!headers.cookie) {
-    try { const cookies = await request.frame().page().context().cookies(request.url()); if (cookies.length) headers.cookie = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join("; "); } catch { /* Worker requests must supply their own captured headers. */ }
+    try {
+      const cookies = await request.frame().page().context().cookies(request.url());
+      if (cookies.length) headers.cookie = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+    } catch {
+      /* Worker requests must supply their own captured headers. */
+    }
   }
-  for (const name of Object.keys(headers)) if (["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())) delete headers[name];
+  for (const name of Object.keys(headers))
+    if (
+      ["host", "connection", "proxy-connection", "proxy-authorization", "content-length"].includes(name.toLowerCase())
+    )
+      delete headers[name];
   if (!profile || new URL(request.url()).origin === targetOrigin) return headers;
   const profileHeaderNames = new Set(Object.keys(profile.headers).map((name) => name.toLowerCase()));
   for (const name of Object.keys(headers)) if (profileHeaderNames.has(name.toLowerCase())) delete headers[name];

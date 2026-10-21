@@ -69,6 +69,8 @@ export interface JsConfigValue {
 }
 
 export interface JsScriptAnalysis {
+  complete?: boolean;
+  responseFingerprint?: string | undefined;
   scriptUrl: string;
   sameOrigin: boolean;
   downloaded: boolean;
@@ -82,6 +84,7 @@ export interface JsScriptAnalysis {
 }
 
 export interface JsIntelligenceReport {
+  applicationDocuments?: import("../intelligence/inventory/ProductionApplicationDiscovery.js").PublicDocumentObservation[];
   scripts: JsScriptAnalysis[];
   queuedEndpoints: PathCandidate[];
   sourceMaps: string[];

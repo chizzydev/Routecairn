@@ -1,3 +1,5 @@
+import { targetAuthorizationSchema, type TargetAuthorization } from "../../core/authorization/TargetAuthorization.js";
+import type { ProductionCampaign } from "../../core/authorization/ProductionCampaign.js";
 import { collectionContractSchema } from "./CollectionOwnership.js";
 import { identityModelSchema, applicationIdentityModel } from "../../core/auth/IdentityModel.js";
 import { createHash } from "node:crypto";
@@ -237,6 +239,7 @@ export const apiGraphqlInputSchema = z
 
 export type ApiGraphqlInput = z.infer<typeof apiGraphqlInputSchema>;
 type PlannerContext = {
+  targetAuthorization?: TargetAuthorization;
   target: string;
   scope: RouteCairnScope;
   authProfile?: AuthProfile;
@@ -261,6 +264,9 @@ export async function loadApiGraphqlInput(filePath: string): Promise<ApiGraphqlI
 export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerContext): ApiGraphqlReviewPlan {
   const parsed = apiGraphqlInputSchema.parse(input);
   const origin = new URL(context.target).origin;
+  const production = context.targetAuthorization
+    ? targetAuthorizationSchema.parse(context.targetAuthorization).productionCampaign
+    : undefined;
   const matcher = new ScopeMatcher(context.target, context.scope);
   ensureUnique(
     parsed.actors.map((value) => value.id),
@@ -277,7 +283,7 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
 
   const actors = parsed.actors.map((value) => planActor(value, context));
   const actorIds = new Set(actors.map((value) => value.id));
-  const routes = parsed.routes.map((value) => planRoute(value, matcher, origin));
+  const routes = parsed.routes.map((value) => planRoute(value, matcher, origin, production));
   const routeById = new Map(routes.map((value) => [value.id, value]));
   validateSchemaReferences(routes, routeById);
   for (const route of routes)
@@ -287,6 +293,26 @@ export function planApiGraphqlReview(input: ApiGraphqlInput, context: PlannerCon
         "API_GRAPHQL_UNKNOWN_ACTOR"
       );
   const checks = parsed.checks.map((value) => planCheck(value, routeById, actorIds, parsed));
+  for (const c of checks) {
+    if ("routeId" in c && new URL(routeById.get(c.routeId)!.url).origin !== origin) {
+      if (
+        c.kind !== "FUNCTION_AUTHORIZATION" ||
+        actors.find((a) => a.id === c.actorId)?.authSlot !== "anonymous" ||
+        c.request.method === "POST" ||
+        c.response.expectedDecision !== "OBSERVE" ||
+        c.response.fieldRules.length ||
+        c.response.identity ||
+        c.response.tenant ||
+        c.response.collection ||
+        c.response.stateMarkers ||
+        c.response.observationPaths
+      )
+        throw new AppError(
+          "Cross-origin production checks are explicit anonymous observations only",
+          "API_GRAPHQL_CROSS_ORIGIN_PROOF_FORBIDDEN"
+        );
+    }
+  }
   for (const c of checks)
     if (
       "response" in c &&
@@ -417,10 +443,24 @@ function planActor(value: ApiGraphqlInput["actors"][number], context: PlannerCon
 function planRoute(
   value: ApiGraphqlInput["routes"][number],
   matcher: ScopeMatcher,
-  origin: string
+  origin: string,
+  production?: ProductionCampaign
 ): ApiRouteSecurityPlan {
   const parsed = new URL(value.url);
-  if (parsed.origin !== origin)
+  if (
+    parsed.origin !== origin &&
+    !(
+      production &&
+      !production.authenticationPermitted &&
+      value.protocol === "REST" &&
+      value.kind === "FUNCTION" &&
+      !parsed.search &&
+      !parsed.hash &&
+      value.documentedMethods.every((method) =>
+        production.requests.some((r) => r.origin === parsed.origin && r.path === parsed.pathname && r.method === method)
+      )
+    )
+  )
     throw new AppError(`Route ${value.id} must use the target origin.`, "API_GRAPHQL_CROSS_ORIGIN_ROUTE");
   for (const declaredMethod of value.documentedMethods) {
     const decision = matcher.decide(value.url, declaredMethod);
