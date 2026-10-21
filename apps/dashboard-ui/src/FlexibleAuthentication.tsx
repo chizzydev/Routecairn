@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { apiMutation } from "./api";
 import type { CredentialSummary } from "./CredentialLifecycle";
 import type { ActorRegistry } from "../../../src/core/auth/ActorRegistry";
+import { ReviewedAssessmentResources } from "./ReviewedAssessmentResources";
+import type { ResourcePolicyDraft } from "./ReviewedAssessmentResources";
 export interface FlexibleAssessmentPreview {
   registry: ActorRegistry;
   actorCredentials: Record<string, string>;
@@ -44,6 +46,21 @@ export function FlexibleAuthentication({
     [result, setResult] = useState<FlexibleAssessmentPreview>(),
     [message, setMessage] = useState(""),
     [pending, setPending] = useState(false);
+  const [resources, setResources] = useState<ResourcePolicyDraft[]>([]);
+  const credentialState = JSON.stringify(
+    credentials
+      .map((c) => ({
+        id: c.id,
+        targetId: c.targetId,
+        enabled: c.enabled,
+        expiresAt: c.expiresAt,
+        secretVersion: c.secretVersion,
+        updatedAt: c.updatedAt,
+        health: c.health,
+        identity: c.safeIdentitySummary
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  );
   const generation = useRef(0),
     mounted = useRef(true),
     nextId = useRef(0),
@@ -65,8 +82,15 @@ export function FlexibleAuthentication({
     setResult(undefined);
     setPending(false);
     setActors([]);
+    setResources([]);
     onInvalidated();
   }, [targetId]);
+  useEffect(() => {
+    generation.current++;
+    setResult(undefined);
+    setPending(false);
+    onInvalidated();
+  }, [credentialState]);
   const preview = async () => {
     const g = ++generation.current;
     setPending(true);
@@ -76,6 +100,7 @@ export function FlexibleAuthentication({
         targetId,
         readPath,
         actors,
+        resources,
         credentialValidUntil: new Date(Date.now() + 3600000).toISOString(),
         ownerTestAccountsConfirmed: confirmed,
         readOnlyEffectConfirmed: confirmed,
@@ -208,6 +233,14 @@ export function FlexibleAuthentication({
         />
         Application has role separation
       </label>
+      <ReviewedAssessmentResources
+        actors={actors}
+        resources={resources}
+        onChange={(v) => {
+          changed();
+          setResources(v);
+        }}
+      />
       <label>
         <input
           type="checkbox"
@@ -249,6 +282,7 @@ export function FlexibleAuthentication({
           !targetId ||
           !confirmed ||
           actors.some((a) => !a.credentialProfileId) ||
+          resources.some((r) => !r.reviewed) ||
           (actors.length > 0 && !sessionEffects)
         }
         onClick={() => void preview()}

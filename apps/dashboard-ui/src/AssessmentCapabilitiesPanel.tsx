@@ -37,6 +37,12 @@ export function AssessmentCapabilitiesPanel({
               <td>{w.status}</td>
               <td>
                 <p>{w.reason}</p>
+                {"authenticationResult" in w && (
+                  <p>
+                    Authentication response: {String(w.authenticationResult)}. An HTTP success status alone is not
+                    session or principal proof.
+                  </p>
+                )}
                 <p>
                   {"evidenceCoverage" in w
                     ? String(w.evidenceCoverage)
@@ -45,6 +51,7 @@ export function AssessmentCapabilitiesPanel({
                 {w.evidence.map((e) => (
                   <p key={e.checkId}>
                     {e.checkId} · {e.outcome} · {e.comparisonFingerprint}
+                    {"responseStatuses" in e && <span> · HTTP {e.responseStatuses.join(", ") || "not observed"}</span>}
                   </p>
                 ))}
                 {"reportArtifactId" in w && typeof w.reportArtifactId === "string" && (

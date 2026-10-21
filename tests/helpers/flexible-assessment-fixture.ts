@@ -29,6 +29,10 @@ export async function flexibleFixture(
     noIdentity?: boolean;
     vulnerable?: boolean;
     revoked?: boolean;
+    denialStatus?: number;
+    identityRedirect?: string;
+    staticIntelligence?: boolean;
+    reviewedResourceFixture?: "SECURE" | "VULNERABLE" | "EMPTY" | "INCOMPLETE" | "DUPLICATE";
   } = {}
 ) {
   const actorBindingKey = randomBytes(32).toString("base64url"),
@@ -48,7 +52,7 @@ export async function flexibleFixture(
       return;
     }
     if (i < 0 || options.revoked) {
-      r.writeHead(401).end('{"error":"unauthenticated"}');
+      r.writeHead(options.denialStatus ?? 401).end('{"error":"unauthenticated"}');
       return;
     }
     if (q.url !== "/who" && options.revokeAfterIdentity) {
@@ -64,6 +68,10 @@ export async function flexibleFixture(
       return;
     }
     if (q.url === "/who") {
+      if (options.identityRedirect) {
+        r.writeHead(302, { location: options.identityRedirect }).end();
+        return;
+      }
       if (options.noIdentity) {
         r.writeHead(404).end("{}");
         return;
@@ -93,6 +101,40 @@ export async function flexibleFixture(
     }
     if (q.url === "/object/actor0" && i !== 0 && !options.vulnerable) {
       r.writeHead(403).end('{"error":"forbidden"}');
+      return;
+    }
+    if (options.reviewedResourceFixture && q.url === "/collection") {
+      const mode = options.reviewedResourceFixture;
+      r.end(
+        JSON.stringify({
+          items:
+            mode === "EMPTY"
+              ? []
+              : mode === "DUPLICATE"
+                ? [
+                    { id: "one", owner: actor },
+                    { id: "one", owner: actor }
+                  ]
+                : [
+                    { id: "one", owner: actor },
+                    { id: "two", owner: mode === "VULNERABLE" ? "foreign-principal" : actor }
+                  ],
+          hasMore: mode === "INCOMPLETE"
+        })
+      );
+      return;
+    }
+    if (options.reviewedResourceFixture && q.url === "/fields") {
+      r.end(
+        JSON.stringify({
+          id: actor,
+          ...(i === 0 || options.reviewedResourceFixture === "VULNERABLE" ? { internal: "fixture-only" } : {})
+        })
+      );
+      return;
+    }
+    if (options.reviewedResourceFixture && q.url === "/state") {
+      r.end(JSON.stringify({ state: "ready" }));
       return;
     }
     r.end(JSON.stringify({ owner: q.url === "/object/actor0" ? "actor0" : actor, feature: true }));
@@ -326,7 +368,9 @@ export async function flexibleFixture(
           targetAuthorization: authorizationPath,
           apiGraphql: apiPath,
           profile: "quick",
-          includeModules: ["baseline"],
+          includeModules: options.staticIntelligence
+            ? ["baseline", "api-mapper", "auth-surface", "parameter-analysis", "vulnerability-workflows"]
+            : ["baseline"],
           replaceProfileModules: true,
           maxRequests: "60",
           cleanupReservedRequests: "0",

@@ -758,14 +758,22 @@ export function ScanStudio({
             <dt>Scope</dt>
             <dd>{state.scope.allowedDomains.length} domain rule(s)</dd>
             <dt>Authentication</dt>
-            <dd>{state.authMode}</dd>
+            <dd>
+              {state.useActorRegistry
+                ? state.flexibleAssessment
+                  ? `Actor registry: ${state.flexibleAssessment.registry.actors.length} configured actor(s)`
+                  : "Actor registry: review pending"
+                : state.authMode}
+            </dd>
             <dt>Modules</dt>
             <dd>{state.selectedModules.length || profile?.modules.length || 0}</dd>
             <dt>Planner</dt>
             <dd>{state.preview ? "Resolved" : "Not previewed"}</dd>
           </dl>
           <p className="secret-note">
-            Ephemeral secrets stay in this page's live memory and are sent only in a job-bound worker envelope.
+            {state.useActorRegistry
+              ? "Saved credentials remain in the encrypted vault. Reviewed actor references are bound to the executable plan; configured accounts are not verified sessions."
+              : "Ephemeral secrets stay in this page's live memory and are sent only in a job-bound worker envelope."}
           </p>
         </aside>
       </div>

@@ -207,14 +207,35 @@ export function runtimeAssessmentCapabilities(
     ...base,
     workflows: base.workflows.map((w) => {
       const cases = plan?.checks.filter((c) => ("matrixId" in c ? c.matrixId : c.id) === w.workflowId) ?? [],
-        rows = cases.flatMap((c) => observations?.filter((o) => o.checkId === c.id) ?? []),
+        rows = cases.flatMap(
+          (c) =>
+            observations?.filter(
+              (o) =>
+                o.checkId === c.id && o.comparisonFingerprint === c.comparisonFingerprint && o.actorId === c.actorId
+            ) ?? []
+        ),
         evidence = rows.map((r) => ({
           checkId: r.checkId,
           comparisonFingerprint: r.comparisonFingerprint,
           outcome: r.outcome,
           reason: r.reasonCode,
+          responseStatuses: r.requests.flatMap((q) => (q.statusCode === undefined ? [] : [q.statusCode])),
           observedRequests: r.requests.length
         }));
+      const statuses = rows.flatMap((r) =>
+        r.requests.flatMap((q) => (q.statusCode === undefined ? [] : [q.statusCode]))
+      );
+      const authenticationResult =
+        statuses.length && statuses.every((s) => s === 401 || s === 403) ? "DENIED" : "NOT_PROVEN_BY_HTTP_STATUS";
+      if (w.family === "AUTHENTICATED_OBSERVATION" && authenticationResult === "DENIED")
+        return {
+          ...w,
+          evidence,
+          authenticationResult,
+          status: w.status === "BLOCKED" ? "BLOCKED" : "OBSERVED",
+          reason: "NATIVE_AUTHENTICATED_REQUEST_DENIED_NOT_SESSION_SUCCESS",
+          coverage: "NATIVE_DENIAL_OBSERVED"
+        };
       if (w.status !== "ELIGIBLE") return { ...w, evidence, coverage: "NOT_EXECUTED_OR_NOT_CONCLUSIVE" };
       if (w.family === "BROWSER_OBSERVATION") {
         const bound = browser?.assessmentWorkflow,
@@ -272,6 +293,8 @@ export function registryModuleDecision(moduleId: string) {
     "path-discovery",
     "api-mapper",
     "api-probe",
+    "parameter-analysis",
+    "vulnerability-workflows",
     "auth-surface",
     "header-review",
     "cookie-review",

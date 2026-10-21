@@ -115,6 +115,14 @@ export class BrowserProofVerifier implements ControlledMutationBrowserObserver {
       await context.route("**/*", async (route) => {
         const request = route.request();
         const pageUrl = safePageUrl(request, this.options.targetUrl);
+        if (new URL(request.url()).origin !== new URL(this.options.targetUrl).origin) {
+          requestBroker.recordBrowserPolicyBlock(
+            { url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl },
+            "authenticated-secondary-origin-credential-grant-required"
+          );
+          await route.abort("blockedbyclient").catch(() => undefined);
+          return;
+        }
         const write = isWriteMethod(request.method());
         const explicitLogin = write && isExplicitLoginWriteAllowed(request.url(), gate);
         if (write && !explicitLogin) {

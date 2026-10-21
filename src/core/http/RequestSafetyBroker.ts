@@ -1,3 +1,4 @@
+import { crossesRequestMaterialBoundary, refusedRedirect } from "./RedirectSafety.js";
 import { privateScrubContext, privateAuditRecorder } from "./PrivateScrubContext.js";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { redactBodyPreview, redactHeaders } from "../evidence/EvidenceBuilder.js";
@@ -1364,32 +1365,14 @@ export class RequestSafetyBroker {
       return response;
     }
 
-    const redirectDecision = this.scopeMatcher.decide(nextUrl, requestInput.method, requestInput.body);
+    const redirectDecision = crossesRequestMaterialBoundary(requestInput, currentUrl, nextUrl)
+      ? { allowed: false, reason: "credential-origin-redirect-not-authorized", normalizedUrl: undefined }
+      : this.scopeMatcher.decide(nextUrl, requestInput.method, requestInput.body);
     const nextHop = { statusCode: response.statusCode as number, location: nextUrl };
     const nextChain = [...redirectChain, nextHop];
 
-    if (!redirectDecision.allowed || !redirectDecision.normalizedUrl) {
-      const statusCode = response.statusCode as number;
-      return {
-        requestedUrl: requestInput.url,
-        finalUrl: currentUrl,
-        method: requestInput.method,
-        statusCode,
-        headers: response.headers,
-        responseTimeMs: response.responseTimeMs,
-        redirectChain: nextChain,
-        ...(response.contentType ? { contentType: response.contentType } : {}),
-        ...(typeof response.contentLength === "number" ? { contentLength: response.contentLength } : {}),
-        ...(response.title ? { title: response.title } : {}),
-        ...(response.bodyHash ? { bodyHash: response.bodyHash } : {}),
-        ...(response.bodyPreview ? { bodyPreview: response.bodyPreview } : {}),
-        redirectLocation: nextUrl,
-        error: {
-          name: "OutOfScopeRedirect",
-          message: `Redirect blocked by scan-wide broker: ${redirectDecision.reason}.`
-        }
-      };
-    }
+    if (!redirectDecision.allowed || !redirectDecision.normalizedUrl)
+      return refusedRedirect(requestInput, response, currentUrl, nextUrl, nextChain, redirectDecision.reason);
 
     return this.sendWithRedirects(requestInput, redirectDecision.normalizedUrl, nextChain, false);
   }

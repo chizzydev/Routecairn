@@ -1,0 +1,587 @@
+{
+  "contractVersion": "0.24-R3",
+  "baseline": "032efe71f6a5acb6eac81ddd7463f1fa0832ff2b",
+  "method": "Read every native module source and current module catalog, locate native registrations, retain exact hashes and fixed-slot line references. Semantic adapter boundaries are explicitly described; pattern counts are not proof.",
+  "nativeModuleSourceFilesRead": 137,
+  "modules": [
+    {
+      "id": "assisted-review",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/assistedReview/AssistedReviewModule.ts",
+          "sha256": "85ad0961934cfb899a77cb40ea8a704b205c3c087273c3fca779d6a6d15b9e73",
+          "fixedSlotLines": [56]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "baseline",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/baseline/BaselineDetector.ts",
+          "sha256": "0f9672c847ba7496fdd1292b31a0a657b2cffcb66cc80c41e8071227285b5f50",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "tech-fingerprint",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/techFingerprint/TechFingerprintModule.ts",
+          "sha256": "f326db31583b3529d103213f9026f1f2cc39213fcb6e20fed721ccb8db1c5506",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "js-intelligence",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/jsIntelligence/JsDiscoveryModule.ts",
+          "sha256": "3b53ff9c88394f50bece3778619c5b9945f9190eaa5792e5eb5de36d93386ab7",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "browser-crawler",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/browserCrawler/BrowserCrawlerModule.ts",
+          "sha256": "b10840c3763e974443fe3a9693559c09e7a7bf97fc39e4b8cf862f2f27699e11",
+          "fixedSlotLines": [18, 40]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "path-discovery",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/pathDiscovery/PathDiscoveryModule.ts",
+          "sha256": "716877318a3f743a6cf4280c39eefd7f1626805d3ec4d8d933edfe9dd7248d6e",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "api-mapper",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/apiMapper/ApiMapperModule.ts",
+          "sha256": "177e970e8640ee14d7b3d29606384db2284a717f2d32f2bce34d8e795ea2df66",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "api-probe",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/apiProbe/ApiProbeModule.ts",
+          "sha256": "3072c93ce3edc40223f99340328147929c541ebf6d63a0ff88cc135fafef8d41",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "auth-surface",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/authSurface/AuthSurfaceModule.ts",
+          "sha256": "78f31411df0751fce7bc81e488f7fd29e0627d3f435257ac88131903795a6511",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "parameter-analysis",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/parameterAnalysis/ParameterAnalysisModule.ts",
+          "sha256": "35a7dac001903160383edab02e8dd9e27f0a5e977b31bc0a2d0d3ac7c7098be4",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "nextjs-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/nextjsReview/NextJsReviewModule.ts",
+          "sha256": "4e2664bc7746e171577164f0b6dcbdb366ec3686948f58f0d650a74fc8f6f7d4",
+          "fixedSlotLines": [214, 215, 216, 217, 218, 220, 226]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "vulnerability-workflows",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/vulnerabilityWorkflows/VulnerabilityWorkflowModule.ts",
+          "sha256": "fca397178b6ad0e3f026daf5a2c7a2f6cc6e73856818eff42738e33f90967d9c",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "active-vulnerability-validation",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/activeVulnerability/ActiveVulnerabilityModule.ts",
+          "sha256": "f08a4eda253201e58a9bde35d4432e57ae4563d12cf9676d3b4ce648586974af",
+          "fixedSlotLines": [329, 331]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "workflow-validation",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/workflowValidation/WorkflowValidationModule.ts",
+          "sha256": "53b3e5b1c00b1ff19c3afccb28e53371ac86888af2670790c1152cfb735ad191",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": "BUSINESS_READ supports bounded read-state prerequisites, not the complete captured multi-step mutation schema.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "authenticated-testing",
+      "requiresAuthentication": "single-profile",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/authenticatedTesting/AuthenticatedTestingModule.ts",
+          "sha256": "4c3840d7cb745581b1374144e2d9f85a135adf66262c931f6fe791ff83bfc9fa",
+          "fixedSlotLines": [14]
+        }
+      ],
+      "versionedEquivalent": "SESSION_READ and canonical API observation distinguish denial from session success; legacy anonymous/authenticated shape-similarity report has no complete registry adapter.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "role-comparison",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/roleComparison/RoleComparisonModule.ts",
+          "sha256": "0b151406a57363639525c91c798e139bf462492c71ad59d6e4174966c663d176",
+          "fixedSlotLines": [
+            14, 26, 34, 35, 40, 41, 42, 48, 49, 65, 66, 116, 117, 119, 122, 128, 129, 132, 135, 136, 155, 156, 161, 162,
+            164, 168, 172, 176, 177, 181, 191, 192
+          ]
+        }
+      ],
+      "versionedEquivalent": "FIELD_EXPOSURE with roleAssuranceRequired; current principal+role evidence per selected actor. No blanket role inference.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "state-aware-api",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/stateAwareApi/StateAwareApiModule.ts",
+          "sha256": "5304f54fb281be6cc52205860906abac966581abc955d43226df1b24550ac6fb",
+          "fixedSlotLines": [67, 68, 70, 71, 73, 74, 87, 88, 89, 111, 112, 113, 114, 124]
+        }
+      ],
+      "versionedEquivalent": "BUSINESS_READ: exact reviewed state markers and same-actor prior ALLOW reads. State-changing transition execution remains held.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "object-pair-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/objectPairTesting/ObjectPairTestingModule.ts",
+          "sha256": "977e604eeacfb949664af6b1761e63be769c02aa36967697605f2850b9445b31",
+          "fixedSlotLines": [38, 68, 69, 136, 182, 228, 283, 298, 319, 461]
+        }
+      ],
+      "versionedEquivalent": "OBJECT_OWNERSHIP: exact reviewed owner principal/path, current native proofs and owner/foreign cells; 2..8 actors. Original v1 object-pair inputs remain strict.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "field-exposure-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/fieldExposureTesting/FieldExposureTestingModule.ts",
+          "sha256": "199d6451eedc82b79aef954f7324c941aeb45e077e5c2322ab3816da195400d6",
+          "fixedSlotLines": [93, 95, 290, 293, 344]
+        }
+      ],
+      "versionedEquivalent": "FIELD_EXPOSURE: exact reviewed field rules and bound native principal (one or more), optional independent role proof. No automatic response-field policy inference.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "authorization-matrix-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/authorizationMatrix/AuthorizationMatrixModule.ts",
+          "sha256": "61c3d3024e421a25ea36c43ef1b6303df45b4a2aa3c04879bdf0cf71c4e878e4",
+          "fixedSlotLines": [89, 91, 169, 174, 276, 277]
+        }
+      ],
+      "versionedEquivalent": "OBJECT_OWNERSHIP and FIELD_EXPOSURE native policy matrices; explicit ROLE assurance when selected. Advanced API supports reviewed TENANT workflows. Original matrix schema is not silently translated.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "equivalent-route-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/equivalentRouteTesting/EquivalentRouteModule.ts",
+          "sha256": "faffc74e1590063fb7f2ed3a01c57b57147597e20b1cca90a5104a5c2705fcc0",
+          "fixedSlotLines": [89, 91, 175, 180, 302, 303]
+        }
+      ],
+      "versionedEquivalent": "Advanced existing native API VERSION_BOUNDARY may be explicitly reviewed; original equivalent-route contract is not automatically converted.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "collection-authorization-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/collectionAuthorization/CollectionAuthorizationModule.ts",
+          "sha256": "1c471571214fede4b4ba460e646a53cacab0c4e6c255330a3f15d2d30c387329",
+          "fixedSlotLines": [174, 176, 429, 434, 548, 549]
+        }
+      ],
+      "versionedEquivalent": "COLLECTION_OWNERSHIP: complete bounded response, all entries, exact owners/IDs, explicit pagination; empty/partial/invalid abstain. Legacy summary/membership semantics still need a distinct registry adapter.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "bulk-authorization-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/bulkAuthorization/BulkAuthorizationModule.ts",
+          "sha256": "2e75a453740c41cfa4c781e77665827c0a00eebf7e87e9e302ed93d65243cdd6",
+          "fixedSlotLines": [112, 387, 388, 392, 393, 397, 398, 414, 422, 525, 526]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "file-authorization-testing",
+      "requiresAuthentication": "account-pair",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/fileAuthorization/FileAuthorizationModule.ts",
+          "sha256": "771533f9e34e69385131c83765be5807abd41e52197c026bfc6ce0d2156cc3f6",
+          "fixedSlotLines": [224, 225, 231, 236, 370, 371]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "privilege-mutation-testing",
+      "requiresAuthentication": "single-profile",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/privilegeMutation/PrivilegeMutationModule.ts",
+          "sha256": "a5c44e7110b032caa9d1027924995339c406efd0c628e9afe76f4ff2502938f6",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "supabase-authorization",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/supabaseAuthorization/SupabaseAuthorizationModule.ts",
+          "sha256": "eef3ac835f0bddd29a843d7453f0a41dfba5df497b71fdedf579b16385e5ee52",
+          "fixedSlotLines": [259, 267, 270]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "authentication-lifecycle",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/authenticationLifecycle/AuthenticationLifecycleModule.ts",
+          "sha256": "368616def42ff28fbc7eead57a98785451bc239778a65e2d8a4abee56c47c492",
+          "fixedSlotLines": [47, 339, 340]
+        }
+      ],
+      "versionedEquivalent": "SESSION_READ is observation only. Rotation/revocation/provider/OAuth lifecycle contracts retain original authority and recovery prerequisites; not implemented as registry lifecycle acceptance.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "business-invariant",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/businessInvariant/BusinessInvariantModule.ts",
+          "sha256": "19d4d53af72f6414a654b21186c331b637e9e5e28fe3e1016e08238fc7d9b95f",
+          "fixedSlotLines": [287]
+        }
+      ],
+      "versionedEquivalent": "BUSINESS_READ supports exact observed-state checks; held mutation/cleanup engines keep v1 authority.",
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "controlled-race",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/controlledRace/ControlledRaceModule.ts",
+          "sha256": "8da8c99f1536f1b4aa828c88f35d5517395a6d111d1606f5f861a7083c0d630d",
+          "fixedSlotLines": [207]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "api-graphql-authorization",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/apiGraphql/ApiGraphqlModule.ts",
+          "sha256": "ad3278402ef3cb83737c0811392bc5fa0406cce29e53aff189d54d587ac753ab",
+          "fixedSlotLines": [915, 916, 917, 926, 927, 928, 929]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "protocol-security",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/protocolSecurity/ProtocolSecurityModule.ts",
+          "sha256": "94d0b655b611a31674ab4a5d4c61dc2480c109ed23803d6af9784fe8a801564b",
+          "fixedSlotLines": [1466, 1467, 1468, 1469, 1477, 1478, 1479]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "link-portal-export-security",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/linkPortalSecurity/LinkPortalSecurityModule.ts",
+          "sha256": "7ab5415f95fd66c6e1a68c0045f6c2b1ed03d8312f44d1919d66f6b84d0f8428",
+          "fixedSlotLines": [163]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "operational-endpoint-security",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/operationalEndpointSecurity/OperationalEndpointSecurityModule.ts",
+          "sha256": "6d9f0112ab99e99ed6588ee535b4abc2c3c814511167cb599033f05aa147bd0a",
+          "fixedSlotLines": [69]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "billing-entitlement-security",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/billingEntitlement/BillingEntitlementModule.ts",
+          "sha256": "cb7cdf579d4da28059fd99c8d5e978effe30836b74b41ff060382be262587da0",
+          "fixedSlotLines": [71]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "secret-boundary",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/secretBoundary/SecretBoundaryModule.ts",
+          "sha256": "e8a63df9201f054299e5af12d28b1d00c1ca34fa62ec5b0f93c2181696d85267",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    },
+    {
+      "id": "header-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/headerReview/HeaderReviewModule.ts",
+          "sha256": "22d7fdf42af6f47e3df61c3ab5d5c2f308ee1e656ed9c27a75bd0d920a3d02b4",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "cookie-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/cookieReview/CookieReviewModule.ts",
+          "sha256": "37ff75c25a6a91de138981b9fbfabe6f9209f49d2862d4fb65e6bd0144d0bc6b",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "cors-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/corsReview/CorsReviewModule.ts",
+          "sha256": "06bdddc39f21c24d25dd2be1dd60644f05796ef6ec1ca1053346baa6867b2c02",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "method-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/methodReview/MethodReviewModule.ts",
+          "sha256": "39a55543738513e1d92e2e2b2946150e30f5be1bfa0af54ae6f8380dbc2bd16b",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "exposure-review",
+      "requiresAuthentication": "none",
+      "runtime": "ELIGIBLE_NOT_EXECUTION",
+      "source": [
+        {
+          "path": "src/modules/exposureReview/ExposureReviewModule.ts",
+          "sha256": "86ab65b885727bf28a7f1e4a1daba9a06eb5b7d75bd8e4f68a485c7802ca1072",
+          "fixedSlotLines": []
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Existing scope/budget/broker and actual module plan. Static modules do not gain execution authority."
+    },
+    {
+      "id": "proof-mode",
+      "requiresAuthentication": "none",
+      "runtime": "BLOCKED_ORIGINAL_CONTRACT_ADAPTER_REQUIRED",
+      "source": [
+        {
+          "path": "src/modules/proofMode/ProofModeModule.ts",
+          "sha256": "10e5e83d6456def3500f2e2d983addea32b67db431c07a498348b96dfab0beb7",
+          "fixedSlotLines": [49, 50, 51, 54, 55, 56, 57, 58]
+        }
+      ],
+      "versionedEquivalent": null,
+      "requirements": "Explicit original case contract, credentials/identity and any provider/effect/cleanup prerequisites. Missing adapter remains a real limitation, never an assertion of security."
+    }
+  ],
+  "universalIntegrationComplete": false,
+  "independentAcceptance": false
+}

@@ -14,9 +14,13 @@ import { scopeSchema } from "../../src/config/ConfigSchema.js";
 import { exampleScope } from "../../src/config/defaults.js";
 import { scanStudioSchema } from "../../src/dashboard/contracts/ScanStudioSchemas.js";
 import type { DashboardScanCreateRequest } from "../../src/dashboard/types/DashboardTypes.js";
-export async function flexibleDashboardFixture(count: number, noIdentity = false) {
+export async function flexibleDashboardFixture(
+  count: number,
+  noIdentity = false,
+  options: Parameters<typeof flexibleFixture>[1] = {}
+) {
   if (process.platform !== "win32") throw Error("OWNED_WINDOWS_NATIVE_LAB_REQUIRED");
-  const f = await flexibleFixture(count, { noIdentity }),
+  const f = await flexibleFixture(count, { ...options, noIdentity }),
     paths = resolveDashboardPaths(f.root),
     database = new DashboardDatabase(paths.databasePath);
   database.migrate();
@@ -62,7 +66,7 @@ export async function flexibleDashboardFixture(count: number, noIdentity = false
       id,
       label: id,
       credentialProfileId,
-      mechanism: "BEARER",
+      mechanism: options.mechanism ?? "BEARER",
       accountProvenance: "OWNER_APPROVED_EXISTING_TEST"
     };
   });

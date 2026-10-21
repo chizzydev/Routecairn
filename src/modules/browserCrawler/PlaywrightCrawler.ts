@@ -457,6 +457,18 @@ export class PlaywrightCrawler {
   ): Promise<string> {
     const request = route.request();
     const pageUrl = pageUrlForRequest(request, options.targetUrl);
+    // Browser cookies are host-scoped and can cross ports. Read scope alone
+    // cannot grant a second origin access to this isolated actor's session.
+    if (options.authProfile && new URL(request.url()).origin !== new URL(options.targetUrl).origin) {
+      const denied = options.requestBroker.recordBrowserPolicyBlock(
+        { url: request.url(), method: request.method(), resourceType: request.resourceType(), pageUrl },
+        "authenticated-secondary-origin-credential-grant-required"
+      );
+      addPolicyEvent(policyEvents, options.policy, policyEvent(request, pageUrl, denied.reason, false));
+      networkRequests.push(networkRequest(request, "blocked", denied.reason, false));
+      await route.abort("blockedbyclient").catch(() => undefined);
+      return denied.reason;
+    }
     const requestsSeenForPage = (requestsByPage.get(pageUrl) ?? 0) + 1;
     requestsByPage.set(pageUrl, requestsSeenForPage);
     if (

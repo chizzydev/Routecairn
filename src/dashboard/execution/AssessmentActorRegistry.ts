@@ -15,12 +15,14 @@ import { authProfileSchema } from "../../core/auth/AuthProfile.js";
 import { scopeSchema } from "../../config/ConfigSchema.js";
 import { ScopeMatcher } from "../../core/scope/ScopeMatcher.js";
 import { authProfileFromCredential } from "./ScanExecutionShared.js";
+import { assessmentResourcePolicySchema, compileAssessmentResources } from "./AssessmentResourcePolicy.js";
 import { TargetRepository } from "../db/DashboardRepositories.js";
 import type { DashboardDatabase } from "../db/DashboardDatabase.js";
 import type { CredentialVault } from "../credentials/CredentialVault.js";
 export const assessmentActorInputSchema = z
   .object({
     targetId: z.string().uuid(),
+    resources: z.array(assessmentResourcePolicySchema).max(4).default([]),
     readPath: z
       .string()
       .regex(/^\/[A-Za-z0-9_./-]*$/)
@@ -142,13 +144,19 @@ export function prepareAssessmentActors(db: DashboardDatabase, vault: Credential
         applicable: input.tenantSeparationApplicable
       }
     ];
+  const resourcePlan = compileAssessmentResources(
+    input.resources,
+    actors as import("../../core/auth/ActorRegistry.js").ActorRegistry["actors"],
+    target.baseOrigin,
+    scope
+  );
   const registry = actorRegistrySchema.parse({
       contractVersion: 2,
       registryId,
       organizationId: org,
       targetOrigin: target.baseOrigin,
       actors,
-      workflows
+      workflows: [...workflows, ...resourcePlan.workflows]
     }),
     actorCredentials = Object.fromEntries(input.actors.map((a) => [a.id, a.credentialProfileId]));
   validateActorRegistry(registry, validationProfiles, target.baseOrigin, org, bindingKey);
@@ -198,6 +206,8 @@ export function prepareAssessmentActors(db: DashboardDatabase, vault: Credential
       }))
     ]
   };
+  apiGraphql.routes.push(...(resourcePlan.routes as typeof apiGraphql.routes));
+  apiGraphql.checks.push(...(resourcePlan.checks as typeof apiGraphql.checks));
   const now = Date.now();
   const targetAuthorization = targetAuthorizationSchema.parse({
     schemaVersion: 1,
@@ -230,7 +240,7 @@ export function prepareAssessmentActors(db: DashboardDatabase, vault: Credential
       prohibitedActions: [
         "No customer data, provisioning, payment, mail, third-party providers or state-changing operations"
       ],
-      requests: [...new Set(["/", input.readPath, ...identityPaths])].map((path) => ({
+      requests: [...new Set(["/", input.readPath, ...identityPaths, ...resourcePlan.paths])].map((path) => ({
         origin: target.baseOrigin,
         path,
         method: "GET",
@@ -264,6 +274,8 @@ export function prepareAssessmentActors(db: DashboardDatabase, vault: Credential
     targetAuthorization,
     actorCredentials,
     apiGraphql,
+    resourcePolicies: input.resources,
+    resourceAdapterVersion: resourcePlan.adapterVersion,
     digest: actorRegistryDigest(registry),
     capabilities: assessCapabilities(registry),
     executionAuthority: "NONE_PREVIEW_ONLY",

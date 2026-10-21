@@ -504,6 +504,15 @@ async function sendBody(
   method: ApiRequestPlan["method"] = "POST"
 ): Promise<Snapshot> {
   const profile = profileFor(context, actor);
+  // Registry v2 currently binds one exact credential origin. Even an internal
+  // caller with a broader scope must never turn a secondary route into consent
+  // to forward this actor's authentication material.
+  if (
+    profile &&
+    context.options.plan.actorRegistry &&
+    new URL(route.url).origin !== context.options.plan.actorRegistry.targetOrigin
+  )
+    throw Error("REGISTRY_CREDENTIAL_ORIGIN_NOT_AUTHORIZED");
   const merged = { ...(profile ? authHeadersForProfile(profile) : {}), ...headers };
   let encodedBody: string | undefined;
   if (body !== undefined) {

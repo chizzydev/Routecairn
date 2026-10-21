@@ -80,6 +80,7 @@ export const collectionActorBinding = (a: ApiGraphqlActorPlan) =>
   collectionHash({
     id: a.id,
     authSlot: a.authSlot,
+    ...(a.authSlot === "registry" ? { registryId: a.registryId ?? null } : {}),
     identityModel: a.identityModel ?? "TENANT_AWARE",
     principalFingerprint: a.principalFingerprint ?? null,
     tenantFingerprint: a.tenantFingerprint ?? null,
@@ -119,7 +120,11 @@ export function observeCollection(
     e.evidenceFingerprint = collectionHash({ ...e, evidenceFingerprint: "" });
     return e;
   };
-  if (!actor.principalFingerprint || !actor.role || actor.authSlot === "anonymous")
+  if (
+    !actor.principalFingerprint ||
+    actor.authSlot === "anonymous" ||
+    (actor.authSlot === "registry" ? !actor.registryId : !actor.role)
+  )
     return finish("UNPROVEN_IDENTITY", "VERIFIED_ACTOR_REQUIRED");
   const body = bodyPreviewForAnalysis(response);
   if (
