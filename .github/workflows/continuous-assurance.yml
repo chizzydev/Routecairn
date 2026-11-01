@@ -46,7 +46,7 @@ jobs:
         run: node dist/cli/index.js benchmark local --repetitions 3 --baseline benchmarks/routecairn-comprehensive-detection-baseline.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-benchmarks
       - name: Preserve measured-effectiveness evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: effectiveness-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-benchmarks/
@@ -80,7 +80,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
       - name: Preserve coverage evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ github.sha }}-${{ github.run_attempt }}
           path: .routecairn-coverage/
@@ -123,7 +123,7 @@ jobs:
       - run: npm run test:mutation
       - name: Preserve mutation report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutation-${{ github.sha }}-${{ github.run_attempt }}
           path: reports/mutation/
@@ -147,7 +147,7 @@ jobs:
         run: npm run build && node dist/cli/index.js validate-authentication-fixtures --output .routecairn-authentication-acceptance
       - name: Preserve authentication-fixture acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: authentication-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-authentication-acceptance/
@@ -158,7 +158,7 @@ jobs:
         run: node dist/cli/index.js validate-protocol-fixtures --output .routecairn-protocol-acceptance
       - name: Preserve protocol acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-protocol-acceptance/
@@ -180,7 +180,7 @@ jobs:
       - name: Build, pack, install, and exercise the published artifact
         run: npm run package:smoke -- --pack-destination .routecairn-release/ci
       - name: Retain the verified candidate package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: candidate-package-${{ github.sha }}
           path: .routecairn-release/ci/*.tgz
@@ -235,7 +235,7 @@ jobs:
         run: npx vitest run tests/integration/external-acceptance.test.ts
       - name: Preserve broader-acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: broader-acceptance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-validation/
@@ -265,7 +265,7 @@ jobs:
         run: npm run build && node dist/cli/index.js benchmark credibility --python python3 --go go --repetitions 3 --baseline benchmarks/scorecards/2.0.0/reference-windows-node24/benchmark-result.json --release "${{ github.ref_name }}" --build "${{ github.sha }}" --output .routecairn-credibility
       - name: Preserve the versioned public scorecard and raw evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: credibility-scorecard-${{ github.sha }}-${{ github.run_attempt }}
           path: .routecairn-credibility/
@@ -299,7 +299,7 @@ jobs:
         run: npm run acceptance:oast -- --python-path .routecairn-oast-lab/python --output .routecairn-oast-lab/evidence
       - name: Preserve native OAST evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-oast-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-oast-lab/evidence/
@@ -352,7 +352,7 @@ jobs:
         run: npm run acceptance:protocol-semantics -- --output .routecairn-protocol-lab/ci
       - name: Preserve protocol deployment evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: protocol-semantics-${{ github.sha }}-${{ github.run_attempt }}
           path: .routecairn-protocol-lab/ci/
@@ -381,7 +381,7 @@ jobs:
         run: npm run acceptance:attack-graph -- --output .routecairn-attack-graph-lab/ci
       - name: Preserve attack graph operational evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: attack-graph-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-attack-graph-lab/ci/
@@ -408,7 +408,7 @@ jobs:
       - run: npm run acceptance:modules -- --output .routecairn-module-lab/ci
       - name: Retain signed distribution and execution evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: module-ecosystem-${{ matrix.os }}-node-${{ matrix.node }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-module-lab/ci/
@@ -438,7 +438,7 @@ jobs:
       - run: npm run acceptance:modules -- --output .routecairn-module-lab/container-ci
       - name: Preserve container runtime proof and digest
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: module-container-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-module-lab/container-ci/
@@ -463,7 +463,7 @@ jobs:
       - run: npm run build:release
       - run: npm run acceptance:scale -- --output .routecairn-scale-lab/ci-native
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: scale-native-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-scale-lab/ci-native/
@@ -510,7 +510,7 @@ jobs:
       - if: always()
         run: .routecairn-scale-lab/tools/kind delete cluster --name routecairn-scale-ci
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: scale-kubernetes-${{ github.run_id }}-${{ github.run_attempt }}
           path: .routecairn-scale-lab/ci-kubernetes/
